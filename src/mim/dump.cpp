@@ -124,10 +124,12 @@ using ast::Assoc;
 using ast::Prec;
 using ast::prec_assoc;
 
-Prec def2prec(const Def* def) {
+Prec def2prec(Ctx* ctx, const Def* def) {
     // A Var's projection prints as its name and hence is atomic; see the Extract case in operator<<.
-    if (auto ex = def->isa<Extract>())
-        return ex->tuple()->isa<Var>() && ex->index()->isa<Lit>() ? Prec::Lit : Prec::Extract;
+    if (auto ex = def->isa<Extract>()) {
+        auto opaque = ctx && ctx->opaque.contains(ex->tuple());
+        return !opaque && ex->tuple()->isa<Var>() && ex->index()->isa<Lit>() ? Prec::Lit : Prec::Extract;
+    }
     if (def->isa<Insert>()) return Prec::Ins;
     if (def->isa<Join>()) return Prec::Union;
     if (auto inj = def->isa<Inj>()) {
@@ -240,7 +242,7 @@ public:
     bool needs_parens() const {
         if (!is_full()) return false;
 
-        auto child_prec = def2prec(def());
+        auto child_prec = def2prec(ctx(), def());
         if (child_prec < prec()) return true;
         if (child_prec > prec()) return false;
 
@@ -308,7 +310,12 @@ std::string shape(Ctx* ctx, const Seq* seq, const Def* var) {
 /// spells a *dependent* component with the domain's binders instead of this pattern's. That is where
 /// destructuring stops: @p def stays opaque and its components print as `def#i` rather than by a dangling name.
 bool destructible(Ctx* ctx, const Def* def, const Def* type, size_t n) {
-    if (!def || n <= 1) return false;
+    if (!def) return false;
+    if (n <= 1) {
+        // Def::num_tprojs keeps a def above Flags::scalarize_threshold whole, so its components have no name either.
+        if (ctx && def->num_projs() > 1) ctx->opaque.emplace(def);
+        return false;
+    }
     auto var = type->isa_mut<Sigma>() ? type->has_var() : nullptr;
 
     for (size_t i = 0; i != n; ++i) {
@@ -720,7 +727,7 @@ fe::Vector<Lam*> curry_chain(Lam* lam) {
 ///
 /// Dump::Expr and Dump::Local walk Def::deps and nothing else - which is what makes them safe to call from a
 /// debugger, where the World is usually half-built. Dump::Scope and Dump::All buy a better layout with a Nest:
-/// it nests the mutables, and Scheduler::smart places everything else. Should that analysis choke on the very
+/// it nests the mutables, and Scheduler::early places everything else. Should that analysis choke on the very
 /// program you wanted to look at, World::dot still shows it - its tooltips only ever use Dump::Expr.
 class Dumper {
 public:
@@ -743,9 +750,11 @@ public:
     /// Declares the Axm%s of the dumped file itself as `axm`s, grouped into the `mod` their @p names nest them in.
     void dump_axms(std::string self, std::span<const std::pair<std::string, const Axm*>> axms) {
         ctx_.self = std::move(self);
+        auto muts = fe::Vector<Def*>();
         for (auto [_, axm] : axms)
             for (auto mut : axm->type()->local_muts())
-                if (isa_decl(mut)) dump_muts(mut);
+                if (isa_decl(mut)) muts.emplace_back(mut);
+        dump_muts(muts);
 
         sep(Prev::Decl);
         std::string_view curr_mod;
@@ -774,11 +783,13 @@ public:
     ///@{
     /// @p def and whatever Dumper::mode_ reaches from it.
     void dump(const Def* def) {
-        if (auto mut = isa_decl(def)) return dump_muts(mut);
+        if (auto mut = isa_decl(def)) return dump_muts({mut});
 
+        auto muts = fe::Vector<Def*>();
         if (mode_ != Dump::Local)
             for (auto mut : def->local_muts())
-                if (isa_decl(mut)) dump_muts(mut);
+                if (isa_decl(mut)) muts.emplace_back(mut);
+        dump_muts(muts);
 
         block_ = nullptr; // a non-decl opens no block, so nothing can be entered or placed into one
         emit_block(def);
@@ -786,25 +797,28 @@ public:
         emit_tail(def, "");
     }
 
+    void dump(fe::View<Def*> muts) { dump_muts(muts); }
     ///@}
 
 private:
     /// What the current block emitted last; only a declaration is worth setting apart.
     enum class Prev { None, Let, Decl };
 
-    /// One scope: the Nest of a single closed mutable - which is the only thing a Scheduler can place into.
-    void visit_scope(const Nest& nest) {
-        auto root = nest.root()->mut();
-        // An `import` re-declares what it *exports* - but a plain `let` in that file stays local to it, so the
-        // dump has to spell that one out or nothing binds the name it refers to.
-        if (root->is_external() && srcs_.contains(root->loc().src)) return;
-
+    /// Emits what @p roots reach within @p nest: its virtual root is the top level.
+    void visit_nest(const Nest& nest, fe::View<Def*> roots) {
         auto sched = Scheduler(nest);
         auto _     = fe::Restore(nest_, &nest);
         auto __    = fe::Restore(sched_, &sched);
-        block_     = root;
-        emit_block(root);
+        block_     = nest.root()->mut();
+        for (auto root : roots)
+            schedule_(root, nullptr);
+        bucket();
+        emit(nullptr);
     }
+
+    /// An `import` re-declares what it *exports* - but a plain `let` in that file stays local to it, so the dump has
+    /// to spell that one out or nothing binds the name it refers to.
+    bool is_imported(Def* mut) const { return mut->is_external() && srcs_.contains(mut->loc().src); }
 
     /// Schedules @p root into the current Dumper::block_ and emits whatever landed there.
     void emit_block(const Def* root) {
@@ -815,19 +829,37 @@ private:
 
     /// @name schedule
     ///@{
-    /// The closed mutables @p mut reaches, callees first: Mim binds a name before its uses.
-    void dump_muts(Def* mut) {
-        auto todo = fe::Vector<Def*>();
-        post_order(mut, todo);
+    /// The closed mutables @p muts reach, callees first: Mim binds a name before its uses.
+    void dump_muts(fe::View<Def*> muts) {
+        if (muts.empty()) return;
+        if (mode_ == Dump::Scope) {
+            for (auto mut : muts)
+                if (mut->is_closed() && !is_imported(mut)) visit_nest(Nest(mut), {mut});
+            return;
+        }
 
-        for (auto curr : todo) {
-            if (mode_ == Dump::Local) {
+        auto todo = fe::Vector<Def*>();
+        for (auto mut : muts)
+            post_order(mut, todo);
+
+        if (mode_ == Dump::Local) {
+            for (auto curr : todo) {
                 block_ = curr;
                 emit_block(curr);
-            } else {
-                visit_scope(Nest(curr));
             }
+            return;
         }
+
+        // Nest::Node::topo breaks ties by gid, which a re-read dump need not reproduce.
+        auto roots = fe::Vector<Def*>();
+        for (auto mut : todo) {
+            if (!mut->is_closed() || ctx_.arms.contains(mut)) continue;
+            if (is_imported(mut))
+                done_.emplace(mut);
+            else
+                roots.emplace_back(mut);
+        }
+        visit_nest(Nest(muts.front()->world(), muts, true), roots);
     }
 
     static bool is_spellable(const Match* match) {
@@ -842,15 +874,13 @@ private:
     void post_order(Def* mut, fe::Vector<Def*>& todo) {
         if (!scheduled_.emplace(mut).second) return;
 
-        if (mode_ == Dump::All || mode_ == Dump::Local) {
-            auto muts = fe::Vector<Def*>();
-            auto seen = DefSet();
-            printed_deps(mut, typed_let_, [&](const Def* op) { local_muts(op, seen, muts); });
-            for (auto local_mut : muts)
-                post_order(local_mut, todo);
-        }
+        auto muts = fe::Vector<Def*>();
+        auto seen = DefSet();
+        printed_deps(mut, typed_let_, [&](const Def* op) { local_muts(op, seen, muts); });
+        for (auto local_mut : muts)
+            post_order(local_mut, todo);
 
-        if ((mut->is_closed() && !ctx_.arms.contains(mut)) || mode_ == Dump::Local) todo.emplace_back(mut);
+        todo.emplace_back(mut);
     }
 
     void local_muts(const Def* def, DefSet& seen, fe::Vector<Def*>& muts) {
@@ -889,12 +919,50 @@ private:
     }
 
     void schedule_mut(Def* mut, Def* curr) {
-        if (open_.contains(mut)) recursive_.emplace(mut);
-        if (!enter(mut)) return;
-        if (!done_.emplace(mut).second) return;
+        if (!enter(mut) || done_.contains(mut)) return;
 
+        auto group = sibling_group(mut);
+        if (!mark_and_group(group)) group = {mut};
+        for (auto m : group)
+            done_.emplace(m);
+        for (auto m : group)
+            schedule_body(m);
+        for (auto m : group)
+            order_.emplace_back(m, curr);
+    }
+
+    /// A block only sees what precedes it, so the mutually recursive siblings of @p mut print as one `and` group.
+    fe::Vector<Def*> sibling_group(Def* mut) const {
+        auto node = nest_ ? (*nest_)[mut] : nullptr;
+        if (!node || !node->is_mutually_recursive()) return {mut};
+        if (auto key = owner(node->inest()); key && inlines(key)) return {mut};
+
+        auto group = fe::Vector<Def*>();
+        for (auto member : node->scc())
+            if (auto m = member->mut(); m == mut || !done_.contains(m)) group.emplace_back(m);
+        return group;
+    }
+
+    /// Marks @p group as one `and` group, with an `extern` first, as only the group's head takes modifiers.
+    bool mark_and_group(fe::Vector<Def*>& group) {
+        if (group.size() < 2 || !std::ranges::all_of(group, [this](Def* m) { return groupable(m); })) return false;
+        auto rest = std::ranges::stable_partition(group, [](Def* m) { return m->is_external(); });
+        if (rest.begin() - group.begin() > 1) return false;
+        for (auto m : group | std::views::drop(1))
+            and_.emplace(m);
+        for (auto m : group | std::views::take(group.size() - 1))
+            and_more_.emplace(m);
+        return true;
+    }
+
+    bool groupable(Def* mut) const {
+        if (!isa_decl(mut) || ctx_.arms.contains(mut) || mut->isa<Rule>() || !mut->is_set()) return false;
+        if (auto lam = mut->isa_mut<Lam>()) return curry_chain(lam).back()->is_set();
+        return true;
+    }
+
+    void schedule_body(Def* mut) {
         auto chain = mut->isa_mut<Lam>() ? curry_chain(mut->as_mut<Lam>()) : fe::Vector<Lam*>();
-        open_.emplace(mut);
 
         if (auto rule = mut->isa_mut<Rule>()) {
             // The surface syntax has no block for a rule's parts, so whatever depends on its meta variable is inlined.
@@ -916,9 +984,6 @@ private:
                 }
             }
         }
-
-        open_.erase(mut);
-        order_.emplace_back(mut, curr);
     }
 
     /// Schedules what @p def needs; @p def itself, noted in @p inline_set, prints inline.
@@ -941,17 +1006,15 @@ private:
     /// Is @p mut ours to emit - or does it only get referenced by name?
     bool enter(Def* mut) const { return nest_ ? (*nest_)[mut] != nullptr : mut == block_; }
 
-    /// Turns the schedule into one list per block: the Nest nests the mutables, Scheduler::smart places the rest.
+    /// Turns the schedule into one list per block: the Nest nests the mutables, Scheduler::early places the rest.
     void bucket() {
         for (auto [def, curr] : order_) {
             auto mut = isa_decl(def);
             auto key = curr; // Dump::Local has one block per root and asks no analysis where anything belongs
             if (nest_) {
-                // Nest::idom, not Nest::inest: a mutable only one sibling reaches belongs into *its* block.
-                auto in = curr ? curr : block_;
-                key     = mut ? owner((*nest_)[mut]->idom()) : owner(sched_->smart(in, def));
+                key = mut ? owner((*nest_)[mut]->inest()) : owner(sched_->early(def));
                 // A binder that prints inline has no block of its own, so what belongs into it is inlined as well.
-                if (key && inlines(key) && !(mut && recursive_.contains(mut))) {
+                if (key && inlines(key) && !(mut && is_recursive(mut))) {
                     ctx_.inlined.emplace(def);
                     continue;
                 }
@@ -966,6 +1029,12 @@ private:
         for (auto node = (*nest_)[mut]; node; node = node->inest())
             if (auto m = owner(node); m && (!isa_decl(m) || ctx_.arms.contains(m))) return true;
         return false;
+    }
+
+    /// Without a Nest, the only recursion a block sees is @p mut referring to itself.
+    bool is_recursive(Def* mut) const {
+        if (auto node = nest_ ? (*nest_)[mut] : nullptr; node && !node->is_root()) return node->is_recursive();
+        return std::ranges::any_of(mut->deps(), [mut](const Def* op) { return op->local_muts().contains(mut); });
     }
 
     /// The mutable whose block @p node stands for; `nullptr` for the top level.
@@ -984,7 +1053,10 @@ private:
         auto defs = key ? std::move(bucket_[key]) : std::move(top_);
         for (auto def : defs) {
             auto mut = isa_decl(def);
-            sep(mut ? Prev::Decl : Prev::Let);
+            if (mut && and_.contains(mut))
+                std::println(os_, "{}and", ctx_.tab);
+            else
+                sep(mut ? Prev::Decl : Prev::Let);
             if (mut)
                 emit_decl(mut);
             else
@@ -1004,15 +1076,19 @@ private:
     }
 
     void emit_decl(Def* mut) {
-        if (auto lam = mut->isa_mut<Lam>()) return emit_lam(lam);
+        // Only the last member ends an `and` group.
+        auto more = and_more_.contains(mut);
+        auto end  = more ? "" : ";";
+        if (auto lam = mut->isa_mut<Lam>()) return emit_lam(lam, end);
         if (auto rule = mut->isa_mut<Rule>(); rule && rule->is_set()) return emit_rule(rule);
         if (!mut->is_set()) return emit_unset(mut);
         // `rec` binds the name for the body - which only a self-referential mutable needs; `extern` is out either way.
-        auto kw = recursive_.contains(mut) ? "rec" : "let";
+        // An `and` continuation has no keyword of its own.
+        auto kw = and_.contains(mut) ? "" : more || is_recursive(mut) ? "rec " : "let ";
         // A `rec` only takes a bare variant.
         if (auto variant = mut->isa<Variant>())
-            return std::println(os_, "{}{} {} = {};", ctx_.tab, kw, id(&ctx_, mut), ctors(&ctx_, variant));
-        std::println(os_, "{}{} {} = {};", ctx_.tab, kw, id(&ctx_, mut), Full(&ctx_, mut));
+            return std::println(os_, "{}{}{} = {}{}", ctx_.tab, kw, id(&ctx_, mut), ctors(&ctx_, variant), end);
+        std::println(os_, "{}{}{} = {}{}", ctx_.tab, kw, id(&ctx_, mut), Full(&ctx_, mut), end);
     }
 
     void emit_rule(Rule* rule) {
@@ -1030,7 +1106,7 @@ private:
         std::println(os_, "{}// `{}: {}` is unset", ctx_.tab, id(&ctx_, mut), Op(&ctx_, mut->type()));
     }
 
-    void emit_lam(Lam* lam) {
+    void emit_lam(Lam* lam, std::string_view end) {
         auto chain = curry_chain(lam);
         auto last  = chain.back();
         auto fun   = isa_fun(&ctx_, last) && !shadows_ret(last);
@@ -1074,7 +1150,7 @@ private:
         auto _ = fe::Restore(prev_, Prev::None);
         emit(lam);
         sep(Prev::Let);
-        emit_tail(last->body(), ";");
+        emit_tail(last->body(), end);
         rets_.pop_back();
         --ctx_.tab;
     }
@@ -1128,8 +1204,8 @@ private:
     MutMap<DefVec> bucket_;
     MutMap<Def*> absorbed_; ///< Inner Lam of a curried chain -> the chain's outermost one.
     DefSet done_;
-    MutSet open_; ///< On the schedule stack - a Def reaching one of these is recursive.
-    MutSet recursive_;
+    MutSet and_;      ///< Continues the `and` group of the mutable emitted right before.
+    MutSet and_more_; ///< Has an `and` continuation right after.
     Ctx ctx_;
     Srcs srcs_;
     MutSet scheduled_;
@@ -1227,8 +1303,7 @@ void World::dump(std::ostream& os) {
     dumper.plain(reserved);
     dumper.live(seen);
     if (!axms.empty()) dumper.dump_axms(std::move(self), axms);
-    for (auto mut : externals().muts())
-        dumper.dump(mut);
+    dumper.dump(externals().mutate());
 
     assertf(old_gid == curr_gid(), "new nodes created during dump. old_gid: {}; curr_gid: {}", old_gid, curr_gid());
 }

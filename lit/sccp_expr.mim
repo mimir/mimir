@@ -22,7 +22,7 @@ extern lam _compile (): compile.Phase =
         compile.sccp,
     );
 
-// CHECK:      con join ({{[[:alnum:]_]+}}: Nat) =
 // CHECK:      core.nat.mul
+// CHECK:      con join ({{[[:alnum:]_]+}}: Nat) =
 // CHECK-DAG:  join 1;
 // CHECK-DAG:  join 2;
