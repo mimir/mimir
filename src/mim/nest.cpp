@@ -12,9 +12,10 @@ Nest::Nest(Def* r)
     populate();
 }
 
-Nest::Nest(World& world, fe::View<Def*> muts)
+Nest::Nest(World& world, fe::View<Def*> muts, bool transitive)
     : world_(world)
-    , root_(make_node(nullptr)) {
+    , root_(make_node(nullptr))
+    , transitive_(transitive) {
     for (auto mut : muts)
         make_node(mut, root_);
     populate();
@@ -40,7 +41,11 @@ void Nest::populate() {
         auto curr_node = fe::pop(queue);
         for (auto op : curr_node->mut()->deps()) {
             for (auto local_mut : op->local_muts()) {
-                if ((*this)[local_mut] || !contains(local_mut)) continue;
+                if ((*this)[local_mut]) continue;
+                if (!contains(local_mut)) {
+                    if (transitive_ && local_mut->is_closed()) queue.push(make_node(local_mut, root_));
+                    continue;
+                }
 
                 if (curr_node->level() < local_mut->free_vars().size()) {
                     for (auto node = curr_node;; node = node->inest_) {

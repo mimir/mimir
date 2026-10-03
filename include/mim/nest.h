@@ -157,6 +157,12 @@ public:
         bool is_recursive() const { return sccs().recursive_; }
         bool is_mutually_recursive() const { return is_recursive() && inest_ && inest_->SCCs_[this]->size() > 1; }
         bool is_directly_recursive() const { return is_recursive() && (!inest_ || inest_->SCCs_[this]->size() == 1); }
+        /// The SCC among its siblings this Node belongs to; the Nest::root() has none.
+        const SCC& scc() const {
+            assert(!is_root());
+            sccs();
+            return *inest_->SCCs_[this];
+        }
         ///@}
 
     private:
@@ -210,8 +216,9 @@ public:
     /// @name Constructors
     ///@{
     Nest(Def* root);
-    Nest(World&, fe::View<Def*> muts); ///< Constructs a *virtual root* with @p muts as children.
-    Nest(World&);                      ///< *Virtual root* with all World::externals as children.
+    /// *Virtual root* with @p muts as children; @p transitive also adds the closed mutables they reach.
+    Nest(World&, fe::View<Def*> muts, bool transitive = false);
+    Nest(World&); ///< *Virtual root* with all World::externals as children.
     Nest(const Nest&)     = delete;
     Nest(Nest&&)          = delete;
     Nest& operator=(Nest) = delete;
@@ -277,6 +284,7 @@ private:
 
     const Nest& calc_SCCs() const {
         if (!sccs_) {
+            calc_sibl_deps(); // Node::tarjan walks the raw sibling deps
             sccs_ = true;
             calc_SCCs(root_);
         }
@@ -287,6 +295,7 @@ private:
     std::map<Def*, std::unique_ptr<Node>, detail::NullSafeDefGIDLt> mut2node_;
     Vars vars_;
     Node* root_;
+    bool transitive_       = false;
     mutable bool siblings_ = false;
     mutable bool sccs_     = false;
 };
