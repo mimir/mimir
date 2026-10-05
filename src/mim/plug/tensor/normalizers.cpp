@@ -1,4 +1,12 @@
+#include <charconv>
+
+#include <algorithm>
+#include <array>
+
+#include <fe/format.h>
+
 #include <mim/def.h>
+#include <mim/driver.h>
 #include <mim/plugin.h>
 #include <mim/tuple.h>
 #include <mim/world.h>
@@ -133,6 +141,28 @@ const Def* normalize_fastest_axis(const Def*, const Def*, const Def* arg) {
     auto v = Lit::isa<u64>(c->arg());
     if (!v || *v < 1 || *v > *r_l) return r;
     return w.lit_nat(*v - 1);
+}
+
+/// The vector widths `-X tensor:vec-width` accepts.
+constexpr std::array Vec_widths = {4_u64, 8_u64, 16_u64};
+
+const Def* normalize_vec_width(const Def*, const Def*, const Def* arg) {
+    // Read off the Driver so one graph can be re-emitted for another target by another Driver.
+    auto& w = arg->world();
+    auto v  = arg_value(w.driver().args("tensor"), "vec-width");
+    if (!v) return arg;
+
+    auto n   = 0_u64;
+    auto end = v->data() + v->size();
+    if (auto [ptr, ec] = std::from_chars(v->data(), end, n); ec != std::errc() || ptr != end) {
+        w.log().w("ignoring `-X tensor:vec-width={}`: not a number", *v);
+        return arg;
+    }
+    if (std::ranges::find(Vec_widths, n) == Vec_widths.end()) {
+        w.log().w("ignoring `-X tensor:vec-width={}`: not one of {}", n, fe::Join(Vec_widths, ", "));
+        return arg;
+    }
+    return w.lit_nat(n);
 }
 
 const Def* normalize_shape(const Def*, const Def* c, const Def* arg) {

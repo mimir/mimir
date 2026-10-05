@@ -589,6 +589,17 @@ axm fastest_axis: {T: *} → [r: Nat, t: T] → Nat, normalize_fastest_axis;
 ///   runtime value.
 axm if_static: {T: *} → [k: Nat, s d: T] → T, normalize_if_static;
 ///
+/// ### vec_width
+///
+/// Target reflection for schedule selectors: the machine's vector width, in elements of the schedule's fold type.
+/// It is the number of lanes one vector register holds, and hence the widest block of independent accumulators a
+/// vectorized loop body can keep in registers.
+/// `d` is the width to answer when the compilation was not told one; `-X tensor:vec-width=<n>` (`4`, `8` or `16`)
+/// overrides it, so a single world can be emitted for one target and re-emitted for another.
+/// Like `fastest_axis` this only reflects what the frontend cannot inspect itself; the schedule **decision** built on
+/// the answer stays in the IR next to the op (see `dot_schedule_kvec`).
+axm vec_width: [d: Nat] → Nat, normalize_vec_width;
+///
 /// ## Tiling
 ///
 /// Tiling, strip-mining and schedule selection are implemented entirely in the frontend IR, with
@@ -925,7 +936,7 @@ lam conv_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
     let cob   = core.bit2.or_ 2 (core.bit2.and_ 2 (pw, (tt, ff)#pw_rows), core.bit2.and_ 2 (short, bs == 1));
     // One accumulator register per jammed cell, so a block wider than the target's lanes spills;
     // every jammed cell also replays the window, so the block shares the 32-tap register budget.
-    let vw    = 8;
+    let vw    = vec_width 8;
     lam cb_ok (b: Nat): Bool = core.bit2.and_ 2 (core.bit2.and_ 2 (fits (co, b), b <= vw), b * win <= 32);
     let cb    = if_static (co, (1, (((1, 2)#(cb_ok 2), 4)#(cb_ok 4), 8)#(cb_ok 8))#cob, 1);
     let cblk  = cb != 1;
@@ -983,9 +994,10 @@ lam dot_schedule (r_out: Nat) (t: Tileable): Tileable =
 ///   weight row, folded with a horizontal sum (see `btensor.mr_nest`'s reduction-vectorized branch,
 ///   selected by a `vdim` naming the innermost reduction dim, where `unroll` names the jam width);
 /// - a 2-D block of output cells is unroll-and-jammed into its body over independent vector
-///   accumulators: the last output dim strip-mined by the largest divisor ≤ 4 (jammed lanes share the
-///   input-row loads) × the second-to-last by 2 (jammed rows share the weight-row loads — without
-///   this the whole weight matrix re-streams once per batch row).
+///   accumulators: the last output dim strip-mined by the largest power-of-two divisor that fits the
+///   target's vector width (`vec_width` — jammed lanes share the input-row loads) × the
+///   second-to-last by 2 (jammed rows share the weight-row loads — without this the whole weight
+///   matrix re-streams once per batch row).
 ///
 /// An extent still open at lowering time, an indivisible one, and the missing row dim of a rank-1
 /// output all take the neutral split (`1`), whose size-1 jam dim folds away.
@@ -993,9 +1005,12 @@ lam dot_schedule_kvec (r_out: Nat) (t: Tileable): Tileable =
     // A block counts only when it divides AND leaves a non-trivial outer dim (`b < k`): an exact
     // split's leading size-1 axis would type-collapse the packed output («1; T» ≡ T).
     lam blk_by (k b: Nat): Bool = core.bit2.and_ 2 (k / b * b == k, b < k);
+    // One accumulator register per jammed cell, so a block wider than the target's lanes spills.
+    let vw  = vec_width 8;
+    lam blk_ok (k b: Nat): Bool = core.bit2.and_ 2 (blk_by (k, b), b <= vw);
     let d   = r_out - 1;
     let n   = t#So#(core.idx 0 (t#Ro) d);
-    let bs  = if_static (n, ((1, 2)#(blk_by (n, 2)), 4)#(blk_by (n, 4)), 1);
+    let bs  = if_static (n, ((((1, 2)#(blk_ok (n, 2)), 4)#(blk_ok (n, 4)), 8)#(blk_ok (n, 8)), 16)#(blk_ok (n, 16)), 1);
     let t2  = strip_mine_par (t, d, bs);
     let d2  = r_out - 2;
     let m   = t#So#(core.idx 0 (t#Ro) d2);
