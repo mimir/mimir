@@ -33,6 +33,9 @@ const Def* LowerFor::rewrite_imm_App(const App* app) {
         if (auto ll_vec = Axm::isa<ll::vec>(old_body)) {
             old_body = ll_vec->arg();
             if (old_world().driver().is_loaded("ll")) vec_axm = ll_vec->axm();
+        } else if (auto ll_novec = Axm::isa<ll::novec>(old_body)) {
+            old_body = ll_novec->arg();
+            if (old_world().driver().is_loaded("ll")) vec_axm = ll_novec->axm();
         }
 
         auto old_body_lam = old_body->isa_mut<Lam>();
