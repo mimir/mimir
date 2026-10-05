@@ -1,0 +1,90 @@
+/// Networks for bench/run.py, checked against the PyTorch mirror in nets.py.
+/// They use batch 2, since master cannot yet lower a 4-D tensor whose leading extent is 1.
+/// Batch norms are folded into a per-channel scale and shift, the average pool's 1/(H·W) into the fc weight.
+plugin tensor;
+plugin core;
+plugin math;
+
+let F32     = math.F32;
+let R       = (F32, 0:F32, math.arith.add math.mode.contract, math.arith.mul math.mode.contract);
+let fmax    = math.extrema.fmax math.mode.contract;
+let neg_inf = math.neg_inf math.f32;
+
+let `+ = tensor.binary (math.arith.add math.mode.contract);
+let `* = tensor.binary (math.arith.mul math.mode.contract);
+
+lam relu (x: F32): F32 = fmax (0:F32, x);
+
+lam linear (n c_in c_out: Nat) (x: «n, c_in; F32», w: «c_out, c_in; F32», b: «c_out; F32»): «n, c_out; F32» =
+    tensor.product_2d R (x, tensor.transpose_2d w) + tensor.broadcast ((1, c_out), (n, c_out), b);
+
+// Spelling the result as conv_shape lets a residual add type-check once the caller's literal extents reduce it.
+lam conv_bn (n c_in c_out h k s p: Nat) (x: «n, c_in, h, h; F32», w: «c_out, c_in, k, k; F32», sc sh: «c_out; F32») =
+    let so = tensor.conv_shape (n, c_out, (h, h), (k, k), (s, s), (1, 1), (p, p));
+    let y  = tensor.conv R ((s, s), (1, 1), (p, p)) (x, w);
+    y * tensor.broadcast ((1, c_out, 1, 1), so, sc) + tensor.broadcast ((1, c_out, 1, 1), so, sh);
+
+/// Three x · Wᵀ + b layers at the size of KernelBench level 3's MLP.
+extern fun mlp
+    (x: «64, 4096; F32»,
+     w1: «2048, 4096; F32», b1: «2048; F32»,
+     w2: «2048, 2048; F32», b2: «2048; F32»,
+     w3: «1000, 2048; F32», b3: «1000; F32»)
+    : «64, 1000; F32» =
+    let y = tensor.unary relu (linear (64, 4096, 2048) (x, w1, b1));
+    let y = tensor.unary relu (linear (64, 2048, 2048) (y, w2, b2));
+    return (linear (64, 2048, 1000) (y, w3, b3));
+
+/// torchvision's resnet18 on 224 x 224 images; w<i> are the convolutions in order, each block's projection last.
+extern fun resnet18
+    (x: «2, 3, 224, 224; F32»,
+     w1: «64, 3, 7, 7; F32»,      s1 t1: «64; F32»,
+     w2: «64, 64, 3, 3; F32»,     s2 t2: «64; F32»,
+     w3: «64, 64, 3, 3; F32»,     s3 t3: «64; F32»,
+     w4: «64, 64, 3, 3; F32»,     s4 t4: «64; F32»,
+     w5: «64, 64, 3, 3; F32»,     s5 t5: «64; F32»,
+     w6: «128, 64, 3, 3; F32»,    s6 t6: «128; F32»,
+     w7: «128, 128, 3, 3; F32»,   s7 t7: «128; F32»,
+     w8: «128, 64, 1, 1; F32»,    s8 t8: «128; F32»,
+     w9: «128, 128, 3, 3; F32»,   s9 t9: «128; F32»,
+     w10: «128, 128, 3, 3; F32»,  s10 t10: «128; F32»,
+     w11: «256, 128, 3, 3; F32»,  s11 t11: «256; F32»,
+     w12: «256, 256, 3, 3; F32»,  s12 t12: «256; F32»,
+     w13: «256, 128, 1, 1; F32»,  s13 t13: «256; F32»,
+     w14: «256, 256, 3, 3; F32»,  s14 t14: «256; F32»,
+     w15: «256, 256, 3, 3; F32»,  s15 t15: «256; F32»,
+     w16: «512, 256, 3, 3; F32»,  s16 t16: «512; F32»,
+     w17: «512, 512, 3, 3; F32»,  s17 t17: «512; F32»,
+     w18: «512, 256, 1, 1; F32»,  s18 t18: «512; F32»,
+     w19: «512, 512, 3, 3; F32»,  s19 t19: «512; F32»,
+     w20: «512, 512, 3, 3; F32»,  s20 t20: «512; F32»,
+     fw: «1000, 512; F32»,        fb: «1000; F32»)
+    : «2, 1000; F32» =
+    let y = tensor.unary relu (conv_bn (2, 3, 64, 224, 7, 2, 3) (x, w1, s1, t1));
+    let y = tensor.pool (fmax, neg_inf) ((3, 3), (2, 2), (1, 1), (1, 1), (56, 56)) y;
+
+    let z = tensor.unary relu (conv_bn (2, 64, 64, 56, 3, 1, 1) (y, w2, s2, t2));
+    let y = tensor.unary relu (conv_bn (2, 64, 64, 56, 3, 1, 1) (z, w3, s3, t3) + y);
+    let z = tensor.unary relu (conv_bn (2, 64, 64, 56, 3, 1, 1) (y, w4, s4, t4));
+    let y = tensor.unary relu (conv_bn (2, 64, 64, 56, 3, 1, 1) (z, w5, s5, t5) + y);
+
+    let z = tensor.unary relu (conv_bn (2, 64, 128, 56, 3, 2, 1) (y, w6, s6, t6));
+    let y = tensor.unary relu (conv_bn (2, 128, 128, 28, 3, 1, 1) (z, w7, s7, t7)
+                             + conv_bn (2, 64, 128, 56, 1, 2, 0) (y, w8, s8, t8));
+    let z = tensor.unary relu (conv_bn (2, 128, 128, 28, 3, 1, 1) (y, w9, s9, t9));
+    let y = tensor.unary relu (conv_bn (2, 128, 128, 28, 3, 1, 1) (z, w10, s10, t10) + y);
+
+    let z = tensor.unary relu (conv_bn (2, 128, 256, 28, 3, 2, 1) (y, w11, s11, t11));
+    let y = tensor.unary relu (conv_bn (2, 256, 256, 14, 3, 1, 1) (z, w12, s12, t12)
+                             + conv_bn (2, 128, 256, 28, 1, 2, 0) (y, w13, s13, t13));
+    let z = tensor.unary relu (conv_bn (2, 256, 256, 14, 3, 1, 1) (y, w14, s14, t14));
+    let y = tensor.unary relu (conv_bn (2, 256, 256, 14, 3, 1, 1) (z, w15, s15, t15) + y);
+
+    let z = tensor.unary relu (conv_bn (2, 256, 512, 14, 3, 2, 1) (y, w16, s16, t16));
+    let y = tensor.unary relu (conv_bn (2, 512, 512, 7, 3, 1, 1) (z, w17, s17, t17)
+                             + conv_bn (2, 256, 512, 14, 1, 2, 0) (y, w18, s18, t18));
+    let z = tensor.unary relu (conv_bn (2, 512, 512, 7, 3, 1, 1) (y, w19, s19, t19));
+    let y = tensor.unary relu (conv_bn (2, 512, 512, 7, 3, 1, 1) (z, w20, s20, t20) + y);
+
+    let y = tensor.pool (math.arith.add math.mode.contract, 0:F32) ((7, 7), (1, 1), (1, 1), (0, 0), (1, 1)) y;
+    return (linear (2, 512, 1000) (tensor.reshape (2, 512, 1, 1) (2, 512) y, fw, fb));

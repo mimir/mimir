@@ -126,6 +126,8 @@ if(MIM_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
 
+add_subdirectory(bench)
+
 if(MIM_BUILD_DOCS)
     find_package(Doxygen REQUIRED dot)
     add_subdirectory(docs)

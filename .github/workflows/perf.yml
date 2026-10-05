@@ -1,0 +1,59 @@
+name: perf
+
+# Runs bench/ on pull requests whose title starts with `perf`, and on demand.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  bench-cpu:
+    name: Benchmark CPU
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.pull_request.title, 'perf')
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Clone recursively
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # svector's C++23 range members need gcc-15's libstdc++; the generated LLVM IR is compiled with the `clang` package.
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang g++-15 ninja-build
+          python3 -m venv .venv
+          .venv/bin/pip install --index-url https://download.pytorch.org/whl/cpu torch numpy
+
+      - name: Setup ccache
+        uses: Chocobo1/setup-ccache-action@v1
+        with:
+          update_packager_index: false
+          ccache_options: max_size=2G
+          override_cache_key: ${{runner.os}}-ccache-Release
+
+      - name: Configure
+        run: |
+          CC=gcc-15 CXX=g++-15                  \
+          cmake -B build                        \
+                -G Ninja                        \
+                -DCMAKE_BUILD_TYPE=Release      \
+                -DMIM_BUILD_PYTHON=OFF
+
+      - name: Build
+        run: cmake --build build --target mim mim_all_plugins
+
+      - name: Benchmark
+        run: |
+          .venv/bin/python bench/run.py --mim build/bin/mim --clangxx clang++ --out build/bench \
+                                        --torch --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-cpu
+          path: |
+            build/bench/bench-cpu.json
+            build/bench/bench-cpu.md
