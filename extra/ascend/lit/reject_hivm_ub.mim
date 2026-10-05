@@ -1,0 +1,13 @@
+// RUN: (! %mim %s -X ascend:o=- -X ascend:ub=191 2>&1) | %FileCheck %s
+
+plugin ascend;
+plugin math;
+plugin tensor;
+import compile;
+
+extern lam add (a b: «16; math.F32»): «16; math.F32» =
+    tensor.binary (math.arith.add 0 @math.f32) (a, b);
+
+extern lam _compile (): compile.Phase = ascend.emit_hivm;
+
+// CHECK: error: ascend backend requires the kernel to fit in one unified-buffer allocation (191 bytes), but this kernel needs 192 bytes

@@ -1,0 +1,16 @@
+// RUN: (! %mim %s -X ascend:o=- 2>&1) | %FileCheck %s
+
+plugin ascend;
+plugin math;
+plugin tensor;
+import compile;
+
+lam scalar_add (a b: math.F32): math.F32 =
+    (math.arith.add 0 @math.f32) (a, b);
+
+extern lam add (a b: «16; math.F32»): «16; math.F32» =
+    tensor.binary scalar_add (a, b);
+
+extern lam _compile (): compile.Phase = ascend.emit_hivm;
+
+// CHECK: error: ascend backend only supports tensor.binary of F32 math.arith add, sub, mul, or div

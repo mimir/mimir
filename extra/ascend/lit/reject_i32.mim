@@ -1,0 +1,17 @@
+// RUN: (! %mim %s -X ascend:o=- 2>&1) | %FileCheck %s
+
+plugin ascend;
+plugin core;
+plugin tensor;
+import compile;
+
+use core.ops.u.w;
+
+lam scalar_add (a b: I32): I32 = a + b;
+
+extern lam add (a b: «16; I32»): «16; I32» =
+    tensor.binary scalar_add (a, b);
+
+extern lam _compile (): compile.Phase = ascend.emit_hfusion;
+
+// CHECK: error: ascend backend only supports F32 tensor elements

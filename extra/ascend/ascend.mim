@@ -1,0 +1,29 @@
+/// # The ascend Plugin {#ascend}
+///
+/// @see mim::plug::ascend
+///
+/// Emits the supported MímIR tensor subset as MLIR for AscendNPU-IR.
+///
+/// [TOC]
+///
+/// ## Dependencies
+///
+import compile;
+///
+/// ## Phases
+///
+/// ### emit_hfusion
+///
+/// Emits a static same-shape F32 elementwise kernel as Linalg/HFusion input, built with the MLIR C++ API.
+/// Memory placement and scheduling are left to the vendor compiler.
+///
+axm emit_hfusion: compile.Phase;
+///
+/// ### emit_hivm
+///
+/// Emits a static same-shape F32 elementwise kernel as HIVM, built with the MLIR C++ API.
+/// Tensor arguments and the result are global-memory memrefs.
+/// Every computed value is a unified-buffer allocation.
+/// A kernel that does not fit in the unified buffer is rejected.
+///
+axm emit_hivm: compile.Phase;

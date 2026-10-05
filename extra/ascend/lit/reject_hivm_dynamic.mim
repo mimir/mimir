@@ -1,0 +1,13 @@
+// RUN: (! %mim %s -X ascend:o=- 2>&1) | %FileCheck %s
+
+plugin ascend;
+plugin math;
+plugin tensor;
+import compile;
+
+extern lam add (n: Nat, a b: «n; math.F32»): «n; math.F32» =
+    tensor.binary (math.arith.add 0 @math.f32) (a, b);
+
+extern lam _compile (): compile.Phase = ascend.emit_hivm;
+
+// CHECK: error: ascend backend requires static tensor extents

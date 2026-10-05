@@ -1,0 +1,22 @@
+// RUN: %mim %s -X ascend:o=- | %FileCheck %s
+
+plugin ascend;
+plugin math;
+plugin tensor;
+import compile;
+
+extern lam mix (a b: «16; math.F32»): «16; math.F32» =
+    tensor.binary (math.arith.div 0 @math.f32) (
+        tensor.binary (math.arith.mul 0 @math.f32) (
+            tensor.binary (math.arith.sub 0 @math.f32) (
+                tensor.binary (math.arith.add 0 @math.f32) (a, b),
+                a),
+            b),
+        a);
+
+extern lam _compile (): compile.Phase = ascend.emit_hfusion;
+
+// CHECK: linalg.elemwise_binary {fun = #linalg.binary_fn<add>} ins(%arg0, %arg1 {{.*}} -> tensor<16xf32>
+// CHECK: linalg.elemwise_binary {fun = #linalg.binary_fn<sub>}
+// CHECK: linalg.elemwise_binary {fun = #linalg.binary_fn<mul>}
+// CHECK: linalg.elemwise_binary {fun = #linalg.binary_fn<div>}

@@ -1,0 +1,24 @@
+// RUN: %mim %s -X ascend:o=- | %FileCheck %s
+
+plugin ascend;
+plugin math;
+plugin tensor;
+import compile;
+
+extern lam mix (a b: «16; math.F32»): «16; math.F32» =
+    tensor.binary (math.arith.div 0 @math.f32) (
+        tensor.binary (math.arith.mul 0 @math.f32) (
+            tensor.binary (math.arith.sub 0 @math.f32) (
+                tensor.binary (math.arith.add 0 @math.f32) (a, b),
+                a),
+            b),
+        a);
+
+extern lam _compile (): compile.Phase = ascend.emit_hivm;
+
+// CHECK-COUNT-2: hivm.hir.load
+// CHECK: hivm.hir.vadd ins({{.*}}) outs([[ADD:%[a-z0-9_]+]] :
+// CHECK: hivm.hir.vsub ins([[ADD]], {{.*}}) outs([[SUB:%[a-z0-9_]+]] :
+// CHECK: hivm.hir.vmul ins([[SUB]], {{.*}}) outs([[MUL:%[a-z0-9_]+]] :
+// CHECK: hivm.hir.vdiv ins([[MUL]], {{.*}}) outs([[DIV:%[a-z0-9_]+]] :
+// CHECK: hivm.hir.store ins([[DIV]] :

@@ -1,0 +1,19 @@
+// RUN: %mim %s -X ascend:o=- | %FileCheck %s
+
+plugin ascend;
+plugin math;
+plugin tensor;
+import compile;
+
+extern lam dag (a b: «16; math.F32»): «16; math.F32» =
+    tensor.binary (math.arith.mul 0 @math.f32) (
+        tensor.binary (math.arith.add 0 @math.f32) (a, b),
+        tensor.binary (math.arith.add 0 @math.f32) (a, b));
+
+extern lam _compile (): compile.Phase = ascend.emit_hivm;
+
+// A shared subexpression stays in one unified-buffer allocation.
+// CHECK-COUNT-2: hivm.hir.load
+// CHECK: hivm.hir.vadd ins({{.*}}) outs([[ADD:%[a-z0-9_]+]] :
+// CHECK-NOT: hivm.hir.vadd
+// CHECK: hivm.hir.vmul ins([[ADD]], [[ADD]] :

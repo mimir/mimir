@@ -29,13 +29,16 @@ set(MIM_PLUGIN_LIST "" CACHE INTERNAL "MIM_PLUGIN_LIST" FORCE)
 set(MIM_PLUGIN_LAYOUT "" CACHE INTERNAL "MIM_PLUGIN_LAYOUT" FORCE)
 include(Mim)
 
-# Names of the third-party plugins under extra/ that provide <entry> (a file or a directory).
+# Names of the third-party Mim plugins under extra/ that provide <entry> and a matching .mim interface.
 function(mim_extra_plugins entry out)
     file(GLOB entries CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/extra/*/${entry}")
     set(plugins "")
     foreach(path IN LISTS entries)
         cmake_path(GET path PARENT_PATH dir)
         cmake_path(GET dir FILENAME plugin)
+        if(NOT EXISTS "${dir}/${plugin}.mim")
+            continue()
+        endif()
         list(APPEND plugins ${plugin})
     endforeach()
     set(${out} "${plugins}" PARENT_SCOPE)

@@ -27,5 +27,7 @@ assets/logo.pdf
 build*/
 compile_commands.json
 extra/*
+!extra/ascend/
+!extra/ascend/**
 pyrightconfig.json
 vgcore.*
