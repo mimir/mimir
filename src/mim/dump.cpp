@@ -89,6 +89,17 @@ const Def* alias_proj(Ctx* ctx, const Def* def) {
     return nullptr;
 }
 
+/// Whether @p ex prints as a bare name rather than `tuple#index`.
+bool by_name(Ctx* ctx, const Extract* ex) {
+    if (!ex->index()->isa<Lit>()) return false;
+    if (!ctx) return ex->tuple()->isa<Var>();
+    // A Var's component prints by name - unless the pattern that would have bound that name kept the Var whole.
+    if (ctx->opaque.contains(ex->tuple())) return false;
+    // An aliased Var's component the Lam's Var does not hand out is spelled via the Lam's Var instead.
+    if (ctx->aliases.contains(ex->tuple()) && !alias_proj(ctx, ex)) return false;
+    return ex->tuple()->isa<Var>() || ctx->destructured.contains(ex->tuple());
+}
+
 /// Def::unique_name - or a plain name while a World is dumped or a diagnostic is being formatted, where a gid is noise.
 /// @p ctx is `nullptr` outside a running dump: there are no dump-bound names to consult then.
 std::string name(Ctx* ctx, const Def* def) {
@@ -125,11 +136,7 @@ using ast::Prec;
 using ast::prec_assoc;
 
 Prec def2prec(Ctx* ctx, const Def* def) {
-    // A Var's projection prints as its name and hence is atomic; see the Extract case in operator<<.
-    if (auto ex = def->isa<Extract>()) {
-        auto opaque = ctx && ctx->opaque.contains(ex->tuple());
-        return !opaque && ex->tuple()->isa<Var>() && ex->index()->isa<Lit>() ? Prec::Lit : Prec::Extract;
-    }
+    if (auto ex = def->isa<Extract>()) return by_name(ctx, ex) ? Prec::Lit : Prec::Extract;
     if (def->isa<Insert>()) return Prec::Ins;
     if (def->isa<Join>()) return Prec::Union;
     if (auto inj = def->isa<Inj>()) {
@@ -552,17 +559,12 @@ void full(std::ostream& os, Full d) {
         }
         return std::print(os, "{}:{}", lit->get(), d.r(lit->type(), Prec::Lit));
     } else if (auto ex = d->isa<Extract>()) {
-        // A Var's component prints by name - unless the pattern that would have bound that name kept the Var whole.
-        auto opaque = d.ctx() && d.ctx()->opaque.contains(ex->tuple());
-        // An aliased Var's component the Lam's Var does not hand out is spelled via the Lam's Var instead.
-        if (d.ctx() && d.ctx()->aliases.contains(ex->tuple()) && !alias_proj(d.ctx(), ex)) opaque = true;
-        auto bound = ex->tuple()->isa<Var>() || (d.ctx() && d.ctx()->destructured.contains(ex->tuple()));
-        if (!opaque && bound && ex->index()->isa<Lit>()) return std::print(os, "{}", name(d.ctx(), ex));
+        if (by_name(d.ctx(), ex)) return std::print(os, "{}", name(d.ctx(), ex));
         return std::print(os, "{}#{}", d.l(ex->tuple(), Prec::Extract), d.r(ex->index(), Prec::Extract));
     } else if (auto ins = d->isa<Insert>()) {
         auto tup = d.l(ins->tuple(), Prec::Extract);
         // `←` updates the whole `#`-path, so an Extract target needs parens to re-parse.
-        if (auto ex = ins->tuple()->isa<Extract>(); ex && !(ex->tuple()->isa<Var>() && ex->index()->isa<Lit>()))
+        if (auto ex = ins->tuple()->isa<Extract>(); ex && !by_name(d.ctx(), ex))
             std::print(os, "({})", tup);
         else
             std::print(os, "{}", tup);
