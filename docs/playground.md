@@ -18,6 +18,7 @@ A build of the current `master` is live at <https://mimir.github.io/playground/>
 | `code.js`            | `docs/code.js`, staged; the lexer machinery the page and the docs share.                          |
 | `mim-code.js`        | `docs/mim.js`, staged; the Mim lexer, renamed out of Emscripten's `mim.js` way.                   |
 | `llvm-code.js`       | `docs/llvm.js`, staged; the LLVM lexer of the **LLVM** tab.                                       |
+| `share-link.js`      | `docs/share-link.js`, staged; compresses a program into a `#z=` fragment and back.                |
 | `darkmode-toggle.js` | `doxygen-awesome-darkmode-toggle.js`, staged; the very toggle these docs use.                     |
 | `examples/*.mim`     | `lit/docs/*.mim`, staged; the examples are the ones the lit suite covers.                         |
 | `mim.{js,wasm,data}` | Emscripten's output; `mim.data` carries the plugins' `.mim` halves and the [ll](@ref ll) runtime. |
@@ -90,10 +91,11 @@ The bar below the editor shows the mode and takes `:` commands; `:w` runs the pr
 The box is remembered across reloads, and it is gone altogether when the editor falls back to a plain textarea because CodeMirror did not load.
 `Ctrl-W` is not among the insert-mode keys that reach the editor: the browser reserves it for closing the tab, and no page can take it back.
 
-A `?src=` query parameter loads code instead of the first example, so a link can carry a whole program — [this one](https://mimir.github.io/playground/?src=plugin%20core%3B%0Ause%20core.ops.u.w%3B%0A%0Aextern%20fun%20inc%20(x%3A%20I32)%3A%20I32%20%3D%20return%20(x%20%2B%201I32)%3B%0A) increments an `I32`.
-Percent-encode it — `encodeURIComponent` in the browser's console produces exactly what the page expects; a `+` stands for itself and is *not* a space.
+A `#z=` URL fragment loads code instead of the first example, so a link can carry a whole program — [this one](https://mimir.github.io/playground/#z=K8gpTc_MU0jOL0q15iotTgWz9PILivVK9cqtubhSK0pSi_IU0krzFDLzkhU0KqwUPI2NNMGkgq1CUWpJaVGegkaFgraCIUjCmgsA) increments an `I32`.
+`docs/share-link.js` produces it: UTF-8 bytes, deflated (`CompressionStream('deflate-raw')`), then base64url — `ShareLink.encode` in the browser's console produces exactly what the page expects.
+A fragment never leaves the browser (unlike a query string, which servers and proxies log), and compression keeps even a sizeable program well under the URL-length limits a `?src=` link used to run into.
 The picker keeps such a program under _(custom)_, so loading an example does not lose it.
-The buffer itself is kept in `localStorage` on every pause in typing and comes back under _(custom)_ on the next visit, with a `?src=` link taking precedence; leaving the page with a buffer that is not an example asks for confirmation first.
+The buffer itself is kept in `localStorage` on every pause in typing and comes back under _(custom)_ on the next visit, with a `#z=` link taking precedence; leaving the page with a buffer that is not an example asks for confirmation first.
 Every Mim snippet in these docs is a link of that kind: hover it and the ▶ button next to the copy button opens it here.
 
 The **Graph** tab lays out `--output-dot` with [Graphviz](https://graphviz.org/), and its checkboxes are exactly the CLI's `--dot-*` switches:

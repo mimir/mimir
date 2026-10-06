@@ -93,6 +93,7 @@ set(DOXY_ASSETS
     "${CMAKE_CURRENT_SOURCE_DIR}/code.js"
     "${CMAKE_CURRENT_SOURCE_DIR}/ebnf.js"
     "${CMAKE_CURRENT_SOURCE_DIR}/llvm.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/share-link.js"
     "${CMAKE_CURRENT_SOURCE_DIR}/mim.js"
 )
 set(DOXY_FILTER     "${CMAKE_CURRENT_SOURCE_DIR}/fences.py")

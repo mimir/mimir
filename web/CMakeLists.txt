@@ -51,6 +51,7 @@ mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/code.js code.js)
 mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/code.css code.css)
 mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/mim.js mim-code.js)
 mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/llvm.js llvm-code.js)
+mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/share-link.js share-link.js)
 
 # The examples are the lit suite's, so they cannot rot.
 foreach(EXAMPLE IN LISTS MIM_PLAYGROUND_EXAMPLES)

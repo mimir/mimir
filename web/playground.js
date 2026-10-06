@@ -335,16 +335,20 @@ function schedule() {
     timer = setTimeout(() => { save(); run(); }, 500);
 }
 
-// Read raw: URLSearchParams would turn a `+` operator into a space.
-function urlSource() {
-    const m = /[?&]src=([^&]*)/.exec(location.search);
-    if (!m) return null;
-    try { return decodeURIComponent(m[1]); } catch { return m[1]; }
+async function urlSource() {
+    const z = /#z=(.*)/.exec(location.hash);
+    if (z) { try { return await ShareLink.decode(z[1]); } catch { return null; } }
+
+    // A pre-#z= link; read raw since URLSearchParams would turn a `+` operator into a space.
+    const src = /[?&]src=([^&]*)/.exec(location.search);
+    if (!src) return null;
+    try { return decodeURIComponent(src[1]); } catch { return src[1]; }
 }
 
-function shareLink() {
+async function shareLink() {
     const url = new URL(location.href);
-    url.search = 'src=' + encodeURIComponent(getSource());
+    url.search = '';
+    url.hash = 'z=' + await ShareLink.encode(getSource());
     return url.href;
 }
 
@@ -365,7 +369,7 @@ async function copy(text) {
 async function share() {
     const btn = $('share').lastChild;
     try {
-        await copy(shareLink());
+        await copy(await shareLink());
         btn.textContent = 'Link copied!';
     } catch {
         btn.textContent = 'Copy failed';
@@ -373,7 +377,7 @@ async function share() {
     setTimeout(() => (btn.textContent = 'Share'), 1500);
 }
 
-const custom = urlSource() ?? localStorage.getItem(DRAFT_KEY);
+const custom = (await urlSource()) ?? localStorage.getItem(DRAFT_KEY);
 const picker = $('examples');
 if (custom !== null) picker.add(new Option('(custom)', ''));
 for (const name of EXAMPLES) picker.add(new Option(`${name}.mim`, name));
