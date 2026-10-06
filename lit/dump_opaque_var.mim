@@ -1,0 +1,8 @@
+// RUN: %mim %s --scalarize-threshold 2 -o %t.mim && %mim %t.mim --scalarize-threshold 2 -o - | %FileCheck %s
+plugin core;
+
+// Above the threshold, a Var's domain prints whole, so its components must not print by name.
+extern con f (i: Bool, r: Cn Nat) = (r 1, r 2)#i;
+
+// CHECK: extern con f ([[V:[[:alnum:]_]+]]: [Bool, Cn Nat]) =
+// CHECK: #([[V]]#ff);
