@@ -24,6 +24,16 @@ namespace {
 /// Wide enough to mean "unknown" while leaving headroom for the arithmetic below.
 constexpr int64_t Unknown = int64_t{1} << 40;
 
+/// Clamps @p x to `[-Unknown, Unknown]`; a bound that big carries into any division and so stays sound.
+int64_t sat(int64_t x) { return std::clamp(x, -Unknown, Unknown); }
+
+/// @p a times @p b for operands within `[-Unknown, Unknown]`, saturating instead of overflowing.
+int64_t sat_mul(int64_t a, int64_t b) {
+    if (a == 0 || b == 0) return 0;
+    if (std::abs(a) > Unknown / std::abs(b)) return (a < 0) == (b < 0) ? Unknown : -Unknown;
+    return a * b;
+}
+
 std::optional<int64_t> const_val(const Def* d) {
     if (auto bc = Axm::isa<core::bitcast>(d)) d = bc->arg();
     if (auto lit = Lit::isa(d); lit && *lit <= u64(Unknown)) return int64_t(*lit);
@@ -112,10 +122,10 @@ LowerIndex::Range LowerIndex::range_of(const Def* d) const {
         auto [a, b] = wrap->arg()->projs<2>();
         auto l = range_of(a), r = range_of(b);
         switch (wrap.id()) {
-            case core::wrap::add: return {l.lo + r.lo, l.hi + r.hi};
-            case core::wrap::sub: return {l.lo - r.hi, l.hi - r.lo};
+            case core::wrap::add: return {sat(l.lo + r.lo), sat(l.hi + r.hi)};
+            case core::wrap::sub: return {sat(l.lo - r.hi), sat(l.hi - r.lo)};
             case core::wrap::mul: {
-                std::array cands{l.lo * r.lo, l.lo * r.hi, l.hi * r.lo, l.hi * r.hi};
+                std::array cands{sat_mul(l.lo, r.lo), sat_mul(l.lo, r.hi), sat_mul(l.hi, r.lo), sat_mul(l.hi, r.hi)};
                 return {std::ranges::min(cands), std::ranges::max(cands)};
             }
             default: break;
@@ -136,8 +146,8 @@ LowerIndex::Split LowerIndex::split(const Def* x, int64_t c) {
             split.even.emplace_back(t);
         } else {
             split.rest.emplace_back(t);
-            auto r = range_of(t);
-            rest.lo += r.lo, rest.hi += r.hi;
+            auto r  = range_of(t);
+            rest.lo = sat(rest.lo + r.lo), rest.hi = sat(rest.hi + r.hi);
         }
     }
     split.carries = rest.lo < 0 || rest.hi >= c;
