@@ -1,7 +1,7 @@
 /**
 
 Lexes Mim; see `docs/code.js` for the machinery.
-Each snippet also gets a button that opens it in the playground via its `?src=` parameter.
+Each snippet also gets a button that opens it in the playground via its `#z=` fragment; see `docs/share-link.js`.
 
 */
 
@@ -60,11 +60,12 @@ class MimCode extends Code {
     static run(fragment) {
         const button = document.createElement("a")
         button.className = "mim-run"
-        button.href = `${this.PLAYGROUND}?src=${encodeURIComponent(this.source(fragment))}`
+        button.href = this.PLAYGROUND
         button.target = "_blank"
         button.rel = "noopener"
         button.title = this.RUN_TITLE
         button.innerHTML = this.RUN_ICON
+        ShareLink.encode(this.source(fragment)).then(z => button.href = `${this.PLAYGROUND}#z=${z}`)
         this.wrapper(fragment).appendChild(button)
     }
 }
