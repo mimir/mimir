@@ -336,13 +336,18 @@ function schedule() {
 }
 
 async function urlSource() {
-    const m = /#z=(.*)/.exec(location.hash);
-    if (!m) return null;
-    try { return await ShareLink.decode(m[1]); } catch { return null; }
+    const z = /#z=(.*)/.exec(location.hash);
+    if (z) { try { return await ShareLink.decode(z[1]); } catch { return null; } }
+
+    // A pre-#z= link; read raw since URLSearchParams would turn a `+` operator into a space.
+    const src = /[?&]src=([^&]*)/.exec(location.search);
+    if (!src) return null;
+    try { return decodeURIComponent(src[1]); } catch { return src[1]; }
 }
 
 async function shareLink() {
     const url = new URL(location.href);
+    url.search = '';
     url.hash = 'z=' + await ShareLink.encode(getSource());
     return url.href;
 }

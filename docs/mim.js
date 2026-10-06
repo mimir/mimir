@@ -58,15 +58,16 @@ class MimCode extends Code {
     }
 
     static run(fragment) {
-        const button = document.createElement("a")
-        button.className = "mim-run"
-        button.href = this.PLAYGROUND
-        button.target = "_blank"
-        button.rel = "noopener"
-        button.title = this.RUN_TITLE
-        button.innerHTML = this.RUN_ICON
-        ShareLink.encode(this.source(fragment)).then(z => button.href = `${this.PLAYGROUND}#z=${z}`)
-        this.wrapper(fragment).appendChild(button)
+        ShareLink.encode(this.source(fragment)).then(z => {
+            const button = document.createElement("a")
+            button.className = "mim-run"
+            button.href = `${this.PLAYGROUND}#z=${z}`
+            button.target = "_blank"
+            button.rel = "noopener"
+            button.title = this.RUN_TITLE
+            button.innerHTML = this.RUN_ICON
+            this.wrapper(fragment).appendChild(button)
+        }).catch(e => console.warn("could not build a playground link:", e))
     }
 }
 
