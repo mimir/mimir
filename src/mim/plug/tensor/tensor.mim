@@ -594,10 +594,13 @@ axm if_static: {T: *} → [k: Nat, s d: T] → T, normalize_if_static;
 /// Target reflection for schedule selectors: the machine's vector width, in elements of the schedule's fold type.
 /// It is the number of lanes one vector register holds, and hence the widest block of independent accumulators a
 /// vectorized loop body can keep in registers.
-/// `d` is the width to answer when the compilation was not told one; `-X tensor:vec-width=<n>` (`4`, `8` or `16`)
+/// `d` is the width to answer when the compilation was not told one; `-X tensor:vec-width=<n>` (`1`, `4`, `8` or `16`)
 /// overrides it, so a single world can be emitted for one target and re-emitted for another.
+/// `1` describes a target without SIMD: no block is sized by lanes, and `reassoc` counts plain multiplications.
+/// It does not stop the backend from vectorizing the loops a schedule nominates.
 /// Like `fastest_axis` this only reflects what the frontend cannot inspect itself; the schedule **decision** built on
 /// the answer stays in the IR next to the op (see `dot_schedule_kvec`).
+/// `reassoc` charges its costs in units of the same width, so schedules and cost model agree on the target.
 axm vec_width: [d: Nat] → Nat, normalize_vec_width;
 ///
 /// ## Tiling
@@ -1444,7 +1447,7 @@ priv anx lam unary_impl {Ti To : *} (app: Ti → To) {r: Nat, s: «r; Nat»} (i:
 ///
 /// - The vector loop runs over a product's trailing extent (`dot_schedule`) or, for a transposed
 ///   operand, over its contraction (`dot_schedule_kvec`), and a literal extent is charged rounded up
-///   to whole lanes — `-X tensor:reassoc-vec=<n>`, `1` to count plain scalar multiplications.
+///   to whole lanes of `vec_width` (`-X tensor:vec-width=<n>`).
 ///   A bracketing whose intermediates are too narrow to fill a vector thus pays for the lanes it
 ///   leaves idle, which is exactly what the multiplication count misses.
 /// - Extents need not be literal: a cost is a polynomial in the symbolic extents, ordered by

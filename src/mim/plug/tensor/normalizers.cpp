@@ -144,7 +144,7 @@ const Def* normalize_fastest_axis(const Def*, const Def*, const Def* arg) {
 }
 
 /// The vector widths `-X tensor:vec-width` accepts.
-constexpr std::array Vec_widths = {4_u64, 8_u64, 16_u64};
+constexpr std::array Vec_widths = {1_u64, 4_u64, 8_u64, 16_u64};
 
 const Def* normalize_vec_width(const Def*, const Def*, const Def* arg) {
     // Read off the Driver so one graph can be re-emitted for another target by another Driver.

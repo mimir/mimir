@@ -5,13 +5,16 @@
 // RUN: %mim %s -p opt -X tensor:reassoc-max=2 -o %t2
 // RUN: cat %t2 | %FileCheck %s --check-prefix=NODISP
 // RUN: cat %t2 | %FileCheck %s --check-prefix=NOCMP
-// `-X tensor:reassoc-vec=1` counts plain multiplications instead of padded vector lanes.
-// RUN: %mim %s -p opt -X tensor:reassoc-vec=1 -o %t3
-// RUN: cat %t3 | %FileCheck %s --check-prefix=SCALAR
+// `-X tensor:vec-width=4` charges in units of 4 lanes instead of the default 8.
+// RUN: %mim %s -p opt -X tensor:vec-width=4 -o %t3
+// RUN: cat %t3 | %FileCheck %s --check-prefix=W4
+// `-X tensor:vec-width=1` counts plain multiplications.
+// RUN: %mim %s -p opt -X tensor:vec-width=1 -o %t4
+// RUN: cat %t4 | %FileCheck %s --check-prefix=W1
 
 // tensor.reassoc: matrix-chain order.
 // Every cost below counts vector-lane slots: a product's trailing extent is the vector loop, so a
-// literal one is charged rounded up to a multiple of 8 (the default `-X tensor:reassoc-vec`).
+// literal one is charged rounded up to a multiple of 8 (the default `-X tensor:vec-width`).
 
 plugin core;
 plugin tensor;
@@ -93,9 +96,12 @@ extern fun batch_dispatch {m: Nat} (x: «m, 784; Nat», w1: «784, 300; Nat», w
 // CHECK-DAG: tensor.product_2d {{.*}} (4, 2, 8)
 // CHECK-DAG: tensor.product_2d {{.*}} (100, 4, 8)
 // GONE-NOT: tensor.product_2d {{.*}} (100, 4, 2)
-// Counting plain multiplications leaves it as written.
-// SCALAR-DAG: tensor.product_2d {{.*}} (100, 4, 2)
-// SCALAR-DAG: tensor.product_2d {{.*}} (100, 2, 8)
+// With 4 lanes, 2 columns leave only 2 idle: as written costs 3200 against 3264, so it stays as written.
+// W4-DAG: tensor.product_2d {{.*}} (100, 4, 2)
+// W4-DAG: tensor.product_2d {{.*}} (100, 2, 8)
+// Counting plain multiplications (1 lane) keeps it as written as well: 2400 against 3264.
+// W1-DAG: tensor.product_2d {{.*}} (100, 4, 2)
+// W1-DAG: tensor.product_2d {{.*}} (100, 2, 8)
 extern fun narrow (a: «100, 4; Nat», b: «4, 2; Nat», c: «2, 8; Nat»): «100, 8; Nat» =
     let (a, b, c) = (buf a, buf b, buf c);
     return (a * b * c);

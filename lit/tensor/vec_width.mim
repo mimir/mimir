@@ -8,6 +8,9 @@
 // RUN: cat %t4 | %FileCheck %s --check-prefix=W4
 // RUN: %mim %s -p opt -X tensor:vec-width=16 -o %t16
 // RUN: cat %t16 | %FileCheck %s --check-prefix=W16
+// A single lane leaves no room for a jam block: the split is the neutral one.
+// RUN: %mim %s -p opt -X tensor:vec-width=1 -o %t1
+// RUN: cat %t1 | %FileCheck %s --check-prefix=W1
 // A width the schedules have no register file for is ignored, leaving the written default.
 // RUN: %mim %s -p opt -X tensor:vec-width=7 -o %t7
 // RUN: cat %t7 | %FileCheck %s --check-prefix=W8
@@ -24,6 +27,7 @@ use tensor;
 
 let Ring = (Nat, 0, core.nat.add, core.nat.mul);
 
+// W1: (3, 2, 32, 1)
 // W4: (3, 2, 8, 4)
 // W8: (3, 2, 4, 8)
 // W16: (3, 2, 2, 16)
