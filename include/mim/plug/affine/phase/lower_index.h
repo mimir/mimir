@@ -34,7 +34,7 @@ public:
     const Def* rewrite_imm_App(const App*) final;
 
 private:
-    /// Inclusive range of the values a lowered `Idx 0` expression can take.
+    /// Inclusive range of the values a lowered `Idx 0` expression can take, proven not to wrap.
     struct Range {
         int64_t lo, hi;
     };
@@ -51,7 +51,7 @@ private:
         bool carries;
     };
 
-    Range range_of(const Def*) const;
+    std::optional<Range> range_of(const Def*) const;
     Split split(const Def*, int64_t);
     const Def* fold_udiv(const Def*, int64_t);
     const Def* fold_urem(const Def*, int64_t);

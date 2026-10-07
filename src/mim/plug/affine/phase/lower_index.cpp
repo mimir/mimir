@@ -21,22 +21,12 @@ namespace mim::plug::affine::phase {
 
 namespace {
 
-/// Wide enough to mean "unknown" while leaving headroom for the arithmetic below.
-constexpr int64_t Unknown = int64_t{1} << 40;
-
-/// Clamps @p x to `[-Unknown, Unknown]`; a bound that big carries into any division and so stays sound.
-int64_t sat(int64_t x) { return std::clamp(x, -Unknown, Unknown); }
-
-/// @p a times @p b for operands within `[-Unknown, Unknown]`, saturating instead of overflowing.
-int64_t sat_mul(int64_t a, int64_t b) {
-    if (a == 0 || b == 0) return 0;
-    if (std::abs(a) > Unknown / std::abs(b)) return (a < 0) == (b < 0) ? Unknown : -Unknown;
-    return a * b;
-}
+/// Bound on the magnitude of a proven range: below it, sums and products of proven ranges cannot wrap an i64.
+constexpr int64_t Limit = int64_t{1} << 61;
 
 std::optional<int64_t> const_val(const Def* d) {
     if (auto bc = Axm::isa<core::bitcast>(d)) d = bc->arg();
-    if (auto lit = Lit::isa(d); lit && *lit <= u64(Unknown)) return int64_t(*lit);
+    if (auto lit = Lit::isa(d); lit && *lit <= u64(Limit)) return int64_t(*lit);
     return {};
 }
 
@@ -71,7 +61,7 @@ void flatten_add(World& w, const Def* d, int64_t k, DefVec& terms) {
         auto [a, b] = wrap->arg()->projs<2>();
         flatten_add(w, a, k, terms);
         flatten_add(w, b, k, terms);
-    } else if (auto s = as_scaled(d); s && s->second != 0 && std::abs(k) <= Unknown / std::abs(s->second)) {
+    } else if (auto s = as_scaled(d); s && s->second != 0 && std::abs(k) <= Limit / std::abs(s->second)) {
         flatten_add(w, s->first, k * s->second, terms);
     } else {
         terms.emplace_back(times(w, d, k));
@@ -100,39 +90,51 @@ const Def* sum(World& w, Defs terms) {
 
 } // namespace
 
-LowerIndex::Range LowerIndex::range_of(const Def* d) const {
-    if (auto k = const_val(d)) return {*k, *k};
+std::optional<LowerIndex::Range> LowerIndex::range_of(const Def* d) const {
+    auto bounded = [](int64_t lo, int64_t hi) -> std::optional<Range> {
+        if (lo < -Limit || hi > Limit) return {};
+        return Range{lo, hi};
+    };
+
+    if (auto k = const_val(d)) return Range{*k, *k};
 
     if (auto ex = d->isa<Extract>()) {
         auto i = Lit::isa(ex->index());
         if (ex->tuple() == dom_.idxs && i && *i < dom_.extents.size())
-            if (auto n = dom_.extents[*i]; n && *n > 0) return {0, *n - 1};
+            if (auto n = dom_.extents[*i]; n && *n > 0) return Range{0, *n - 1};
 
         if (auto div = Axm::isa<core::div>(ex->tuple()); div && i == 1) {
-            auto [x, c] = div->arg()->projs<2>();
+            // `core.div` takes `(mem, (x, c))`.
+            auto [x, c] = div->arg()->proj(2, 1)->projs<2>();
             auto k      = const_val(c);
-            if (!k || *k <= 0) return {0, Unknown};
-            auto l = range_of(x);
-            if (div.id() == core::div::udiv) return {l.lo / *k, l.hi / *k};
-            if (div.id() == core::div::urem) return {0, *k - 1};
+            if (!k || *k <= 0) return {};
+            // `urem` is bounded by its divisor whatever its operand; `udiv` only by a non-negative operand's range.
+            if (div.id() == core::div::urem) return Range{0, *k - 1};
+            if (auto l = range_of(x); l && l->lo >= 0 && div.id() == core::div::udiv)
+                return Range{l->lo / *k, l->hi / *k};
         }
     }
 
     if (auto wrap = Axm::isa<core::wrap>(d)) {
         auto [a, b] = wrap->arg()->projs<2>();
         auto l = range_of(a), r = range_of(b);
+        if (!l || !r) return {};
         switch (wrap.id()) {
-            case core::wrap::add: return {sat(l.lo + r.lo), sat(l.hi + r.hi)};
-            case core::wrap::sub: return {sat(l.lo - r.hi), sat(l.hi - r.lo)};
+            case core::wrap::add: return bounded(l->lo + r->lo, l->hi + r->hi);
+            case core::wrap::sub: return bounded(l->lo - r->hi, l->hi - r->lo);
             case core::wrap::mul: {
-                std::array cands{sat_mul(l.lo, r.lo), sat_mul(l.lo, r.hi), sat_mul(l.hi, r.lo), sat_mul(l.hi, r.hi)};
-                return {std::ranges::min(cands), std::ranges::max(cands)};
+                std::array cands{std::pair{l->lo, r->lo}, std::pair{l->lo, r->hi}, std::pair{l->hi, r->lo},
+                                 std::pair{l->hi, r->hi}};
+                for (auto [x, y] : cands)
+                    if (x != 0 && std::abs(y) > Limit / std::abs(x)) return {};
+                auto prods = cands | std::views::transform([](auto p) { return p.first * p.second; });
+                return bounded(std::ranges::min(prods), std::ranges::max(prods));
             }
             default: break;
         }
     }
 
-    return {0, Unknown};
+    return {};
 }
 
 LowerIndex::Split LowerIndex::split(const Def* x, int64_t c) {
@@ -140,17 +142,20 @@ LowerIndex::Split LowerIndex::split(const Def* x, int64_t c) {
     flatten_add(new_world(), x, 1, terms);
 
     Split split;
-    Range rest{0, 0};
+    std::optional<Range> rest = Range{0, 0};
     for (auto t : terms) {
         if (divides(t, c)) {
             split.even.emplace_back(t);
         } else {
             split.rest.emplace_back(t);
-            auto r  = range_of(t);
-            rest.lo = sat(rest.lo + r.lo), rest.hi = sat(rest.hi + r.hi);
+            auto r = range_of(t);
+            if (rest && r && std::abs(rest->lo) <= Limit && std::abs(rest->hi) <= Limit)
+                rest = Range{rest->lo + r->lo, rest->hi + r->hi};
+            else
+                rest = std::nullopt;
         }
     }
-    split.carries = rest.lo < 0 || rest.hi >= c;
+    split.carries = !rest || rest->lo < 0 || rest->hi >= c;
     return split;
 }
 
@@ -161,9 +166,10 @@ const Def* LowerIndex::fold_udiv(const Def* x, int64_t c) {
     if (c == 1) return x;
     if (auto k = const_val(x)) return w.lit_i64(u64(*k / c));
 
-    auto [lo, hi] = range_of(x);
-    if (lo < 0) return nullptr;
-    if (hi < c) return w.lit_i64(0);
+    // The carrier wraps, so a fold needs all of x proven in range; an unknown term keeps the division.
+    auto r = range_of(x);
+    if (!r || r->lo < 0) return nullptr;
+    if (r->hi < c) return w.lit_i64(0);
 
     auto s = split(x, c);
     if (s.even.empty() || s.carries) return nullptr;
@@ -177,9 +183,9 @@ const Def* LowerIndex::fold_urem(const Def* x, int64_t c) {
     if (c == 1) return w.lit_i64(0);
     if (auto k = const_val(x)) return w.lit_i64(u64(*k % c));
 
-    auto [lo, hi] = range_of(x);
-    if (lo < 0) return nullptr;
-    if (hi < c) return x;
+    auto r = range_of(x);
+    if (!r || r->lo < 0) return nullptr;
+    if (r->hi < c) return x;
     if (divides(x, c)) return w.lit_i64(0);
 
     auto s = split(x, c);
@@ -343,7 +349,7 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
 
             auto n           = sin->num_projs();
             auto extents     = fe::Vector<std::optional<int64_t>>(n, [&](size_t i) -> std::optional<int64_t> {
-                if (auto e = Lit::isa(sin->proj(n, i)); e && *e <= u64(Unknown)) return int64_t(*e);
+                if (auto e = Lit::isa(sin->proj(n, i)); e && *e <= u64(Limit)) return int64_t(*e);
                 return {};
             });
             auto restore_dom = fe::Restore(dom_, Domain{idx_map_lam->var(2, 1), std::move(extents)});
