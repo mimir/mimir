@@ -1,0 +1,45 @@
+// RUN: rm -f %t.ll
+// RUN: %mim -p opt %s -p ll -X ll:o=%t.ll
+// RUN: %FileCheck %s < %t.ll
+// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 16
+plugin core;
+plugin mem;
+
+// Returning several non-constant scalars of the same type is emitted as an LLVM vector.
+// The lanes are SSA values, so they must be assembled via `insertelement`:
+// a vector constant `<i32 %a, i32 %b>` is invalid LLVM IR.
+extern fun pair(a b: I32): [I32, I32] =
+    use core.ops.u.w;
+    return (a + b, a - b);
+// CHECK-LABEL: define <2 x i32> @pair(
+// CHECK-NOT:   ret <2 x i32> <
+// CHECK:       [[V0:%.*]] = insertelement <2 x i32> undef, i32 %{{.*}}, i32 0
+// CHECK-NEXT:  [[V1:%.*]] = insertelement <2 x i32> [[V0]], i32 %{{.*}}, i32 1
+// CHECK-NEXT:  ret <2 x i32> [[V1]]
+
+extern fun main(argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): I32 =
+    ret (x, y) = pair $ (5I32, 3I32);
+    use core.ops.u.w;
+    return (x * argc + y * 4I32);
+
+// Multiple returning blocks in the same function each emit their own dynamic SIMD
+// return aggregate. LLVM names are function-scoped, so their temporaries must include
+// the block's unique ID to avoid redefinition collisions.
+extern fun two_returns(cond: Bool, a b c d: I32): [I32, I32] =
+    (then_lam, else_lam)#cond ()
+    where
+        con then_lam () =
+            use core.ops.u.w;
+            return (a + b, a - b);
+        con else_lam () =
+            use core.ops.u.w;
+            return (c * d, c - d);
+    end;
+// CHECK-LABEL: define <2 x i32> @two_returns(
+// CHECK:       [[V0:%.*]] = insertelement <2 x i32> undef, i32 %{{.*}}, i32 0
+// CHECK-NEXT:  [[V1:%.*]] = insertelement <2 x i32> [[V0]], i32 %{{.*}}, i32 1
+// CHECK-NEXT:  ret <2 x i32> [[V1]]
+// CHECK:       [[V2:%.*]] = insertelement <2 x i32> undef, i32 %{{.*}}, i32 0
+// CHECK-NEXT:  [[V3:%.*]] = insertelement <2 x i32> [[V2]], i32 %{{.*}}, i32 1
+// CHECK-NEXT:  ret <2 x i32> [[V3]]
