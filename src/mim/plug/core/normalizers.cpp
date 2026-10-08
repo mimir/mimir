@@ -994,7 +994,7 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
         auto align = op(trait::align, elem);
         if constexpr (id == trait::align) return align;
         auto b = op(trait::size, elem);
-        if (b->isa<Lit>()) return world.call(nat::mul, Defs{arr->arity(), b});
+        if (!Axm::isa(trait::size, b)) return world.call(nat::mul, Defs{arr->arity(), b});
     }
 
     return {};
