@@ -1,0 +1,33 @@
+// RUN: rm -f %t.ll
+// RUN: %mim -p opt %s -X ll:o=%t.ll
+// RUN: %FileCheck %s < %t.ll
+// RUN: clang -Wno-pass-failed %t.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 72
+
+// Wrapping a `affine.For`'s body in `ll.novec` forbids vectorizing that loop: lower_for moves the
+// wrapper onto the loop's exit condition like `ll.vec`, and the emitter attaches a
+// `llvm.loop.vectorize.enable false` hint. A schedule puts it on the loops around its vector loop.
+
+plugin core;
+plugin affine;
+plugin ll;
+plugin mem;
+
+use core.ops.u.w;
+
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I32, 0), 0), return: Cn [mem.M 0, I32]) =
+    affine.For (ll.vec vec_body) vec_exit (0I32, 8I32, 1I32, 0I32)
+    where
+        con vec_body (i acc: I32, continue: Cn I32) = continue (acc + argc);
+        con vec_exit (acc: I32) =
+            affine.For (ll.novec plain_body) plain_exit (0I32, 64I32, 1I32, acc)
+            where
+                con plain_body (i acc: I32, continue: Cn I32) = continue (acc + 1I32);
+                con plain_exit (acc: I32) = return (m, acc);
+            end;
+    end;
+
+// CHECK-DAG: [[ON:![0-9]+]] = !{!"llvm.loop.vectorize.enable", i1 true}
+// CHECK-DAG: [[OFF:![0-9]+]] = !{!"llvm.loop.vectorize.enable", i1 false}
+// CHECK-DAG: distinct !{{{![0-9]+}}, [[ON]]}
+// CHECK-DAG: distinct !{{{![0-9]+}}, [[OFF]]}

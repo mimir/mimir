@@ -300,6 +300,15 @@ con vec_for {A: *} (body: Cn [I32, [mem.M 0, A], Cn [mem.M 0, A]])
             (exit: Cn [mem.M 0, A])
             (begin stop step: I32, init: [mem.M 0, A])@tt =
     affine.For (ll.vec body) exit (begin, stop, step, init);
+///
+/// #### novec_for
+///
+/// The loop implementation for the loops enclosing a schedule's vector loop: `affine.For` with its body wrapped
+/// in `ll.novec`, so that LLVM vectorizes the nominated loop and none of the strided loops around it.
+con novec_for {A: *} (body: Cn [I32, [mem.M 0, A], Cn [mem.M 0, A]])
+              (exit: Cn [mem.M 0, A])
+              (begin stop step: I32, init: [mem.M 0, A])@tt =
+    affine.For (ll.novec body) exit (begin, stop, step, init);
 
 /// ### range_nest
 ///
@@ -424,11 +433,11 @@ anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
                 con s2 (memB: mem.M 0, uB: U) =
                     (range_nest (r, Sr) U (vec_for @U, vd, vd + 1) wb_cell) (pref, memB, uB, k);
                 con s1 (memA: mem.M 0, uA: U) =
-                    (range_nest (r, Sr) U (affine_for @U, ro, u_lo)
+                    (range_nest (r, Sr) U (novec_for @U, ro, u_lo)
                         (range_nest (r, Sr) U (vec_for @U, vd, vd + 1) at_point))
                         (pref, memA, uA, s2);
                 (range_nest (r, Sr) U (vec_for @U, vd, vd + 1) fill) (pref, m, u, s1);
-            (range_nest (r, Sr) U (affine_for @U, 0, vd) at_row) (‹r; 0I32›, mem1, u0, done);
+            (range_nest (r, Sr) U (novec_for @U, 0, vd) at_row) (‹r; 0I32›, mem1, u0, done);
 
         // BLOCKED (`vdim = ro − 2`): the two trailing parallel dims are sunk inside the reduction
         // loops — the last dim runs as the vector loop and the BLOCK dim before it (any extent Sp;
@@ -466,16 +475,16 @@ anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
                     let (memw1, v) = buffer.read (1, Np, To) (memw, panel, vi_of pref2);
                     wb (memw1, uw, v, pref2, kw);
                 con s2 (memB: mem.M 0, uB: U) =
-                    (range_nest (r, Sr) U (affine_for @U, pd_c, sd_c)
+                    (range_nest (r, Sr) U (novec_for @U, pd_c, sd_c)
                         (range_nest (r, Sr) U (vec_for @U, sd_c, ro) wb_cell)) (pref, memB, uB, k);
                 con s1 (memA: mem.M 0, uA: U) =
-                    (range_nest (r, Sr) U (affine_for @U, ro, u_lo)
+                    (range_nest (r, Sr) U (novec_for @U, ro, u_lo)
                         (range_nest (r, Sr) U (vec_for @U, sd_c, sd_c + 1)
                             (range_unroll (r, Sr) U (pd_c, pd_c + 1) at_point)))
                         (pref, memA, uA, s2);
-                (range_nest (r, Sr) U (affine_for @U, pd_c, sd_c)
+                (range_nest (r, Sr) U (novec_for @U, pd_c, sd_c)
                     (range_nest (r, Sr) U (vec_for @U, sd_c, ro) fill)) (pref, m, u, s1);
-            (range_nest (r, Sr) U (affine_for @U, 0, pd_c) at_block) (‹r; 0I32›, mem1, u0, done);
+            (range_nest (r, Sr) U (novec_for @U, 0, pd_c) at_block) (‹r; 0I32›, mem1, u0, done);
 
         // REDUCTION-VECTORIZED (`ro ≤ vdim < r`: the schedule names the innermost REDUCTION dim):
         // the contraction itself runs as the innermost (vector) loop. For a contraction whose
@@ -528,12 +537,12 @@ anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
                 con s2 (memB: mem.M 0, uB: U) =
                     (range_unroll (r, Sr_rv) U (rv_bd, ro) wb_cell) (pref, memB, uB, k);
                 con s1 (memA: mem.M 0, uA: U) =
-                    (range_nest (r, Sr) U (affine_for @U, ro, rv_vd)
+                    (range_nest (r, Sr) U (novec_for @U, ro, rv_vd)
                         (range_nest (r, Sr) U (vec_for @U, rv_vd, rv_vd + 1)
                             (range_unroll (r, Sr_rv) U (rv_bd, ro) at_point)))
                         (pref, memA, uA, s2);
                 (range_unroll (r, Sr_rv) U (rv_bd, ro) fill) (pref, m, u, s1);
-            (range_nest (r, Sr) U (affine_for @U, 0, rv_bd) at_block) (‹r; 0I32›, mem1, u0, done);
+            (range_nest (r, Sr) U (novec_for @U, 0, rv_bd) at_block) (‹r; 0I32›, mem1, u0, done);
 
         con run (mem0: mem.M 0, u0: U, done: Cn [mem.M 0, U])@tt =
             ((((classic, vectorized)#vec_ok, blocked)#block_ok, redvec)#redvec_ok) (mem0, u0, done);

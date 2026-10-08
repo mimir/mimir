@@ -24,9 +24,6 @@ namespace {
 /// Beyond this the eager enumeration of `Catalan(n − 1)` bracketings is worth a warning.
 constexpr u64 Loud_max_dispatch = 8;
 
-/// Sanity bound for `-X tensor:reassoc-vec`; it also keeps lanes() from wrapping.
-constexpr u64 Max_vec = 1024;
-
 /// @p n rounded up to a whole number of @p vec lanes; the tail iteration's idle lanes are charged.
 u64 lanes(u64 n, u64 vec) { return (n + vec - 1) / vec * vec; }
 
@@ -229,14 +226,9 @@ void Reassoc::start() {
             log().w("`-X tensor:reassoc-max={}` enumerates up to Catalan({}) bracketings", *n, *n - 1);
     }
 
-    if (auto n = num("reassoc-vec")) {
-        if (*n == 0 || *n > Max_vec) {
-            log().w("ignoring `-X tensor:reassoc-vec={}`: not between 1 and {} lanes", *n, Max_vec);
-        } else {
-            vec_ = *n;
-            log().d("charge the vector loop in units of {} lanes", vec_);
-        }
-    }
+    // Ask `tensor.vec_width`, so that the cost model charges the lanes the schedules actually use.
+    if (auto n = Lit::isa(old_world().call<tensor::vec_width>(old_world().lit_nat(Default_vec)))) vec_ = *n;
+    log().d("charge the vector loop in units of {} lanes", vec_);
 
     // flatten() may only pull a product apart where doing so cannot leave it materialized for another
     // consumer as well.

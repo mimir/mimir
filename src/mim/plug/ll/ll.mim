@@ -39,3 +39,11 @@ axm emit: compile.Phase;
 /// The emitter then attaches `llvm.loop.vectorize.enable` metadata to the branches into the
 /// annotated loop's header, which on the latch lifts LLVM's tiny-trip-count (< 16) bailout.
 axm vec: {T: *} → T → T;
+///
+/// ### novec
+///
+/// The counterpart of `vec`: forbids vectorizing the annotated loop.
+/// A schedule puts it on the loops enclosing its vector loop; left alone, LLVM may vectorize one of those instead,
+/// and since they are strided that costs a gather per load.
+/// `affine.lower_for` moves it like `vec`, and the emitter attaches `llvm.loop.vectorize.enable false`.
+axm novec: {T: *} → T → T;

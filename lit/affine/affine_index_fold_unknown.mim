@@ -1,0 +1,22 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim %s -p opt -p ll -o - | %FileCheck %s
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 2
+
+// `(i·3) floordiv 3` is `i` only if `i·3` does not wrap the i64 carrier. `i` ranges over `Idx 0`, which bounds
+// nothing, so `affine.lower_index` must keep the division although `i·3` is syntactically a multiple of 3.
+
+plugin core;
+plugin affine;
+plugin mem;
+
+use core.ops.u.w;
+
+lam f (i j: affine.Index): «2; affine.Index» = (affine.semiop.floordiv (affine.semiop.mul (i, 3), 3), j);
+
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I32, 0), 0), return: Cn [mem.M 0, I32]) =
+    let (m, (q, j)) = affine.map @(2, 2) @((0, 4), (0, 4)) f (core.conv.u 0 argc, core.conv.u 4 argc) m;
+    let w32 = 4294967296;
+    return (m, core.conv.u w32 q + core.conv.u w32 j);
+
+// CHECK: core.div.udiv

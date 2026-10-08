@@ -271,14 +271,18 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
         } else {
             emit_phi_args(callee, app, lam);
         }
-        // A loop header whose exit condition is wrapped in `ll.vec` (see affine's LowerFor)
+        // A loop header whose exit condition is wrapped in `ll.vec` or `ll.novec` (see affine's LowerFor)
         // carries this loop's `!llvm.loop` vectorize hint on every branch into it; on the latch
-        // it lifts LLVM's tiny-trip-count bailout.
+        // `ll.vec` lifts LLVM's tiny-trip-count bailout.
         if (callee->is_set()) {
             if (auto head = callee->body()->isa<App>()) {
-                if (auto dispatch = Dispatch(head); dispatch && Axm::isa<ll::vec>(dispatch.index())) {
-                    auto [it, _] = loop_md_.emplace(callee, LoopMdBase + 1 + loop_md_.size());
-                    return bb.tail("br label {}, !llvm.loop !{}", id(callee), it->second);
+                if (auto dispatch = Dispatch(head)) {
+                    auto vec   = Axm::isa<ll::vec>(dispatch.index());
+                    auto novec = Axm::isa<ll::novec>(dispatch.index());
+                    if (vec || novec) {
+                        auto [it, _] = loop_md_.emplace(callee, std::pair{LoopMdBase + 2 + loop_md_.size(), bool(vec)});
+                        return bb.tail("br label {}, !llvm.loop !{}", id(callee), it->second.first);
+                    }
                 }
             }
         }
@@ -1005,6 +1009,8 @@ std::optional<std::string> Emitter::emit_vec(BB& bb, const std::string& name, co
     // metadata it requests is attached at the branches into the loop's header.
     if (auto v = Axm::isa<ll::vec>(def)) {
         return emit(v->arg());
+    } else if (auto nv = Axm::isa<ll::novec>(def)) {
+        return emit(nv->arg());
     } else if (auto zip = Axm::isa<vecp::zip>(def)) {
         auto ni_n   = zip->decurry()->decurry()->decurry()->arg();
         auto nat_ni = Lit::expect(ni_n->proj(2, 0), "the `vec.zip` inputs count");

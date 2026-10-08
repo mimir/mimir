@@ -589,6 +589,20 @@ axm fastest_axis: {T: *} → [r: Nat, t: T] → Nat, normalize_fastest_axis;
 ///   runtime value.
 axm if_static: {T: *} → [k: Nat, s d: T] → T, normalize_if_static;
 ///
+/// ### vec_width
+///
+/// Target reflection for schedule selectors: the machine's vector width, in elements of the schedule's fold type.
+/// It is the number of lanes one vector register holds, and hence the widest block of independent accumulators a
+/// vectorized loop body can keep in registers.
+/// `d` is the width to answer when the compilation was not told one; `-X tensor:vec-width=<n>` (`1`, `4`, `8` or `16`)
+/// overrides it, so a single world can be emitted for one target and re-emitted for another.
+/// `1` describes a target without SIMD: no block is sized by lanes, and `reassoc` counts plain multiplications.
+/// It does not stop the backend from vectorizing the loops a schedule nominates.
+/// Like `fastest_axis` this only reflects what the frontend cannot inspect itself; the schedule **decision** built on
+/// the answer stays in the IR next to the op (see `dot_schedule_kvec`).
+/// `reassoc` charges its costs in units of the same width, so schedules and cost model agree on the target.
+axm vec_width: [d: Nat] → Nat, normalize_vec_width;
+///
 /// ## Tiling
 ///
 /// Tiling, strip-mining and schedule selection are implemented entirely in the frontend IR, with
@@ -885,26 +899,70 @@ lam vectorize_if (t: Tileable, cond: Bool, d: Nat): Tileable =
 ///   input at stride_w and is broadcast in the weight (score [stride_w = 1] + 1); an un-unrolled
 ///   kw reads the input at dilation_w and the weight at unit stride ([dilation_w = 1] + 1 — the
 ///   classic nest is already unit-stride, so vectorizing buys nothing); kh/cin score 0; with the
-///   whole reduction unrolled there is nothing to beat.
+///   whole reduction unrolled there is nothing to beat;
+/// - a **pointwise** window (kh·kw = 1) has no taps to unroll, so the row accumulator would make a
+///   memory round trip per MAC: jam a block of `co` into the vector body (the padded-input read is
+///   invariant in `co`, so the jammed cells share it) and unroll a tile of `ci` into the window
+///   (which amortizes the round trip over the tile) — the 1x1 counterpart of the kh·kw window.
 ///
 /// Open extents/strides residualize to no unrolling and no vector dim (`if_static`).
 lam conv_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
     let u     = unroll_budget (t, 32);
     let s_ow  = (0, 1)#(stride#1_2 == 1) + 1;
     let s_red = core.select (u == 0, (0, 1)#(dilation#1_2 == 1) + 1, core.select (u < t#Rr, 0, s_ow));
-    let ow    = t#Sr#(core.idx 0 (t#Ro + t#Rr) 3);
+    let r     = t#Ro + t#Rr;
+    let ow    = t#Sr#(core.idx 0 r 3);
     let vec   = if_static (stride#1_2 * dilation#1_2 * ow, s_red < s_ow, ff);
+    lam fits (k b: Nat): Bool = core.bit2.and_ 2 (k / b * b == k, b < k);
     // Rows too short for the vectorizer (ow < 16) are processed in BLOCKS: strip-mine oh by the
     // largest block size ≤ 4 that divides it and sink both halves (vdim = ro − 2 selects mr_nest's
     // blocked branch, which jams the block dim into the vector body — one reduction pass folds the
     // whole row block, sharing the hoisted window weights). Otherwise the split is the neutral
     // ts = 1 (its size-1 axis folds away), so one code path serves every case and no divisibility
     // check fires on an untaken choice.
-    let oh    = t#Sr#(core.idx 0 (t#Ro + t#Rr) 2);
+    let oh    = t#Sr#(core.idx 0 r 2);
     lam divides (d: Nat): Bool = oh / d * d == oh;
     let bs    = ((1, 2)#(divides 2), 4)#(divides 4);
-    let block = if_static (oh * ow, core.bit2.and_ 2 (vec, core.bit2.and_ 2 (ow < 16, bs != 1)), ff);
-    unroll_trailing (vectorize_if (strip_mine_par (t, 2, (1, bs)#block), vec, (4, 3)#block), u);
+    let short = if_static (oh * ow, core.bit2.and_ 2 (vec, ow < 16), ff);
+    // There is one jam slot, so a `co` block is worth taking only where the row block cannot fire:
+    // a POINTWISE window (which has no taps to amortize the accumulator round trip at all), or a
+    // short row whose oh does not split. Measured over the level3 3x3 layers, taking it against a
+    // working row block instead is a 5-12% loss, and taking it for a long row is a wash.
+    let co    = t#Sr#(core.idx 0 r 1);
+    let ci    = t#Sr#(core.idx 0 r 4);
+    let win   = t#Sr#(core.idx 0 r 5) * t#Sr#(core.idx 0 r 6);
+    let pw    = if_static (win, core.bit2.and_ 2 (vec, win == 1), ff);
+    // A pointwise window keeps a working 2-row block at unit stride (1.3-1.6x faster over the level3
+    // pointwise layers); 4-row blocks and strided rows still lose to the `co` block.
+    let pw_rows = core.bit2.and_ 2 (core.bit2.and_ 2 (short, bs == 2),
+                                    core.bit2.and_ 2 (stride#0_2 == 1, stride#1_2 == 1));
+    let cob   = core.bit2.or_ 2 (core.bit2.and_ 2 (pw, (tt, ff)#pw_rows), core.bit2.and_ 2 (short, bs == 1));
+    // One accumulator register per jammed cell, so a block wider than the target's lanes spills;
+    // every jammed cell also replays the window, so the block shares the 32-tap register budget.
+    let vw    = vec_width 8;
+    lam cb_ok (b: Nat): Bool = core.bit2.and_ 2 (core.bit2.and_ 2 (fits (co, b), b <= vw), b * win <= 32);
+    let cb    = if_static (co, (1, (((1, 2)#(cb_ok 2), 4)#(cb_ok 4), 8)#(cb_ok 8))#cob, 1);
+    let cblk  = cb != 1;
+    lam ct_ok (b: Nat): Bool = core.bit2.and_ 2 (fits (ci, b), cb * b * win <= 32);
+    let cts   = if_static (ci, (1, (((1, 2)#(ct_ok 2), 4)#(ct_ok 4), 8)#(ct_ok 8))#cob, 1);
+    let block = core.bit2.and_ 2 ((tt, ff)#cblk, core.bit2.and_ 2 (short, bs != 1));
+    let t_ci  = strip_mine_red (t, 4, cts);
+    let t_co  = strip_mine_par (t_ci, 1, cb);
+    let t_oh  = strip_mine_par (t_co, 3, (1, bs)#block);
+    // Spelled from t_oh's positional fields so the pack's length is definitionally the
+    // «t#Ro + t#Rr» the dependent `interchange` domain expects.
+    let r_n   = t_oh#1_9 + t_oh#2_9;
+    // Dims are (n, co/cb, cb, oh/bs, bs, ow | …); rotate `cb` down next to `ow` so the jam dim and
+    // the vector dim are the trailing parallel pair. Identity when the block is not taken.
+    let perm  = ‹j: r_n; let jj = core.bitcast Nat j;
+                         core.select (core.bit2.and_ 2 (cblk, jj == 2), 3,
+                         core.select (core.bit2.and_ 2 (cblk, jj == 3), 4,
+                         core.select (core.bit2.and_ 2 (cblk, jj == 4), 2, jj)))›;
+    let vd    = core.select (core.bit2.or_ 2 (cblk, block), 4, (r_n, 5)#vec);
+    // The window grows only when the `ci` split is REAL; keying it off the pointwise flag would
+    // over-unroll a big window past the tap budget (a 7x7 stem goes 7 -> 49 taps, and 2x slower).
+    let un    = core.select (core.bit2.or_ 2 (cts != 1, 3 <= u), u + 1, u);
+    unroll_trailing (vectorize (interchange (t_oh, perm), vd), un);
 ///
 /// #### dot_schedule
 ///
@@ -939,9 +997,10 @@ lam dot_schedule (r_out: Nat) (t: Tileable): Tileable =
 ///   weight row, folded with a horizontal sum (see `btensor.mr_nest`'s reduction-vectorized branch,
 ///   selected by a `vdim` naming the innermost reduction dim, where `unroll` names the jam width);
 /// - a 2-D block of output cells is unroll-and-jammed into its body over independent vector
-///   accumulators: the last output dim strip-mined by the largest divisor ≤ 4 (jammed lanes share the
-///   input-row loads) × the second-to-last by 2 (jammed rows share the weight-row loads — without
-///   this the whole weight matrix re-streams once per batch row).
+///   accumulators: the last output dim strip-mined by the largest power-of-two divisor that fits the
+///   target's vector width (`vec_width` — jammed lanes share the input-row loads) × the
+///   second-to-last by 2 (jammed rows share the weight-row loads — without this the whole weight
+///   matrix re-streams once per batch row).
 ///
 /// An extent still open at lowering time, an indivisible one, and the missing row dim of a rank-1
 /// output all take the neutral split (`1`), whose size-1 jam dim folds away.
@@ -949,9 +1008,12 @@ lam dot_schedule_kvec (r_out: Nat) (t: Tileable): Tileable =
     // A block counts only when it divides AND leaves a non-trivial outer dim (`b < k`): an exact
     // split's leading size-1 axis would type-collapse the packed output («1; T» ≡ T).
     lam blk_by (k b: Nat): Bool = core.bit2.and_ 2 (k / b * b == k, b < k);
+    // One accumulator register per jammed cell, so a block wider than the target's lanes spills.
+    let vw  = vec_width 8;
+    lam blk_ok (k b: Nat): Bool = core.bit2.and_ 2 (blk_by (k, b), b <= vw);
     let d   = r_out - 1;
     let n   = t#So#(core.idx 0 (t#Ro) d);
-    let bs  = if_static (n, ((1, 2)#(blk_by (n, 2)), 4)#(blk_by (n, 4)), 1);
+    let bs  = if_static (n, ((((1, 2)#(blk_ok (n, 2)), 4)#(blk_ok (n, 4)), 8)#(blk_ok (n, 8)), 16)#(blk_ok (n, 16)), 1);
     let t2  = strip_mine_par (t, d, bs);
     let d2  = r_out - 2;
     let m   = t#So#(core.idx 0 (t#Ro) d2);
@@ -1385,7 +1447,7 @@ priv anx lam unary_impl {Ti To : *} (app: Ti → To) {r: Nat, s: «r; Nat»} (i:
 ///
 /// - The vector loop runs over a product's trailing extent (`dot_schedule`) or, for a transposed
 ///   operand, over its contraction (`dot_schedule_kvec`), and a literal extent is charged rounded up
-///   to whole lanes — `-X tensor:reassoc-vec=<n>`, `1` to count plain scalar multiplications.
+///   to whole lanes of `vec_width` (`-X tensor:vec-width=<n>`).
 ///   A bracketing whose intermediates are too narrow to fill a vector thus pays for the lanes it
 ///   leaves idle, which is exactly what the multiplication count misses.
 /// - Extents need not be literal: a cost is a polynomial in the symbolic extents, ordered by

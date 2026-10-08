@@ -1,0 +1,52 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim %s -o - | %FileCheck %s
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 6
+
+// One access map over two domains. `(4·a + b) floordiv 4` folds to `a` only while `b < 4`, and
+// `(4·c + d) floordiv 4` to `c` only while `d < 4`; each domain bounds a different one of `b`, `d` by 4.
+// A fold only holds for the extents that justified it: reusing either call's rewrite for the other
+// returns `a` or `c` where the quotient is one larger.
+
+plugin core;
+plugin affine;
+plugin mem;
+plugin compile;
+plugin ll;
+
+use core.ops.u.w;
+
+lam f (a b c d: affine.Index): «2; affine.Index» =
+    (affine.semiop.floordiv (affine.op.add (affine.semiop.mul (a, 4), b), 4),
+     affine.semiop.floordiv (affine.op.add (affine.semiop.mul (c, 4), d), 4));
+
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I32, 0), 0), return: Cn [mem.M 0, I32]) =
+    let small = core.conv.u 4 argc;
+    let large = core.conv.u 8 (argc + 4I32);
+    let ten   = core.conv.u 10 argc;
+    let (m, (p1, p2)) = affine.map @(2, 4) @((10, 4, 10, 8), (10, 11)) f (ten, small, ten, large) m;
+    let (m, (q1, q2)) = affine.map @(2, 4) @((10, 8, 10, 4), (11, 10)) f (ten, large, ten, small) m;
+    let w32 = 4294967296;
+    // argc = 1: p = (1, 2) and q = (2, 1).
+    return (m, core.conv.u w32 p1 + core.conv.u w32 p2 + core.conv.u w32 q1 + core.conv.u w32 q2);
+
+// Lower the index algebra first: the default pipeline's eta_conv gives each call its own copy of `f`,
+// so the two calls would never share the map.
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.named "affine.lower_index",
+        compile.named "cps.conv",
+        compile.named "affine.lower_for",
+        compile.phases ff (compile.scalarize, compile.phases tt (compile.beta_red, compile.eta_conv),
+                           compile.named "mem.seo", compile.adce),
+        compile.lam_spec,
+        compile.single_erasure,
+        compile.branch_normalize,
+        compile.ret_wrap,
+        compile.named "mem.alloc2malloc_repl",
+        compile.named "refly.remove_dbg_repl",
+        compile.named "ll.emit",
+    );
+
+// Each domain keeps the division its own extents do not justify folding.
+// CHECK: core.div.udiv
