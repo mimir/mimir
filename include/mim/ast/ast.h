@@ -60,6 +60,11 @@ struct Mods {
     /// `extern`/`anx` nudge the default visibility to `Pub` unless `priv` is given explicitly.
     Vis default_vis() const { return (is_extern || is_anx) ? Vis::Pub : Vis::Priv; }
     Vis resolved_vis() const { return vis.value_or(default_vis()); }
+    bool any() const { return vis || is_extern || is_anx; }
+    /// @p group's modifiers as defaults, so an explicit `priv`/`pub` here overrides the group's.
+    Mods inherit(const Mods& group) const {
+        return {vis ? vis : group.vis, is_extern || group.is_extern, is_anx || group.is_anx};
+    }
 };
 
 /// Bookkeeping of an annex introduced by an AxmDecl.
@@ -1042,7 +1047,7 @@ class AxmDecl : public ValDecl {
 public:
     /// A further tag sharing AxmDecl::type/normalizer/curry/trip with the AxmDecl that owns them.
     /// Only ever synthesized by Parser::parse_axm_group when desugaring `axm tag.(sub_0, ..., sub_n-1): ...;`
-    /// into `mod tag { axm sub_0: ...; ... }`: AxmDecl::Sibling is `sub_1`, ..., `sub_n-1`.
+    /// into `mod tag axm sub_0: ...; ... end`: AxmDecl::Sibling is `sub_1`, ..., `sub_n-1`.
     class Sibling : public ValDecl {
     public:
         Sibling(Loc loc, Vis vis, Dbg dbg, const AxmDecl* owner)
@@ -1095,18 +1100,16 @@ private:
     mutable const Def* mim_type_ = nullptr;
 };
 
-/// `rec dbg = body;` with an optional `and` RecDecl::next.
+/// `rec dbg = body;`
 class RecDecl : public ValDecl {
 public:
-    RecDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr> body, Ptr<RecDecl> next)
+    RecDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr> body)
         : ValDecl(loc, mods)
         , dbg_(dbg)
-        , body_(body)
-        , next_(next) {}
+        , body_(body) {}
 
     Dbg dbg() const override { return dbg_; }
     const Expr* body() const { return body_.get(); }
-    const RecDecl* next() const { return next_.get(); }
 
     void bind(Scopes&) const override;
     virtual void bind_decl(Scopes&) const;
@@ -1117,18 +1120,13 @@ public:
     virtual void emit_body(Emitter&) const;
 
     void stream(fe::Tab&, std::ostream&) const override;
-    /// Streams this declaration and its `and` chain - without modifiers and without the trailing `;`.
-    void stream_chain(fe::Tab&, std::ostream&) const;
-    std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
-
-protected:
-    /// Streams this declaration alone - without the leading `rec`/`and` and without the trailing `;`.
+    /// Streams this declaration without modifiers and without the trailing `;`.
     virtual void stream_(fe::Tab&, std::ostream&) const;
+    std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
 
 private:
     Dbg dbg_;
     Ptr<Expr> body_;
-    Ptr<RecDecl> next_;
     mutable AnnexInfo* annex_ = nullptr;
     mutable sub_t sub_        = 0;
 };
@@ -1159,8 +1157,8 @@ public:
 
     using VLA_Types = std::tuple<Ptr<Dom>>;
 
-    LamDecl(Loc loc, Mods mods, Tok::Tag tag, Dbg dbg, Ptr<Expr> codom, Ptr<Expr> body, Ptr<RecDecl> next)
-        : RecDecl(loc, mods, dbg, body, next)
+    LamDecl(Loc loc, Mods mods, Tok::Tag tag, Dbg dbg, Ptr<Expr> codom, Ptr<Expr> body)
+        : RecDecl(loc, mods, dbg, body)
         , tag_(tag)
         , codom_(codom) {}
 
@@ -1175,8 +1173,6 @@ public:
     void emit_decl(Emitter&) const override;
     void emit_body(Emitter&) const override;
     std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
-
-protected:
     void stream_(fe::Tab&, std::ostream&) const override;
 
 private:
@@ -1184,6 +1180,21 @@ private:
     Ptr<Expr> codom_;
     mutable AnnexInfo* annex_ = nullptr;
     mutable sub_t sub_        = 0;
+};
+
+/// `mutual decl* end` groups RecDecl%s that may refer to each other.
+class MutualDecl : public ValDecl, public fe::VLA<MutualDecl> {
+public:
+    using VLA_Types = std::tuple<Ptr<RecDecl>>;
+
+    MutualDecl(Loc loc)
+        : ValDecl(loc) {}
+
+    auto decls() const { return vla<0>(); }
+
+    void bind(Scopes&) const override;
+    void emit(Emitter&) const override;
+    void stream(fe::Tab&, std::ostream&) const override;
 };
 
 /// `anx dbg = path;` - a compiler-exposed alias sharing its target's annex slot.
@@ -1242,7 +1253,7 @@ private:
     bool is_norm_;
 };
 
-/// `mod dbg { decls }`; also the base of the anonymous File.
+/// `mod dbg decls end`; also the base of the anonymous File.
 class ModDecl : public ValDecl {
 public:
     // A ModDecl is pure AST grouping - it never represents a single value, so it's never `extern`/`anx`.

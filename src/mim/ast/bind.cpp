@@ -448,10 +448,15 @@ void LetDecl::bind(Scopes& s) const {
 }
 
 void RecDecl::bind(Scopes& s) const {
-    for (auto curr = this; curr; curr = curr->next())
-        curr->bind_decl(s);
-    for (auto curr = this; curr; curr = curr->next())
-        curr->bind_body(s);
+    bind_decl(s);
+    bind_body(s);
+}
+
+void MutualDecl::bind(Scopes& s) const {
+    for (auto decl : decls())
+        decl->bind_decl(s);
+    for (auto decl : decls())
+        decl->bind_body(s);
 }
 
 void RecDecl::bind_decl(Scopes& s) const {

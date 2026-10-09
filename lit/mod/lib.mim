@@ -4,10 +4,10 @@
 
 pub let answer = 42I32;
 
-pub mod inner {
+pub mod inner
     pub let deep = 23I32;
 
-    pub mod deeper {
+    pub mod deeper
         pub let deepest = 7I32;
-    }
-}
+    end
+end

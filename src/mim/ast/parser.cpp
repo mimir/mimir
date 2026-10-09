@@ -652,18 +652,20 @@ void Parser::check_no_extern(const Mods& mods, fe::Cite entity) {
     if (mods.is_extern) error().e(curr_, "`extern` is only meaningful on a function declaration, not a {}", entity);
 }
 
-Ptrs<ValDecl> Parser::parse_decls() {
+Ptrs<ValDecl> Parser::parse_decls(Mods group) {
     Ptrs<ValDecl> decls;
     while (true) {
         auto track = tracker();
-        auto mods  = parse_modifiers();
+        auto own   = parse_modifiers();
+        auto mods  = own.inherit(group);
         switch (ahead().tag()) {
             case Tag::T_semicolon: lex(); break; // eat up stray semicolons
             case Tag::K_axm: parse_axm_decl(track, mods, decls); break;
             case Tag::K_let: decls.emplace_back(parse_let_decl(track, mods)); break;
             case Tag::K_mod: decls.emplace_back(parse_mod_decl(track, mods)); break;
             case Tag::K_use: decls.emplace_back(parse_use_decl(track, mods)); break;
-            case Tag::K_rec: decls.emplace_back(parse_rec_decl(track, true, mods)); break;
+            case Tag::K_mutual: decls.emplace_back(parse_mutual_decl(track, mods)); break;
+            case Tag::K_rec: decls.emplace_back(parse_rec_decl(track, mods)); break;
             case Tag::C_LAM: decls.emplace_back(parse_lam_decl(track, mods)); break;
             case Tag::C_RULE: decls.emplace_back(parse_rule_decl(track, mods)); break;
             case Tag::C_IMPORT:
@@ -676,8 +678,7 @@ Ptrs<ValDecl> Parser::parse_decls() {
                 }
                 [[fallthrough]];
             default:
-                if (mods.vis || mods.is_extern || mods.is_anx)
-                    error().e(curr_, "expected a declaration after a modifier");
+                if (own.any()) error().e(curr_, "expected a declaration after a modifier");
                 return decls;
         }
     }
@@ -778,10 +779,8 @@ Ptr<ValDecl> Parser::parse_mod_decl(Tracker track, Mods mods) {
     auto vis = mods.vis.value_or(Vis::Priv);
     eat(Tag::K_mod);
     auto dbg   = parse_id("name of a module");
-    auto _     = anchor(expect(Tag::D_brace_l, "opening brace of a module"), Tag::D_brace_r);
     auto decls = parse_decls();
-    recover("module");
-    expect(Tag::D_brace_r, "closing brace of a module");
+    expect(Tag::K_end, "end of a module");
     return ptr<ModDecl>(track, vis, dbg, ast().scope(), ast().copy(decls));
 }
 
@@ -797,14 +796,25 @@ Ptr<ValDecl> Parser::parse_use_decl(Tracker track, Mods mods) {
     return ptr<UseDecl>(track, Mods{mods.vis.value_or(Vis::Priv)}, path, alias);
 }
 
-Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, bool first, Mods mods) {
+Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, Mods mods) {
     check_no_extern(mods, "recursive declaration");
-    eat(first ? Tag::K_rec : Tag::K_and);
+    eat(Tag::K_rec);
     auto dbg = parse_id("recursive declaration");
     expect(Tag::T_assign, "recursive declaration");
     auto body = parse_expr("body of a recursive declaration");
-    auto next = ahead().isa(Tag::K_and) ? parse_and_decl() : nullptr;
-    return ptr<RecDecl>(track, mods, dbg, body, next);
+    return ptr<RecDecl>(track, mods, dbg, body);
+}
+
+Ptr<ValDecl> Parser::parse_mutual_decl(Tracker track, Mods mods) {
+    eat(Tag::K_mutual);
+    Ptrs<RecDecl> decls;
+    for (auto decl : parse_decls(mods))
+        if (auto rec = decl->isa<RecDecl>())
+            decls.emplace_back(rec);
+        else
+            error().e(decl->loc(), "only `rec`, `lam`, `con`, and `fun` declarations may be mutually recursive");
+    expect(Tag::K_end, "end of a mutual block");
+    return ptr<MutualDecl>(track, decls);
 }
 
 Ptr<ValDecl> Parser::parse_rule_decl(Tracker track, Mods mods) {
@@ -878,18 +888,8 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
                     .n("`[...]` describes a type, so its names bind nothing here")
                     .n("write an unnamed component as `_: T`");
     }
-    auto next = ahead().isa(Tag::K_and) ? parse_and_decl() : nullptr;
 
-    return ptr<LamDecl>(track, mods, tag, dbg, codom, body, next, doms);
-}
-
-Ptr<RecDecl> Parser::parse_and_decl() {
-    if (ISA(ahead(1).tag(), C_LAM)) {
-        lex();
-        auto track = tracker();
-        return parse_lam_decl(track, {});
-    }
-    return parse_rec_decl(tracker(), false, {});
+    return ptr<LamDecl>(track, mods, tag, dbg, codom, body, doms);
 }
 
 } // namespace mim::ast

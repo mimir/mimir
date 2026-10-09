@@ -3,22 +3,24 @@ plugin core;
 
 use core.ops.n;
 
-// Mutually recursive siblings print as one `and` group, since a block only sees what precedes it.
-lam even (n: Nat)@ff: Bool = (odd (n - 1), tt)#(n == 0)
-and
-lam odd (n: Nat)@ff: Bool = (even (n - 1), ff)#(n == 0);
+// Mutually recursive siblings print as one `mutual` group, since a block only sees what precedes it.
+mutual
+    lam even (n: Nat)@ff: Bool = (odd (n - 1), tt)#(n == 0);
+    lam odd (n: Nat)@ff: Bool = (even (n - 1), ff)#(n == 0);
+end
 
 extern fun f (b: Bool, x: Nat): Bool =
-    con p (y z: Nat) = q (x, y)
-    and
-    con q (y z: Nat) = p (z, x);
+    mutual
+        con p (y z: Nat) = q (x, y);
+        con q (y z: Nat) = p (z, x);
+    end
     con l1 () = p (x, 1);
     con l2 () = q (3, x);
     con l3 () = return (even x);
     con l4 () = return (odd x);
     ((l1, l2), (l3, l4))#b#b ();
 
-// `next` closes the loop through `head`'s block, but only `x` nests it, so both are siblings in an `and` group.
+// `next` closes the loop through `head`'s block, but only `x` nests it, so both are siblings in a `mutual` group.
 extern fun g (x: Nat): Nat =
     head 0 where
         con head (i: Nat) =
@@ -33,13 +35,16 @@ extern fun g (x: Nat): Nat =
             end;
     end;
 
-// CHECK:      lam {{even|odd}} ({{.*}}
-// CHECK:      and
+// CHECK:      mutual
 // CHECK-NEXT: lam {{even|odd}} ({{.*}}
-// CHECK:      con {{p|q}} ({{.*}}
-// CHECK:      and
+// CHECK:      lam {{even|odd}} ({{.*}}
+// CHECK:      end
+// CHECK:      mutual
 // CHECK-NEXT: con {{p|q}} ({{.*}}
+// CHECK:      con {{p|q}} ({{.*}}
+// CHECK:      end
 // CHECK:      extern fun g
-// CHECK:      con head ({{.*}}
-// CHECK:      and
-// CHECK-NEXT: con next ({{.*}}
+// CHECK:      mutual
+// CHECK-NEXT: con head ({{.*}}
+// CHECK:      con next ({{.*}}
+// CHECK:      end

@@ -1,9 +1,9 @@
 // RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
 
-pub mod foo {
+pub mod foo
     axm T: [Nat → Nat] → *;
     axm t: [f: Nat → Nat] → T f;
-}
+end
 
 lam f(x: Nat): [] =
     lam g(y: Nat): Nat = y;

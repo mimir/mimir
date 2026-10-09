@@ -2,7 +2,7 @@
 
 plugin math;
 
-pub mod Vec3 {
+pub mod Vec3
     anx let xyz = [x: math.F64, y: math.F64, z: math.F64];
     anx let rgb = [r: math.F64, g: math.F64, w: math.F64];
     anx rec rpi = xyz → rpi;
@@ -12,7 +12,7 @@ pub mod Vec3 {
          xyz (0.0:math.F64, 1.0:math.F64, 0.0:math.F64),
          xyz (0.0:math.F64, 0.0:math.F64, 1.0:math.F64)
         )#i;
-}
+end
 
 
 // CHECK: zero = 0x8f3c66400000003

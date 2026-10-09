@@ -8,13 +8,13 @@ import "sub/lib2.mim";
 
 use core.ops.u.w;
 
-mod foo {
+mod foo
     pub let bar = 1I32;
 
-    pub mod nested {
+    pub mod nested
         pub let baz = 2I32;
-    }
-}
+    end
+end
 
 let _ = refly.struc.e (foo.bar + foo.nested.baz,        3I32);
 let _ = refly.struc.e (lib.answer + l2.inner.deep,     65I32);

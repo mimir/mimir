@@ -23,8 +23,8 @@ public:
 
     /// @p name is *this* registration's own (unqualified) Dbg::sym; AnnexInfo::qualified turns it into the
     /// full `plugin.tag[.sub]` name. We must take it from the declaration rather than from Def::sym, since
-    /// hash-consing can make several annexes share a single Def (e.g. `mod foo { anx let bar = 23; anx let baz = 23;
-    /// }`).
+    /// hash-consing can make several annexes share a single Def (e.g. `mod foo anx let bar = 23; anx let baz = 23;
+    /// end`).
     void attach(AnnexInfo* annex, sub_t sub, Sym name, const Def* def) {
         if (annex)
             world().annexes().attach(annex->plugin_id(), annex->id.tag, sub, annex->qualified(driver(), name), def);
@@ -786,10 +786,15 @@ void LetDecl::emit(Emitter& e) const {
 }
 
 void RecDecl::emit(Emitter& e) const {
-    for (auto curr = this; curr; curr = curr->next())
-        curr->emit_decl(e);
-    for (auto curr = this; curr; curr = curr->next())
-        curr->emit_body(e);
+    emit_decl(e);
+    emit_body(e);
+}
+
+void MutualDecl::emit(Emitter& e) const {
+    for (auto decl : decls())
+        decl->emit_decl(e);
+    for (auto decl : decls())
+        decl->emit_body(e);
 }
 
 void RecDecl::emit_decl(Emitter& e) const {

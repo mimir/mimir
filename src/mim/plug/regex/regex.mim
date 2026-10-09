@@ -77,14 +77,14 @@ axm neg_lookahead: RE → RE, 1;
 /// | `s`    | whitespace `[ \t\r\n]`         |
 /// | `S`    | No whitespace                  |
 ///
-pub mod cls {
+pub mod cls
     anx let d = range ('0', '9');
     anx let D = not_ d;
     anx let w = disj (range ('0', '9'), range ('a', 'z'), range ('A', 'Z'), lit '_');
     anx let W = not_ w;
     anx let s = disj (range ('\t', '\n'), lit '\r', lit ' ');
     anx let S = not_ s;
-}
+end
 ///
 /// ### any
 ///
