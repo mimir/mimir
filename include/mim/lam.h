@@ -178,7 +178,7 @@ public:
     ///@{
     static Lam* eta_expand(Filter, const Def* f);
     static Lam* eta_expand(const Def* f) { return eta_expand(true, f); } ///< Use `true` Filter.
-    const Def* eta_callee() const; ///< Yields `f` if given @p this is `λ x = f x` where `x` ∉ `FV(f)`.
+    const Def* eta_callee() const; ///< Yields `f` if `this` is `λ x = f x` where `x` ∉ `FV(f)`.
     /// Yields the callee of body(), if eta-convertible and `nullptr` otherwise.
     /// η-convertible means: `λ x = f x` where `x` ∉ `FV(f)`.
     /// A Lam on an η-cycle like `ping = λn.pong n; pong = λn.ping n` diverges and is not η-convertible.
