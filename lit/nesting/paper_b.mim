@@ -9,16 +9,17 @@ lam add (a: Nat) (b: Nat) = a + b;
 lam le (a: Nat) (b: Nat) = a <= b;
 
 extern fun f (n: Nat): Nat =
-    con hi (i: Nat) =
-        con bi () = hj i;
-        con xi () = return i;
-        (xi, bi)#(le i n) ()
-    and
-    con hj (j: Nat) =
-        let j_ = add j 1;
-        con bj () = hj j_;
-        con xj () = hi j_;
-        (xj, bj)#(le j n) ();
+    mutual
+        con hi (i: Nat) =
+            con bi () = hj i;
+            con xi () = return i;
+            (xi, bi)#(le i n) ();
+        con hj (j: Nat) =
+            let j_ = add j 1;
+            con bj () = hj j_;
+            con xj () = hi j_;
+            (xj, bj)#(le j n) ();
+    end
     hi 0;
 
 // Dominance of f's children: f dominates hi (entry), hi dominates hj

@@ -86,7 +86,6 @@ constexpr bool should_reduce(Prec curr, Prec op) { return is_rassoc(op) ? curr >
     m(K_Nat,    "Nat"   )             \
     m(K_Type,   "Type"  )             \
     m(K_Univ,   "Univ"  )             \
-    m(K_and,    "and"   )             \
     m(K_anx,    "anx"   )             \
     m(K_as,     "as"    )             \
     m(K_axm,    "axm"   )             \
@@ -108,6 +107,7 @@ constexpr bool should_reduce(Prec curr, Prec op) { return is_rassoc(op) ? curr >
     m(K_let,    "let"   )             \
     m(K_match,  "match" )             \
     m(K_mod,    "mod"   )             \
+    m(K_mutual, "mutual")             \
     m(K_norm,   "norm"  )             \
     m(K_plugin, "plugin")             \
     m(K_priv,   "priv"  )             \

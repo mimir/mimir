@@ -1,0 +1,20 @@
+// RUN: %mim %s -o -
+// RUN: %mim %s --output-ast - | %FileCheck %s
+plugin core;
+plugin refly;
+
+use core.ops.n;
+
+mod parity
+    pub mutual
+        lam even (n: Nat): Bool = (odd (n - 1), tt)#(n == 0);
+        priv lam odd (n: Nat): Bool = (even (n - 1), ff)#(n == 0);
+    end
+end
+
+let _ = refly.struc.e (parity.even 4, tt);
+
+// CHECK:      mutual
+// CHECK-NEXT:     pub lam even
+// CHECK:          lam odd
+// CHECK:      end

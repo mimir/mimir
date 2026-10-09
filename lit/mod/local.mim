@@ -7,7 +7,7 @@ use core.ops.u.w;
 
 extern lam f(): I32 =
     import "lib.mim";
-    mod m { pub let two = 2I32; }
+    mod m pub let two = 2I32; end
     use m;
     lib.answer + two;
 
@@ -16,10 +16,10 @@ extern lam g(): I32 = lib.answer + l.inner.deep where
     import "lib.mim" as l;
 end;
 
-mod outer {
+mod outer
     import "lib.mim";
     pub let x = lib.inner.deep;
-}
+end
 
 extern lam h(): I32 = outer.x;
 

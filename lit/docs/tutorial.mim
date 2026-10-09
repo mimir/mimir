@@ -96,9 +96,11 @@ let jagged = «i: 3, j: (1, 2, 3)#i; Nat»;
 let dyn = [n: Nat, «n; Nat»];   // a component mentions a name to its left: a *mutable* sigma
 /// `rec` puts the declared name in scope inside the body - the only way for a type to mention itself - and keeps the sigma mutable even where nothing depends on it.
 rec List = [head: I32, tail: mem.Ptr0 List];
-/// `and` extends the group, so two types may refer to each other.
-rec Tree   = [val: I32, kids: mem.Ptr0 Forest]
-and Forest = [car: mem.Ptr0 Tree, cdr: mem.Ptr0 Forest];
+/// A `mutual` block lets declarations refer to each other.
+mutual
+    rec Tree   = [val: I32, kids: mem.Ptr0 Forest];
+    rec Forest = [car: mem.Ptr0 Tree, cdr: mem.Ptr0 Forest];
+end
 /// Components carry field names, which beat lexical names of the same spelling - with a warning, as here.
 let tail = 1₂;
 lam by_field (l: List): mem.Ptr0 List = l#tail;
@@ -134,15 +136,17 @@ lam erased (f: Cn [x y: I32]): Cn [I32, I32] = f;
 /// An implicit domain is written `{...}`; `@` passes one explicitly.
 lam ident {T: *} (x: T): T = x;
 let _ = refly.struc.e (ident 23, ident @Nat 23);
-/// `and` extends a declaration group to mutual recursion, and `ret p = f $ a; body` binds the result of a continuation-style call.
-fun even (n: I32): Bool = core.select (n == 0I32, yes, no) () where
-    con yes() = return tt;
-    con no () = ret r = odd $ (n - 1I32); return r;
+/// `mutual` also groups functions, and `ret p = f $ a; body` binds the result of a continuation-style call.
+mutual
+    fun even (n: I32): Bool = core.select (n == 0I32, yes, no) () where
+        con yes() = return tt;
+        con no () = ret r = odd $ (n - 1I32); return r;
+    end;
+    fun odd (n: I32): Bool = core.select (n == 0I32, yes, no) () where
+        con yes() = return ff;
+        con no () = ret r = even $ (n - 1I32); return r;
+    end;
 end
-and fun odd (n: I32): Bool = core.select (n == 0I32, yes, no) () where
-    con yes() = return ff;
-    con no () = ret r = even $ (n - 1I32); return r;
-end;
 /// ## Unions
 lam inject (A B: *) (x: A): A ∪ B = x inj A ∪ B;
 lam elim (A B: *) (ab: A ∪ B): Nat =
@@ -196,12 +200,14 @@ let shift = (1I32 << 2I32, 8I32 >> 1I32);             // `core.ops.u.w`, in scop
 let surprise = 2 + 3 where let `+ = core.nat.mul; end;
 let _ = refly.struc.e (surprise, 6);
 /// ## Modules and Visibility
-pub mod geo {
+pub mod geo
     pub let dim = 3;
     priv let hidden = 0;                // no path from outside may reach this
 
-    pub mod deep { pub let leaf = 7; }
-}
+    pub mod deep
+        pub let leaf = 7;
+    end
+end
 
 use geo.deep as *;                      // splices `leaf` into this scope - a plain `use` is sugar for this …
 use geo.deep as dp;                     // … or binds another name for the module
@@ -215,11 +221,11 @@ axm Set: * → *;                                                 // an axiom
 axm set.(union = join, inter): {T: *} → [Set T, Set T] → Set T; // several at once, with an alias
 axm Curried: [Nat, Nat] → *, 1;                                 // … and a curry counter
 /// ## Rules
-mod rewrites {
+mod rewrites
     use core.ops.n;
     pub rule dbl (a: Nat): (a + a) => (a * 2);          // a rewrite rule, visible outside `rewrites`
     norm zro (a: Nat): (a * 0) when (a == a) => 0;      // its normalizing variant, `priv` by default
-}
+end
 /// @todo First-class rules are WIP and you can't really do anything useful with them yet.
 ///
 /// ## LLVM

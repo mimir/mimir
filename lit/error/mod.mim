@@ -1,14 +1,14 @@
 // RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
 
-mod foo {
+mod foo
     let bar = 42;
-}
+end
 
-mod outer {
-    pub mod inner {
+mod outer
+    pub mod inner
         pub let x = 42;
-    }
-}
+    end
+end
 
 let a = foo.nope;
 let b = a.bar;
@@ -17,7 +17,7 @@ extern lam f(): Nat = foo;
 let c = outer.inner.nope;
 let d = outer.inner.x.y;
 
-mod p { priv let hidden = 42; }
+mod p priv let hidden = 42; end
 use p as q;
 let e = q.hidden;
 

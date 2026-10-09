@@ -765,8 +765,8 @@ public:
             auto dot  = view.find('.');
             auto mod  = dot == std::string_view::npos ? std::string_view() : view.substr(0, dot);
             if (mod != curr_mod) {
-                if (!curr_mod.empty()) std::println(os_, "{}}}", --ctx_.tab);
-                if (!mod.empty()) std::println(os_, "{}mod {} {{", ctx_.tab, mod), ++ctx_.tab;
+                if (!curr_mod.empty()) std::println(os_, "{}end", --ctx_.tab);
+                if (!mod.empty()) std::println(os_, "{}mod {}", ctx_.tab, mod), ++ctx_.tab;
                 curr_mod = mod;
                 ctx_.mod = mod.empty() ? std::string() : std::string(mod) + ".";
             }
@@ -777,7 +777,7 @@ public:
             if (axm->trip() != trip) std::print(os_, ", {}", axm->trip());
             std::println(os_, ";");
         }
-        if (!curr_mod.empty()) std::println(os_, "{}}}", --ctx_.tab);
+        if (!curr_mod.empty()) std::println(os_, "{}end", --ctx_.tab);
         ctx_.mod.clear();
     }
 
@@ -924,16 +924,15 @@ private:
         if (!enter(mut) || done_.contains(mut)) return;
 
         auto group = sibling_group(mut);
-        if (!mark_and_group(group)) group = {mut};
         for (auto m : group)
             done_.emplace(m);
         for (auto m : group)
             schedule_body(m);
-        for (auto m : group)
-            order_.emplace_back(m, curr);
+        order_.emplace_back(group.front(), curr);
+        if (group.size() > 1) mutual_.emplace(group.front(), std::move(group));
     }
 
-    /// A block only sees what precedes it, so the mutually recursive siblings of @p mut print as one `and` group.
+    /// A block only sees what precedes it, so the mutually recursive siblings of @p mut print as one `mutual` group.
     fe::Vector<Def*> sibling_group(Def* mut) const {
         auto node = nest_ ? (*nest_)[mut] : nullptr;
         if (!node || !node->is_mutually_recursive()) return {mut};
@@ -942,19 +941,8 @@ private:
         auto group = fe::Vector<Def*>();
         for (auto member : node->scc())
             if (auto m = member->mut(); m == mut || !done_.contains(m)) group.emplace_back(m);
+        if (group.size() < 2 || !std::ranges::all_of(group, [this](Def* m) { return groupable(m); })) return {mut};
         return group;
-    }
-
-    /// Marks @p group as one `and` group, with an `extern` first, as only the group's head takes modifiers.
-    bool mark_and_group(fe::Vector<Def*>& group) {
-        if (group.size() < 2 || !std::ranges::all_of(group, [this](Def* m) { return groupable(m); })) return false;
-        auto rest = std::ranges::stable_partition(group, [](Def* m) { return m->is_external(); });
-        if (rest.begin() - group.begin() > 1) return false;
-        for (auto m : group | std::views::drop(1))
-            and_.emplace(m);
-        for (auto m : group | std::views::take(group.size() - 1))
-            and_more_.emplace(m);
-        return true;
     }
 
     bool groupable(Def* mut) const {
@@ -1055,15 +1043,27 @@ private:
         auto defs = key ? std::move(bucket_[key]) : std::move(top_);
         for (auto def : defs) {
             auto mut = isa_decl(def);
-            if (mut && and_.contains(mut))
-                std::println(os_, "{}and", ctx_.tab);
-            else
-                sep(mut ? Prev::Decl : Prev::Let);
-            if (mut)
-                emit_decl(mut);
-            else
+            sep(mut ? Prev::Decl : Prev::Let);
+            if (!mut)
                 emit_let(def);
+            else if (auto group = fe::lookup(mutual_, mut))
+                emit_mutual(*group);
+            else
+                emit_decl(mut);
         }
+    }
+
+    void emit_mutual(const fe::Vector<Def*>& group) {
+        std::println(os_, "{}mutual", ctx_.tab);
+        ++ctx_.tab;
+        {
+            auto _ = fe::Restore(prev_, Prev::None);
+            for (auto mut : group) {
+                sep(Prev::Decl);
+                emit_decl(mut);
+            }
+        }
+        std::println(os_, "{}end", --ctx_.tab);
     }
 
     /// A declaration spans several lines, so a blank line sets it apart from its neighbors within the same block.
@@ -1078,19 +1078,15 @@ private:
     }
 
     void emit_decl(Def* mut) {
-        // Only the last member ends an `and` group.
-        auto more = and_more_.contains(mut);
-        auto end  = more ? "" : ";";
-        if (auto lam = mut->isa_mut<Lam>()) return emit_lam(lam, end);
+        if (auto lam = mut->isa_mut<Lam>()) return emit_lam(lam);
         if (auto rule = mut->isa_mut<Rule>(); rule && rule->is_set()) return emit_rule(rule);
         if (!mut->is_set()) return emit_unset(mut);
         // `rec` binds the name for the body - which only a self-referential mutable needs; `extern` is out either way.
-        // An `and` continuation has no keyword of its own.
-        auto kw = and_.contains(mut) ? "" : more || is_recursive(mut) ? "rec " : "let ";
+        auto kw = is_recursive(mut) ? "rec " : "let ";
         // A `rec` only takes a bare variant.
         if (auto variant = mut->isa<Variant>())
-            return std::println(os_, "{}{}{} = {}{}", ctx_.tab, kw, id(&ctx_, mut), ctors(&ctx_, variant), end);
-        std::println(os_, "{}{}{} = {}{}", ctx_.tab, kw, id(&ctx_, mut), Full(&ctx_, mut), end);
+            return std::println(os_, "{}{}{} = {};", ctx_.tab, kw, id(&ctx_, mut), ctors(&ctx_, variant));
+        std::println(os_, "{}{}{} = {};", ctx_.tab, kw, id(&ctx_, mut), Full(&ctx_, mut));
     }
 
     void emit_rule(Rule* rule) {
@@ -1108,7 +1104,7 @@ private:
         std::println(os_, "{}// `{}: {}` is unset", ctx_.tab, id(&ctx_, mut), Op(&ctx_, mut->type()));
     }
 
-    void emit_lam(Lam* lam, std::string_view end) {
+    void emit_lam(Lam* lam) {
         auto chain = curry_chain(lam);
         auto last  = chain.back();
         auto fun   = isa_fun(&ctx_, last) && !shadows_ret(last);
@@ -1152,7 +1148,7 @@ private:
         auto _ = fe::Restore(prev_, Prev::None);
         emit(lam);
         sep(Prev::Let);
-        emit_tail(last->body(), end);
+        emit_tail(last->body(), ";");
         rets_.pop_back();
         --ctx_.tab;
     }
@@ -1206,8 +1202,7 @@ private:
     MutMap<DefVec> bucket_;
     MutMap<Def*> absorbed_; ///< Inner Lam of a curried chain -> the chain's outermost one.
     DefSet done_;
-    MutSet and_;      ///< Continues the `and` group of the mutable emitted right before.
-    MutSet and_more_; ///< Has an `and` continuation right after.
+    MutMap<fe::Vector<Def*>> mutual_; ///< First member of a `mutual` group -> the whole group.
     Ctx ctx_;
     Srcs srcs_;
     MutSet scheduled_;

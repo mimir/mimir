@@ -1,9 +1,9 @@
 // RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
 
 // A keyword is an ordinary name after a `.`, but `λ`/`⊥`/`⊤` have no `id` spelling.
-mod foo {
+mod foo
     let bar = 42;
-}
+end
 
 let a = foo.λ;
 

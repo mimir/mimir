@@ -160,7 +160,7 @@ private:
     /// If @p ctxt ...
     /// * ... empty: **Only** decls are parsed. @returns `nullptr`
     /// * ... **non**-empty: Decls are parsed, then an expression. @returns expression.
-    Ptrs<ValDecl> parse_decls();
+    Ptrs<ValDecl> parse_decls(Mods group = {});
 
     /// Parses any combination of `priv`/`pub`/`extern`/`anx` modifier tokens, in any order.
     /// Only rejects a modifier being repeated (`priv priv`, `extern extern`, ...);
@@ -184,8 +184,8 @@ private:
     Ptr<ValDecl> parse_use_decl(Tracker, Mods);
     Ptr<ValDecl> parse_rule_decl(Tracker, Mods);
     Ptr<LamDecl> parse_lam_decl(Tracker, Mods);
-    Ptr<RecDecl> parse_rec_decl(Tracker, bool first, Mods);
-    Ptr<RecDecl> parse_and_decl();
+    Ptr<RecDecl> parse_rec_decl(Tracker, Mods);
+    Ptr<ValDecl> parse_mutual_decl(Tracker, Mods);
     ///@}
 
     AST& ast_;

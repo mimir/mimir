@@ -205,7 +205,7 @@ void PiExpr::stream(fe::Tab& tab, std::ostream& os) const {
     if (codom()) std::print(os, " {} {}", Tag::T_arrow_r, S(tab, codom()));
 }
 
-void LamExpr::stream(fe::Tab& tab, std::ostream& os) const { lam()->stream_chain(tab, os); }
+void LamExpr::stream(fe::Tab& tab, std::ostream& os) const { lam()->stream_(tab, os); }
 
 void AppExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "{} {}", S(tab, callee()), S(tab, arg())); }
 
@@ -333,11 +333,11 @@ void ModDecl::stream(fe::Tab& tab, std::ostream& os) const {
         && axm_group_end(decls(), 0) == decls().size())
         return stream_axm_group(tab, os, decls(), 0, decls().size(), dbg());
 
-    std::println(os, "{}mod {} {{", mods(), dbg());
+    std::println(os, "{}mod {}", mods(), dbg());
     ++tab;
     stream_decls(tab, os, decls());
     --tab;
-    std::print(os, "{}}}", tab);
+    std::print(os, "{}end", tab);
 }
 
 void UseDecl::stream(fe::Tab& tab, std::ostream& os) const {
@@ -356,21 +356,22 @@ void LetDecl::stream(fe::Tab& tab, std::ostream& os) const {
 
 void RecDecl::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}", mods());
-    stream_chain(tab, os);
+    stream_(tab, os);
     os << ';';
 }
 
-void RecDecl::stream_chain(fe::Tab& tab, std::ostream& os) const {
-    if (!isa<LamDecl>()) os << "rec ";
-    stream_(tab, os);
-    for (auto curr = next(); curr; curr = curr->next()) {
-        std::println(os);
-        std::print(os, "{}and ", tab);
-        curr->stream_(tab, os);
-    }
-}
+void RecDecl::stream_(fe::Tab& tab, std::ostream& os) const { std::print(os, "rec {} = {}", dbg(), S(tab, body())); }
 
-void RecDecl::stream_(fe::Tab& tab, std::ostream& os) const { std::print(os, "{} = {}", dbg(), S(tab, body())); }
+void MutualDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    os << "mutual\n";
+    ++tab;
+    for (std::string_view sep{}; auto decl : decls()) {
+        std::println(os, "{}{}{}", sep, tab, S(tab, decl.get()));
+        sep = "\n";
+    }
+    --tab;
+    std::print(os, "{}end", tab);
+}
 
 void LamDecl::Dom::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}", S(tab, ptrn()));
