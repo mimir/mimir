@@ -35,6 +35,9 @@ Def* isa_decl(const Def* def) {
     return nullptr;
 }
 
+/// Does @p def print by name, bound by a declaration of its own - be it a decl or a `nom`?
+bool has_decl(const Def* def) { return isa_decl(def) || (def->isa<Nom>() && !is_anx_nom(def)); }
+
 /// What the running dump decided about the Def%s it emits; `nullptr` where a diagnostic formats a bare Def.
 struct Ctx {
     /// Names the dump binds itself: a `fun` calls its `ret` continuation `return`, whatever its Def::sym.
@@ -599,7 +602,7 @@ void full(std::ostream& os, Full d) {
         lam_ptrn(os, d.ctx(), lam, fun, con, true, true);
         lam_codom(os, d.ctx(), lam, fun, con);
         // Like any tail, the body is spelled out - there is no block here that could `let`-bind it.
-        if (isa_decl(lam->body())) return std::print(os, " = {}", d.op(lam->body()));
+        if (has_decl(lam->body())) return std::print(os, " = {}", d.op(lam->body()));
         return std::print(os, " = {}", Full(d.ctx(), lam->body()));
     } else if (auto app = d->isa<App>()) {
         if (auto size = Idx::isa(app)) {
@@ -1003,7 +1006,7 @@ private:
 
     /// Schedules what @p def needs; @p def itself, noted in @p inline_set, prints inline.
     void schedule_inline(const Def* def, Def* curr, DefSet& inline_set) {
-        if (!def || def->is_closed() || isa_decl(def)) return schedule_(def, curr);
+        if (!def || def->is_closed() || has_decl(def)) return schedule_(def, curr);
         if (!inline_set.emplace(def).second) return;
         note_vars(def);
         printed_deps(def, typed_let_, [&](const Def* op) { schedule_inline(op, curr, inline_set); });
@@ -1012,7 +1015,7 @@ private:
     /// A Lam's body is the tail of its block, so it is emitted there instead of as a `let` of its own.
     void schedule_tail(const Def* def, Def* curr) {
         if (def && def->isa<Var>()) ctx_.whole_vars.emplace(def);
-        if (!def || isa_decl(def)) return schedule_(def, curr);
+        if (!def || has_decl(def)) return schedule_(def, curr);
         if (!done_.emplace(def).second) return;
         note_vars(def);
         printed_deps(def, typed_let_, [&](const Def* op) { schedule_(op, curr); });
@@ -1075,9 +1078,17 @@ private:
     /// @name emit
     ///@{
     void emit(Def* key) {
-        auto defs = key ? std::move(bucket_[key]) : std::move(top_);
+        auto defs   = key ? std::move(bucket_[key]) : std::move(top_);
+        auto cycles = nom_cycles(defs);
         for (auto def : defs) {
             auto mut = isa_decl(def);
+            if (auto cycle = fe::lookup(cycles, def)) {
+                // Everything a cycle needs precedes its last member.
+                if (def != cycle->back()) continue;
+                sep(Prev::Decl);
+                emit_mutual(*cycle);
+                continue;
+            }
             sep(mut ? Prev::Decl : Prev::Let);
             if (!mut)
                 emit_let(def);
@@ -1088,14 +1099,64 @@ private:
         }
     }
 
-    void emit_mutual(const fe::Vector<Def*>& group) {
+    /// The Nom%s among @p defs on a cycle, each mapped to its whole cycle in the order of @p defs.
+    /// No immutable refers back to itself, so such a cycle runs through a recursive SCC.
+    DefMap<DefVec> nom_cycles(const DefVec& defs) const {
+        auto cycles = DefMap<DefVec>();
+        if (!nest_) return cycles;
+        for (auto def : defs) {
+            auto nom = def->isa<Nom>();
+            if (!nom || cycles.contains(nom)) continue;
+            for (auto mut : nom->local_muts()) {
+                auto node = (*nest_)[mut];
+                if (!node || node->is_root() || !node->is_recursive()) continue;
+                auto on_cycle = scc_noms(node->scc());
+                auto cycle    = DefVec();
+                for (auto d : defs)
+                    if (on_cycle.contains(d)) cycle.emplace_back(d);
+                if (cycle.size() > 1)
+                    for (auto member : cycle)
+                        cycles[member] = cycle;
+                break;
+            }
+        }
+        return cycles;
+    }
+
+    /// The Nom%s @p scc reaches that reach it back.
+    DefSet scc_noms(const Nest::Node::SCC& scc) const {
+        auto reaches_scc = [&](const Def* nom) {
+            return std::ranges::any_of(nom->local_muts(), [&](Def* mut) { return scc.contains((*nest_)[mut]); });
+        };
+        auto res  = DefSet();
+        auto todo = DefVec();
+        auto seen = DefSet();
+        for (auto node : scc)
+            for (auto dep : node->mut()->deps())
+                if (dep && seen.emplace(dep).second) todo.emplace_back(dep);
+        while (!todo.empty()) {
+            auto def = todo.back();
+            todo.pop_back();
+            if (def->isa_mut()) continue;
+            if (def->isa<Nom>() && reaches_scc(def)) res.emplace(def);
+            for (auto dep : def->deps())
+                if (dep && seen.emplace(dep).second) todo.emplace_back(dep);
+        }
+        return res;
+    }
+
+    void emit_mutual(const auto& group) {
         std::println(os_, "{}mutual", ctx_.tab);
         ++ctx_.tab;
         {
             auto _ = fe::Restore(prev_, Prev::None);
-            for (auto mut : group) {
-                sep(Prev::Decl);
-                emit_decl(mut);
+            for (auto def : group) {
+                auto mut = isa_decl(def);
+                sep(mut ? Prev::Decl : Prev::Let);
+                if (mut)
+                    emit_decl(mut);
+                else
+                    emit_let(def);
             }
         }
         std::println(os_, "{}end", --ctx_.tab);
@@ -1112,7 +1173,7 @@ private:
             // Only a bare variant may refer back to the `nom`.
             if (auto variant = nom->op()->isa<Variant>())
                 return std::println(os_, "{}nom {} = {};", ctx_.tab, name(&ctx_, nom), ctors(&ctx_, variant));
-            return std::println(os_, "{}nom {} = {};", ctx_.tab, name(&ctx_, nom), Full(&ctx_, nom->op()));
+            return std::println(os_, "{}nom {} = {};", ctx_.tab, name(&ctx_, nom), Op(&ctx_, nom->op()));
         }
         auto type = typed_let_ ? std::format(": {}", Op(&ctx_, def->type())) : std::string();
         std::println(os_, "{}let {}{} = {};", ctx_.tab, name(&ctx_, def), type, Full(&ctx_, def));
@@ -1215,7 +1276,7 @@ private:
 
     /// Tail position: what a block ends with is spelled out - it has no `let` of its own.
     void emit_tail(const Def* def, std::string_view end) {
-        if (isa_decl(def))
+        if (has_decl(def))
             std::println(os_, "{}{}{}", ctx_.tab, Op(&ctx_, def), end);
         else
             std::println(os_, "{}{}{}", ctx_.tab, Full(&ctx_, def), end);

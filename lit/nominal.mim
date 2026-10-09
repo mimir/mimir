@@ -57,6 +57,18 @@ extern lam seq (): Nat =
 
 extern lam unbox (x: Box Nat): Bool = ((#x)#inner)#b;
 
+// Within `mutual`, a `nom` without a mutable body may be referred to ahead of it.
+mutual
+    nom Tree   = [Nat, Forest];
+    nom Forest = Tree;
+end
+
+extern lam forest (f: Forest): Forest = f;
+
+extern lam vec (n: Nat): * =
+    nom Vec = «n; Nat»;
+    Vec;
+
 // CHECK-DAG: anx nom Kelvin = I32;
 // CHECK-DAG: nom Meter = I32;
 // CHECK-DAG: nom Foot = I32;
@@ -71,3 +83,8 @@ extern lam unbox (x: Box Nat): Bool = ((#x)#inner)#b;
 // CHECK-DAG: extern lam get (o: O, p: P){{.*}}: I32 =
 // CHECK-DAG: extern lam seq (): Nat =
 // CHECK-DAG: extern lam unbox ({{.*}}: B): Bool =
+// CHECK-DAG: mutual
+// CHECK-DAG:     nom Tree = [Nat, Forest];
+// CHECK-DAG:     nom Forest = Tree;
+// CHECK-DAG: extern lam vec ({{.*}}: Nat): * =
+// CHECK-DAG:     nom Vec = «{{.*}}; Nat»;

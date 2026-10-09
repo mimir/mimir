@@ -323,11 +323,13 @@ const Def* HoleExpr::emit_(Emitter& e) const { return e.world().mut_hole_type();
 const Def* PathExpr::emit_(Emitter& e) const {
     assert(decl());
     if (auto def = decl()->def()) return def;
-    if (decl()->isa<NomDecl>())
+    if (auto nom = decl()->isa<NomDecl>()) {
+        if (auto def = nom->emit_ahead(e)) return def;
         e.error()
-            .e(loc(), "nominal type `{}` is not declared yet", dbg().sym())
-            .n("a `nom` can only be referred to ahead of its body if that is a sigma, a variant, or a function type")
+            .e(loc(), "nominal type `{}` refers to itself", dbg().sym())
+            .n("a `nom` can only refer to itself through a sigma, a variant, or a function type")
             .bail();
+    }
     e.error().e(loc(), "`{}` is a module and not a value", dbg().sym()).bail();
 }
 
@@ -911,11 +913,19 @@ void NomDecl::emit_decl(Emitter& e) const {
 
 void NomDecl::emit_body(Emitter& e) const {
     auto _ = e.world().push(loc());
-    if (def_)
+    if (has_mut_body()) {
         body()->emit_body(e, def_->as<Nom>()->op());
-    else
+    } else {
+        if (def_) return; // see emit_ahead
+        emitting_ = true;
         emit_nom(e, body()->emit(e));
+    }
     e.attach(annex_, sub_, dbg().sym(), def_);
+}
+
+const Def* NomDecl::emit_ahead(Emitter& e) const {
+    if (!has_mut_body() && !emitting_) emit_body(e);
+    return def_;
 }
 
 void NomDecl::emit_nom(Emitter& e, const Def* body) const {

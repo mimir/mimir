@@ -1147,10 +1147,14 @@ public:
 
     void emit_decl(Emitter&) const override;
     void emit_body(Emitter&) const override;
+    /// Emits a `nom` without a mutable body as soon as a sibling refers to it; `nullptr` on a cycle.
+    const Def* emit_ahead(Emitter&) const;
     void stream_(fe::Tab&, std::ostream&) const override;
 
 private:
     void emit_nom(Emitter&, const Def* body) const;
+
+    mutable bool emitting_ = false;
 };
 
 /// `tag dbg dom_0 ... dom_n-1: codom = body;` with LamDecl::tag `lam`/`con`/`fun` or anonymous `λ`/`cn`/`fn`.
