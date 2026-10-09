@@ -296,6 +296,38 @@ TEST_CASE("Checker: alpha") {
     }
 }
 
+TEST_CASE("Lam: eta_reduce stops at an η-cycle") {
+    Driver driver;
+    World& w = driver.world();
+    auto pi  = w.pi(w.type_nat(), w.type_nat());
+
+    // a → b → c → b
+    auto a = w.mut_lam(pi);
+    auto b = w.mut_lam(pi);
+    auto c = w.mut_lam(pi);
+    a->set(false, w.app(b, a->var()));
+    b->set(false, w.app(c, b->var()));
+    c->set(false, w.app(b, c->var()));
+    CHECK(a->eta_reduce() == b);
+    CHECK(b->eta_reduce() == nullptr);
+    CHECK(c->eta_reduce() == nullptr);
+
+    auto s = w.mut_lam(pi);
+    s->set(false, w.app(s, s->var()));
+    CHECK(s->eta_reduce() == nullptr);
+
+    // l[0] → l[1] → l[2] → l[3] → l[4] → l[5] → l[2]: an even cycle the hare must not skip over
+    auto l = std::array<Lam*, 6>{};
+    for (auto& lam : l)
+        lam = w.mut_lam(pi);
+    for (size_t i = 0; i != l.size(); ++i)
+        l[i]->set(false, w.app(l[i + 1 == l.size() ? 2 : i + 1], l[i]->var()));
+    CHECK(l[0]->eta_reduce() == l[1]);
+    CHECK(l[1]->eta_reduce() == l[2]);
+    for (size_t i = 2; i != l.size(); ++i)
+        CHECK(l[i]->eta_reduce() == nullptr);
+}
+
 TEST_CASE("free vars") {
     Driver driver;
     World& w = driver.world();
