@@ -40,19 +40,17 @@ const Def* EtaConv::rewrite(const Def* old_def) {
     if (auto lam = old_def->isa<Lam>()) {
         if (auto f = lam->eta_reduce()) {
             // η-redex `λx.f x`: reduce unless `f` wants to stay expanded.
-            if (!keep_wrapper(f)) {
+            if (!expand(f)) {
                 profile_count("η-reduction");
                 log().d("eta-reduce {} → {}", lam, f);
                 invalidate();
                 return rewrite(f);
             }
-            // Keep it - but as a *fresh* expansion wrapper (with the `tt` filter EtaExp uses), so that a
-            // pre-existing wrapper's stale filter does not leak downstream and every occurrence gets its own.
-            // Unless it already is exactly that: re-creating it would churn out a new identity on every run.
+            // Keep it, but every occurrence gets its own wrapper.
             auto new_f = rewrite_no_eta(f);
-            if (new_f == f && is_canonical_wrapper(lam)) return lam;
+            if (new_f == f && is_exclusive_wrapper(lam)) return lam;
             return Lam::eta_expand(new_f);
-        } else if (eta_expand(lam)) {
+        } else if (expand(lam)) {
             // bare Lam used in an unknown position more than once or in both positions: η-expand.
             profile_count("η-expansion");
             auto eta = Lam::eta_expand(rewrite_no_eta(lam));
@@ -67,7 +65,7 @@ const Def* EtaConv::rewrite(const Def* old_def) {
 
 const Def* EtaConv::rewrite_no_exp(const Def* old_def) {
     if (auto lam = old_def->isa<Lam>())
-        if (auto f = lam->eta_reduce(); f && !keep_wrapper(f)) {
+        if (auto f = lam->eta_reduce(); f && !expand(f)) {
             log().d("eta-reduce {} → {}", lam, f);
             invalidate();
             return rewrite_no_exp(f);

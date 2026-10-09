@@ -1,0 +1,17 @@
+// RUN: %mim -p opt %s -o -
+plugin core;
+
+mutual
+    extern lam ping (n: Nat): Nat = pong n;
+    extern lam pong (n: Nat): Nat = ping n;
+end
+
+lam loop (): Nat = loop ();
+extern lam enter (): Nat = loop ();
+
+extern fun nested (b: Bool, x: Nat): Nat =
+    con l1 () = return 1;
+    con l2 () = return 2;
+    con l3 () = return 3;
+    con l4 () = return x;
+    ((l1, l2), (l3, l4))#b#b ();

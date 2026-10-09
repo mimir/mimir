@@ -180,6 +180,7 @@ public:
     static Lam* eta_expand(const Def* f) { return eta_expand(true, f); } ///< Use `true` Filter.
     /// Yields the callee of body(), if eta-convertible and `nullptr` otherwise.
     /// η-convertible means: `lm x = f x` where `x` ∉ `f`.
+    /// A Lam on an η-cycle like `ping = λn.pong n; pong = λn.ping n` diverges and is not η-convertible.
     const Def* eta_reduce() const;
     ///@}
 

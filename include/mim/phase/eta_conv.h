@@ -1,7 +1,5 @@
 #pragma once
 
-#include <fe/assert.h>
-
 #include "mim/phase.h"
 
 #include "mim/util/gid.h"
@@ -10,7 +8,7 @@ namespace mim {
 
 /// Combined η-normalization: folds η-reduction and η-expansion into a single, idempotent phase.
 /// A Lam should appear either **only** in callee position (Known) or not (Unknown).
-/// A Lam that occurs in an unknown position more than once (Unknown_N) or in both positions (Both) is η-expanded
+/// A Lam that occurs in an unknown position more than once (Unknown_N) or in both positions is η-expanded
 /// (`g f -> g (λx.f x)`); a genuine η-redex `λx.f x` whose `f` does **not** want to be expanded is η-reduced.
 ///
 /// The analysis is **wrapper-transparent**: a use of a wrapper `λx.f x` is counted as a use of `f` at the same
@@ -26,52 +24,39 @@ public:
         : InplaceRWPhase(world, annex) {}
 
 private:
+    /// Known and Unknown_* are independent bits; both set means "both positions".
     enum Lattice : u8 {
         None      = 0,
-        Known     = 1,
-        Unknown_1 = 2,
-        Unknown_N = 3,
-        Both      = 4,
+        Known     = 1 << 0,
+        Unknown_1 = 1 << 1,
+        Unknown_N = Unknown_1 | 1 << 2,
     };
 
-    static Lattice join(Lattice l1, Lattice l2) {
-        if (l1 == Unknown_1 && l2 == Unknown_1) return Unknown_N;
-        if (l1 == l2) return l1;
-        if (l1 == None) return l2;
-        if (l2 == None) return l1;
-        if (l1 == Both || l2 == Both) return Both;
-        if (l1 == Known && (l2 == Unknown_1 || l2 == Unknown_N)) return Both;
-        if (l2 == Known && (l1 == Unknown_1 || l1 == Unknown_N)) return Both;
-        if (l1 == Unknown_1 && l2 == Unknown_N) return Unknown_N;
-        if (l2 == Unknown_1 && l1 == Unknown_N) return Unknown_N;
-        std::unreachable();
-    }
+    /// Two Unknown_1 uses saturate to Unknown_N.
+    static Lattice join(Lattice a, Lattice b) { return Lattice(a | b | (a & b & Unknown_1) << 1); }
 
     Lattice lattice(const Lam* lam) {
-        if (auto i = lam2lattice_.find(lam); i != lam2lattice_.end()) return i->second;
-        return None;
+        auto l = fe::lookup(lam2lattice_, lam);
+        return l ? *l : None;
     }
 
-    static bool eta_expand(Lattice l) { return l != Known && l != Unknown_1 && l != None; }
-    bool eta_expand(const Lam* lam) { return eta_expand(lattice(lam)); }
-
-    /// Should a wrapper `λx.f x` be kept (because `f` wants to be expanded) instead of reduced?
-    bool keep_wrapper(const Def* f) {
-        auto lam = f->isa<Lam>();
-        return lam && eta_expand(lattice(lam));
+    /// Does @p def want to be η-expanded - and hence keep any wrapper `λx.def x` instead of reducing it?
+    bool expand(const Def* def) {
+        auto lam = def->isa<Lam>();
+        return lam && lattice(lam) > Unknown_1;
     }
 
-    /// Is @p lam a wrapper that is already in the shape a fresh Lam::eta_expand would produce here?
-    /// That means: it belongs to this one occurrence alone and carries the canonical `tt` filter.
+    /// Does the wrapper @p lam serve this one occurrence alone?
     /// Only then may we keep it - re-creating it would hand out a fresh identity on every run, so this phase would
     /// never reach a fixed point in place.
-    bool is_canonical_wrapper(const Lam* lam) const {
-        auto i = wrapper_uses_.find(lam);
-        return i != wrapper_uses_.end() && i->second == 1 && lam->filter() == lam->world().lit_tt();
+    bool is_exclusive_wrapper(const Lam* lam) const {
+        auto n = fe::lookup(wrapper_uses_, lam);
+        return n && *n == 1;
     }
 
     void join(const Lam* lam, Lattice l) {
-        if (auto [i, ins] = lam2lattice_.emplace(lam, l); !ins) i->second = join(i->second, l);
+        auto& x = lam2lattice_[lam];
+        x       = join(x, l);
     }
 
     bool analyze() final;
