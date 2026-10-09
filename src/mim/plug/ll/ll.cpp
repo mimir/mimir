@@ -211,8 +211,8 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
                     auto val_t        = convert(elem);
 
                     type = std::format("<{} x {}>", size, val_t);
-                    bool all_const =
-                        std::ranges::all_of(values, [](const std::string& v) { return !v.starts_with('%'); });
+                    bool all_const
+                        = std::ranges::all_of(values, [](const std::string& v) { return !v.starts_with('%'); });
                     if (all_const) {
                         for (auto val : values) {
                             if (prev.empty())
@@ -237,7 +237,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
                         if (auto mem = Axm::isa<mem::M>(types[i])) continue;
                         auto v_elem = values[i];
                         auto t_elem = convert(types[i]);
-                        auto namei = id(lam, true) + ".ret_val." + std::to_string(i);
+                        auto namei  = id(lam, true) + ".ret_val." + std::to_string(i);
                         bb.tail("{} = insertvalue {} {}, {} {}, {}", namei, type, prev, t_elem, v_elem, i);
                         prev = namei;
                     }
@@ -440,7 +440,7 @@ std::string Emitter::emit_lit(const Def* def) {
         }
         def->blame(MIM_LL_BE "cannot emit a literal of type `{}`", def->type()).bail();
     }
-    fe::unreachable();
+    std::unreachable();
 }
 
 std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name, const Def* def) {

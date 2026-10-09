@@ -135,7 +135,7 @@ void LitExpr::stream(fe::Tab& tab, std::ostream& os) const {
         case Tag::L_str: std::print(os, "\"{}\"", Lexer::escape(tok().sym().view())); break;
         case Tag::T_bot:
         case Tag::T_top: os << tag(); break;
-        default: fe::unreachable();
+        default: std::unreachable();
     }
     if (type()) std::print(os, ":{}", S(tab, type()));
 }
@@ -234,7 +234,7 @@ static std::string_view vis2str(Vis vis) {
         case Vis::Priv: return "priv";
         case Vis::Pub: return "pub";
     }
-    fe::unreachable();
+    std::unreachable();
 }
 
 /// Prints `vis`/`extern`/`anx`, skipping `vis` if it's the modifier-nudged Mods::default_vis.

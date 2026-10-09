@@ -248,7 +248,7 @@ const Def* Def::var_type() {
         case MutNode::Hole:
         case MutNode::Variant: return nullptr;
     }
-    fe::unreachable();
+    std::unreachable();
 }
 // clang-format on
 
@@ -584,7 +584,7 @@ const Def* Def::immutabilize() {
             return nullptr;
         }
     }
-    fe::unreachable();
+    std::unreachable();
 }
 
 size_t Def::reduction_offset() const noexcept {
@@ -600,7 +600,7 @@ size_t Def::reduction_offset() const noexcept {
         case MutNode::Hole:
         case MutNode::Variant: return size_t(-1);
     }
-    fe::unreachable();
+    std::unreachable();
 }
 
 const Def* Def::arity() const {

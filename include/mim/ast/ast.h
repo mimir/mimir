@@ -226,8 +226,8 @@ public:
 
 private:
     virtual const Def* emit_(Emitter&) const = 0;
-    virtual const Def* emit_decl_(Emitter&, const Def* /*type*/) const { fe::unreachable(); }
-    virtual void emit_body_(Emitter&, const Def* /*decl*/) const { fe::unreachable(); }
+    virtual const Def* emit_decl_(Emitter&, const Def* /*type*/) const { std::unreachable(); }
+    virtual void emit_body_(Emitter&, const Def* /*decl*/) const { std::unreachable(); }
 };
 
 /// Base class of all declarations; caches the emitted Decl::def.

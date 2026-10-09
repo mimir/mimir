@@ -124,7 +124,7 @@ std::optional<u64> fold_unary_lit(u64 a) {
         else if constexpr (id == tri::asinh) return fold_float_unary_bits<w>(a, [](auto x) { return std::asinh(x); });
         else if constexpr (id == tri::acosh) return fold_float_unary_bits<w>(a, [](auto x) { return std::acosh(x); });
         else if constexpr (id == tri::atanh) return fold_float_unary_bits<w>(a, [](auto x) { return std::atanh(x); });
-        else fe::unreachable();
+        else std::unreachable();
     } else if constexpr (std::is_same_v<Id, rt>) {
         if constexpr (false) {}
         else if constexpr (id == rt::sq) return fold_float_unary_bits<w>(a, [](auto x) { return std::sqrt(x); });
@@ -138,7 +138,7 @@ std::optional<u64> fold_unary_lit(u64 a) {
         else if constexpr (id == exp::log)   return fold_float_unary_bits<w>(a, [](auto x) { return std::log(x); });
         else if constexpr (id == exp::log2)  return fold_float_unary_bits<w>(a, [](auto x) { return std::log2(x); });
         else if constexpr (id == exp::log10) return fold_float_unary_bits<w>(a, [](auto x) { return std::log10(x); });
-        else fe::unreachable();
+        else std::unreachable();
     } else if constexpr (std::is_same_v<Id, er>) {
         if constexpr (false) {}
         else if constexpr (id == er::f ) return fold_float_unary_bits<w>(a, [](auto x) { return std::erf (x); });
@@ -386,7 +386,7 @@ const Def* normalize_arith(const Def* type, const Def* c, const Def* arg) {
                     case arith::sub: return a;  // a - 0 -> a
                     case arith::div: break;
                     case arith::rem: break;
-                    default: fe::unreachable();
+                    default: std::unreachable();
                     // add, mul are commutative, the literal has been normalized to the left
                 }
             }

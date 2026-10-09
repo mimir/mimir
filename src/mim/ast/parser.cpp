@@ -408,7 +408,7 @@ static Tok negate(Tok tok) {
             auto [mod, val] = tok.lit_i();
             return {tok.loc(), mod, mod == 0 ? -val : (mod - val % mod) % mod};
         }
-        default: fe::unreachable();
+        default: std::unreachable();
     }
 }
 
@@ -833,7 +833,7 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
         case Tag::K_lam: decl = true ; entity = "function declaration";               break;
         case Tag::K_con: decl = true ; entity = "continuation declaration";           break;
         case Tag::K_fun: decl = true ; entity = "returning continuation declaration"; break;
-        default: fe::unreachable();
+        default: std::unreachable();
     }
     // clang-format on
 

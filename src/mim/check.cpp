@@ -527,7 +527,7 @@ const Def* Def::check() {
         case MutNode::Global:
         case MutNode::Hole: return type();
     }
-    fe::unreachable();
+    std::unreachable();
 }
 
 } // namespace mim

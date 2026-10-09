@@ -44,7 +44,7 @@ private:
         if (l2 == Known && (l1 == Unknown_1 || l1 == Unknown_N)) return Both;
         if (l1 == Unknown_1 && l2 == Unknown_N) return Unknown_N;
         if (l2 == Unknown_1 && l1 == Unknown_N) return Unknown_N;
-        fe::unreachable();
+        std::unreachable();
     }
 
     Lattice lattice(const Lam* lam) {

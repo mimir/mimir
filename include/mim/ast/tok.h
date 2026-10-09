@@ -62,7 +62,7 @@ constexpr Assoc prec_assoc(Prec p) {
         MIM_PREC(CODE)
 #undef CODE
     }
-    fe::unreachable();
+    std::unreachable();
 }
 
 constexpr bool is_rassoc(Prec p) { return prec_assoc(p) == Assoc::R; }

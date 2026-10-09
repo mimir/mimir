@@ -258,7 +258,7 @@ public:
             case Assoc::L: return !is_left();
             case Assoc::N: return false;
         }
-        fe::unreachable();
+        std::unreachable();
     }
 
     friend std::ostream& operator<<(std::ostream&, Full);
