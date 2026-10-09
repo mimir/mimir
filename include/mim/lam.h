@@ -139,7 +139,7 @@ public:
         auto n = num_vars(); // compute the arity once and hand it to the (a, i) projection
         return var(n, n - 1);
     }
-    /// Yields the `y` of `lm (x, ret) = ret y` - the argument @p d's body hands to its Lam::ret_var.
+    /// Yields the `y` of `λ (x, ret) = ret y` - the argument @p d's body hands to its Lam::ret_var.
     /// `nullptr` if @p d is not a set, mutable Lam with such a body.
     static const Def* isa_ret_arg(const Def* d);
     ///@}
@@ -178,8 +178,9 @@ public:
     ///@{
     static Lam* eta_expand(Filter, const Def* f);
     static Lam* eta_expand(const Def* f) { return eta_expand(true, f); } ///< Use `true` Filter.
+    const Def* eta_callee() const; ///< Yields `f` if given @p lam is `λ x = f x` where `x` ∉ `FV(f)`.
     /// Yields the callee of body(), if eta-convertible and `nullptr` otherwise.
-    /// η-convertible means: `lm x = f x` where `x` ∉ `f`.
+    /// η-convertible means: `λ x = f x` where `x` ∉ `FV(f)`.
     /// A Lam on an η-cycle like `ping = λn.pong n; pong = λn.ping n` diverges and is not η-convertible.
     const Def* eta_reduce() const;
     ///@}

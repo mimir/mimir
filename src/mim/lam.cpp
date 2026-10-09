@@ -46,10 +46,10 @@ const Def* Lam::isa_ret_arg(const Def* d) {
     return app && app->callee() == lam->ret_var() ? app->arg() : nullptr;
 }
 
-static const Def* eta_callee(const Lam* lam) {
-    if (!lam->is_set()) return nullptr;
-    if (auto var = lam->has_var()) {
-        if (auto app = lam->body()->isa<App>())
+const Def* Lam::eta_callee() const {
+    if (!is_set()) return nullptr;
+    if (auto var = has_var()) {
+        if (auto app = body()->isa<App>())
             if (app->arg() == var && !app->callee()->has_free_var(var)) return app->callee();
     }
     return nullptr;
@@ -57,11 +57,11 @@ static const Def* eta_callee(const Lam* lam) {
 
 static const Def* eta_next(const Def* def) {
     auto lam = def->isa<Lam>();
-    return lam ? eta_callee(lam) : nullptr;
+    return lam ? lam->eta_callee() : nullptr;
 }
 
 const Def* Lam::eta_reduce() const {
-    auto f = eta_callee(this);
+    auto f = this->eta_callee();
     // Floyd: the hare checks each Lam it passes, so it meets `this` before the tortoise iff `this` is on the cycle.
     for (auto slow = f, fast = f; fast;) {
         for (int i = 0; i != 2; ++i) {
