@@ -660,7 +660,7 @@ Ptrs<ValDecl> Parser::parse_decls(Mods group) {
         auto mods  = own.inherit(group);
         switch (ahead().tag()) {
             case Tag::T_semicolon: lex(); break; // eat up stray semicolons
-            case Tag::K_axm: parse_axm_decl(track, mods, decls); break;
+            case Tag::K_axm: decls.emplace_back(parse_axm_decl(track, mods)); break;
             case Tag::K_let: decls.emplace_back(parse_let_decl(track, mods)); break;
             case Tag::K_mod: decls.emplace_back(parse_mod_decl(track, mods)); break;
             case Tag::K_use: decls.emplace_back(parse_use_decl(track, mods)); break;
@@ -701,56 +701,42 @@ std::tuple<Ptr<Expr>, Dbg, Tok, Tok> Parser::parse_axm_tail() {
     return {type, normalizer, curry, trip};
 }
 
-void Parser::parse_axm_decl(Tracker track, Mods mods, Ptrs<ValDecl>& decls) {
+Ptr<ValDecl> Parser::parse_axm_decl(Tracker track, Mods mods) {
     eat(Tag::K_axm);
 
     if (mods.is_extern) error().e(curr_, "`axm` is implicitly `anx`; cannot combine with `extern`");
     auto vis = mods.vis.value_or(Vis::Pub); // axm is always anx, so it always gets the pub nudge
 
+    Dbg mod;
+    Ptrs<AxmDecl::Name> names;
+    bool is_family = true;
     if (ahead().isa(Tag::D_paren_l)) {
-        for (auto decl : parse_axm_group(vis))
-            decls.emplace_back(decl);
-        return;
-    }
-
-    auto dbg = parse_id("name of an axm");
-    if (accept(Tag::T_dot)) {
-        auto group = parse_axm_group(vis);
-        decls.emplace_back(ptr<ModDecl>(track, Vis::Pub, dbg, ast().scope(), ast().copy(group)));
-        return;
+        names = parse_axm_names(vis);
+    } else {
+        auto dbg = parse_id("name of an axm");
+        if (accept(Tag::T_dot)) {
+            mod   = dbg;
+            names = parse_axm_names(vis);
+        } else {
+            is_family = false;
+            names.emplace_back(ptr<AxmDecl::Name>(dbg.loc(), vis, Dbgs{dbg}));
+        }
     }
 
     auto [type, normalizer, curry, trip] = parse_axm_tail();
-    decls.emplace_back(ptr<AxmDecl>(track, vis, dbg, type, normalizer, curry, trip));
+    auto members                         = mod ? &ast().scope() : nullptr;
+    return ptr<AxmDecl>(track, vis, mod, members, is_family, type, normalizer, curry, trip, names);
 }
 
-Ptrs<ValDecl> Parser::parse_axm_group(Vis vis) {
-    fe::Vector<Dbgs> members;
+Ptrs<AxmDecl::Name> Parser::parse_axm_names(Vis vis) {
+    Ptrs<AxmDecl::Name> names;
     parse_list("tag list of an axm", Tag::D_paren_l, [&]() {
-        Dbgs names;
-        names.emplace_back(parse_id("tag of an axm"));
+        Dbgs dbgs{parse_id("tag of an axm")};
         while (accept(Tag::T_assign))
-            names.emplace_back(parse_id("alias of an axm tag"));
-        members.emplace_back(std::move(names));
+            dbgs.emplace_back(parse_id("alias of an axm tag"));
+        names.emplace_back(ptr<AxmDecl::Name>(dbgs.front().loc() + dbgs.back().loc(), vis, dbgs));
     });
-
-    auto [type, normalizer, curry, trip] = parse_axm_tail();
-
-    Ptrs<ValDecl> decls;
-    const AxmDecl* owner = nullptr;
-    for (auto& names : members) {
-        auto primary = names.front();
-        if (!owner) {
-            auto axm = ptr<AxmDecl>(primary.loc(), vis, primary, type, normalizer, curry, trip);
-            owner    = axm.get();
-            decls.emplace_back(axm);
-        } else {
-            decls.emplace_back(ptr<AxmDecl::Sibling>(primary.loc(), vis, primary, owner));
-        }
-        for (auto alias : names | std::views::drop(1))
-            decls.emplace_back(ptr<AliasDecl>(alias.loc(), Vis::Pub, alias, path(primary)));
-    }
-    return decls;
+    return names;
 }
 
 Ptr<ValDecl> Parser::parse_alias_decl(Tracker track, Mods mods) {

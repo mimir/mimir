@@ -370,38 +370,62 @@ AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id) {
     return annex;
 }
 
+/// Registers @p alias as a further name of the annex slot @p target introduced.
+static void add_alias(AnnexInfo* annex, sub_t sub, Sym target, Sym alias) {
+    // An ungrouped target (the common case) never allocated its own sub-group; seed one now,
+    // named after the target itself, so this alias has a slot to share.
+    if (sub >= annex->subs.size()) {
+        assert(sub == annex->subs.size());
+        annex->subs.emplace_back(fe::Vector<Sym>{target});
+    }
+    annex->subs[sub].emplace_back(alias);
+}
+
 void AxmDecl::bind(Scopes& s) const {
     type()->bind(s);
+    auto pi = type()->isa<PiExpr>() || InfixExpr::isa_op(Tag::T_arrow_r, type());
 
-    annex_ = s.ast().name2annex(s, dbg(), &sub_);
+    if (members_) {
+        s.push(*members_);
+        s.push_mod(mod_.sym());
+    }
 
-    if (annex_ && annex_->fresh) {
-        annex_->normalizer = normalizer();
-        annex_->pi         = type()->isa<PiExpr>() || InfixExpr::isa_op(Tag::T_arrow_r, type());
-    } else if (annex_) {
-        auto pi = type()->isa<PiExpr>() || InfixExpr::isa_op(Tag::T_arrow_r, type());
-        if (pi ^ *annex_->pi)
-            s.error().e(dbg().loc(),
-                        "all declarations of annex `{}` must be function types if one of them is (they share one "
-                        "annex tag - via mod-nesting or a `tag.(...)` family - and must agree in shape)",
-                        dbg().sym());
+    for (auto name : names()) {
+        auto& annex = name->annex_ = s.ast().name2annex(s, name->dbg(), &name->sub_);
 
-        if (annex_->normalizer.sym() != normalizer().sym()) {
-            auto l    = normalizer().loc() ? normalizer().loc() : loc().anew_end();
-            auto& err = s.error().e(l, "normalizer mismatch for axm `{}`", dbg());
-            if (auto norm = annex_->normalizer)
-                err.n(norm.loc(), "previous normalizer `{}` declared here", norm);
-            else
-                err.n("initially no normalizer was specified");
+        if (annex && annex->fresh) {
+            annex->normalizer = normalizer();
+            annex->pi         = pi;
+        } else if (annex) {
+            if (pi ^ *annex->pi)
+                s.error().e(name->dbg().loc(),
+                            "all declarations of annex `{}` must be function types if one of them is (they share one "
+                            "annex tag - via mod-nesting or a `tag.(...)` family - and must agree in shape)",
+                            name->dbg().sym());
+
+            if (annex->normalizer.sym() != normalizer().sym()) {
+                auto l    = normalizer().loc() ? normalizer().loc() : loc().anew_end();
+                auto& err = s.error().e(l, "normalizer mismatch for axm `{}`", name->dbg());
+                if (auto norm = annex->normalizer)
+                    err.n(norm.loc(), "previous normalizer `{}` declared here", norm);
+                else
+                    err.n("initially no normalizer was specified");
+            }
+        }
+
+        s.bind(name->dbg(), name.get());
+        for (auto alias : name->aliases()) {
+            s.bind(alias, name.get());
+            if (annex) add_alias(annex, name->sub_, name->dbg().sym(), alias.sym());
         }
     }
 
-    s.bind(dbg(), this);
-}
-
-void AxmDecl::Sibling::bind(Scopes& s) const {
-    annex_ = s.ast().name2annex(s, dbg(), &sub_);
-    s.bind(dbg(), this);
+    if (members_) {
+        s.pop_mod();
+        s.pop();
+        // The family is reachable as a module whatever the visibility of its axioms.
+        s.bind(mod_, this, Vis::Pub);
+    }
 }
 
 void AliasDecl::bind(Scopes& s) const {
@@ -423,13 +447,7 @@ void AliasDecl::bind(Scopes& s) const {
         return;
     }
 
-    // An ungrouped target (the common case) never allocated its own sub-group; seed one now,
-    // named after the target itself, so this alias has a slot to share.
-    if (sub_ >= annex_->subs.size()) {
-        assert(sub_ == annex_->subs.size());
-        annex_->subs.emplace_back(fe::Vector<Sym>{target->dbg().sym()});
-    }
-    annex_->subs[sub_].emplace_back(dbg().sym());
+    add_alias(annex_, sub_, target->dbg().sym(), dbg().sym());
 }
 
 void LetDecl::bind(Scopes& s) const {

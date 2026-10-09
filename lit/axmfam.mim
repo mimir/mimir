@@ -1,0 +1,24 @@
+// RUN: %mim %s -o -
+// RUN: %mim %s --output-ast - | %FileCheck %s
+
+axm X: *;
+anx Y = X;
+axm (a = b, c): Nat → Nat;
+axm fam.(f = g, h): Nat → Nat;
+pub mod m
+    axm k: *;
+end
+
+let _ = (b, c, fam.g, fam.h, Y, m.k);
+
+// CHECK:      axm X: *;
+// CHECK-EMPTY:
+// CHECK-NEXT: anx Y = X;
+// CHECK-EMPTY:
+// CHECK-NEXT: axm (a = b, c): Nat → Nat;
+// CHECK-EMPTY:
+// CHECK-NEXT: axm fam.(f = g, h): Nat → Nat;
+// CHECK-EMPTY:
+// CHECK-NEXT: pub mod m
+// CHECK-NEXT:     axm k: *;
+// CHECK-NEXT: end
