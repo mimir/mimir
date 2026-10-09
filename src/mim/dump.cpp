@@ -1061,6 +1061,7 @@ private:
                         if (auto node = (*nest_)[body]) key = owner(node->inest());
                     while (key && inlines(key))
                         key = owner((*nest_)[key]->inest());
+                    // TODO A Nom over a Var in its own Lam's signature has no valid place: `lam k (n: Nat, x: V n)`.
                 }
                 // A binder that prints inline has no block of its own, so what belongs into it is inlined as well.
                 if (key && inlines(key) && !(mut && is_recursive(mut))) {
