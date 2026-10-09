@@ -35,13 +35,13 @@ private:
     /// Two Unknown_1 uses saturate to Unknown_N.
     static Lattice join(Lattice a, Lattice b) { return Lattice(a | b | (a & b & Unknown_1) << 1); }
 
-    Lattice lattice(const Lam* lam) {
-        auto l = fe::lookup(lam2lattice_, lam);
-        return l ? *l : None;
+    Lattice lattice(const Lam* lam) const {
+        if (auto l = fe::lookup(lam2lattice_, lam)) return *l;
+        return None;
     }
 
     /// Does @p def want to be η-expanded - and hence keep any wrapper `λx.def x` instead of reducing it?
-    bool expand(const Def* def) {
+    bool expand(const Def* def) const {
         auto lam = def->isa<Lam>();
         return lam && lattice(lam) > Unknown_1;
     }
@@ -50,8 +50,8 @@ private:
     /// Only then may we keep it - re-creating it would hand out a fresh identity on every run, so this phase would
     /// never reach a fixed point in place.
     bool is_exclusive_wrapper(const Lam* lam) const {
-        auto n = fe::lookup(wrapper_uses_, lam);
-        return n && *n == 1;
+        if (auto n = fe::lookup(wrapper_uses_, lam)) return *n == 1;
+        return false;
     }
 
     void join(const Lam* lam, Lattice l) {
