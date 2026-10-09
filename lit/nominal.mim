@@ -65,11 +65,22 @@ end
 
 extern lam forest (f: Forest): Forest = f;
 
+mutual
+    anx nom Root  = [Nat, Roots];
+    anx nom Roots = Root;
+end
+
+extern lam roots (r: Roots): Roots = r;
+
 extern lam vec (n: Nat): * =
     nom Vec = «n; Nat»;
     Vec;
 
-// CHECK-DAG: anx nom Kelvin = I32;
+// CHECK:      anx nom Kelvin = I32;
+// CHECK-NEXT: mutual
+// CHECK-NEXT:     anx nom Root = [Nat, Roots];
+// CHECK-NEXT:     anx nom Roots = Root;
+// CHECK-NEXT: end
 // CHECK-DAG: nom Meter = I32;
 // CHECK-DAG: nom Foot = I32;
 // CHECK-DAG: nom Second = I32;

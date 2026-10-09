@@ -786,19 +786,41 @@ public:
         dump_muts(muts);
 
         sep(Prev::Decl);
+        auto noms   = DefVec();
+        auto names  = DefMap<std::string_view>();
+        auto bodies = fe::Vector<Def*>();
+        for (const auto& a : annexes)
+            if (auto nom = a.def->isa<Nom>()) {
+                noms.emplace_back(nom);
+                names[nom] = a.name;
+                for (auto mut : nom->local_muts())
+                    bodies.emplace_back(mut);
+            }
+        auto cycles = bodies.empty() ? DefMap<DefVec>() : nom_cycles(Nest(bodies.front()->world(), bodies, true), noms);
         std::string_view curr_mod;
-        for (const auto& [mod, name, annex] : annexes) {
+        for (const auto& [mod, name, def] : annexes) {
             if (mod != curr_mod) {
                 if (!curr_mod.empty()) std::println(os_, "{}end", --ctx_.tab);
                 if (!mod.empty()) std::println(os_, "{}mod {}", ctx_.tab, mod), ++ctx_.tab;
                 curr_mod = mod;
                 ctx_.mod = mod.empty() ? std::string() : std::string(mod) + ".";
             }
-            if (auto nom = annex->isa<Nom>()) {
+            if (auto cycle = fe::lookup(cycles, def)) {
+                // Everything a cycle needs precedes its last member.
+                if (def != cycle->back()) continue;
+                std::println(os_, "{}mutual", ctx_.tab);
+                ++ctx_.tab;
+                for (auto member : *cycle)
+                    std::println(os_, "{}anx nom {} = {};", ctx_.tab, names[member],
+                                 Op(&ctx_, member->as<Nom>()->op()));
+                std::println(os_, "{}end", --ctx_.tab);
+                continue;
+            }
+            if (auto nom = def->isa<Nom>()) {
                 std::println(os_, "{}anx nom {} = {};", ctx_.tab, name, Op(&ctx_, nom->op()));
                 continue;
             }
-            auto axm = annex->as<Axm>();
+            auto axm = def->as<Axm>();
             std::print(os_, "{}axm {}: {}", ctx_.tab, name, Op(&ctx_, axm->type()));
             auto [curry, trip] = Axm::infer_curry_and_trip(axm->type());
             if (axm->curry() != curry || axm->trip() != trip) std::print(os_, ", {}", axm->curry());
@@ -1079,7 +1101,7 @@ private:
     ///@{
     void emit(Def* key) {
         auto defs   = key ? std::move(bucket_[key]) : std::move(top_);
-        auto cycles = nom_cycles(defs);
+        auto cycles = nest_ ? nom_cycles(*nest_, defs) : DefMap<DefVec>();
         for (auto def : defs) {
             auto mut = isa_decl(def);
             if (auto cycle = fe::lookup(cycles, def)) {
@@ -1101,16 +1123,15 @@ private:
 
     /// The Nom%s among @p defs on a cycle, each mapped to its whole cycle in the order of @p defs.
     /// No immutable refers back to itself, so such a cycle runs through a recursive SCC.
-    DefMap<DefVec> nom_cycles(const DefVec& defs) const {
+    static DefMap<DefVec> nom_cycles(const Nest& nest, const DefVec& defs) {
         auto cycles = DefMap<DefVec>();
-        if (!nest_) return cycles;
         for (auto def : defs) {
             auto nom = def->isa<Nom>();
             if (!nom || cycles.contains(nom)) continue;
             for (auto mut : nom->local_muts()) {
-                auto node = (*nest_)[mut];
+                auto node = nest[mut];
                 if (!node || node->is_root() || !node->is_recursive()) continue;
-                auto on_cycle = scc_noms(node->scc());
+                auto on_cycle = scc_noms(nest, node->scc());
                 auto cycle    = DefVec();
                 for (auto d : defs)
                     if (on_cycle.contains(d)) cycle.emplace_back(d);
@@ -1124,9 +1145,9 @@ private:
     }
 
     /// The Nom%s @p scc reaches that reach it back.
-    DefSet scc_noms(const Nest::Node::SCC& scc) const {
+    static DefSet scc_noms(const Nest& nest, const Nest::Node::SCC& scc) {
         auto reaches_scc = [&](const Def* nom) {
-            return std::ranges::any_of(nom->local_muts(), [&](Def* mut) { return scc.contains((*nest_)[mut]); });
+            return std::ranges::any_of(nom->local_muts(), [&](Def* mut) { return scc.contains(nest[mut]); });
         };
         auto res  = DefSet();
         auto todo = DefVec();
