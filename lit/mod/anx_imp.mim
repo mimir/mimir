@@ -1,0 +1,12 @@
+// RUN: %mim %s --output-h - --bootstrap | %FileCheck %s
+
+mod foo
+    import "lib.mim";
+    anx axm bar: Nat;
+end
+
+anx axm baz: Nat;
+
+// CHECK: enum class foo : flags_t {
+// CHECK-NEXT: bar =
+// CHECK: enum class baz : flags_t {
