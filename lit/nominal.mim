@@ -12,7 +12,6 @@ mod units
 end
 
 nom List = | Nil | Cons: [I32, List];
-// Nothing may reach this pair: Def::is_immutabilizable misses a cycle through another mutable.
 mutual
     nom Even = | Zero | ESucc: Odd;
     nom Odd  = | OSucc: Even;
@@ -72,6 +71,14 @@ end
 
 extern lam roots (r: Roots): Roots = r;
 
+mutual
+    anx nom Red   = | RLeaf | RNode: Black;
+    anx nom Black = | BLeaf | BNode: Red;
+end
+
+extern lam red (r: Red): Red = r;
+extern lam even (e: Even): Even = e;
+
 extern lam vec (n: Nat): * =
     nom Vec = «n; Nat»;
     Vec;
@@ -80,6 +87,10 @@ extern lam vec (n: Nat): * =
 // CHECK-NEXT: mutual
 // CHECK-NEXT:     anx nom Root = [Nat, Roots];
 // CHECK-NEXT:     anx nom Roots = Root;
+// CHECK-NEXT: end
+// CHECK-NEXT: mutual
+// CHECK-NEXT:     anx nom Red = | {{.*}}: Black;
+// CHECK-NEXT:     anx nom Black = | {{.*}}: Red;
 // CHECK-NEXT: end
 // CHECK-DAG: nom Meter = I32;
 // CHECK-DAG: nom Foot = I32;
@@ -95,6 +106,8 @@ extern lam vec (n: Nat): * =
 // CHECK-DAG: extern lam seq (): Nat =
 // CHECK-DAG: extern lam unbox ({{.*}}: B): Bool =
 // CHECK-DAG: mutual
+// CHECK-DAG:     nom Even = | {{.*}}: Odd;
+// CHECK-DAG:     nom Odd = | {{.*}}: Even;
 // CHECK-DAG:     nom Tree = [Nat, Forest];
 // CHECK-DAG:     nom Forest = Tree;
 // CHECK-DAG: extern lam vec ({{.*}}: Nat): * =

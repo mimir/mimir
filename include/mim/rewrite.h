@@ -111,7 +111,7 @@ protected:
 
     /// The tail of rewrite_stub: immutabilizes @p new_mut in hindsight, as rewriting may have made it vacuous.
     /// Only needed if you fill a stub yourself instead of going through rewrite_stub.
-    const Def* seal_stub(Def* old_mut, Def* new_mut);
+    const Def* seal(Def* old_mut, Def* new_mut);
 };
 
 /// Extends Rewriter for variable substitution.

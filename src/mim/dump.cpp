@@ -811,13 +811,12 @@ public:
                 std::println(os_, "{}mutual", ctx_.tab);
                 ++ctx_.tab;
                 for (auto member : *cycle)
-                    std::println(os_, "{}anx nom {} = {};", ctx_.tab, names[member],
-                                 Op(&ctx_, member->as<Nom>()->op()));
+                    emit_anx_nom(names[member], member->as<Nom>());
                 std::println(os_, "{}end", --ctx_.tab);
                 continue;
             }
             if (auto nom = def->isa<Nom>()) {
-                std::println(os_, "{}anx nom {} = {};", ctx_.tab, name, Op(&ctx_, nom->op()));
+                emit_anx_nom(name, nom);
                 continue;
             }
             auto axm = def->as<Axm>();
@@ -1119,6 +1118,13 @@ private:
             else
                 emit_decl(mut);
         }
+    }
+
+    // Only a bare variant may refer back to the `nom`.
+    void emit_anx_nom(std::string_view name, const Nom* nom) {
+        if (auto variant = nom->op()->isa<Variant>())
+            return std::println(os_, "{}anx nom {} = {};", ctx_.tab, name, ctors(&ctx_, variant));
+        std::println(os_, "{}anx nom {} = {};", ctx_.tab, name, Op(&ctx_, nom->op()));
     }
 
     /// The Nom%s among @p defs on a cycle, each mapped to its whole cycle in the order of @p defs.
