@@ -80,7 +80,7 @@ public:
     }
 
     /// Diagnostic-only: is a module named @p sym reachable, shadowed by whatever `find` would actually return?
-    /// Only `ModDecl`/`Import` ever yield a non-null Decl::scope, so this never confuses a value for a module.
+    /// Only a module - a ModDecl, an Import, or an AxmDecl family - yields a non-null Decl::scope.
     const Decl* find_shadowed_module(Sym sym) {
         for (auto& frame : scopes_ | std::views::drop(barrier_) | std::views::reverse)
             if (auto bind = fe::lookup(frame.scope(), sym); bind && bind->decl->scope()) return bind->decl;
@@ -391,21 +391,22 @@ void AxmDecl::bind(Scopes& s) const {
     }
 
     for (auto name : names()) {
-        auto& annex = name->annex_ = s.ast().name2annex(s, name->dbg(), &name->sub_);
+        auto dbg    = name->dbg();
+        auto& annex = name->annex_ = s.ast().name2annex(s, dbg, &name->sub_);
 
         if (annex && annex->fresh) {
             annex->normalizer = normalizer();
             annex->pi         = pi;
         } else if (annex) {
             if (pi ^ *annex->pi)
-                s.error().e(name->dbg().loc(),
+                s.error().e(dbg.loc(),
                             "all declarations of annex `{}` must be function types if one of them is (they share one "
                             "annex tag - via mod-nesting or a `tag.(...)` family - and must agree in shape)",
-                            name->dbg().sym());
+                            dbg.sym());
 
             if (annex->normalizer.sym() != normalizer().sym()) {
                 auto l    = normalizer().loc() ? normalizer().loc() : loc().anew_end();
-                auto& err = s.error().e(l, "normalizer mismatch for axm `{}`", name->dbg());
+                auto& err = s.error().e(l, "normalizer mismatch for axm `{}`", dbg);
                 if (auto norm = annex->normalizer)
                     err.n(norm.loc(), "previous normalizer `{}` declared here", norm);
                 else
@@ -413,10 +414,10 @@ void AxmDecl::bind(Scopes& s) const {
             }
         }
 
-        s.bind(name->dbg(), name.get());
+        s.bind(dbg, name.get(), vis());
         for (auto alias : name->aliases()) {
-            s.bind(alias, name.get());
-            if (annex) add_alias(annex, name->sub_, name->dbg().sym(), alias.sym());
+            s.bind(alias, name.get(), vis());
+            if (annex) add_alias(annex, name->sub_, dbg.sym(), alias.sym());
         }
     }
 

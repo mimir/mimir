@@ -272,12 +272,10 @@ void AxmDecl::stream(fe::Tab& tab, std::ostream& os) const {
     if (vis() == Vis::Priv) os << "priv ";
     os << "axm ";
     if (mod_) std::print(os, "{}.", mod_);
-    if (is_family()) os << '(';
-    for (std::string_view sep{}; auto name : names()) {
-        std::print(os, "{}{}", sep, S(tab, name.get()));
-        sep = ", ";
-    }
-    if (is_family()) os << ')';
+    if (is_family())
+        std::print(os, "({})", R(tab, names()));
+    else
+        std::print(os, "{}", S(tab, names().front().get()));
     std::print(os, ": {}", S(tab, type()));
     if (normalizer()) std::print(os, ", {}", normalizer());
     if (curry()) std::print(os, ", {}", curry().lit_u());

@@ -30,6 +30,10 @@ public:
             world().annexes().attach(annex->plugin_id(), annex->id.tag, sub, annex->qualified(driver(), name), def);
     }
 
+    void attach_alias(AnnexInfo* annex, sub_t sub, Sym name) {
+        world().annexes().attach_alias(annex->plugin_id(), annex->id.tag, sub, annex->qualified(driver(), name));
+    }
+
     /// @name Names
     /// Field and constructor names live on the Def, so same-shaped types share one table.
     ///@{
@@ -744,19 +748,16 @@ void AxmDecl::emit(Emitter& e) const {
     for (auto name : names()) {
         auto annex = name->annex_;
         if (!annex) continue; // binding failed
-        auto& id    = annex->id;
         auto plugin = annex->plugin_id();
+        auto tag    = annex->id.tag;
         auto sub    = name->sub_;
-        id.curry    = n_curry;
-        id.trip     = n_trip;
-
-        auto norm  = e.driver().normalizer(plugin, id.tag, sub);
-        auto sym   = annex->qualified(e.driver(), name->dbg().sym());
-        auto axm   = e.world().axm(norm, id.curry, id.trip, type, plugin, id.tag, sub)->set(sym);
-        name->def_ = axm;
-        e.world().annexes().attach(plugin, id.tag, sub, sym, axm);
+        auto norm   = e.driver().normalizer(plugin, tag, sub);
+        auto sym    = annex->qualified(e.driver(), name->dbg().sym());
+        auto axm    = e.world().axm(norm, n_curry, n_trip, type, plugin, tag, sub)->set(sym);
+        name->def_  = axm;
+        e.world().annexes().attach(plugin, tag, sub, sym, axm);
         for (auto alias : name->aliases())
-            e.world().annexes().attach_alias(plugin, id.tag, sub, annex->qualified(e.driver(), alias.sym()));
+            e.attach_alias(annex, sub, alias.sym());
     }
 }
 
@@ -764,8 +765,7 @@ void AliasDecl::emit(Emitter& e) const {
     if (!annex_) return; // skip emit if binding failed
     auto target = path()->decl();
     def_        = target->def();
-    auto name   = annex_->qualified(e.driver(), dbg().sym());
-    e.world().annexes().attach_alias(annex_->plugin_id(), annex_->id.tag, sub_, name);
+    e.attach_alias(annex_, sub_, dbg().sym());
 }
 
 void ModDecl::emit_decls(Emitter& e) const {

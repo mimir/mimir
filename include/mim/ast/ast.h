@@ -2,7 +2,6 @@
 
 #include <deque>
 #include <memory>
-#include <ranges>
 #include <tuple>
 
 #include <fe/arena.h>
@@ -72,7 +71,7 @@ struct Mods {
 struct AnnexInfo {
     AnnexInfo(Sym sym_plugin, Sym sym_tag, tag_t id_tag)
         : sym{sym_plugin, sym_tag}
-        , id{id_tag, 0, 0} {}
+        , id{id_tag} {}
 
     /// The mangled `plugin` part of the flags.
     /// Derived from sym.plugin which is guaranteed mangleable by the time an AnnexInfo exists.
@@ -92,7 +91,6 @@ struct AnnexInfo {
 
     struct {
         tag_t tag;
-        u8 curry, trip;
     } id;
 
     fe::Vector<fe::Vector<Sym>> subs; ///< List of subs which is a list of aliases.
@@ -1052,21 +1050,18 @@ public:
     public:
         using VLA_Types = std::tuple<Dbg>;
 
-        Name(Loc loc, Vis vis)
-            : Decl(loc)
-            , vis_(vis) {}
+        Name(Loc loc)
+            : Decl(loc) {}
 
         auto names() const { return vla<0>(); }
         Dbg dbg() const override { return names().front(); }
-        auto aliases() const { return names() | std::views::drop(1); }
-        Vis vis() const override { return vis_; }
+        auto aliases() const { return names().subspan(1); }
         bool is_anx() const override { return true; }
         std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
 
         void stream(fe::Tab&, std::ostream&) const override;
 
     private:
-        Vis vis_;
         mutable AnnexInfo* annex_ = nullptr;
         mutable sub_t sub_        = 0;
 

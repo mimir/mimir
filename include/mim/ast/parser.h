@@ -174,7 +174,7 @@ private:
     void check_no_extern(const Mods&, fe::Cite entity);
     Ptr<ValDecl> parse_axm_decl(Tracker, Mods);
     /// `(tag_0 [= alias]*, ...)` of an `axm` family.
-    Ptrs<AxmDecl::Name> parse_axm_names(Vis);
+    Ptrs<AxmDecl::Name> parse_axm_names();
     std::tuple<Ptr<Expr>, Dbg, Tok, Tok> parse_axm_tail();
     Ptr<ValDecl> parse_alias_decl(Tracker, Mods);
     Ptr<ValDecl> parse_let_decl(Tracker, Mods);

@@ -709,32 +709,30 @@ Ptr<ValDecl> Parser::parse_axm_decl(Tracker track, Mods mods) {
 
     Dbg mod;
     Ptrs<AxmDecl::Name> names;
-    bool is_family = true;
-    if (ahead().isa(Tag::D_paren_l)) {
-        names = parse_axm_names(vis);
-    } else {
+    bool is_family = ahead().isa(Tag::D_paren_l);
+    if (!is_family) {
         auto dbg = parse_id("name of an axm");
         if (accept(Tag::T_dot)) {
-            mod   = dbg;
-            names = parse_axm_names(vis);
+            mod       = dbg;
+            is_family = true;
         } else {
-            is_family = false;
-            names.emplace_back(ptr<AxmDecl::Name>(dbg.loc(), vis, Dbgs{dbg}));
+            names.emplace_back(ptr<AxmDecl::Name>(dbg.loc(), Dbgs{dbg}));
         }
     }
+    if (is_family) names = parse_axm_names();
 
     auto [type, normalizer, curry, trip] = parse_axm_tail();
     auto members                         = mod ? &ast().scope() : nullptr;
     return ptr<AxmDecl>(track, vis, mod, members, is_family, type, normalizer, curry, trip, names);
 }
 
-Ptrs<AxmDecl::Name> Parser::parse_axm_names(Vis vis) {
+Ptrs<AxmDecl::Name> Parser::parse_axm_names() {
     Ptrs<AxmDecl::Name> names;
     parse_list("tag list of an axm", Tag::D_paren_l, [&]() {
         Dbgs dbgs{parse_id("tag of an axm")};
         while (accept(Tag::T_assign))
             dbgs.emplace_back(parse_id("alias of an axm tag"));
-        names.emplace_back(ptr<AxmDecl::Name>(dbgs.front().loc() + dbgs.back().loc(), vis, dbgs));
+        names.emplace_back(ptr<AxmDecl::Name>(dbgs.front().loc() + dbgs.back().loc(), dbgs));
     });
     return names;
 }

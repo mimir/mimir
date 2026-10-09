@@ -725,6 +725,12 @@ fe::Vector<Lam*> curry_chain(Lam* lam) {
     return chain;
 }
 
+/// An Axm of the dumped file itself; its name is split into the `mod` it nests in and its own name.
+struct DumpAxm {
+    std::string_view mod, name;
+    const Axm* axm;
+};
+
 /// Emits Def%s as Mim declarations.
 ///
 /// Dump::Expr and Dump::Local walk Def::deps and nothing else - which is what makes them safe to call from a
@@ -749,29 +755,25 @@ public:
         ctx_.taken.insert(reserved.begin(), reserved.end());
     }
 
-    /// Declares the Axm%s of the dumped file itself as `axm`s, grouped into the `mod` their @p names nest them in.
-    void dump_axms(std::string self, std::span<const std::pair<std::string, const Axm*>> axms) {
+    /// Declares the Axm%s of the dumped file itself as `axm`s, grouped into the `mod` their names nest them in.
+    void dump_axms(std::string self, std::span<const DumpAxm> axms) {
         ctx_.self = std::move(self);
         auto muts = fe::Vector<Def*>();
-        for (auto [_, axm] : axms)
+        for (const auto& [_, __, axm] : axms)
             for (auto mut : axm->type()->local_muts())
                 if (isa_decl(mut)) muts.emplace_back(mut);
         dump_muts(muts);
 
         sep(Prev::Decl);
         std::string_view curr_mod;
-        for (auto [name, axm] : axms) {
-            auto view = std::string_view(name);
-            auto dot  = view.find('.');
-            auto mod  = dot == std::string_view::npos ? std::string_view() : view.substr(0, dot);
+        for (const auto& [mod, name, axm] : axms) {
             if (mod != curr_mod) {
                 if (!curr_mod.empty()) std::println(os_, "{}end", --ctx_.tab);
                 if (!mod.empty()) std::println(os_, "{}mod {}", ctx_.tab, mod), ++ctx_.tab;
                 curr_mod = mod;
                 ctx_.mod = mod.empty() ? std::string() : std::string(mod) + ".";
             }
-            std::print(os_, "{}axm {}: {}", ctx_.tab, mod.empty() ? view : view.substr(dot + 1),
-                       Op(&ctx_, axm->type()));
+            std::print(os_, "{}axm {}: {}", ctx_.tab, name, Op(&ctx_, axm->type()));
             auto [curry, trip] = Axm::infer_curry_and_trip(axm->type());
             if (axm->curry() != curry || axm->trip() != trip) std::print(os_, ", {}", axm->curry());
             if (axm->trip() != trip) std::print(os_, ", {}", axm->trip());
@@ -1278,21 +1280,23 @@ void World::dump(std::ostream& os) {
     // An `import` declares its own annexes; those of the dumped file itself only exist if the dump declares them.
     auto self = file_stem(*this) + ".";
     // Only a loaded plugin registers its annexes, so find them by what the externals reach.
-    auto axms = fe::Vector<std::pair<std::string, const Axm*>>();
+    auto axms = fe::Vector<DumpAxm>();
     auto todo = DefVec(externals().muts().begin(), externals().muts().end());
     auto seen = DefSet(todo.begin(), todo.end());
     while (!todo.empty()) {
         auto def = todo.back();
         todo.pop_back();
         if (auto axm = def->isa<Axm>(); axm && axm->sym().view().starts_with(self)) {
-            auto name = axm->sym().str().substr(self.size());
-            reserved.emplace_back(name.substr(0, name.find('.')));
-            axms.emplace_back(std::move(name), axm);
+            auto name = axm->sym().view().substr(self.size());
+            auto dot  = name.find('.');
+            auto mod  = dot == std::string_view::npos ? std::string_view() : name.substr(0, dot);
+            reserved.emplace_back(mod.empty() ? name : mod);
+            axms.emplace_back(mod, mod.empty() ? name : name.substr(dot + 1), axm);
         }
         for (auto dep : def->deps())
             if (dep && seen.emplace(dep).second) todo.emplace_back(dep);
     }
-    std::ranges::sort(axms, {}, [](const auto& p) { return p.second->flags(); });
+    std::ranges::sort(axms, {}, [](const auto& a) { return a.axm->flags(); });
 
     // The local dump keeps every mutable to itself: no Nest that a broken program could trip over.
     auto mode   = flags().mim_local ? Def::Dump::Local : Def::Dump::All;
