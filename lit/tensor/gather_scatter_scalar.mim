@@ -11,14 +11,13 @@
 
 plugin tensor;
 plugin btensor;
-plugin affine;
 plugin compile;
 
-extern fun gather_scalar(input: I32, index: Idx 1): I32 =
-    return (tensor.gather ((1), (1)) 0_1 (input, index));
+extern fun gather_scalar (input: I32, index: Idx 1): I32 =
+    return (tensor.gather ((1), (1)) 0₁ (input, index));
 
-extern fun scatter_scalar(input: I32, index: Idx 1, updates: I32): I32 =
-    return (tensor.scatter ((1), (1), (1)) 0_1 (input, index, updates));
+extern fun scatter_scalar (input: I32, index: Idx 1, updates: I32): I32 =
+    return (tensor.scatter ((1), (1), (1)) 0₁ (input, index, updates));
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (

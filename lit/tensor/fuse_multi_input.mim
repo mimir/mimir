@@ -3,27 +3,27 @@
 // An outer pure binary tensor map reads from two distinct inner pure tensor maps.
 // The fuse phase should collapse all three tensor.map_reduce calls into a single one:
 // out[i, j] = (v1[i, j] + 1) + (v2[i, j] * 2)
-plugin tensor;
 plugin core;
-plugin opt;
+plugin tensor;
 plugin compile;
 
 use core.ops.n;
+use tensor;
 
 lam add1 (x: Nat): Nat = x + 1;
 lam mul2 (x: Nat): Nat = x * 2;
-lam add  (x y: Nat): Nat = x + y;
+
+let `+ = binary core.nat.add;
 
 extern con f (v1 v2: «2; «3; Nat»», return: Cn «2; «3; Nat»») =
-    let inner1 = tensor.unary add1 v1;
-    let inner2 = tensor.unary mul2 v2;
-    return (tensor.binary add (inner1, inner2));
+    let (v1, v2) = (buf v1, buf v2);
+    return (unary add1 v1 + unary mul2 v2);
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (
         compile.cleanup,
-        tensor.lower_tensor,
-        tensor.fuse_tensor,
+        lower_tensor,
+        fuse_tensor,
         compile.cleanup,
     );
 

@@ -1,7 +1,7 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 
-// The full linear-layer pattern: x·Wᵀ + tiled bias, then a trailing unary. The transpose, reshape
-// and repeat are pure re-indexed reads (copy-combiner map_reduces), so they are absorbed into the
+// The full linear-layer pattern: x·Wᵀ + tiled bias, then a trailing unary. The transpose and repeat
+// are pure re-indexed reads (copy-combiner map_reduces), so they are absorbed into the
 // access maps of the consuming ops. The transposed weight selects the reduction-vectorized
 // schedule (`dot_schedule_kvec`), whose 2-D output-cell jam materializes the product PACKED along
 // the strip-mined axes. The epilogue direction sinks THROUGH the restoring reshape (fuse_epilogue
@@ -9,28 +9,30 @@
 // with the bias map composed behind the inverse reshape — and the fused op is re-wrapped in the
 // unpacking copy. Exactly two map_reduces remain: the contraction (reading a, b and bias directly,
 // bias as a `post` input) and the pure unpack copy at the graph boundary.
-plugin tensor;
 plugin core;
-plugin opt;
+plugin tensor;
 plugin compile;
 
 use core.ops.n;
+use tensor;
 
 lam add1 (x: Nat): Nat = x + 1;
-lam addp (x y: Nat): Nat = x + y;
+
+let Ring = (Nat, 0, core.nat.add, core.nat.mul);
+
+let `+ = binary core.nat.add;
+let `* = product_2d Ring;
 
 extern con f (a: «2, 3; Nat», b: «4, 3; Nat», bias: «4; Nat», return: Cn «2, 4; Nat») =
-    let wt = tensor.transpose_2d b;
-    let z  = tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) (a, wt);
-    let b2 = tensor.repeat (1, 4) (2, 4) (tensor.reshape 4 (1, 4) bias);
-    let s  = tensor.binary addp (z, b2);
-    return (tensor.unary add1 s);
+    let (a, b, bias) = (buf a, buf b, buf bias);
+    let b2 = repeat (1, 4) (2, 4) bias;
+    return (unary add1 (a * transpose_2d b + b2));
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (
         compile.cleanup,
-        tensor.lower_tensor,
-        tensor.fuse_tensor,
+        lower_tensor,
+        fuse_tensor,
         compile.cleanup,
     );
 

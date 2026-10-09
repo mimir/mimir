@@ -67,7 +67,7 @@ axm ncmp.(gle = f, glE =  e, gLe =  l, gLE = le,
 /// All operations that may overflow take a leading parameter `m` - [mode](@ref mim::plug::core::Mode) - of type `Nat` that determines the exact desired behavior in the case of an overflow.
 /// It comes first so that currying it - `core.wrap.add 0` - still yields a value polymorphic in `s`.
 ///
-pub mod mode {
+pub mod mode
     anx let us = 0b00; // wrap around - both signed and unsigned
     anx let uS = 0b01; // no   signed wrap around
     anx let Us = 0b10; // no unsigned wrap around
@@ -75,7 +75,7 @@ pub mod mode {
     anx nsw  = uS;
     anx nuw  = Us;
     anx nsuw = US;
-}
+end
 ///
 /// ### idx
 ///
@@ -293,11 +293,11 @@ axm trait.(size, align): * → Nat, normalize_trait;
 ///
 /// Steers the partial evaluator.
 ///
-pub mod pe {
+pub mod pe
     axm hlt:       {T: *} → T → T, normalize_pe;
     axm run:       {T: *} → T → T, normalize_pe;
     axm is_closed: {T: *} → T → Bool, normalize_pe;
-}
+end
 ///
 /// ### select
 ///
@@ -327,8 +327,8 @@ anx lam Select {T: □} (cond: Bool, t f: T): T = (f, t)#cond;
 /// `core.ops.s`/`core.ops.u` offer only those operators that don't depend on the mode.
 /// `Idx s` has no `/` and `%`, since core.div expects a `mem.M`.
 ///
-pub mod ops {
-    pub mod n {
+pub mod ops
+    pub mod n
         pub let `+  =  nat.add;
         pub let `-  =  nat.sub;
         pub let `*  =  nat.mul;
@@ -340,68 +340,68 @@ pub mod ops {
         pub let `<= = ncmp.le;
         pub let `>  = ncmp.g;
         pub let `>= = ncmp.ge;
-    }
+    end
 
-    mod eq {
+    mod eq
         pub let `== = icmp.e;
         pub let `!= = icmp.ne;
-    }
+    end
 
-    mod signed {
+    mod signed
         pub use eq;
         pub let `>> = shr.a;
         pub let `<  = icmp.sl;
         pub let `<= = icmp.sle;
         pub let `>  = icmp.sg;
         pub let `>= = icmp.sge;
-    }
+    end
 
-    mod unsigned {
+    mod unsigned
         pub use eq;
         pub let `>> = shr.l;
         pub let `<  = icmp.ul;
         pub let `<= = icmp.ule;
         pub let `>  = icmp.ug;
         pub let `>= = icmp.uge;
-    }
+    end
 
-    pub mod s {
+    pub mod s
         pub use signed;
 
-        pub mod w {
+        pub mod w
             pub use signed;
             pub let `+  = wrap.add mode.us;
             pub let `-  = wrap.sub mode.us;
             pub let `*  = wrap.mul mode.us;
             pub let `<< = wrap.shl mode.us;
-        }
+        end
 
-        pub mod nw {
+        pub mod nw
             pub use signed;
             pub let `+  = wrap.add mode.nsw;
             pub let `-  = wrap.sub mode.nsw;
             pub let `*  = wrap.mul mode.nsw;
             pub let `<< = wrap.shl mode.nsw;
-        }
-    }
+        end
+    end
 
-    pub mod u {
+    pub mod u
         pub use unsigned;
 
-        pub mod w {
+        pub mod w
             pub use unsigned;
             pub let `+  = wrap.add mode.us;
             pub let `-  = wrap.sub mode.us;
             pub let `*  = wrap.mul mode.us;
             pub let `<< = wrap.shl mode.us;
-        }
+        end
 
-        pub mod nw {
+        pub mod nw
             pub use unsigned;
             pub let `+  = wrap.add mode.nuw;
             pub let `-  = wrap.sub mode.nuw;
             pub let `*  = wrap.mul mode.nuw;
             pub let `<< = wrap.shl mode.nuw;
-        }
-    }
-}
+        end
+    end
+end

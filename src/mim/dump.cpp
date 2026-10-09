@@ -57,6 +57,9 @@ struct Ctx {
     bool in_header = false;
     std::string self; ///< `<world name>.`: the dumped file's own annexes are spelled without it.
     std::string mod;  ///< `<mod>.` while declaring the Axm%s of that `mod`, which does not see its own name.
+    /// What the dumped roots reach; `nullptr` dumps whatever exists.
+    /// A dead projection left behind by normalization must not bind a name a re-read dump would not bind.
+    const DefSet* live = nullptr;
 };
 
 /// The name an annex prints by: the dumped file's own annexes drop the `<file>.` - and the `<mod>.` - prefix.
@@ -68,6 +71,12 @@ std::string annex_sym(Ctx* ctx, const Def* def) {
         if (!ctx->mod.empty() && sym.starts_with(ctx->mod)) sym.remove_prefix(ctx->mod.size());
     }
     return std::string(sym);
+}
+
+/// @p def's @p i-th of @p n projections, if it exists and the dump reaches it.
+const Def* live_proj(Ctx* ctx, const Def* def, nat_t n, nat_t i) {
+    auto proj = def->proj(n, i);
+    return proj && ctx && ctx->live && !ctx->live->contains(proj) ? nullptr : proj;
 }
 
 std::string pick_name(Ctx* ctx, const Def* def) {
@@ -90,8 +99,19 @@ std::string pick_name(Ctx* ctx, const Def* def) {
 const Def* alias_proj(Ctx* ctx, const Def* def) {
     if (auto ex = def->isa<Extract>())
         if (auto i = ctx->aliases.find(ex->tuple()); i != ctx->aliases.end() && !ctx->opaque.contains(i->second))
-            if (auto l = Lit::isa(ex->index())) return i->second->proj(ex->tuple()->num_tprojs(), *l);
+            if (auto l = Lit::isa(ex->index())) return live_proj(ctx, i->second, ex->tuple()->num_tprojs(), *l);
     return nullptr;
+}
+
+/// Whether @p ex prints as a bare name rather than `tuple#index`.
+bool by_name(Ctx* ctx, const Extract* ex) {
+    if (!ex->index()->isa<Lit>()) return false;
+    if (!ctx) return ex->tuple()->isa<Var>();
+    // A Var's component prints by name - unless the pattern that would have bound that name kept the Var whole.
+    if (ctx->opaque.contains(ex->tuple())) return false;
+    // An aliased Var's component the Lam's Var does not hand out is spelled via the Lam's Var instead.
+    if (ctx->aliases.contains(ex->tuple()) && !alias_proj(ctx, ex)) return false;
+    return ex->tuple()->isa<Var>() || ctx->destructured.contains(ex->tuple());
 }
 
 /// Def::unique_name - or a plain name while a World is dumped or a diagnostic is being formatted, where a gid is noise.
@@ -129,10 +149,8 @@ using ast::Assoc;
 using ast::Prec;
 using ast::prec_assoc;
 
-Prec def2prec(const Def* def) {
-    // A Var's projection prints as its name and hence is atomic; see the Extract case in operator<<.
-    if (auto ex = def->isa<Extract>())
-        return ex->tuple()->isa<Var>() && ex->index()->isa<Lit>() ? Prec::Lit : Prec::Extract;
+Prec def2prec(Ctx* ctx, const Def* def) {
+    if (auto ex = def->isa<Extract>()) return by_name(ctx, ex) ? Prec::Lit : Prec::Extract;
     if (def->isa<Insert>()) return Prec::Ins;
     if (def->isa<Join>()) return Prec::Union;
     if (auto inj = def->isa<Inj>()) {
@@ -249,7 +267,7 @@ public:
     bool needs_parens() const {
         if (!is_full()) return false;
 
-        auto child_prec = def2prec(def());
+        auto child_prec = def2prec(ctx(), def());
         if (child_prec < prec()) return true;
         if (child_prec > prec()) return false;
 
@@ -258,7 +276,7 @@ public:
             case Assoc::L: return !is_left();
             case Assoc::N: return false;
         }
-        fe::unreachable();
+        std::unreachable();
     }
 
     friend std::ostream& operator<<(std::ostream&, Full);
@@ -302,7 +320,7 @@ std::string shape(Ctx* ctx, const Seq* seq, const Def* var) {
 
     auto res = std::string();
     for (auto sep = ""; auto i : std::views::iota(nat_t(0), *r)) {
-        auto axis   = var->proj(*r, i);
+        auto axis   = live_proj(ctx, var, *r, i);
         auto extent = s[i];
         if (!extent) return std::format("{}: {}", Op(ctx, var), Op(ctx, *s));
         // A projection the body never mentions does not exist as a Def and hence has no name of its own.
@@ -317,11 +335,16 @@ std::string shape(Ctx* ctx, const Seq* seq, const Def* var) {
 /// spells a *dependent* component with the domain's binders instead of this pattern's. That is where
 /// destructuring stops: @p def stays opaque and its components print as `def#i` rather than by a dangling name.
 bool destructible(Ctx* ctx, const Def* def, const Def* type, size_t n) {
-    if (!def || n <= 1) return false;
+    if (!def) return false;
+    if (n <= 1) {
+        // Def::num_tprojs keeps a def above Flags::scalarize_threshold whole, so its components have no name either.
+        if (ctx && def->num_projs() > 1) ctx->opaque.emplace(def);
+        return false;
+    }
     auto var = type->isa_mut<Sigma>() ? type->has_var() : nullptr;
 
     for (size_t i = 0; i != n; ++i) {
-        if (def->proj(n, i)) continue; // it exists and hence brings its own name and type
+        if (live_proj(ctx, def, n, i)) continue; // it exists and hence brings its own name and type
         auto t = type->proj(n, i);
         if (!t || (var && t->has_free_var(var))) {
             if (ctx) ctx->opaque.emplace(def);
@@ -337,7 +360,8 @@ void ptrn(std::ostream& os, Ctx* ctx, const Def* def, const Def* type, bool brck
 
     auto n = def->num_tprojs();
     // Unless some component exists, nothing refers to one and the whole reads back the same.
-    auto used = std::ranges::any_of(std::views::iota(size_t(0), n), [&](size_t i) { return def->proj(n, i); });
+    auto used
+        = std::ranges::any_of(std::views::iota(size_t(0), n), [&](size_t i) { return live_proj(ctx, def, n, i); });
     if (!used || !destructible(ctx, def, type, n)) return std::print(os, "{}: {}", name(ctx, def), Op(ctx, type));
     if (ctx) {
         ctx->destructured.emplace(def);
@@ -347,7 +371,7 @@ void ptrn(std::ostream& os, Ctx* ctx, const Def* def, const Def* type, bool brck
 
     os << (brckt ? '[' : '(');
     for (auto sep = ""; auto i : std::views::iota(size_t(0), n)) {
-        auto proj = def->proj(n, i);
+        auto proj = live_proj(ctx, def, n, i);
         os << sep;
         // A projection's own type is the one where the binder has already been substituted for this Var.
         ptrn(os, ctx, proj, proj ? proj->type() : type->proj(n, i), brckt);
@@ -367,7 +391,7 @@ void dom_ptrn(std::ostream& os, Ctx* ctx, const Def* var, const Def* type, bool 
     os << l;
     for (auto sep = ""; auto i : std::views::iota(size_t(0), n)) {
         os << sep;
-        auto proj = var->proj(n, i);
+        auto proj = live_proj(ctx, var, n, i);
         ptrn(os, ctx, proj, proj ? proj->type() : type->proj(n, i), true);
         sep = ", ";
     }
@@ -401,7 +425,7 @@ void curry(std::ostream& os,
     os << l;
     for (auto sep = ""; auto i : std::views::iota(size_t(0), limit)) {
         os << sep;
-        auto proj = def ? def->proj(num, i) : nullptr;
+        auto proj = def ? live_proj(ctx, def, num, i) : nullptr;
         bndr(os, ctx, proj, proj ? proj->type() : type->proj(num, i));
         sep = ", ";
     }
@@ -504,7 +528,7 @@ void full(std::ostream& os, Full d) {
         return std::print(os, "Idx");
     } else if (auto ext = d->isa<Ext>()) {
         return std::print(os, "{}:{}", ext->isa<Bot>() ? bot : top, d.r(ext->type(), Prec::Lit));
-    } else if ((d->isa<Axm>() || is_anx_nom(*d)) && d->sym()) {
+    } else if (d->isa<Axm>() || is_anx_nom(*d)) {
         return std::print(os, "{}", annex_sym(d.ctx(), *d));
     } else if (auto lit = d->isa<Lit>()) {
         if (lit->type()->isa<Nat>()) {
@@ -547,17 +571,12 @@ void full(std::ostream& os, Full d) {
         }
         return std::print(os, "{}:{}", lit->get(), d.r(lit->type(), Prec::Lit));
     } else if (auto ex = d->isa<Extract>()) {
-        // A Var's component prints by name - unless the pattern that would have bound that name kept the Var whole.
-        auto opaque = d.ctx() && d.ctx()->opaque.contains(ex->tuple());
-        // An aliased Var's component the Lam's Var does not hand out is spelled via the Lam's Var instead.
-        if (d.ctx() && d.ctx()->aliases.contains(ex->tuple()) && !alias_proj(d.ctx(), ex)) opaque = true;
-        auto bound = ex->tuple()->isa<Var>() || (d.ctx() && d.ctx()->destructured.contains(ex->tuple()));
-        if (!opaque && bound && ex->index()->isa<Lit>()) return std::print(os, "{}", name(d.ctx(), ex));
+        if (by_name(d.ctx(), ex)) return std::print(os, "{}", name(d.ctx(), ex));
         return std::print(os, "{}#{}", d.l(ex->tuple(), Prec::Extract), d.r(ex->index(), Prec::Extract));
     } else if (auto ins = d->isa<Insert>()) {
         auto tup = d.l(ins->tuple(), Prec::Extract);
         // `←` updates the whole `#`-path, so an Extract target needs parens to re-parse.
-        if (auto ex = ins->tuple()->isa<Extract>(); ex && !(ex->tuple()->isa<Var>() && ex->index()->isa<Lit>()))
+        if (auto ex = ins->tuple()->isa<Extract>(); ex && !by_name(d.ctx(), ex))
             std::print(os, "({})", tup);
         else
             std::print(os, "{}", tup);
@@ -722,11 +741,17 @@ fe::Vector<Lam*> curry_chain(Lam* lam) {
     return chain;
 }
 
+/// An annex of the dumped file itself; its name is split into the `mod` it nests in and its own name.
+struct DumpAnnex {
+    std::string mod, name;
+    const Def* def;
+};
+
 /// Emits Def%s as Mim declarations.
 ///
 /// Dump::Expr and Dump::Local walk Def::deps and nothing else - which is what makes them safe to call from a
 /// debugger, where the World is usually half-built. Dump::Scope and Dump::All buy a better layout with a Nest:
-/// it nests the mutables, and Scheduler::smart places everything else. Should that analysis choke on the very
+/// it nests the mutables, and Scheduler::early places everything else. Should that analysis choke on the very
 /// program you wanted to look at, World::dot still shows it - its tooltips only ever use Dump::Expr.
 class Dumper {
 public:
@@ -737,48 +762,47 @@ public:
         , typed_let_(typed_let)
         , srcs_(std::move(srcs)) {}
 
+    /// Only @p live Def%s - what the dumped roots reach - count as existing.
+    void live(const DefSet& live) { ctx_.live = &live; }
+
     /// Switches to plain names; @p reserved are names the dump refers to verbatim and hence must not pick.
     void plain(std::span<const std::string> reserved) {
         ctx_.plain = true;
         ctx_.taken.insert(reserved.begin(), reserved.end());
     }
 
-    /// `<world name>.`: the prefix the dumped file's own annexes are spelled without.
-    void self(std::string self) { ctx_.self = std::move(self); }
-
     /// Declares the annexes of the dumped file itself - Axm%s as `axm`s, Nom%s as `nom`s - grouped into the
-    /// `mod` their @p names nest them in.
-    void dump_annexes(std::span<const std::pair<std::string, const Def*>> annexes) {
+    /// `mod` their names nest them in.
+    void dump_annexes(std::string self, std::span<const DumpAnnex> annexes) {
+        ctx_.self    = std::move(self);
         auto content = [](const Def* def) { return def->isa<Axm>() ? def->type() : def->as<Nom>()->op(); };
-        for (auto [_, annex] : annexes)
+        auto muts    = fe::Vector<Def*>();
+        for (const auto& [_, __, annex] : annexes)
             for (auto mut : content(annex)->local_muts())
-                if (isa_decl(mut)) dump_muts(mut);
+                if (isa_decl(mut)) muts.emplace_back(mut);
+        dump_muts(muts);
 
         sep(Prev::Decl);
         std::string_view curr_mod;
-        for (auto [name, annex] : annexes) {
-            auto view = std::string_view(name);
-            auto dot  = view.find('.');
-            auto mod  = dot == std::string_view::npos ? std::string_view() : view.substr(0, dot);
+        for (const auto& [mod, name, annex] : annexes) {
             if (mod != curr_mod) {
-                if (!curr_mod.empty()) std::println(os_, "{}}}", --ctx_.tab);
-                if (!mod.empty()) std::println(os_, "{}mod {} {{", ctx_.tab, mod), ++ctx_.tab;
+                if (!curr_mod.empty()) std::println(os_, "{}end", --ctx_.tab);
+                if (!mod.empty()) std::println(os_, "{}mod {}", ctx_.tab, mod), ++ctx_.tab;
                 curr_mod = mod;
                 ctx_.mod = mod.empty() ? std::string() : std::string(mod) + ".";
             }
-            auto id = mod.empty() ? view : view.substr(dot + 1);
             if (auto nom = annex->isa<Nom>()) {
-                std::println(os_, "{}anx nom {} = {};", ctx_.tab, id, Op(&ctx_, nom->op()));
+                std::println(os_, "{}anx nom {} = {};", ctx_.tab, name, Op(&ctx_, nom->op()));
                 continue;
             }
             auto axm = annex->as<Axm>();
-            std::print(os_, "{}axm {}: {}", ctx_.tab, id, Op(&ctx_, axm->type()));
+            std::print(os_, "{}axm {}: {}", ctx_.tab, name, Op(&ctx_, axm->type()));
             auto [curry, trip] = Axm::infer_curry_and_trip(axm->type());
             if (axm->curry() != curry || axm->trip() != trip) std::print(os_, ", {}", axm->curry());
             if (axm->trip() != trip) std::print(os_, ", {}", axm->trip());
             std::println(os_, ";");
         }
-        if (!curr_mod.empty()) std::println(os_, "{}}}", --ctx_.tab);
+        if (!curr_mod.empty()) std::println(os_, "{}end", --ctx_.tab);
         ctx_.mod.clear();
     }
 
@@ -786,11 +810,13 @@ public:
     ///@{
     /// @p def and whatever Dumper::mode_ reaches from it.
     void dump(const Def* def) {
-        if (auto mut = isa_decl(def)) return dump_muts(mut);
+        if (auto mut = isa_decl(def)) return dump_muts({mut});
 
+        auto muts = fe::Vector<Def*>();
         if (mode_ != Dump::Local)
             for (auto mut : def->local_muts())
-                if (isa_decl(mut)) dump_muts(mut);
+                if (isa_decl(mut)) muts.emplace_back(mut);
+        dump_muts(muts);
 
         block_ = nullptr; // a non-decl opens no block, so nothing can be entered or placed into one
         emit_block(def);
@@ -798,25 +824,28 @@ public:
         emit_tail(def, "");
     }
 
+    void dump(fe::View<Def*> muts) { dump_muts(muts); }
     ///@}
 
 private:
     /// What the current block emitted last; only a declaration is worth setting apart.
     enum class Prev { None, Let, Decl };
 
-    /// One scope: the Nest of a single closed mutable - which is the only thing a Scheduler can place into.
-    void visit_scope(const Nest& nest) {
-        auto root = nest.root()->mut();
-        // An `import` re-declares what it *exports* - but a plain `let` in that file stays local to it, so the
-        // dump has to spell that one out or nothing binds the name it refers to.
-        if (root->is_external() && srcs_.contains(root->loc().src)) return;
-
+    /// Emits what @p roots reach within @p nest: its virtual root is the top level.
+    void visit_nest(const Nest& nest, fe::View<Def*> roots) {
         auto sched = Scheduler(nest);
         auto _     = fe::Restore(nest_, &nest);
         auto __    = fe::Restore(sched_, &sched);
-        block_     = root;
-        emit_block(root);
+        block_     = nest.root()->mut();
+        for (auto root : roots)
+            schedule_(root, nullptr);
+        bucket();
+        emit(nullptr);
     }
+
+    /// An `import` re-declares what it *exports* - but a plain `let` in that file stays local to it, so the dump has
+    /// to spell that one out or nothing binds the name it refers to.
+    bool is_imported(Def* mut) const { return mut->is_external() && srcs_.contains(mut->loc().src); }
 
     /// Schedules @p root into the current Dumper::block_ and emits whatever landed there.
     void emit_block(const Def* root) {
@@ -827,19 +856,37 @@ private:
 
     /// @name schedule
     ///@{
-    /// The closed mutables @p mut reaches, callees first: Mim binds a name before its uses.
-    void dump_muts(Def* mut) {
-        auto todo = fe::Vector<Def*>();
-        post_order(mut, todo);
+    /// The closed mutables @p muts reach, callees first: Mim binds a name before its uses.
+    void dump_muts(fe::View<Def*> muts) {
+        if (muts.empty()) return;
+        if (mode_ == Dump::Scope) {
+            for (auto mut : muts)
+                if (mut->is_closed() && !is_imported(mut)) visit_nest(Nest(mut), {mut});
+            return;
+        }
 
-        for (auto curr : todo) {
-            if (mode_ == Dump::Local) {
+        auto todo = fe::Vector<Def*>();
+        for (auto mut : muts)
+            post_order(mut, todo);
+
+        if (mode_ == Dump::Local) {
+            for (auto curr : todo) {
                 block_ = curr;
                 emit_block(curr);
-            } else {
-                visit_scope(Nest(curr));
             }
+            return;
         }
+
+        // Nest::Node::topo breaks ties by gid, which a re-read dump need not reproduce.
+        auto roots = fe::Vector<Def*>();
+        for (auto mut : todo) {
+            if (!mut->is_closed() || ctx_.arms.contains(mut)) continue;
+            if (is_imported(mut))
+                done_.emplace(mut);
+            else
+                roots.emplace_back(mut);
+        }
+        visit_nest(Nest(muts.front()->world(), muts, true), roots);
     }
 
     static bool is_spellable(const Match* match) {
@@ -854,15 +901,13 @@ private:
     void post_order(Def* mut, fe::Vector<Def*>& todo) {
         if (!scheduled_.emplace(mut).second) return;
 
-        if (mode_ == Dump::All || mode_ == Dump::Local) {
-            auto muts = fe::Vector<Def*>();
-            auto seen = DefSet();
-            printed_deps(mut, typed_let_, [&](const Def* op) { local_muts(op, seen, muts); });
-            for (auto local_mut : muts)
-                post_order(local_mut, todo);
-        }
+        auto muts = fe::Vector<Def*>();
+        auto seen = DefSet();
+        printed_deps(mut, typed_let_, [&](const Def* op) { local_muts(op, seen, muts); });
+        for (auto local_mut : muts)
+            post_order(local_mut, todo);
 
-        if ((mut->is_closed() && !ctx_.arms.contains(mut)) || mode_ == Dump::Local) todo.emplace_back(mut);
+        todo.emplace_back(mut);
     }
 
     void local_muts(const Def* def, DefSet& seen, fe::Vector<Def*>& muts) {
@@ -901,12 +946,38 @@ private:
     }
 
     void schedule_mut(Def* mut, Def* curr) {
-        if (open_.contains(mut)) recursive_.emplace(mut);
-        if (!enter(mut)) return;
-        if (!done_.emplace(mut).second) return;
+        if (!enter(mut) || done_.contains(mut)) return;
 
+        auto group = sibling_group(mut);
+        for (auto m : group)
+            done_.emplace(m);
+        for (auto m : group)
+            schedule_body(m);
+        order_.emplace_back(group.front(), curr);
+        if (group.size() > 1) mutual_.emplace(group.front(), std::move(group));
+    }
+
+    /// A block only sees what precedes it, so the mutually recursive siblings of @p mut print as one `mutual` group.
+    fe::Vector<Def*> sibling_group(Def* mut) const {
+        auto node = nest_ ? (*nest_)[mut] : nullptr;
+        if (!node || !node->is_mutually_recursive()) return {mut};
+        if (auto key = owner(node->inest()); key && inlines(key)) return {mut};
+
+        auto group = fe::Vector<Def*>();
+        for (auto member : node->scc())
+            if (auto m = member->mut(); m == mut || !done_.contains(m)) group.emplace_back(m);
+        if (group.size() < 2 || !std::ranges::all_of(group, [this](Def* m) { return groupable(m); })) return {mut};
+        return group;
+    }
+
+    bool groupable(Def* mut) const {
+        if (!isa_decl(mut) || ctx_.arms.contains(mut) || mut->isa<Rule>() || !mut->is_set()) return false;
+        if (auto lam = mut->isa_mut<Lam>()) return curry_chain(lam).back()->is_set();
+        return true;
+    }
+
+    void schedule_body(Def* mut) {
         auto chain = mut->isa_mut<Lam>() ? curry_chain(mut->as_mut<Lam>()) : fe::Vector<Lam*>();
-        open_.emplace(mut);
 
         if (auto rule = mut->isa_mut<Rule>()) {
             // The surface syntax has no block for a rule's parts, so whatever depends on its meta variable is inlined.
@@ -928,9 +999,6 @@ private:
                 }
             }
         }
-
-        open_.erase(mut);
-        order_.emplace_back(mut, curr);
     }
 
     /// Schedules what @p def needs; @p def itself, noted in @p inline_set, prints inline.
@@ -953,27 +1021,25 @@ private:
     /// Is @p mut ours to emit - or does it only get referenced by name?
     bool enter(Def* mut) const { return nest_ ? (*nest_)[mut] != nullptr : mut == block_; }
 
-    /// Turns the schedule into one list per block: the Nest nests the mutables, Scheduler::smart places the rest.
+    /// Turns the schedule into one list per block: the Nest nests the mutables, Scheduler::early places the rest.
     void bucket() {
         for (auto [def, curr] : order_) {
             auto mut = isa_decl(def);
             auto key = curr; // Dump::Local has one block per root and asks no analysis where anything belongs
             if (nest_) {
-                // Nest::idom, not Nest::inest: a mutable only one sibling reaches belongs into *its* block.
-                auto in = curr ? curr : block_;
-                key     = mut ? owner((*nest_)[mut]->idom()) : owner(sched_->smart(in, def));
+                key = mut ? owner((*nest_)[mut]->inest()) : owner(sched_->early(def));
                 // A Nom is the one immutable with a declaration of its own: it goes where its body would, never inline.
                 if (auto nom = def->isa<Nom>()) {
                     // A header may already refer to it, so a closed Nom goes to the top level.
                     if (nom->is_closed())
                         key = nullptr;
-                    else if (auto body = nom->op()->isa_mut(); body && (*nest_)[body])
-                        key = owner((*nest_)[body]->idom());
+                    else if (auto body = nom->op()->isa_mut())
+                        if (auto node = (*nest_)[body]) key = owner(node->inest());
                     while (key && inlines(key))
                         key = owner((*nest_)[key]->inest());
                 }
                 // A binder that prints inline has no block of its own, so what belongs into it is inlined as well.
-                if (key && inlines(key) && !(mut && recursive_.contains(mut))) {
+                if (key && inlines(key) && !(mut && is_recursive(mut))) {
                     ctx_.inlined.emplace(def);
                     continue;
                 }
@@ -988,6 +1054,12 @@ private:
         for (auto node = (*nest_)[mut]; node; node = node->inest())
             if (auto m = owner(node); m && (!isa_decl(m) || ctx_.arms.contains(m))) return true;
         return false;
+    }
+
+    /// Without a Nest, the only recursion a block sees is @p mut referring to itself.
+    bool is_recursive(Def* mut) const {
+        if (auto node = nest_ ? (*nest_)[mut] : nullptr; node && !node->is_root()) return node->is_recursive();
+        return std::ranges::any_of(mut->deps(), [mut](const Def* op) { return op->local_muts().contains(mut); });
     }
 
     /// The mutable whose block @p node stands for; `nullptr` for the top level.
@@ -1007,11 +1079,26 @@ private:
         for (auto def : defs) {
             auto mut = isa_decl(def);
             sep(mut ? Prev::Decl : Prev::Let);
-            if (mut)
-                emit_decl(mut);
-            else
+            if (!mut)
                 emit_let(def);
+            else if (auto group = fe::lookup(mutual_, mut))
+                emit_mutual(*group);
+            else
+                emit_decl(mut);
         }
+    }
+
+    void emit_mutual(const fe::Vector<Def*>& group) {
+        std::println(os_, "{}mutual", ctx_.tab);
+        ++ctx_.tab;
+        {
+            auto _ = fe::Restore(prev_, Prev::None);
+            for (auto mut : group) {
+                sep(Prev::Decl);
+                emit_decl(mut);
+            }
+        }
+        std::println(os_, "{}end", --ctx_.tab);
     }
 
     /// A declaration spans several lines, so a blank line sets it apart from its neighbors within the same block.
@@ -1036,11 +1123,11 @@ private:
         if (auto rule = mut->isa_mut<Rule>(); rule && rule->is_set()) return emit_rule(rule);
         if (!mut->is_set()) return emit_unset(mut);
         // `rec` binds the name for the body - which only a self-referential mutable needs; `extern` is out either way.
-        auto kw = recursive_.contains(mut) ? "rec" : "let";
+        auto kw = is_recursive(mut) ? "rec " : "let ";
         // A `rec` only takes a bare variant.
         if (auto variant = mut->isa<Variant>())
-            return std::println(os_, "{}{} {} = {};", ctx_.tab, kw, id(&ctx_, mut), ctors(&ctx_, variant));
-        std::println(os_, "{}{} {} = {};", ctx_.tab, kw, id(&ctx_, mut), Full(&ctx_, mut));
+            return std::println(os_, "{}{}{} = {};", ctx_.tab, kw, id(&ctx_, mut), ctors(&ctx_, variant));
+        std::println(os_, "{}{}{} = {};", ctx_.tab, kw, id(&ctx_, mut), Full(&ctx_, mut));
     }
 
     void emit_rule(Rule* rule) {
@@ -1156,8 +1243,7 @@ private:
     MutMap<DefVec> bucket_;
     MutMap<Def*> absorbed_; ///< Inner Lam of a curried chain -> the chain's outermost one.
     DefSet done_;
-    MutSet open_; ///< On the schedule stack - a Def reaching one of these is recursive.
-    MutSet recursive_;
+    MutMap<fe::Vector<Def*>> mutual_; ///< First member of a `mutual` group -> the whole group.
     Ctx ctx_;
     Srcs srcs_;
     MutSet scheduled_;
@@ -1233,30 +1319,32 @@ void World::dump(std::ostream& os) {
     // An `import` declares its own annexes; those of the dumped file itself only exist if the dump declares them.
     auto self = file_stem(*this) + ".";
     // Only a loaded plugin registers its annexes, so find them by what the externals reach.
-    auto annexes = fe::Vector<std::pair<std::string, const Def*>>();
+    auto annexes = fe::Vector<DumpAnnex>();
     auto todo    = DefVec(externals().muts().begin(), externals().muts().end());
     auto seen    = DefSet(todo.begin(), todo.end());
     while (!todo.empty()) {
         auto def = todo.back();
         todo.pop_back();
         if ((def->isa<Axm>() || is_anx_nom(def)) && def->sym().view().starts_with(self)) {
-            auto name = def->sym().str().substr(self.size());
-            reserved.emplace_back(name.substr(0, name.find('.')));
-            annexes.emplace_back(std::move(name), def);
+            auto sym  = def->sym(); // a short Sym is stored inline, so its view must not outlive it
+            auto name = sym.view().substr(self.size());
+            auto dot  = name.find('.');
+            auto mod  = dot == std::string_view::npos ? std::string_view() : name.substr(0, dot);
+            reserved.emplace_back(mod.empty() ? name : mod);
+            annexes.emplace_back(std::string(mod), std::string(mod.empty() ? name : name.substr(dot + 1)), def);
         }
         for (auto dep : def->deps())
             if (dep && seen.emplace(dep).second) todo.emplace_back(dep);
     }
-    std::ranges::sort(annexes, {}, [](const auto& p) { return p.second->flags(); });
+    std::ranges::sort(annexes, {}, [](const auto& a) { return a.def->flags(); });
 
     // The local dump keeps every mutable to itself: no Nest that a broken program could trip over.
     auto mode   = flags().mim_local ? Def::Dump::Local : Def::Dump::All;
     auto dumper = Dumper(os, mode, flags().mim_typed_let, std::move(srcs));
     dumper.plain(reserved);
-    dumper.self(std::move(self));
-    if (!annexes.empty()) dumper.dump_annexes(annexes);
-    for (auto mut : externals().muts())
-        dumper.dump(mut);
+    dumper.live(seen);
+    if (!annexes.empty()) dumper.dump_annexes(std::move(self), annexes);
+    dumper.dump(externals().mutate());
 
     assertf(old_gid == curr_gid(), "new nodes created during dump. old_gid: {}; curr_gid: {}", old_gid, curr_gid());
 }

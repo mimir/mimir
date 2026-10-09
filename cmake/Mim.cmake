@@ -24,15 +24,17 @@ set(MIM_PLAYGROUND_EXAMPLES
     fib
     ackermann
     main_loop
-    ord/fold
-    ord/loop
-    ord/poly
     mem/seo/gvn
     mem/seo/click
     mem/seo/phi-var-combis
     mem/seo/higher-order
     mem/seo/ptr_indirect
     mem/seo/contify_fluet_weeks
+    ord/fold
+    ord/loop
+    ord/poly
+    tensor/attn_exec
+    tensor/fc_exec
 )
 find_program(MIM_CLANG NAMES clang)
 if(MIM_BUILD_LL_RUNTIME AND NOT MIM_CLANG)

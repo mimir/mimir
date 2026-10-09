@@ -389,12 +389,14 @@ protected:
     /// Rewrite the World of Phase::world **into** @p new_world.
     RWBase(World& world, std::string name, Analysis* analysis, std::unique_ptr<World>&& new_world)
         : Phase(world, std::move(name))
-        , Rewriter(std::move(new_world))
-        , analysis_(analysis) {}
+        , Rewriter(*new_world)
+        , analysis_(analysis)
+        , new_world_(std::move(new_world)) {}
     RWBase(World& world, flags_t annex, Analysis* analysis, std::unique_ptr<World>&& new_world)
         : Phase(world, annex)
-        , Rewriter(std::move(new_world))
-        , analysis_(analysis) {}
+        , Rewriter(*new_world)
+        , analysis_(analysis)
+        , new_world_(std::move(new_world)) {}
     ///@}
 
 public:
@@ -431,7 +433,7 @@ public:
     virtual void rewrite_external(Def*)                  = 0;
 
     /// Returns whether we are currently bootstrapping (rewriting annexes).
-    /// While bootstrapping, you have to skip rewrites that refer to other annexes, as they might not yet be available.
+    /// While bootstrapping, an RWPhase must look up other annexes via RWPhase::annex, as they might not yet exist.
     bool is_bootstrapping() const { return bootstrapping_; }
     ///@}
 
@@ -449,6 +451,7 @@ protected:
 private:
     Analysis* analysis_;
     bool bootstrapping_ = true;
+    std::unique_ptr<World> new_world_; ///< Owns Rewriter::world, if it is not Phase::world.
 };
 
 /// Rebuilds old_world() into new_world() and then swaps them.
@@ -482,6 +485,13 @@ public:
     World& world() = delete;                         ///< Hides both and forbids direct access.
     World& old_world() { return Phase::world(); }    ///< Get **old** Def%s from here.
     World& new_world() { return Rewriter::world(); } ///< Create **new** Def%s into this.
+
+    /// The annex @p flags in new_world(), rewritten on demand if the annex walk has not reached it yet.
+    const Def* annex(flags_t flags);
+    template<annex_without_subs Id>
+    const Def* annex() {
+        return annex(Annex::base<Id>());
+    }
     ///@}
 
 protected:

@@ -3,7 +3,7 @@
 
 plugin core;
 
-pub mod foo {
+pub mod foo
     axm Mat: [n: Nat, S: «n; Nat», T: *] → *;
 
     axm map_reduce:
@@ -23,7 +23,7 @@ pub mod foo {
             // out_index not needed => always ij (0 ... n) for n dimensions
             input: «x: m; [«NI#x; Nat», Mat (NI#x, SI#x, TI#x)]»
         ] → Mat (n, S, T);
-}
+end
 
 // [(Nat, Nat)#x, («2; Nat», «3; Nat»),
 

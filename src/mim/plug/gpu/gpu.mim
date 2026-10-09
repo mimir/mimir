@@ -133,43 +133,43 @@ anx fun with_streams (n: Nat, func: Fn [mem.M 0, GlobalM, «n; Stream»] → [me
 ///
 /// Allocates memory on the device (in global address space), synchronously (`block`) or asynchronously
 /// against a stream (`asyn`).
-pub mod alloc {
+pub mod alloc
     axm block: [T: *] → GlobalM → [GlobalM, GlobalPtr T];
     axm asyn:  [T: *] → [GlobalM, Stream] → [GlobalM, GlobalPtr T];
-}
+end
 ///
 /// #### free(block) / free(asyn)
 ///
 /// Frees memory on the device (in global address space), synchronously (`block`) or asynchronously
 /// against a stream (`asyn`).
-pub mod free {
+pub mod free
     axm block: {T: *} → [GlobalM, GlobalPtr T] → GlobalM;
     axm asyn:  {T: *} → [GlobalM, GlobalPtr T, Stream] → GlobalM;
-}
+end
 ///
 /// #### copy_to_device(block) / copy_to_device(asyn)
 ///
 /// Copies data from host memory to device memory, synchronously (`block`) or asynchronously against a
 /// stream (`asyn`).
-pub mod copy_to_device {
+pub mod copy_to_device
     axm block: {T: *} → [mem.M 0, GlobalM, mem.Ptr0 T, GlobalPtr T] → [mem.M 0, GlobalM];
     axm asyn:  {T: *} → [mem.M 0, GlobalM, mem.Ptr0 T, GlobalPtr T, Stream] → [mem.M 0, GlobalM];
-}
+end
 ///
 /// #### copy_to_host(block) / copy_to_host(asyn)
 ///
 /// Copies data from device memory to host memory, synchronously (`block`) or asynchronously against a
 /// stream (`asyn`).
-pub mod copy_to_host {
+pub mod copy_to_host
     axm block: {T: *} → [mem.M 0, GlobalM, GlobalPtr T, mem.Ptr0 T] → [mem.M 0, GlobalM];
     axm asyn:  {T: *} → [mem.M 0, GlobalM, GlobalPtr T, mem.Ptr0 T, Stream] → [mem.M 0, GlobalM];
-}
+end
 ///
 /// #### alloc_copy(block) / alloc_copy(asyn)
 ///
 /// Allocates memory on the device (in global address space) for the provided host data and copies the
 /// host data to that memory, synchronously (`block`) or asynchronously against a stream (`asyn`).
-pub mod alloc_copy {
+pub mod alloc_copy
     anx let block = lm {T: *}
                        (m0: mem.M 0, m1: GlobalM, ptr: mem.Ptr0 T)
                      : [mem.M 0, GlobalM, GlobalPtr T] =
@@ -183,7 +183,7 @@ pub mod alloc_copy {
         let (m1, d_ptr) = alloc.asyn T (m1, stream);
         let (m0, m1) = copy_to_device.asyn (m0, m1, ptr, d_ptr, stream);
         (m0, m1, d_ptr);
-}
+end
 ///
 /// ### Buffer Operations
 ///

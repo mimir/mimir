@@ -408,7 +408,7 @@ static Tok negate(Tok tok) {
             auto [mod, val] = tok.lit_i();
             return {tok.loc(), mod, mod == 0 ? -val : (mod - val % mod) % mod};
         }
-        default: fe::unreachable();
+        default: std::unreachable();
     }
 }
 
@@ -652,19 +652,21 @@ void Parser::check_no_extern(const Mods& mods, fe::Cite entity) {
     if (mods.is_extern) error().e(curr_, "`extern` is only meaningful on a function declaration, not a {}", entity);
 }
 
-Ptrs<ValDecl> Parser::parse_decls() {
+Ptrs<ValDecl> Parser::parse_decls(Mods group) {
     Ptrs<ValDecl> decls;
     while (true) {
         auto track = tracker();
-        auto mods  = parse_modifiers();
+        auto own   = parse_modifiers();
+        auto mods  = own.inherit(group);
         switch (ahead().tag()) {
             case Tag::T_semicolon: lex(); break; // eat up stray semicolons
-            case Tag::K_axm: parse_axm_decl(track, mods, decls); break;
+            case Tag::K_axm: decls.emplace_back(parse_axm_decl(track, mods)); break;
             case Tag::K_let: decls.emplace_back(parse_let_decl(track, mods)); break;
             case Tag::K_mod: decls.emplace_back(parse_mod_decl(track, mods)); break;
             case Tag::K_nom: decls.emplace_back(parse_nom_decl(track, mods)); break;
             case Tag::K_use: decls.emplace_back(parse_use_decl(track, mods)); break;
-            case Tag::K_rec: decls.emplace_back(parse_rec_decl(track, true, mods)); break;
+            case Tag::K_mutual: decls.emplace_back(parse_mutual_decl(track, mods)); break;
+            case Tag::K_rec: decls.emplace_back(parse_rec_decl(track, mods)); break;
             case Tag::C_LAM: decls.emplace_back(parse_lam_decl(track, mods)); break;
             case Tag::C_RULE: decls.emplace_back(parse_rule_decl(track, mods)); break;
             case Tag::C_IMPORT:
@@ -677,8 +679,7 @@ Ptrs<ValDecl> Parser::parse_decls() {
                 }
                 [[fallthrough]];
             default:
-                if (mods.vis || mods.is_extern || mods.is_anx)
-                    error().e(curr_, "expected a declaration after a modifier");
+                if (own.any()) error().e(curr_, "expected a declaration after a modifier");
                 return decls;
         }
     }
@@ -701,56 +702,40 @@ std::tuple<Ptr<Expr>, Dbg, Tok, Tok> Parser::parse_axm_tail() {
     return {type, normalizer, curry, trip};
 }
 
-void Parser::parse_axm_decl(Tracker track, Mods mods, Ptrs<ValDecl>& decls) {
+Ptr<ValDecl> Parser::parse_axm_decl(Tracker track, Mods mods) {
     eat(Tag::K_axm);
 
     if (mods.is_extern) error().e(curr_, "`axm` is implicitly `anx`; cannot combine with `extern`");
     auto vis = mods.vis.value_or(Vis::Pub); // axm is always anx, so it always gets the pub nudge
 
-    if (ahead().isa(Tag::D_paren_l)) {
-        for (auto decl : parse_axm_group(vis))
-            decls.emplace_back(decl);
-        return;
+    Dbg mod;
+    Ptrs<AxmDecl::Name> names;
+    bool is_family = ahead().isa(Tag::D_paren_l);
+    if (!is_family) {
+        auto dbg = parse_id("name of an axm");
+        if (accept(Tag::T_dot)) {
+            mod       = dbg;
+            is_family = true;
+        } else {
+            names.emplace_back(ptr<AxmDecl::Name>(dbg.loc(), Dbgs{dbg}));
+        }
     }
-
-    auto dbg = parse_id("name of an axm");
-    if (accept(Tag::T_dot)) {
-        auto group = parse_axm_group(vis);
-        decls.emplace_back(ptr<ModDecl>(track, Vis::Pub, dbg, ast().scope(), ast().copy(group)));
-        return;
-    }
+    if (is_family) names = parse_axm_names();
 
     auto [type, normalizer, curry, trip] = parse_axm_tail();
-    decls.emplace_back(ptr<AxmDecl>(track, vis, dbg, type, normalizer, curry, trip));
+    auto members                         = mod ? &ast().scope() : nullptr;
+    return ptr<AxmDecl>(track, vis, mod, members, is_family, type, normalizer, curry, trip, names);
 }
 
-Ptrs<ValDecl> Parser::parse_axm_group(Vis vis) {
-    fe::Vector<Dbgs> members;
+Ptrs<AxmDecl::Name> Parser::parse_axm_names() {
+    Ptrs<AxmDecl::Name> names;
     parse_list("tag list of an axm", Tag::D_paren_l, [&]() {
-        Dbgs names;
-        names.emplace_back(parse_id("tag of an axm"));
+        Dbgs dbgs{parse_id("tag of an axm")};
         while (accept(Tag::T_assign))
-            names.emplace_back(parse_id("alias of an axm tag"));
-        members.emplace_back(std::move(names));
+            dbgs.emplace_back(parse_id("alias of an axm tag"));
+        names.emplace_back(ptr<AxmDecl::Name>(dbgs.front().loc() + dbgs.back().loc(), dbgs));
     });
-
-    auto [type, normalizer, curry, trip] = parse_axm_tail();
-
-    Ptrs<ValDecl> decls;
-    const AxmDecl* owner = nullptr;
-    for (auto& names : members) {
-        auto primary = names.front();
-        if (!owner) {
-            auto axm = ptr<AxmDecl>(primary.loc(), vis, primary, type, normalizer, curry, trip);
-            owner    = axm.get();
-            decls.emplace_back(axm);
-        } else {
-            decls.emplace_back(ptr<AxmDecl::Sibling>(primary.loc(), vis, primary, owner));
-        }
-        for (auto alias : names | std::views::drop(1))
-            decls.emplace_back(ptr<AliasDecl>(alias.loc(), Vis::Pub, alias, path(primary)));
-    }
-    return decls;
+    return names;
 }
 
 Ptr<ValDecl> Parser::parse_alias_decl(Tracker track, Mods mods) {
@@ -779,10 +764,8 @@ Ptr<ValDecl> Parser::parse_mod_decl(Tracker track, Mods mods) {
     auto vis = mods.vis.value_or(Vis::Priv);
     eat(Tag::K_mod);
     auto dbg   = parse_id("name of a module");
-    auto _     = anchor(expect(Tag::D_brace_l, "opening brace of a module"), Tag::D_brace_r);
     auto decls = parse_decls();
-    recover("module");
-    expect(Tag::D_brace_r, "closing brace of a module");
+    expect(Tag::K_end, "end of a module");
     return ptr<ModDecl>(track, vis, dbg, ast().scope(), ast().copy(decls));
 }
 
@@ -798,14 +781,25 @@ Ptr<ValDecl> Parser::parse_use_decl(Tracker track, Mods mods) {
     return ptr<UseDecl>(track, Mods{mods.vis.value_or(Vis::Priv)}, path, alias);
 }
 
-Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, bool first, Mods mods) {
+Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, Mods mods) {
     check_no_extern(mods, "recursive declaration");
-    eat(first ? Tag::K_rec : Tag::K_and);
+    eat(Tag::K_rec);
     auto dbg = parse_id("recursive declaration");
     expect(Tag::T_assign, "recursive declaration");
     auto body = parse_expr("body of a recursive declaration");
-    auto next = ahead().isa(Tag::K_and) ? parse_and_decl() : nullptr;
-    return ptr<RecDecl>(track, mods, dbg, body, next);
+    return ptr<RecDecl>(track, mods, dbg, body);
+}
+
+Ptr<ValDecl> Parser::parse_mutual_decl(Tracker track, Mods mods) {
+    eat(Tag::K_mutual);
+    Ptrs<RecDecl> decls;
+    for (auto decl : parse_decls(mods))
+        if (auto rec = decl->isa<RecDecl>())
+            decls.emplace_back(rec);
+        else
+            error().e(decl->loc(), "only `rec`, `nom`, `lam`, `con`, and `fun` declarations may be mutually recursive");
+    expect(Tag::K_end, "end of a mutual block");
+    return ptr<MutualDecl>(track, decls);
 }
 
 Ptr<RecDecl> Parser::parse_nom_decl(Tracker track, Mods mods) {
@@ -814,8 +808,7 @@ Ptr<RecDecl> Parser::parse_nom_decl(Tracker track, Mods mods) {
     auto dbg = parse_id("nominal type declaration");
     expect(Tag::T_assign, "nominal type declaration");
     auto body = parse_expr("underlying type of a nominal type declaration");
-    auto next = ahead().isa(Tag::K_and) ? parse_and_decl() : nullptr;
-    return ptr<NomDecl>(track, mods, dbg, body, next);
+    return ptr<NomDecl>(track, mods, dbg, body);
 }
 
 Ptr<ValDecl> Parser::parse_rule_decl(Tracker track, Mods mods) {
@@ -850,7 +843,7 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
         case Tag::K_lam: decl = true ; entity = "function declaration";               break;
         case Tag::K_con: decl = true ; entity = "continuation declaration";           break;
         case Tag::K_fun: decl = true ; entity = "returning continuation declaration"; break;
-        default: fe::unreachable();
+        default: std::unreachable();
     }
     // clang-format on
 
@@ -889,22 +882,8 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
                     .n("`[...]` describes a type, so its names bind nothing here")
                     .n("write an unnamed component as `_: T`");
     }
-    auto next = ahead().isa(Tag::K_and) ? parse_and_decl() : nullptr;
 
-    return ptr<LamDecl>(track, mods, tag, dbg, codom, body, next, doms);
-}
-
-Ptr<RecDecl> Parser::parse_and_decl() {
-    if (ISA(ahead(1).tag(), C_LAM)) {
-        lex();
-        auto track = tracker();
-        return parse_lam_decl(track, {});
-    }
-    if (ahead(1).isa(Tag::K_nom)) {
-        lex();
-        return parse_nom_decl(tracker(), {});
-    }
-    return parse_rec_decl(tracker(), false, {});
+    return ptr<LamDecl>(track, mods, tag, dbg, codom, body, doms);
 }
 
 } // namespace mim::ast

@@ -1,11 +1,11 @@
 // RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
 
 // An instance of a `nom` is as private as its declaration.
-mod units {
+mod units
     pub lam Box (T: *) =
         nom B = T;
         B;
-}
+end
 
 extern lam bad (b: units.Box I32): I32 = #b;
 

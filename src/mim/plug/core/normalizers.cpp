@@ -431,7 +431,7 @@ const Def* fold(World& world, const Def* type, const Def*& a) {
 /// (4) (lx op y) op      b    ->  lx op (y op b)
 /// ```
 template<class Id>
-const Def* reassociate(Id id, World& world, [[maybe_unused]] const App* ab, const Def* a, const Def* b) {
+const Def* reassociate(Id id, World& world, const Def* a, const Def* b) {
     if (!is_associative(id)) return nullptr;
 
     auto xy     = Axm::isa<Id>(id, a);
@@ -443,7 +443,12 @@ const Def* reassociate(Id id, World& world, [[maybe_unused]] const App* ab, cons
     auto lz     = Lit::isa(z);
 
     // if we reassociate, we have to forget about nsw/nuw
-    auto make_op = [&world, id](const Def* a, const Def* b) { return world.call(id, Mode::none, Defs{a, b}); };
+    auto make_op = [&world, id](const Def* a, const Def* b) {
+        if constexpr (std::is_same_v<Id, nat>)
+            return world.call(id, Defs{a, b});
+        else
+            return world.call(id, Mode::none, Defs{a, b});
+    };
 
     if (la && lz) return make_op(make_op(a, z), w);             // (1)
     if (lx && lz) return make_op(make_op(x, z), make_op(y, w)); // (2)
@@ -553,6 +558,8 @@ const Def* normalize_nat(const Def* type, const Def* callee, const Def* arg) {
         }
     }
 
+    if (auto res = reassociate<nat>(id, world, a, b)) return res;
+
     return world.raw_app(type, callee, {a, b});
 }
 
@@ -582,7 +589,7 @@ const Def* normalize_ncmp(const Def* type, const Def* callee, const Def* arg) {
                 case ncmp::le: return world.lit_bool(*la <= *lb);
                 case ncmp::g : return world.lit_bool(*la >  *lb);
                 case ncmp::ge: return world.lit_bool(*la >= *lb);
-                default: fe::unreachable();
+                default: std::unreachable();
             }
             // clang-format on
         }
@@ -641,7 +648,7 @@ const Def* normalize_bit1(const Def* type, const Def* c, const Def* a) {
         switch (id) {
             case bit1::f: return world.lit_idx(*ls, 0);
             case bit1::t: return world.lit_idx(*ls, *ls - 1_u64);
-            case bit1::id: fe::unreachable();
+            case bit1::id: std::unreachable();
             default: break;
         }
 
@@ -694,7 +701,7 @@ const Def* normalize_bit2(const Def* type, const Def* c, const Def* arg) {
             case bit2::nxor: return world.lit_idx_mod(*ls, ~(*la ^  *lb));
             case bit2:: iff: return world.lit_idx_mod(*ls, ~ *la |  *lb);
             case bit2::niff: return world.lit_idx    (*ls,   *la & ~*lb);
-            default: fe::unreachable();
+            default: std::unreachable();
         }
     }
 
@@ -728,7 +735,7 @@ const Def* normalize_bit2(const Def* type, const Def* c, const Def* arg) {
         }
     }
 
-    if (auto res = reassociate<bit2>(id, world, callee, a, b)) return res;
+    if (auto res = reassociate<bit2>(id, world, a, b)) return res;
 
     return world.raw_app(type, callee, {a, b});
 }
@@ -820,7 +827,7 @@ const Def* normalize_wrap(const Def* type, const Def* c, const Def* arg) {
             switch (id) {
                 case wrap::sub: return a;    // a  - 0 -> a
                 case wrap::shl: return a;    // a >> 0 -> a
-                default: fe::unreachable();
+                default: std::unreachable();
                 // add, mul are commutative, the literal has been normalized to the left
             }
         }
@@ -841,7 +848,7 @@ const Def* normalize_wrap(const Def* type, const Def* c, const Def* arg) {
     }
     // clang-format on
 
-    if (auto res = reassociate<wrap>(id, world, callee, a, b)) return res;
+    if (auto res = reassociate<wrap>(id, world, a, b)) return res;
 
     return world.raw_app(type, callee, {a, b});
 }
@@ -959,7 +966,7 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
             case 16: return world.lit_nat(2);
             case 32: return world.lit_nat(4);
             case 64: return world.lit_nat(8);
-            default: fe::unreachable();
+            default: std::unreachable();
         }
     } else if (type->isa<Sigma>()) {
         u64 offset = 0;
@@ -987,7 +994,7 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
         auto align = op(trait::align, elem);
         if constexpr (id == trait::align) return align;
         auto b = op(trait::size, elem);
-        if (b->isa<Lit>()) return world.call(nat::mul, Defs{arr->arity(), b});
+        if (!Axm::isa(trait::size, b)) return world.call(nat::mul, Defs{arr->arity(), b});
     }
 
     return {};

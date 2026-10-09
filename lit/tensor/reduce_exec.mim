@@ -1,0 +1,43 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt -p clos -p ll %s
+// RUN: clang++ %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t
+
+// tensor.reduce along each axis of a rank-3 tensor, all the way down to a scalar, and tensor.softmax along its middle axis.
+plugin tensor;
+plugin core;
+plugin math;
+plugin mem;
+
+use tensor;
+
+let F32  = math.F32;
+let fast = math.mode.fast;
+let add  = math.arith.add fast;
+let sub  = math.arith.sub fast;
+
+lam f (i: I64): F32 = math.conv.s2f math.f32 i;
+
+// x[a, b, c] = 12a + 4b + c, so every sum below is exact.
+let x = generate (2, 3, 4) (λ i: «3; I64»: F32 = f (core.wrap.add 0 (core.wrap.mul 0 (12I64, i#0_3), core.wrap.add 0 (core.wrap.mul 0 (4I64, i#1_3), i#2_3))));
+
+lam err {r: Nat, s: «r; Nat»} (got want: «s; F32»): «s; F32» = binary (λ (u v: F32): F32 = math.abs fast (sub (u, v))) (got, want);
+lam rows {m n: Nat} (t: «m, n; F32»): «m; F32» = reduce (math.extrema.fmax fast, 0:F32) 1₂ t;
+
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
+    let e0 = rows (err (reduce (add, 0:F32) 0₃ x, generate (3, 4) (λ i: «2; I64»: F32 = f (core.wrap.add 0 (12I64, core.wrap.mul 0 (2I64, core.wrap.add 0 (core.wrap.mul 0 (4I64, i#0_2), i#1_2)))))));
+    let e1 = rows (err (reduce (add, 0:F32) 1₃ x, generate (2, 4) (λ i: «2; I64»: F32 = f (core.wrap.add 0 (core.wrap.mul 0 (36I64, i#0_2), core.wrap.add 0 (12I64, core.wrap.mul 0 (3I64, i#1_2)))))));
+    let e2 = rows (err (reduce (add, 0:F32) 2₃ x, generate (2, 3) (λ i: «2; I64»: F32 = f (core.wrap.add 0 (core.wrap.mul 0 (48I64, i#0_2), core.wrap.add 0 (core.wrap.mul 0 (16I64, i#1_2), 6I64))))));
+    let one = f 1I64;
+    // Softmax along axis 1 sums to one along that axis; its largest entry is 1 / (1 + e⁻⁴ + e⁻⁸).
+    let p  = softmax fast 1₃ x;
+    let e3 = rows (err (reduce (add, 0:F32) 1₃ p, ‹2, 4; one›));
+    let peak = math.arith.div fast (one, add (one, add (math.exp.exp fast (f (-4I64)), math.exp.exp fast (f (-8I64)))));
+    let e4 = math.abs fast (sub (p#(1_2, 2_3, 3_4), peak));
+    let e5 = math.abs fast (sub (reduce (add, 0:F32) 0₁ (reduce (add, 0:F32) 0₂ (reduce (add, 0:F32) 0₃ x)), f 276I64));
+    let tol = math.arith.div fast (one, f 100000I64);
+    let lt  = λ e: F32: Bool = math.cmp.l fast (e, tol);
+    let ok  = core.bit2.and_ 0 (core.bit2.and_ 0 (lt e0#0_3, lt e0#1_3), core.bit2.and_ 0 (lt e0#2_3,
+              core.bit2.and_ 0 (core.bit2.and_ 0 (lt e1#0_2, lt e1#1_2), core.bit2.and_ 0 (core.bit2.and_ 0 (lt e2#0_2, lt e2#1_2),
+              core.bit2.and_ 0 (core.bit2.and_ 0 (lt e3#0_2, lt e3#1_2), core.bit2.and_ 0 (lt e4, lt e5))))));
+    return (m, core.select (ok, 0I32, 1I32));

@@ -1,0 +1,15 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: %FileCheck %s < %{s:stem}.ll
+// RUN: clang -c %{s:stem}.ll -o %t.o -Wno-override-module
+
+// `compile.scalarize` must not split a `tensor.buf`-annotated parameter: the tensor stays one handle.
+// CHECK: define {{.*}} @r0([2 x [3 x [4 x float]]] addrspace(0)* %{{[^,]*}})
+plugin tensor;
+plugin math;
+
+use tensor;
+
+extern fun r0 (x: «2, 3, 4; math.F32»): «3, 4; math.F32» =
+    let x = buf x;
+    return (reduce (math.arith.add math.mode.fast, 0:math.F32) 0₃ x);

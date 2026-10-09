@@ -5,19 +5,26 @@
 // RUN: %mim %s -p opt -X tensor:reassoc-max=2 -o %t2
 // RUN: cat %t2 | %FileCheck %s --check-prefix=NODISP
 // RUN: cat %t2 | %FileCheck %s --check-prefix=NOCMP
-// `-X tensor:reassoc-vec=1` counts plain multiplications instead of padded vector lanes.
-// RUN: %mim %s -p opt -X tensor:reassoc-vec=1 -o %t3
-// RUN: cat %t3 | %FileCheck %s --check-prefix=SCALAR
+// `-X tensor:vec-width=4` charges in units of 4 lanes instead of the default 8.
+// RUN: %mim %s -p opt -X tensor:vec-width=4 -o %t3
+// RUN: cat %t3 | %FileCheck %s --check-prefix=W4
+// `-X tensor:vec-width=1` counts plain multiplications.
+// RUN: %mim %s -p opt -X tensor:vec-width=1 -o %t4
+// RUN: cat %t4 | %FileCheck %s --check-prefix=W1
 
 // tensor.reassoc: matrix-chain order.
 // Every cost below counts vector-lane slots: a product's trailing extent is the vector loop, so a
-// literal one is charged rounded up to a multiple of 8 (the default `-X tensor:reassoc-vec`).
+// literal one is charged rounded up to a multiple of 8 (the default `-X tensor:vec-width`).
 
 plugin core;
 plugin tensor;
 plugin compile;
 
-lam nat_ring (): tensor.Ring = (Nat, 0, core.nat.add, core.nat.mul);
+use tensor;
+
+let Ring = (Nat, 0, core.nat.add, core.nat.mul);
+
+let `* = product_2d Ring;
 
 // 4x10 · 10x2 · 2x10 written right-deep costs 10·2·16 + 4·10·16 = 960; the dynamic program picks the
 // left-deep bracketing at 4·10·8 + 4·2·16 = 448.
@@ -26,8 +33,8 @@ lam nat_ring (): tensor.Ring = (Nat, 0, core.nat.add, core.nat.mul);
 // CHECK-DAG: tensor.product_2d {{.*}} (4, 2, 10)
 // GONE-NOT: tensor.product_2d {{.*}} (10, 2, 10)
 extern fun chain3 (a: «4, 10; Nat», b: «10, 2; Nat», c: «2, 10; Nat»): «4, 10; Nat» =
-    let R = nat_ring ();
-    return (tensor.product_2d R (a, tensor.product_2d R (b, c)));
+    let (a, b, c) = (buf a, buf b, buf c);
+    return (a * (b * c));
 
 // 30x35 · 35x15 · 15x5 · 5x10 written left-deep costs 22800; the optimum is ((A·(B·C))·D) at 15000,
 // a bracketing that is neither left- nor right-deep.
@@ -36,8 +43,8 @@ extern fun chain3 (a: «4, 10; Nat», b: «10, 2; Nat», c: «2, 10; Nat»): «4
 // CHECK-DAG: tensor.product_2d {{.*}} (30, 35, 5)
 // CHECK-DAG: tensor.product_2d {{.*}} (30, 5, 10)
 extern fun chain4 (a: «30, 35; Nat», b: «35, 15; Nat», c: «15, 5; Nat», d: «5, 10; Nat»): «30, 10; Nat» =
-    let R = nat_ring ();
-    return (tensor.product_2d R (tensor.product_2d R (tensor.product_2d R (a, b), c), d));
+    let (a, b, c, d) = (buf a, buf b, buf c, buf d);
+    return (a * b * c * d);
 
 // A shared intermediate is a chain boundary: reassociating across `ab` would leave it materialized
 // for its second consumer as well, so both chains keep contracting 35 first.
@@ -46,9 +53,9 @@ extern fun chain4 (a: «30, 35; Nat», b: «35, 15; Nat», c: «15, 5; Nat», d:
 // CHECK-DAG: tensor.product_2d {{.*}} (30, 15, 10)
 extern fun shared (a: «30, 35; Nat», b: «35, 15; Nat», c: «15, 5; Nat», d: «15, 10; Nat»)
                  : [«30, 5; Nat», «30, 10; Nat»] =
-    let R  = nat_ring ();
-    let ab = tensor.product_2d R (a, b);
-    return (tensor.product_2d R (ab, c), tensor.product_2d R (ab, d));
+    let (a, b, c, d) = (buf a, buf b, buf c, buf d);
+    let ab = a * b;
+    return (ab * c, ab * d);
 
 // A symbolic extent is fine as long as one bracketing wins for *every* value of it. Here the rank-8
 // bottleneck does: x·(U·V) costs 768·8·768 + 589824·m, (x·U)·V costs 12288·m, and 12288 ≤ 589824
@@ -57,8 +64,8 @@ extern fun shared (a: «30, 35; Nat», b: «35, 15; Nat», c: «15, 5; Nat», d:
 // CHECK-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) @ ({{.*}}, 768, 8)
 // CHECK-DAG: tensor.product_2d (Nat, 0, core.nat.add, core.nat.mul) @ ({{.*}}, 8, 768)
 extern fun low_rank {m: Nat} (x: «m, 768; Nat», u: «768, 8; Nat», v: «8, 768; Nat»): «m, 768; Nat» =
-    let R = nat_ring ();
-    return (tensor.product_2d R (x, tensor.product_2d R (u, v)));
+    let (x, u, v) = (buf x, buf u, buf v);
+    return (x * (u * v));
 
 // The same shape without a bottleneck has no single winner: contracting 784 first costs
 // 28224000 + 96000·m, 300 first 276256·m, 120 first 4339200 + 12544·m, and so on - small m prefers a
@@ -78,8 +85,8 @@ extern fun low_rank {m: Nat} (x: «m, 768; Nat», u: «768, 8; Nat», v: «8, 76
 // NOCMP-NOT: core.ncmp
 extern fun batch_dispatch {m: Nat} (x: «m, 784; Nat», w1: «784, 300; Nat», w2: «300, 120; Nat»,
                                     w3: «120, 10; Nat»): «m, 10; Nat» =
-    let R = nat_ring ();
-    return (tensor.product_2d R (tensor.product_2d R (tensor.product_2d R (x, w1), w2), w3));
+    let (x, w1, w2, w3) = (buf x, buf w1, buf w2, buf w3);
+    return (x * w1 * w2 * w3);
 
 // Multiplications alone would keep this chain as written: 100·4·2 + 100·2·8 = 2400 beats
 // 4·2·8 + 100·4·8 = 3264. But `a·b` is 100 wide and 2 narrow, and 2 columns leave 6 of the 8 vector
@@ -89,12 +96,15 @@ extern fun batch_dispatch {m: Nat} (x: «m, 784; Nat», w1: «784, 300; Nat», w
 // CHECK-DAG: tensor.product_2d {{.*}} (4, 2, 8)
 // CHECK-DAG: tensor.product_2d {{.*}} (100, 4, 8)
 // GONE-NOT: tensor.product_2d {{.*}} (100, 4, 2)
-// Counting plain multiplications leaves it as written.
-// SCALAR-DAG: tensor.product_2d {{.*}} (100, 4, 2)
-// SCALAR-DAG: tensor.product_2d {{.*}} (100, 2, 8)
+// With 4 lanes, 2 columns leave only 2 idle: as written costs 3200 against 3264, so it stays as written.
+// W4-DAG: tensor.product_2d {{.*}} (100, 4, 2)
+// W4-DAG: tensor.product_2d {{.*}} (100, 2, 8)
+// Counting plain multiplications (1 lane) keeps it as written as well: 2400 against 3264.
+// W1-DAG: tensor.product_2d {{.*}} (100, 4, 2)
+// W1-DAG: tensor.product_2d {{.*}} (100, 2, 8)
 extern fun narrow (a: «100, 4; Nat», b: «4, 2; Nat», c: «2, 8; Nat»): «100, 8; Nat» =
-    let R = nat_ring ();
-    return (tensor.product_2d R (tensor.product_2d R (a, b), c));
+    let (a, b, c) = (buf a, buf b, buf c);
+    return (a * b * c);
 
 // A transposed operand is read with its contraction unit-stride, so `dot_schedule_kvec` vectorizes
 // that contraction instead of the trailing extent: as written the chain costs 10·5·8 + 10·9·8 = 1120,
@@ -105,11 +115,31 @@ extern fun narrow (a: «100, 4; Nat», b: «4, 2; Nat», c: «2, 8; Nat»): «10
 // CHECK-DAG: tensor.product_2d {{.*}} (10, 8, 9)
 // GONE-NOT: tensor.product_2d {{.*}} (5, 8, 9)
 extern fun kvec (a: «10, 5; Nat», b: «5, 8; Nat», c: «9, 8; Nat»): «10, 9; Nat» =
-    let R  = nat_ring ();
-    let ct = tensor.transpose (tt, ff) c;
-    return (tensor.product_2d R (tensor.product_2d R (a, b), ct));
+    let (a, b, c) = (buf a, buf b, buf c);
+    return (a * b * transpose (tt, ff) c);
+
+// `(A · B)ᵀ = Bᵀ · Aᵀ`, so a transposed product is part of the chain: attention scores `Q · Kᵀ` with
+// `Q = x · wq` and `K = x · wk` are the chain `x · wq · wkᵀ · xᵀ`.
+// With 64 rows, as written costs 64·8·8 + 64·8·8 + 64·8·64 = 40960, as `Kᵀ` is read unit-stride along the
+// contraction; merging the weights first, `x · ((wq · wkᵀ) · xᵀ)`, costs 8·8·8 + 8·8·64 + 64·8·64 = 37376.
+// CHECK-DAG: extern fun qk64
+// CHECK-DAG: tensor.product_2d {{.*}} ‹3; 8›
+// CHECK-DAG: tensor.product_2d {{.*}} (8, 8, 64)
+// CHECK-DAG: tensor.product_2d {{.*}} (64, 8, 64)
+// GONE-NOT: tensor.product_2d {{.*}} (64, 8, 8)
+extern fun qk64 (x: «64, 8; Nat», wq wk: «8, 8; Nat»): «64, 64; Nat» =
+    let (x, wq, wk) = (buf x, buf wq, buf wk);
+    return ((x * wq) * transpose_2d (x * wk));
+
+// With 4 rows both cost 640, so the chain stays as written.
+// CHECK-DAG: extern fun qk4
+// CHECK-DAG: tensor.product_2d {{.*}} (4, 8, 4)
+// GONE-NOT: tensor.product_2d {{.*}} (8, 8, 4)
+extern fun qk4 (x: «4, 8; Nat», wq wk: «8, 8; Nat»): «4, 4; Nat» =
+    let (x, wq, wk) = (buf x, buf wq, buf wk);
+    return ((x * wq) * transpose_2d (x * wk));
 
 // `tensor.lower_to_mem` rejects a tensor-typed function *value*, which is what the dispatcher's
 // thunks are - and it cannot carry a symbolically shaped tensor across a function boundary either.
 // So this test stops after the reassociation it is about.
-extern lam _compile (): compile.Phase = tensor.reassoc;
+extern lam _compile (): compile.Phase = reassoc;

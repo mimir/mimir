@@ -294,7 +294,7 @@ void Lexer::lex_digits(int base /*= 10*/) {
         case 10: accept_while(utf8::isdigit);  break;
         case 16: accept_while(utf8::isxdigit); break;
         // clang-format on
-        default: fe::unreachable();
+        default: std::unreachable();
     }
 }
 

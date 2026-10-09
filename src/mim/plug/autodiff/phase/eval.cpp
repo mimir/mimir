@@ -431,7 +431,7 @@ const Def* Eval::augment_(const Def* def, Lam* f, Lam* f_diff) {
 
     log().e("cannot augment {} node {}: {}", def->node_name(), def, def->type());
     assert(false && "augment not implemented on this def");
-    fe::unreachable();
+    std::unreachable();
 }
 
 } // namespace mim::plug::autodiff::phase

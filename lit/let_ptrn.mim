@@ -1,8 +1,8 @@
 // RUN: %mim -p opt %s -o -
-pub mod foo {
+pub mod foo
     axm F: * → *;
     axm f: [T: *] → Nat → F T;
-}
+end
 
 extern fun f(
         T: *,

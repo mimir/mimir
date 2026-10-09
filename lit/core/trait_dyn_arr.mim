@@ -1,0 +1,20 @@
+// RUN: %mim %s -o - | %FileCheck %s --check-prefix=TRAIT
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: clang %{s:stem}.ll -c -o %t -Wno-override-module
+// RUN: %FileCheck %s --check-prefix=LL < %{s:stem}.ll
+plugin core;
+plugin mem;
+
+// TRAIT-LABEL: extern fun sizes
+// TRAIT-NOT: core.trait
+// TRAIT: return
+extern fun sizes(n m: Nat): [Nat, Nat, Nat] =
+    return (core.trait.size «n; «m; I32»», core.trait.size «n, m; I32», core.trait.size «n; «m; [I8, I32]»»);
+
+// LL-LABEL: define{{.*}}@alloc2d
+// LL: mul
+// LL: call i8* @malloc(i64
+extern fun alloc2d(m: mem.M 0, rows cols: Nat): [mem.M 0, mem.Ptr0 «rows; «cols; I32»»] =
+    let (m, p) = mem.alloc («rows; «cols; I32»», 0) m;
+    return (m, p);

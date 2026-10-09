@@ -34,7 +34,7 @@ public:
     Named(World& w, flags_t a)
         : Phase(w, a) {}
 
-    void start() final { fe::unreachable(); } // a Named always redirects and never runs itself
+    void start() final { std::unreachable(); } // a Named always redirects and never runs itself
 
     void apply(const App* app) final {
         if (!app) return;

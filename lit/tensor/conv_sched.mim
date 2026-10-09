@@ -1,31 +1,55 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 
 // Schedule SELECTION for convolutions, decided in the IR from the op's parameters (the old
-// lowering's heuristics, carried as the op's schedule operand). `oh` is always strip-mined
-// (neutrally by 1, or by the largest dividing size ≤ 4 when rows BLOCK: vectorized, ow < 16, oh divisible), so the domain is
-// rank 8 (n, co, oh/ts, ts, ow, ci, kh, kw):
+// lowering's heuristics, carried as the op's schedule operand). `ci`, `co` and `oh` are always
+// strip-mined (neutrally by 1, or by a real tile: `ci`/`co` when the window is POINTWISE, `oh` by
+// the largest dividing size ≤ 4 when rows BLOCK: vectorized, ow < 16, oh divisible), so the domain
+// is rank 10 (n, co/cb, cb, oh/ts, ts, ow, ci/cts, cts, kh, kw):
 // * cin = 64, 3x3, stride 1, 8x8: the window unrolls (9 taps), cin stays a loop (576 > 32), ow
-//   vectorizes AND rows block (ow = 8 < 16, oh = 8 → block size 4) — chooser (3, 2) (vdim = ro − 2 = the block dim);
-// * ditto at 16x16: ow vectorizes but rows do not block (ow = 16) — chooser (4, 2);
+//   vectorizes AND rows block (ow = 8 < 16, oh = 8 → block size 4) — chooser (4, 2) (vdim = ro − 2 = the block dim);
+// * ditto at 16x16: ow vectorizes but rows do not block (ow = 16) — chooser (5, 2);
 // * cin = 3, 3x3: the whole reduction unrolls (27 taps ≤ 32) — nothing left to vectorize
-//   against — chooser (8, 3) (8 = "no vector dim" sentinel);
-// * stride 2: ow is strided in the input but still broadcast in the weight — blocks like c64.
+//   against — chooser (10, 4) (10 = "no vector dim" sentinel);
+// * stride 2: ow is strided in the input but still broadcast in the weight — blocks like c64;
+// * 1x1: a pointwise window leaves one tap, so `co` jams into the vector body (cb = 8, capped by
+//   the target's lanes) and a `ci` tile joins the window (cts = 4, capped by cb·cts ≤ 32) —
+//   chooser (4, 3), the block dim again at ro − 2 but now carrying `co`;
+// * 1x1 with co = 3: no `co` block divides, so rows block instead and only the `ci` tile
+//   (cts = 8, uncapped) joins the window — chooser (4, 3) as well;
+// * 1x1 at 14x14: the rows block by 2 at unit stride, and a pointwise window keeps that row block
+//   instead of taking the `co` block — chooser (4, 2), like c64;
+// * 3x3 at 13x13: the row is short (13 < 16) but oh = 13 does not split, so the row block cannot
+//   fire and the `co` block takes the jam slot instead (cb = 2, capped by cb·kh·kw ≤ 32) —
+//   chooser (4, 2). A LONG row (c64w) still declines it: there the block is a wash.
 
-plugin core;
 plugin tensor;
 plugin math;
 plugin compile;
 
-let R: tensor.Ring = (math.F32, 0.0:math.F32, math.arith.add 0, math.arith.mul 0);
+use tensor;
 
-extern lam c64 (input: «2, 64, 8, 8; math.F32», w: «16, 64, 3, 3; math.F32»): «2, 16, 8, 8; math.F32» =
-    tensor.conv R ((1, 1), (1, 1), (1, 1)) (input, w);
-extern lam c3 (input: «2, 3, 8, 8; math.F32», w: «16, 3, 3, 3; math.F32»): «2, 16, 8, 8; math.F32» =
-    tensor.conv R ((1, 1), (1, 1), (1, 1)) (input, w);
-extern lam cs2 (input: «2, 64, 9, 9; math.F32», w: «16, 64, 3, 3; math.F32»): «2, 16, 4, 4; math.F32» =
-    tensor.conv R ((2, 2), (1, 1), (0, 0)) (input, w);
-extern lam c64w (input: «2, 64, 16, 16; math.F32», w: «16, 64, 3, 3; math.F32»): «2, 16, 16, 16; math.F32» =
-    tensor.conv R ((1, 1), (1, 1), (1, 1)) (input, w);
+let F32  = math.F32;
+let fast = math.mode.fast;
+let Ring = (F32, 0.0:F32, math.arith.add fast, math.arith.mul fast);
+let same = ((1, 1), (1, 1), (1, 1));
+let pw   = ((1, 1), (1, 1), (0, 0));
+
+extern lam c64 (input: «2, 64, 8, 8; F32», w: «16, 64, 3, 3; F32»): «2, 16, 8, 8; F32» =
+    conv Ring same (input, w);
+extern lam c3 (input: «2, 3, 8, 8; F32», w: «16, 3, 3, 3; F32»): «2, 16, 8, 8; F32» =
+    conv Ring same (input, w);
+extern lam cs2 (input: «2, 64, 9, 9; F32», w: «16, 64, 3, 3; F32»): «2, 16, 4, 4; F32» =
+    conv Ring ((2, 2), (1, 1), (0, 0)) (input, w);
+extern lam c64w (input: «2, 64, 16, 16; F32», w: «16, 64, 3, 3; F32»): «2, 16, 16, 16; F32» =
+    conv Ring same (input, w);
+extern lam p64 (input: «2, 64, 8, 8; F32», w: «16, 64, 1, 1; F32»): «2, 16, 8, 8; F32» =
+    conv Ring pw (input, w);
+extern lam p3 (input: «2, 64, 8, 8; F32», w: «3, 64, 1, 1; F32»): «2, 3, 8, 8; F32» =
+    conv Ring pw (input, w);
+extern lam p14 (input: «2, 64, 14, 14; F32», w: «16, 64, 1, 1; F32»): «2, 16, 14, 14; F32» =
+    conv Ring pw (input, w);
+extern lam c13 (input: «2, 64, 13, 13; F32», w: «16, 64, 3, 3; F32»): «2, 16, 13, 13; F32» =
+    conv Ring same (input, w);
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (
@@ -34,8 +58,9 @@ extern lam _compile (): compile.Phase =
         compile.cleanup,
     );
 
-// CHECK-DAG: {{mk_[0-9]+ \(8, 3\)}}
-// CHECK-DAG: {{mk_[0-9]+ \(3, 2\)}}
+// CHECK-DAG: {{mk_[0-9]+ \(10, 4\)}}
 // CHECK-DAG: {{mk_[0-9]+ \(4, 2\)}}
+// CHECK-DAG: {{mk_[0-9]+ \(5, 2\)}}
+// CHECK-DAG: {{mk_[0-9]+ \(4, 3\)}}
 // The binding-time guards must all have resolved.
 // CHECK-NOT: if_static

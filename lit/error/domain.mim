@@ -2,7 +2,7 @@
 plugin core;
 plugin math;
 
-pub mod foo { axm bar: Cn [I32, math.F32]; }
+pub mod foo axm bar: Cn [I32, math.F32]; end
 let err = foo.bar(23:math.F32, 42I32);
 // CHECK: {{.*}}domain.mim:6:11-6:37: error: argument is not assignable to callee's domain
 // CHECK-NEXT: 6 | let err = foo.bar(23:math.F32, 42I32);

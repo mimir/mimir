@@ -30,10 +30,7 @@ struct UseHash {
     using is_avalanching = void;
 
     inline size_t operator()(Use use) const {
-        if constexpr (sizeof(size_t) == 8)
-            return fe::hash((u64(use.index())) << 32_u64 | u64(use->gid()));
-        else
-            return fe::hash_combine(fe::hash_begin(u16(use.index())), use->gid());
+        return fe::hash_combine(0, u64(use.index()) << 32_u64 | u64(use->gid()));
     }
 };
 

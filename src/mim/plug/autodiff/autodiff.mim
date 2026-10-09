@@ -122,29 +122,19 @@ axm eval: compile.Phase;
 /// But - unlike externals - they are invisible to the backends and a `compile.unload "autodiff"` nukes them along
 /// with all the other annexes of this plugin.
 ///
-mod diff {
-    ///
-    /// #### autodiff.diff.core_icmp_xYgLE
-    ///
-    /// The derivative of core.icmp.xYgLE (eq).
-    /// The comparison pullback exists formally but is not used.
-    ///
+///
+/// #### autodiff.diff
+///
+/// - The derivative of `core.icmp.xYgLE (eq)`.
+///   The comparison pullback exists formally but is not used.
+/// - The derivative of `core.wrap.add`: `s ↦ (s, s)`
+/// - The derivative of `core.wrap.mul`: `s ↦ (s*b, s*a)`
+///
+mod diff
     anx fun core_icmp_xYgLE {s: Nat} (ab: «2; Idx s»)@tt: [Bool, Cn [Bool, Cn «2; Idx s»]] =
         return (core.icmp.sle ab, fn (_: Bool)@tt: «2; Idx s» = return ‹2; 0:(Idx s)›);
-    ///
-    /// #### autodiff.diff.core_wrap_add
-    ///
-    /// The derivative of core.wrap.add:
-    /// s ↦ (s, s)
-    ///
     anx fun core_wrap_add (m: Nat) {s: Nat} (ab: «2; Idx s»)@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
         return (core.wrap.add m ab, fn (i: Idx s)@tt: «2; Idx s» = return ‹2; i›);
-    ///
-    /// #### autodiff.diff.core_wrap_mul
-    ///
-    /// The derivative of core.wrap.mul:
-    /// s ↦ (s*b, s*a)
-    ///
     anx fun core_wrap_mul (m: Nat) {s: Nat} (a b: Idx s) as ab@tt: [Idx s, Cn [Idx s, Cn «2; Idx s»]] =
         return (core.wrap.mul m ab, fn (i: Idx s)@tt: «2; Idx s» = return (core.wrap.mul m (i, b), core.wrap.mul m (i, a)));
-}
+end

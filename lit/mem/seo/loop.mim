@@ -33,6 +33,6 @@ extern fun f(x: Nat): Nat =
 
 // CHECK: define i64 @f(i64 [[X:%x_[0-9]+]])
 // CHECK: [[T:%t_[0-9]+]] = phi i64 [ 3, {{.*}} ], [ 4, {{.*}} ]
-// CHECK: [[R:%r_[0-9]+]] = add nsw nuw i64 23, [[X]]
-// CHECK: [[S:%s_[0-9]+]] = add nsw nuw i64 [[T]], [[R]]
+// CHECK: [[XT:%[[:alnum:]_]+]] = add nsw nuw i64 [[T]], [[X]]
+// CHECK: [[S:%s_[0-9]+]] = add nsw nuw i64 23, [[XT]]
 // CHECK: ret i64 [[S]]

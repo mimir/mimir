@@ -1,0 +1,37 @@
+// RUN: %mim %s -p opt -o %t
+// RUN: cat %t | %FileCheck %s --check-prefix=W8
+// `-X tensor:vec-width` picks the target's vector width; `8` is the default written next to the
+// schedule, so it must reproduce the plain run.
+// RUN: %mim %s -p opt -X tensor:vec-width=8 -o %t8
+// RUN: cat %t8 | %FileCheck %s --check-prefix=W8
+// RUN: %mim %s -p opt -X tensor:vec-width=4 -o %t4
+// RUN: cat %t4 | %FileCheck %s --check-prefix=W4
+// RUN: %mim %s -p opt -X tensor:vec-width=16 -o %t16
+// RUN: cat %t16 | %FileCheck %s --check-prefix=W16
+// A single lane leaves no room for a jam block: the split is the neutral one.
+// RUN: %mim %s -p opt -X tensor:vec-width=1 -o %t1
+// RUN: cat %t1 | %FileCheck %s --check-prefix=W1
+// A width the schedules have no register file for is ignored, leaving the written default.
+// RUN: %mim %s -p opt -X tensor:vec-width=7 -o %t7
+// RUN: cat %t7 | %FileCheck %s --check-prefix=W8
+
+// The transposed operand is read with its contraction unit-stride, so the dot lowering takes
+// `dot_schedule_kvec`: the 32 output neurons are strip-mined into jam blocks of `tensor.vec_width`
+// and the materialized product is packed «6/2, 2, 32/bs, bs» along that split.
+
+plugin core;
+plugin tensor;
+plugin compile;
+
+use tensor;
+
+let Ring = (Nat, 0, core.nat.add, core.nat.mul);
+
+// W1: (3, 2, 32, 1)
+// W4: (3, 2, 8, 4)
+// W8: (3, 2, 4, 8)
+// W16: (3, 2, 2, 16)
+extern fun fc (a: «6, 40; Nat», w: «32, 40; Nat»): «6, 32; Nat» =
+    return (product_2d Ring (buf a, transpose_2d (buf w)));
+
+extern lam _compile (): compile.Phase = lower_tensor;

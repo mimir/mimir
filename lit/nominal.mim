@@ -5,16 +5,18 @@ nom Meter = I32;
 nom Foot  = I32;
 anx nom Kelvin = I32;
 
-mod units {
+mod units
     pub nom Second = I32;
 
     extern lam tick (s: Second): I32 = #s;
-}
+end
 
 nom List = | Nil | Cons: [I32, List];
-// The dump has no `and` groups yet, so nothing may reach this pair.
-nom Even = | Zero | ESucc: Odd
-and nom Odd = | OSucc: Even;
+// Nothing may reach this pair: Def::is_immutabilizable misses a cycle through another mutable.
+mutual
+    nom Even = | Zero | ESucc: Odd;
+    nom Odd  = | OSucc: Even;
+end
 
 // A `nom` is opaque: only `inj`/`#` cross between it and its underlying type.
 extern lam add (a b: Meter): Meter = (core.wrap.add 0 (#a, #b)) inj Meter;

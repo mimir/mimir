@@ -25,10 +25,10 @@ plugin refly;
 /// |------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
 /// | ![Left Fold](https://upload.wikimedia.org/wikipedia/commons/5/5a/Left-fold-transformation.png) | ![Right Fold](https://upload.wikimedia.org/wikipedia/commons/3/3e/Right-fold-transformation.png) |
 ///
-pub mod fold {
+pub mod fold
     axm l: {A E: *} → {n: Nat} → [f: [A, E] → A] → [A, «n; E»] → A, normalize_fold;
     axm r: {A E: *} → {n: Nat} → [f: [E, A] → A] → [«n; E», A] → A, normalize_fold;
-}
+end
 ///
 /// ### zip
 ///

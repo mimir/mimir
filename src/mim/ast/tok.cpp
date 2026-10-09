@@ -14,9 +14,9 @@ const char* Tok::tag2str(Tok::Tag tag) {
         MIM_KEY(CODE)
         MIM_TOK(CODE)
 #undef CODE
-        case Tag::Nil: fe::unreachable();
+        case Tag::Nil: std::unreachable();
     }
-    fe::unreachable();
+    std::unreachable();
 }
 
 std::string Tok::str() const {

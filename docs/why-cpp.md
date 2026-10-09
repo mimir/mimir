@@ -61,7 +61,7 @@ A lookup touches one index block and one slot of the payload array — no chase
 through per-entry nodes.
 The hashers make it cheaper still — `World::SeaHash` returns the hash each `Def`
 caches at construction, and `GIDHash` (`include/mim/util/gid.h`) mixes the dense
-`u32` gid with a single splitmix64.
+`u32` gid with a single 128-bit multiply-fold.
 
 What the alternatives offer:
 

@@ -43,7 +43,7 @@ anx let PXR24   = F pxr24;
 ///
 /// Fine-tunes how strictly a floating-point operation must obey IEEE semantics - see mim::plug::math::Mode.
 ///
-pub mod mode {
+pub mod mode
     pub anx let none     = 0b0000000; // no optimizations allowed
     pub anx let nnan     = 0b0000001; // no NaNs
     pub anx let ninf     = 0b0000010; // no Infs
@@ -55,7 +55,7 @@ pub mod mode {
     pub anx let finite   = 0b0000011; // nnan | ninf
     pub anx let unsafe   = 0b1001100; // nsz | arcp | reassoc
     pub anx let fast     = 0b1111111; // everything above
-}
+end
 ///
 /// ## Numerical Operations
 ///
@@ -261,13 +261,21 @@ axm is_finite: Nat → {pe: «2; Nat»} → F pe → Bool;
 ///
 /// Conversion between floating-point and index types - both signed and unsigned - of different sizes.
 ///
-pub mod conv {
+pub mod conv
     axm s2f: { ss:     Nat } → [dpe: «2; Nat»] →   Idx  ss → F dpe, normalize_conv;
     axm u2f: { ss:     Nat } → [dpe: «2; Nat»] →   Idx  ss → F dpe, normalize_conv;
     axm f2s: {spe: «2; Nat»} → [ ds:     Nat ] → F spe →   Idx  ds, normalize_conv;
     axm f2u: {spe: «2; Nat»} → [ ds:     Nat ] → F spe →   Idx  ds, normalize_conv;
     axm f2f: {spe: «2; Nat»} → [dpe: «2; Nat»] → F spe → F dpe,     normalize_conv;
-}
+end
+///
+/// ### inf, neg_inf, nan
+///
+/// Positive and negative infinity and a quiet NaN of the floating-point format `pe`, e.g. `math.neg_inf math.f32`.
+///
+anx lam inf     (pe: «2; Nat»): F pe = conv.f2f pe 0x7FF0000000000000:F64;
+anx lam neg_inf (pe: «2; Nat»): F pe = conv.f2f pe 0xFFF0000000000000:F64;
+anx lam nan     (pe: «2; Nat»): F pe = conv.f2f pe 0x7FF8000000000000:F64;
 ///
 /// ### slf
 ///
@@ -303,8 +311,8 @@ anx lam rrt (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
 /// - `!=` is math.cmp.une - the exact complement of `==` - and hence `tt` if an operand is a NaN.
 /// - All other comparisons are ordered and thus `ff` in that case.
 ///
-pub mod ops {
-    pub mod none {
+pub mod ops
+    pub mod none
         pub let `+  = arith.add mode.none;
         pub let `-  = arith.sub mode.none;
         pub let `*  = arith.mul mode.none;
@@ -316,9 +324,9 @@ pub mod ops {
         pub let `<= =   cmp.le  mode.none;
         pub let `>  =   cmp.g   mode.none;
         pub let `>= =   cmp.ge  mode.none;
-    }
+    end
 
-    pub mod finite {
+    pub mod finite
         pub let `+  = arith.add mode.finite;
         pub let `-  = arith.sub mode.finite;
         pub let `*  = arith.mul mode.finite;
@@ -330,9 +338,9 @@ pub mod ops {
         pub let `<= =   cmp.le  mode.finite;
         pub let `>  =   cmp.g   mode.finite;
         pub let `>= =   cmp.ge  mode.finite;
-    }
+    end
 
-    pub mod unsafe {
+    pub mod unsafe
         pub let `+  = arith.add mode.unsafe;
         pub let `-  = arith.sub mode.unsafe;
         pub let `*  = arith.mul mode.unsafe;
@@ -344,9 +352,9 @@ pub mod ops {
         pub let `<= =   cmp.le  mode.unsafe;
         pub let `>  =   cmp.g   mode.unsafe;
         pub let `>= =   cmp.ge  mode.unsafe;
-    }
+    end
 
-    pub mod fast {
+    pub mod fast
         pub let `+  = arith.add mode.fast;
         pub let `-  = arith.sub mode.fast;
         pub let `*  = arith.mul mode.fast;
@@ -358,5 +366,5 @@ pub mod ops {
         pub let `<= =   cmp.le  mode.fast;
         pub let `>  =   cmp.g   mode.fast;
         pub let `>= =   cmp.ge  mode.fast;
-    }
-}
+    end
+end

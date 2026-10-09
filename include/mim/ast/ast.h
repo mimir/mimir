@@ -60,13 +60,18 @@ struct Mods {
     /// `extern`/`anx` nudge the default visibility to `Pub` unless `priv` is given explicitly.
     Vis default_vis() const { return (is_extern || is_anx) ? Vis::Pub : Vis::Priv; }
     Vis resolved_vis() const { return vis.value_or(default_vis()); }
+    bool any() const { return vis || is_extern || is_anx; }
+    /// @p group's modifiers as defaults, so an explicit `priv`/`pub` here overrides the group's.
+    Mods inherit(const Mods& group) const {
+        return {vis ? vis : group.vis, is_extern || group.is_extern, is_anx || group.is_anx};
+    }
 };
 
 /// Bookkeeping of an annex introduced by an AxmDecl.
 struct AnnexInfo {
     AnnexInfo(Sym sym_plugin, Sym sym_tag, tag_t id_tag)
         : sym{sym_plugin, sym_tag}
-        , id{id_tag, 0, 0} {}
+        , id{id_tag} {}
 
     /// The mangled `plugin` part of the flags.
     /// Derived from sym.plugin which is guaranteed mangleable by the time an AnnexInfo exists.
@@ -86,7 +91,6 @@ struct AnnexInfo {
 
     struct {
         tag_t tag;
-        u8 curry, trip;
     } id;
 
     fe::Vector<fe::Vector<Sym>> subs; ///< List of subs which is a list of aliases.
@@ -222,8 +226,8 @@ public:
 
 private:
     virtual const Def* emit_(Emitter&) const = 0;
-    virtual const Def* emit_decl_(Emitter&, const Def* /*type*/) const { fe::unreachable(); }
-    virtual void emit_body_(Emitter&, const Def* /*decl*/) const { fe::unreachable(); }
+    virtual const Def* emit_decl_(Emitter&, const Def* /*type*/) const { std::unreachable(); }
+    virtual void emit_body_(Emitter&, const Def* /*decl*/) const { std::unreachable(); }
 };
 
 /// Base class of all declarations; caches the emitted Decl::def.
@@ -1037,76 +1041,81 @@ private:
     Ptr<Expr> value_;
 };
 
-/// `axm dbg: type, normalizer, curry, trip;`
-class AxmDecl : public ValDecl {
+/// `axm dbg: type, normalizer, curry, trip;` or a family `axm (name, ...): type, normalizer, curry, trip;`.
+/// A family prefixed with `tag.` binds as a module and nests its names as subtags of the annex `tag`.
+class AxmDecl : public ValDecl, public fe::VLA<AxmDecl> {
 public:
-    /// A further tag sharing AxmDecl::type/normalizer/curry/trip with the AxmDecl that owns them.
-    /// Only ever synthesized by Parser::parse_axm_group when desugaring `axm tag.(sub_0, ..., sub_n-1): ...;`
-    /// into `mod tag { axm sub_0: ...; ... }`: AxmDecl::Sibling is `sub_1`, ..., `sub_n-1`.
-    class Sibling : public ValDecl {
+    /// `dbg = alias_0 = ... = alias_n-1` - one axiom of the family, which each of its names binds to.
+    class Name : public Decl, public fe::VLA<Name> {
     public:
-        Sibling(Loc loc, Vis vis, Dbg dbg, const AxmDecl* owner)
-            : ValDecl(loc, Mods{vis, /*is_extern=*/false, /*is_anx=*/true})
-            , dbg_(dbg)
-            , owner_(owner) {}
+        using VLA_Types = std::tuple<Dbg>;
 
-        Dbg dbg() const override { return dbg_; }
-        const AxmDecl* owner() const { return owner_; }
+        Name(Loc loc)
+            : Decl(loc) {}
 
-        void bind(Scopes&) const override;
-        void emit(Emitter&) const override;
-        void stream(fe::Tab&, std::ostream&) const override;
+        auto names() const { return vla<0>(); }
+        Dbg dbg() const override { return names().front(); }
+        auto aliases() const { return names().subspan(1); }
+        bool is_anx() const override { return true; }
         std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
 
+        void stream(fe::Tab&, std::ostream&) const override;
+
     private:
-        Dbg dbg_;
-        const AxmDecl* owner_;
         mutable AnnexInfo* annex_ = nullptr;
         mutable sub_t sub_        = 0;
+
+        friend class AxmDecl;
     };
 
-    AxmDecl(Loc loc, Vis vis, Dbg dbg, Ptr<Expr> type, Dbg normalizer, Tok curry, Tok trip)
-        : ValDecl(loc, Mods{vis, /*is_extern=*/false, /*is_anx=*/true})
-        , dbg_(dbg)
+    using VLA_Types = std::tuple<Ptr<Name>>;
+
+    AxmDecl(Loc l, Vis v, Dbg mod, Scope* members, bool is_family, Ptr<Expr> type, Dbg normalizer, Tok curry, Tok trip)
+        : ValDecl(l, Mods{v, /*is_extern=*/false, /*is_anx=*/true})
+        , mod_(mod)
+        , members_(members)
+        , is_family_(is_family)
         , type_(type)
         , normalizer_(normalizer)
         , curry_(curry)
         , trip_(trip) {}
 
-    Dbg dbg() const override { return dbg_; }
+    /// The `mod.` prefix, if any.
+    Dbg dbg() const override { return mod_; }
+    const Scope* scope() const override { return members_; }
+    auto names() const { return vla<0>(); }
+    /// Whether the names are spelled as a parenthesized list, even if it is just one.
+    bool is_family() const { return is_family_; }
     const Expr* type() const { return type_.get(); }
     Dbg normalizer() const { return normalizer_; }
     Tok curry() const { return curry_; }
     Tok trip() const { return trip_; }
-    const Def* mim_type() const { return mim_type_; }
 
     void bind(Scopes&) const override;
     void emit(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
-    std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
 
 private:
-    Dbg dbg_;
+    Dbg mod_;
+    Scope* members_;
+    bool is_family_;
     Ptr<Expr> type_;
     Dbg normalizer_;
     Tok curry_, trip_;
-    mutable AnnexInfo* annex_    = nullptr;
-    mutable sub_t sub_           = 0;
-    mutable const Def* mim_type_ = nullptr;
 };
 
-/// `rec dbg = body;` with an optional `and` RecDecl::next.
+/// `rec dbg = body;`
 class RecDecl : public ValDecl {
 public:
-    RecDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr> body, Ptr<RecDecl> next)
+    RecDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr> body)
         : ValDecl(loc, mods)
         , dbg_(dbg)
-        , body_(body)
-        , next_(next) {}
+        , body_(body) {}
 
     Dbg dbg() const override { return dbg_; }
     const Expr* body() const { return body_.get(); }
-    const RecDecl* next() const { return next_.get(); }
+    /// Only such a body is emitted as a mutable, so only it may refer to the declaration itself.
+    bool has_mut_body() const;
 
     void bind(Scopes&) const override;
     virtual void bind_decl(Scopes&) const;
@@ -1117,36 +1126,31 @@ public:
     virtual void emit_body(Emitter&) const;
 
     void stream(fe::Tab&, std::ostream&) const override;
-    /// Streams this declaration and its `and` chain - without modifiers and without the trailing `;`.
-    void stream_chain(fe::Tab&, std::ostream&) const;
+    /// Streams this declaration without modifiers and without the trailing `;`.
+    virtual void stream_(fe::Tab&, std::ostream&) const;
     std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
 
 protected:
-    /// Streams this declaration alone - without the leading `rec`/`and` and without the trailing `;`.
-    virtual void stream_(fe::Tab&, std::ostream&) const;
-
     mutable AnnexInfo* annex_ = nullptr;
     mutable sub_t sub_        = 0;
 
 private:
     Dbg dbg_;
     Ptr<Expr> body_;
-    Ptr<RecDecl> next_;
 };
 
 /// `nom dbg = body;` - a nominal newtype.
 class NomDecl : public RecDecl {
 public:
-    NomDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr> body, Ptr<RecDecl> next)
-        : RecDecl(loc, mods, dbg, body, next) {}
+    NomDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr> body)
+        : RecDecl(loc, mods, dbg, body) {}
 
-    void bind_decl(Scopes&) const override;
     void emit_decl(Emitter&) const override;
     void emit_body(Emitter&) const override;
+    void stream_(fe::Tab&, std::ostream&) const override;
 
 private:
     void emit_nom(Emitter&, const Def* body) const;
-    void stream_(fe::Tab&, std::ostream&) const override;
 };
 
 /// `tag dbg dom_0 ... dom_n-1: codom = body;` with LamDecl::tag `lam`/`con`/`fun` or anonymous `λ`/`cn`/`fn`.
@@ -1175,8 +1179,8 @@ public:
 
     using VLA_Types = std::tuple<Ptr<Dom>>;
 
-    LamDecl(Loc loc, Mods mods, Tok::Tag tag, Dbg dbg, Ptr<Expr> codom, Ptr<Expr> body, Ptr<RecDecl> next)
-        : RecDecl(loc, mods, dbg, body, next)
+    LamDecl(Loc loc, Mods mods, Tok::Tag tag, Dbg dbg, Ptr<Expr> codom, Ptr<Expr> body)
+        : RecDecl(loc, mods, dbg, body)
         , tag_(tag)
         , codom_(codom) {}
 
@@ -1190,16 +1194,26 @@ public:
     void bind_body(Scopes&) const override;
     void emit_decl(Emitter&) const override;
     void emit_body(Emitter&) const override;
-    std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
-
-protected:
     void stream_(fe::Tab&, std::ostream&) const override;
 
 private:
     Tok::Tag tag_;
     Ptr<Expr> codom_;
-    mutable AnnexInfo* annex_ = nullptr;
-    mutable sub_t sub_        = 0;
+};
+
+/// `mutual decl* end` groups RecDecl%s that may refer to each other.
+class MutualDecl : public ValDecl, public fe::VLA<MutualDecl> {
+public:
+    using VLA_Types = std::tuple<Ptr<RecDecl>>;
+
+    MutualDecl(Loc loc)
+        : ValDecl(loc) {}
+
+    auto decls() const { return vla<0>(); }
+
+    void bind(Scopes&) const override;
+    void emit(Emitter&) const override;
+    void stream(fe::Tab&, std::ostream&) const override;
 };
 
 /// `anx dbg = path;` - a compiler-exposed alias sharing its target's annex slot.
@@ -1258,7 +1272,7 @@ private:
     bool is_norm_;
 };
 
-/// `mod dbg { decls }`; also the base of the anonymous File.
+/// `mod dbg decls end`; also the base of the anonymous File.
 class ModDecl : public ValDecl {
 public:
     // A ModDecl is pure AST grouping - it never represents a single value, so it's never `extern`/`anx`.

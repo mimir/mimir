@@ -3,9 +3,10 @@ plugin core;
 
 use core.ops.n;
 
-lam is_even(i: Nat): Bool = (is_odd (i - 1), tt)#(i == 0)
-and
-lam is_odd (i: Nat): Bool = (is_even(i - 1), ff)#(i == 0);
+mutual
+    lam is_even(i: Nat): Bool = (is_odd (i - 1), tt)#(i == 0);
+    lam is_odd (i: Nat): Bool = (is_even(i - 1), ff)#(i == 0);
+end
 
 extern fun f(): Bool = return (is_even 4);
 // CHECK-DAG: return{{.*}}tt

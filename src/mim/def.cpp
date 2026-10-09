@@ -48,48 +48,56 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     , external_(false)
     , annex_(false)
     , dirty_(false)
-    , dep_(node2dep(node, false))
     , num_ops_(ops.size())
     , type_(type) {
+    auto dep = node2dep(node, false);
+
     if (node == Node::Univ) {
-        gid_  = world->next_gid();
-        hash_ = fe::hash_begin(node_t(Node::Univ));
-    } else {
-        hash_ = fe::hash_begin(u8(node));
-        hash_ = fe::hash_combine(hash_, flags_);
-
-        if (type) {
-            world = &type->world();
-            dep_ |= type->dep_;
-            vars_ = type->local_vars();
-            muts_ = type->local_muts();
-            hash_ = fe::hash_combine(hash_, type->gid());
-        } else {
-            world = &ops[0]->world();
-        }
-
-        auto vars = &world->vars();
-        auto muts = &world->muts();
-        auto ptr  = ops_ptr();
-        gid_      = world->next_gid();
-
-        if (node == Node::Proxy) {
-            for (size_t i = 0, e = ops.size(); i != e; ++i) {
-                auto op = ops[i];
-                ptr[i]  = op;
-                hash_   = fe::hash_combine(hash_, op->gid());
-            }
-        } else {
-            for (size_t i = 0, e = ops.size(); i != e; ++i) {
-                auto op = ops[i];
-                ptr[i]  = op;
-                dep_ |= op->dep_;
-                vars_ = vars->merge(vars_, op->local_vars());
-                muts_ = muts->merge(muts_, op->local_muts());
-                hash_ = fe::hash_combine(hash_, op->gid());
-            }
-        }
+        dep_  = dep;
+        hash_ = fe::hash_combine(0, node_t(Node::Univ));
+        return;
     }
+
+    // A gid is a u32, so two of them - or a Node and one - share a single hash step.
+    auto h    = fe::hash_combine(0, u64(node) << 32 | (type ? type->gid() : 0));
+    h         = fe::hash_combine(h, flags_);
+    auto vars = Vars();
+    auto muts = Muts();
+    World* w  = nullptr;
+
+    auto collect = [&](const Def* d) {
+        dep |= d->dep_;
+        // A Def without Dep::Var and Dep::Mut has neither local Vars nor local Muts.
+        if (!(d->dep_ & (fe::to_underlying(Dep::Var) | fe::to_underlying(Dep::Mut)))) return;
+        auto dvars = d->local_vars();
+        auto dmuts = d->local_muts();
+        if ((vars && dvars) || (muts && dmuts)) {
+            if (!w) w = &d->world();
+            vars = w->vars().merge(vars, dvars);
+            muts = w->muts().merge(muts, dmuts);
+        } else {
+            if (dvars) vars = dvars;
+            if (dmuts) muts = dmuts;
+        }
+    };
+
+    if (type) collect(type);
+
+    auto ptr  = ops_ptr();
+    auto gids = u64(0);
+    for (size_t i = 0, e = ops.size(); i != e; ++i) {
+        auto op = ops[i];
+        ptr[i]  = op;
+        gids    = gids << 32 | op->gid();
+        if (i & 1) h = fe::hash_combine(h, gids), gids = 0;
+        if (node != Node::Proxy) collect(op);
+    }
+    if (gids) h = fe::hash_combine(h, gids); // gid 0 is never handed out, so this odd tail cannot alias a pair
+
+    dep_  = dep;
+    hash_ = h;
+    vars_ = vars;
+    muts_ = muts;
 }
 
 Def::Def(Node n, const Def* type, Defs ops, flags_t flags)
@@ -105,9 +113,7 @@ Def::Def(Node node, const Def* type, size_t num_ops, flags_t flags)
     , dep_(node2dep(node, true))
     , num_ops_(num_ops)
     , type_(type) {
-    gid_  = world().next_gid();
-    hash_ = fe::hash(gid());
-    var_  = nullptr;
+    var_ = nullptr;
     std::fill_n(ops_ptr(), num_ops, nullptr);
 }
 
@@ -122,10 +128,8 @@ Def::Def(Node node, Def* binder)
     , dep_(node2dep(node, false))
     , num_ops_(0)
     , type_(nullptr) {
-    gid_  = binder->world().next_gid();
     vars_ = Vars(as<Var>());
-    hash_ = fe::hash_begin(node_t(Node::Var));
-    hash_ = fe::hash_combine(hash_, binder->gid());
+    hash_ = fe::hash_combine(0, u64(Node::Var) << 32 | binder->gid());
 }
 
 Nat::Nat(World& world)
@@ -244,7 +248,7 @@ const Def* Def::var_type() {
         case MutNode::Hole:
         case MutNode::Variant: return nullptr;
     }
-    fe::unreachable();
+    std::unreachable();
 }
 // clang-format on
 
@@ -580,7 +584,7 @@ const Def* Def::immutabilize() {
             return nullptr;
         }
     }
-    fe::unreachable();
+    std::unreachable();
 }
 
 size_t Def::reduction_offset() const noexcept {
@@ -596,7 +600,7 @@ size_t Def::reduction_offset() const noexcept {
         case MutNode::Hole:
         case MutNode::Variant: return size_t(-1);
     }
-    fe::unreachable();
+    std::unreachable();
 }
 
 const Def* Def::arity() const {

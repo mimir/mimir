@@ -12,25 +12,25 @@
 
 plugin core;
 plugin tensor;
-plugin affine;
-plugin cps;
 plugin compile;
 
-let R: tensor.Ring = (Nat, 0, core.nat.add, core.nat.mul);
+use tensor;
+
+let Ring = (Nat, 0, core.nat.add, core.nat.mul);
 
 let m   = ((1, 2), (3, 4));
 let m3d = (((1, 2), (3, 4)), ((5, 6), (7, 8)));
 
-extern fun main() = return (
-    tensor.dot_product R (1₂, 0₂, (), ()) (m, m),
-    tensor.product_2d R (m, m),
-    tensor.bmm R (m3d, m3d),
-    tensor.dot_product R (2₃, 1₃, 0₃, 0₃) (m3d, m3d));
+extern fun main () = return (
+    dot_product Ring (1₂, 0₂, (), ()) (m, m),
+    product_2d Ring (m, m),
+    bmm Ring (m3d, m3d),
+    dot_product Ring (2₃, 1₃, 0₃, 0₃) (m3d, m3d));
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (
         compile.cleanup,
-        tensor.lower_tensor,
+        lower_tensor,
         compile.cleanup,
     );
 

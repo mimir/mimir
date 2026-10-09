@@ -66,12 +66,12 @@ axm semiop.(mul,ceildiv,floordiv,rem): [Index, Nat] → Index;
 ///   Performs multiplication of an affine index with a constant natural number.
 ///   The second argument must be a *closed* constant - a stronger requirement than affine.semiop imposes - which is enforced via refly.check.
 ///
-pub mod op {
+pub mod op
     axm (add, sub): [Index, Index] → Index;
     axm neg: Index → Index;
     anx lam mul (d : Index, c : Nat): Index =
         semiop.mul(d, refly.check (core.pe.is_closed(c), c, "The second argument of affine.op.mul must be a constant."));
-}
+end
 ///
 /// ### map
 ///

@@ -1,10 +1,10 @@
 // RUN: (! %mim %s 2>&1) | %FileCheck %s
 plugin core;
 
-pub mod foo {
+pub mod foo
     axm bar: Nat → Nat, normalize_one;
     axm bar: Nat → Nat, normalize_two;
-}
+end
 
 // Both errors blame row 6 and row 5, but every caret differs, so every location is rendered.
 // CHECK:      {{.*}}norm_mis.mim:6:25-6:37: error: normalizer mismatch for axm `bar`

@@ -1,11 +1,11 @@
 // RUN: (! %mim %s 2>&1) | %FileCheck %s
 
 // A constructor of a `nom` is as private as its `inj`.
-mod m {
+mod m
     pub lam Opt (T: *) =
         nom O = | None | Some: T;
         O;
-}
+end
 
 extern lam f () = (m.Opt Nat)#None;
 

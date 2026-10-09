@@ -1,0 +1,28 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: clang++ -std=c++23 %S/attn_aux.cpp %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t
+
+// Executable single-head self-attention `softmax(Q · Kᵀ) · V`, driven by attn_aux.cpp against a scalar reference.
+// For 64 rows tensor.reassoc rewrites `(X · Wq) · (X · Wk)ᵀ` to `X · ((Wq · Wkᵀ) · Xᵀ)`.
+plugin tensor;
+plugin core;
+plugin math;
+
+use tensor;
+
+let F32  = math.F32;
+let fast = math.mode.fast;
+let Ring = (F32, 0:F32, math.arith.add fast, math.arith.mul fast);
+
+let `* = product_2d Ring;
+
+lam attention (n d: Nat) (x: «n, d; F32», wq wk wv: «d, d; F32»): «n, d; F32» =
+    let (q, k, v) = (x * wq, x * wk, x * wv);
+    softmax fast 1₂ (q * transpose_2d k) * v;
+
+extern fun attn (x: «4, 8; F32», wq wk wv: «8, 8; F32»): «4, 8; F32» =
+    return (attention (4, 8) (buf x, buf wq, buf wk, buf wv));
+
+extern fun attn64 (x: «64, 8; F32», wq wk wv: «8, 8; F32»): «64, 8; F32» =
+    return (attention (64, 8) (buf x, buf wq, buf wk, buf wv));

@@ -3,8 +3,6 @@ plugin tensor;
 plugin option;
 plugin refly;
 plugin core;
-plugin cps;
-plugin affine;
 plugin vec;
 use tensor;
 
@@ -38,8 +36,7 @@ let _ = refly.struc.e (s5, s6);
 
 fun f1 (n m: Nat): Nat = return m;
 
-lam f(): tensor.Ring = (Nat, 0, core.nat.add, core.nat.mul);
-let R = f ();
+let Ring = (Nat, 0, core.nat.add, core.nat.mul);
 
 let r = 2;
 let nc = 1;
@@ -85,7 +82,7 @@ let _ = refly.struc.e (s12_res, (m, l));
 let s_out    = vec.cat (bs, s12_res);
 let _ = refly.struc.e (s_out, (m, l));
 
-let f        = dot_general_fun R;
+let f        = dot_general_fun Ring;
 let r_out    = vec.len s_out;
 
 let a1       = vec.diff (‹i: r; i›, bc_1);
@@ -108,20 +105,29 @@ let _ = refly.struc.e (subs_2, (2, 1));
 // The matrix product built from the pieces verified above, as tensor.dot_product_impl builds it.
 let s_red   = ‹i: nc; s1#(c1#i)›;
 let s_full  = vec.cat (s_out, s_red);
-let dot = tensor.map_reduce (s_out, s_full) (f, 0)
-    (tensor.proj_map ‹i: r_out; core.bitcast Nat i›)
-    (tensor.proj_map subs_1, tensor.proj_map subs_2)
+let dot = map_reduce (s_out, s_full) (f, 0)
+    (proj_map ‹i: r_out; core.bitcast Nat i›)
+    (proj_map subs_1, proj_map subs_2)
     (t1, t2);
 
 // Identity shape ops normalize away to their input (m1 : «2, 3; Nat»).
 // A reshape to the same shape is the identity.
 let _ = refly.struc.e (tensor.reshape (2, 3) (2, 3) m1, m1);
+// So is one that only inserts size-1 axes, as «2, 1, 3; Nat» is «2, 3; Nat».
+let _ = refly.struc.e (tensor.reshape (2, 3) (2, 1, 3) m1, m1);
 // A repeat to the same shape is the identity.
 let _ = refly.struc.e (tensor.repeat (2, 3) (2, 3) m1, m1);
 // A slice that starts at 0 with unit step and keeps the full extent is the identity.
 let _ = refly.struc.e (tensor.slice (2, 3) ((0, 0), (1, 1), (2, 3)) m1, m1);
 // A pad with lo == hi == 0 on every axis is the identity (the fill value is irrelevant).
 let _ = refly.struc.e (tensor.pad (2, 3) (0, (0, 0), (0, 0)) (m1, 0), m1);
+
+// A transpose of a transpose composes; an identity permutation is the input itself.
+let _ = refly.struc.e (transpose_2d (transpose_2d m1), m1);
+let _ = refly.struc.e (transpose (tt, ff) (transpose_2d m1), m1);
+let _ = refly.struc.e (transpose (0₃, 1₃, 2₃) m2#0₂, m2#0₂);
+let _ = refly.struc.e (transpose (2₃, 0₃, 1₃) (transpose (1₃, 2₃, 0₃) m2#0₂), m2#0₂);
+let _ = refly.struc.e (transpose (1₃, 2₃, 0₃) (transpose (1₃, 2₃, 0₃) m2#0₂), transpose (2₃, 0₃, 1₃) m2#0₂);
 
 // Reading *through* a broadcast / repeat is `tensor.lower_tensor`'s job; see read_through.mim.
 

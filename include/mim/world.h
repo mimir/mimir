@@ -842,6 +842,7 @@ private:
             num_ops = std::get<sizeof...(Args) - 1>(std::forward_as_tuple(std::forward<Args>(args)...));
 
         auto def = allocate<T>(num_ops, std::forward<Args>(args)...);
+        if (def->mut_) def->hash_ = fe::hash_combine(0, def->gid());
         stamp(def);
 
 #ifdef MIM_ENABLE_CHECKS
@@ -871,6 +872,7 @@ private:
         auto num_bytes = sizeof(Def) + sizeof(uintptr_t) * num_ops;
         auto ptr       = move_.arena.defs.allocate(num_bytes, alignof(T));
         auto res       = new (ptr) T(std::forward<Args>(args)...);
+        res->gid_      = next_gid(); // here, so Def's ctors need not walk the type chain to find this World
         assert(res->num_ops() == num_ops);
         return res;
     }
@@ -901,24 +903,20 @@ private:
         // clang-format on
     };
 
-    /// The cache entry for `[var -> arg]`, created with @p n empty slots if it does not exist yet.
+    /// The cache entry for `[var -> arg]`, created with empty slots if it does not exist yet.
     /// Registered *before* any slot is computed, so a reduction that re-enters for the same @p var / @p arg finds it.
-    Reduct* reduct(const Var* var, const Def* arg, size_t n) {
+    Reduct* reduct(const Var* var, const Def* arg) {
         auto [i, ins] = move_.substs.try_emplace(std::pair{var, arg}, nullptr);
-        if (ins) i->second = move_.arena.substs.ref<Reduct>(DefVec(n, nullptr)).get();
+        if (ins) {
+            auto n    = var->binder()->num_ops() - var->binder()->reduction_offset();
+            i->second = move_.arena.substs.ref<Reduct>(DefVec(n, nullptr)).get();
+        }
         return i->second;
     }
 
     /// The @p i th slot of an *existing* `[var -> arg]` cache entry; `nullptr` if it has not been computed yet.
     /// Unlike reduct() this never allocates and hence works on a frozen World.
     const Def* cached_reduct(const Var* var, const Def* arg, size_t i);
-
-    /// Caches `[var -> arg]` as @p defs that have already been computed.
-    void cache_reduct(const Var* var, const Def* arg, Defs defs) {
-        auto reduct = this->reduct(var, arg, defs.size());
-        for (size_t i = 0, e = defs.size(); i != e; ++i)
-            reduct->ops()[i] = defs[i];
-    }
 
     struct Move {
         Move(Driver* driver)

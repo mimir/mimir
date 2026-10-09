@@ -7,21 +7,20 @@
 
 plugin core;
 plugin tensor;
-plugin affine;
 plugin compile;
 
 use core.ops.u;
 
-lam row_value(indices: «2; I64»): I32 = core.select (indices#0_2 == 0I64, 10I32, 20I32);
+lam row_value (i _: I64): I32 = core.select (i == 0I64, 10I32, 20I32);
 
-lam singleton_value(indices: «2; I64»): I32 = 7I32;
+lam singleton_value (_ _: I64): I32 = 7I32;
 
-extern fun generate2d(): «2, 3; I32» =
+extern fun generate2d (): «2, 3; I32» =
     return (tensor.generate (2, 3) row_value);
 
 // Both logical singleton axes fold to the scalar representation. PE evaluates
 // the only valid coordinate directly, without constructing a physical buffer.
-extern fun generate_singleton(): I32 =
+extern fun generate_singleton (): I32 =
     return (tensor.generate (1, 1) singleton_value);
 
 extern lam _compile (): compile.Phase =

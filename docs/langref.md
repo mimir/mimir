@@ -79,8 +79,8 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 
 ```text
 Bool Cn Fn I1 I8 I16 I32 I64 Idx Nat Rule Type Univ
-and anx as axm cn con end extern ff fn fun
-i1 i8 i16 i32 i64 import inj lam let match mod
+anx as axm cn con end extern ff fn fun
+i1 i8 i16 i32 i64 import inj lam let match mod mutual
 nom norm plugin priv pub rec ret rule tt use when where with
 ```
 
@@ -235,20 +235,18 @@ Either one nudges the default visibility to `pub` (instead of the usual `priv` d
 ```ebnf
 d      ::= vis? import (I | S) ("as" (I | "*"))? ";"
         |  vis? "use"  path    ("as" (I | "*"))? ";"
-        |  vis? "mod" I "{" d* "}"
+        |  vis? "mod" I d* "end"
         |  vis? "anx"? "let" p "=" e
         |  vis? "anx" I "=" path
-        |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e and*
+        |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e
         |  vis?  "extern"          lam I fwd+ (":" e)? ";"
-        |  vis? "anx"? "rec" I "=" e and*
-        |  vis? "anx"? "nom" I "=" e and*
+        |  vis? "anx"? "rec" I "=" e
+        |  vis? "anx"? "nom" I "=" e
+        |  vis? ("extern" | "anx")? "mutual" d* "end"
         |  vis? "axm" axm
         |  vis? ("rule" | "norm") I p ":" e ("when" e)? "=>" e
 
 import ::= "import" | "plugin"
-and    ::= "and" I "=" e
-        |  "and" lam I dom+ (":" e)? "=" e
-        |  "and" "nom" I "=" e
 vis    ::= "priv" | "pub"
 lam    ::= "lam" | "con" | "fun"
 dom    ::= p ("@" e)?
@@ -269,14 +267,16 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 - `anx I = path` declares `I` as an alias for the annex denoted by `path`.
 - `lam`, `con`, and `fun` declare lambdas, continuations, and returning continuations.
   The declared name is already in scope inside its own body, so such a declaration is recursive.
-  `and` extends the group to mutual recursion; a forward reference without `and` does not resolve.
+  A forward reference only resolves within a `mutual` block.
   The corresponding [expression forms](@ref expr) are anonymous and cannot refer to themselves.
 - The `@` of a `dom` introduces its partial-evaluation filter.
-- `rec` starts a recursive declaration group, and `and` extends the same group.
+- `rec` declares a recursive type.
   Its body must be a sigma, a [variant](@ref variant), or a function type, as those are built as a mutable and filled in afterwards, so that `I` is already in scope inside it; its universe level is inferred from the body.
   A recursive _function_ is declared with `lam`/`con`/`fun` instead.
-- After `and`, the next declaration may be another `rec`-style binding, a `nom`, or an explicit `lam`, `con`, or `fun` declaration; an `and`-continuation doesn't accept its own modifiers.
-- `nom` declares a [nominal newtype](@ref nominal); like `rec`, it starts a recursive declaration group, but its body may be any type.
+- `nom` declares a [nominal newtype](@ref nominal); like `rec`, it is in scope inside its own body, but its body may be any type.
+- `mutual` ... `end` groups declarations that may refer to each other, as in Lean.
+  Its members must be `rec`, `nom`, `lam`, `con`, or `fun` declarations.
+  Modifiers on `mutual` apply to every member; a member's own `priv`/`pub` overrides the group's.
 - `axm` declares an axiom.
   A `tag` list declares several axioms of the same type at once, and each `= I` adds another name for that tag.
   Prefixed with a name as in `axm nat.(add, sub): ...`, the tags become members of a module of that name.
@@ -531,7 +531,7 @@ arm ::= (I | L) p? "=>" e
 - `| I₀: e₀ | ... | Iₙ₋₁: eₙ₋₁` forms a variant type: a sum whose cases are _positional_.
   A constructor without `: e` carries `[]`, and a lone `|` is the empty variant.
 - Unlike `∪`, nothing is sorted, deduplicated, or flattened: `| A | B | C` has three cases where `[] ∪ [] ∪ []` is just `[]`, and `| A: Nat | B: Nat` keeps both.
-- A variant is a type like any other and may be anonymous; `rec` makes it recursive, and `and` mutually recursive.
+- A variant is a type like any other and may be anonymous; `rec` makes it recursive, and a `mutual` block mutually recursive.
 - Its last payload extends as far right as it can, and `|` never starts an application argument: write `f (| A | B)`, and parenthesize a variant inside a `match` arm.
 - `T#I` or `T#n` on a variant type `T` selects a case by constructor name or by index, counting from `0`.
   That is a value for a `[]` payload, and a function from the payload into `T` otherwise.
