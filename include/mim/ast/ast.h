@@ -1070,16 +1070,8 @@ public:
 
     using VLA_Types = std::tuple<Ptr<Name>>;
 
-    AxmDecl(Loc loc,
-            Vis vis,
-            Dbg mod,
-            Scope* members,
-            bool is_family,
-            Ptr<Expr> type,
-            Dbg normalizer,
-            Tok curry,
-            Tok trip)
-        : ValDecl(loc, Mods{vis, /*is_extern=*/false, /*is_anx=*/true})
+    AxmDecl(Loc l, Vis v, Dbg mod, Scope* members, bool is_family, Ptr<Expr> type, Dbg normalizer, Tok curry, Tok trip)
+        : ValDecl(l, Mods{v, /*is_extern=*/false, /*is_anx=*/true})
         , mod_(mod)
         , members_(members)
         , is_family_(is_family)
