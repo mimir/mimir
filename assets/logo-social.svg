@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+<defs>
+<radialGradient id="bg" cx="0.22" cy="0.3" r="1">
+<stop offset="0" stop-color="#1d4280"/>
+<stop offset="1" stop-color="#0f2550"/>
+</radialGradient>
+<pattern id="dots" width="32" height="32" patternUnits="userSpaceOnUse">
+<circle cx="16" cy="16" r="1.6" fill="#50a5d2" fill-opacity="0.10"/>
+</pattern>
+</defs>
+<rect width="1280" height="640" fill="url(#bg)"/>
+<rect width="1280" height="640" fill="url(#dots)"/>
+<g transform="translate(320 320) scale(6) translate(-50 -50)" fill="none" stroke-width="8.27" stroke-linecap="round">
+<path stroke="#0091c8" d="M 73.53 26.47 L 50 73.53 M 73.53 73.53 L 61.76 50"/>
+<path stroke="#50a5d2" d="M 26.47 26.47 L 50 73.53 M 26.47 73.53 L 38.24 50"/>
+</g>
+<g font-family="Fira Sans" fill="#ffffff">
+<text x="530" y="315" font-size="168" font-weight="600" letter-spacing="-2">Mim<tspan fill="#50a5d2">IR</tspan></text>
+<text x="536" y="388" font-size="38" font-weight="400" fill="#b9d3ea">is my Intermediate Representation</text>
+<text x="536" y="462" font-family="Fira Mono" font-size="30" fill="#50a5d2">mimir.github.io</text>
+</g>
+</svg>
