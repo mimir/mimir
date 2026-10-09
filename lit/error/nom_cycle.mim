@@ -1,0 +1,9 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+mutual
+    nom A = B;
+    nom B = «2; A»;
+end
+
+// CHECK: {{.*}}nom_cycle.mim:5:17: error: nominal type `A` refers to itself
+// CHECK: = note: a `nom` can only refer to itself through a sigma, a variant, or a function type

@@ -317,6 +317,7 @@ void RecDecl::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 void RecDecl::stream_(fe::Tab& tab, std::ostream& os) const { std::print(os, "rec {} = {}", dbg(), S(tab, body())); }
+void NomDecl::stream_(fe::Tab& tab, std::ostream& os) const { std::print(os, "nom {} = {}", dbg(), S(tab, body())); }
 
 void MutualDecl::stream(fe::Tab& tab, std::ostream& os) const {
     os << "mutual\n";

@@ -648,6 +648,13 @@ public:
     // clang-format on
     ///@}
 
+    /// @name Nominal Newtypes
+    ///@{
+    const Nom* nom(flags_t key, const Def* type);      ///< Make @p type Nom%inal under @p key.
+    const Def* name(const Def* nom, const Def* struc); ///< Name a @p struc%tural to make it @p nom%inal.
+    const Def* struc(const Def* nom);                  ///< Get the structural part of a @p nom%inal.
+    ///@}
+
     /// @name implicit_app - Cope with implicit Arguments
     /// Places Hole%s as demanded by Pi::is_implicit() and then apps @p arg.
     ///@{

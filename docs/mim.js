@@ -9,8 +9,8 @@ class MimCode extends Code {
     static WORDS = {
         keyword: new Set(["cn", "end", "fn", "inj", "lm", "match", "ret", "when", "where", "with", "λ"]),
         /// `C_DECL` of `src/mim/ast/family.h` plus the modifiers of `Parser::parse_modifiers`.
-        decl: new Set(["anx", "as", "axm", "con", "extern", "fun", "import", "lam", "let", "mod", "mutual", "norm",
-                       "plugin", "priv", "pub", "rec", "rule", "use"]),
+        decl: new Set(["anx", "as", "axm", "con", "extern", "fun", "import", "lam", "let", "mod", "mutual", "nom",
+                       "norm", "plugin", "priv", "pub", "rec", "rule", "use"]),
         type: new Set(["Bool", "Cn", "Fn", "I1", "I8", "I16", "I32", "I64", "Idx", "Nat", "Rule", "Type", "Univ"]),
         literal: new Set(["bot", "ff", "i1", "i8", "i16", "i32", "i64", "top", "tt", "⊥", "⊤"]),
         special: new Set(["_", "return"])

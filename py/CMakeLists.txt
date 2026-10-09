@@ -72,16 +72,17 @@ set(_run_logged "${CMAKE_COMMAND}" -P "${CMAKE_SOURCE_DIR}/cmake/run-logged.cmak
 # directory the header sits in.
 # Order matters for the generated `#include`s and, more importantly, for the
 # registration order below: a `Def` subclass must be registered after `Def`, so
-# every header defining `Def` subclasses (def, lam, tuple, axm, lattice, union, check,
-# rule) follows def.h.
+# every header defining `Def` subclasses (def, lam, tuple, axm, single, union, nom,
+# check, rule) follows def.h.
 set(_gen_headers
     "${CMAKE_SOURCE_DIR}/submodules/fe/include/fe/sym.h"
     "${CMAKE_SOURCE_DIR}/include/mim/def.h"
     "${CMAKE_SOURCE_DIR}/include/mim/lam.h"
     "${CMAKE_SOURCE_DIR}/include/mim/tuple.h"
     "${CMAKE_SOURCE_DIR}/include/mim/axm.h"
-    "${CMAKE_SOURCE_DIR}/include/mim/lattice.h"
+    "${CMAKE_SOURCE_DIR}/include/mim/single.h"
     "${CMAKE_SOURCE_DIR}/include/mim/union.h"
+    "${CMAKE_SOURCE_DIR}/include/mim/nom.h"
     "${CMAKE_SOURCE_DIR}/include/mim/check.h"
     "${CMAKE_SOURCE_DIR}/include/mim/rule.h"
     "${CMAKE_SOURCE_DIR}/include/mim/world.h"
@@ -160,8 +161,9 @@ set(_module_units
     "mim#init_lam"
     "mim#init_tuple"
     "mim#init_axm"
-    "mim#init_lattice"
+    "mim#init_single"
     "mim#init_union"
+    "mim#init_nom"
     "mim#init_check"
     "mim#init_rule"
     "mim#init_world"

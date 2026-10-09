@@ -6,8 +6,9 @@
 #include "mim/check.h"
 #include "mim/def.h"
 #include "mim/lam.h"
-#include "mim/lattice.h"
+#include "mim/nom.h"
 #include "mim/rule.h"
+#include "mim/single.h"
 #include "mim/tuple.h"
 #include "mim/union.h"
 

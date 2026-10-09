@@ -1,0 +1,7 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+nom Meter = I32;
+let _ = #Meter;
+
+// CHECK: {{.*}}nom_hash_type.mim:4:9-4:14: error: operand of prefix `#` is of type `*` but must be of nominal or singleton type
+// CHECK: = note: `Meter` is a nominal type itself; `#` unwraps a value of it

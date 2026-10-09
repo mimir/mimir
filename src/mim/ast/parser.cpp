@@ -663,6 +663,7 @@ Ptrs<ValDecl> Parser::parse_decls(Mods group) {
             case Tag::K_axm: decls.emplace_back(parse_axm_decl(track, mods)); break;
             case Tag::K_let: decls.emplace_back(parse_let_decl(track, mods)); break;
             case Tag::K_mod: decls.emplace_back(parse_mod_decl(track, mods)); break;
+            case Tag::K_nom: decls.emplace_back(parse_nom_decl(track, mods)); break;
             case Tag::K_use: decls.emplace_back(parse_use_decl(track, mods)); break;
             case Tag::K_mutual: decls.emplace_back(parse_mutual_decl(track, mods)); break;
             case Tag::K_rec: decls.emplace_back(parse_rec_decl(track, mods)); break;
@@ -796,9 +797,18 @@ Ptr<ValDecl> Parser::parse_mutual_decl(Tracker track, Mods mods) {
         if (auto rec = decl->isa<RecDecl>())
             decls.emplace_back(rec);
         else
-            error().e(decl->loc(), "only `rec`, `lam`, `con`, and `fun` declarations may be mutually recursive");
+            error().e(decl->loc(), "only `rec`, `nom`, `lam`, `con`, and `fun` declarations may be mutually recursive");
     expect(Tag::K_end, "end of a mutual block");
     return ptr<MutualDecl>(track, decls);
+}
+
+Ptr<RecDecl> Parser::parse_nom_decl(Tracker track, Mods mods) {
+    check_no_extern(mods, "nominal type declaration");
+    eat(Tag::K_nom);
+    auto dbg = parse_id("nominal type declaration");
+    expect(Tag::T_assign, "nominal type declaration");
+    auto body = parse_expr("underlying type of a nominal type declaration");
+    return ptr<NomDecl>(track, mods, dbg, body);
 }
 
 Ptr<ValDecl> Parser::parse_rule_decl(Tracker track, Mods mods) {

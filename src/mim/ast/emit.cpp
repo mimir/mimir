@@ -43,6 +43,14 @@ public:
             if (auto [j, ins] = names.emplace(sym, i); !ins && j->second != i) j->second = Ambiguous;
     }
 
+    /// Copies the names of @p nom's declaration onto the corresponding parts of @p nom - an instance of it.
+    void adopt_names(const Nom* nom) {
+        auto decl = nom_decl(nom).first;
+        if (decl == nom || !adopted_.emplace(nom).second) return;
+        auto visited = DefSet();
+        adopt_names(decl->op(), nom->op(), visited);
+    }
+
     /// A declared @p variant prints under its name; an anonymous one spells out its cases, named as source does.
     /// Streams lazily so that it still renders under the PlainNames guard Error::msg formats within.
     auto variant_str(const Def* variant) {
@@ -111,8 +119,44 @@ public:
     }
     ///@}
 
+    /// @name Nominal scope
+    /// Only the `mod` declaring a `nom` - or one nested in it - may use `inj` and `#` on it.
+    ///@{
+    void push_mod(const ModDecl* mod) { mods_.emplace_back(mod); }
+    void pop_mod() { mods_.pop_back(); }
+    fe::Vector<const ModDecl*> reset_mods() { return std::exchange(mods_, {}); }
+    void restore_mods(fe::Vector<const ModDecl*> mods) { mods_ = std::move(mods); }
+
+    void add_nom(const Nom* nom) { key2nom_[nom->key()] = {nom, mods_.back()}; }
+
+    /// The declared `nom` that @p nom instantiates and the `mod` owning it.
+    std::pair<const Nom*, const ModDecl*> nom_decl(const Nom* nom) const {
+        auto i = key2nom_.find(nom->key());
+        return i != key2nom_.end() ? i->second : std::pair<const Nom*, const ModDecl*>{nom, nullptr};
+    }
+
+    bool within(const ModDecl* mod) const { return std::ranges::find(mods_, mod) != mods_.end(); }
+    ///@}
+
 private:
     static constexpr size_t Ambiguous = size_t(-1);
+
+    /// Walks @p decl and @p inst in lockstep; a `Sigma` may have normalized to an `Arr` in @p inst.
+    void adopt_names(const Def* decl, const Def* inst, DefSet& visited) {
+        if (decl == inst || decl->isa<Nom>() || inst->isa<Nom>() || !visited.emplace(decl).second) return;
+        if (auto i = def2sym2idx_.find(decl); i != def2sym2idx_.end()) {
+            auto sym2idx = i->second; // add_names may rehash def2sym2idx_
+            add_names(inst, sym2idx);
+        }
+        if (decl->node() == inst->node() && decl->num_ops() == inst->num_ops()) {
+            for (size_t k = 0, n = decl->num_ops(); k != n; ++k)
+                adopt_names(decl->op(k), inst->op(k), visited);
+        } else if (auto sigma = decl->isa<Sigma>()) {
+            if (auto n = sigma->num_ops(); Lit::isa(inst->arity()) == n)
+                for (size_t k = 0; k != n; ++k)
+                    adopt_names(sigma->op(k), inst->proj(n, k), visited);
+        }
+    }
 
     std::vector<std::string> ctor_syms(const Def* variant, size_t i) {
         auto names = std::vector<std::string>();
@@ -125,6 +169,9 @@ private:
 
     AST& ast_;
     DefMap<fe::SymMap<size_t>> def2sym2idx_;
+    fe::Vector<const ModDecl*> mods_;
+    ankerl::unordered_dense::map<flags_t, std::pair<const Nom*, const ModDecl*>> key2nom_;
+    DefSet adopted_;
 };
 
 /*
@@ -140,10 +187,14 @@ void File::emit(Emitter& e) const {
     if (emitted_) return;
     emitted_ = true;
 
+    // An imported file is emitted from within its importer's mods, but it is not nested in them.
+    auto mods = e.reset_mods();
+    e.push_mod(this);
     auto _ = e.world().push(loc());
     for (auto import : implicit_imports())
         import->emit(e);
     emit_decls(e);
+    e.restore_mods(std::move(mods));
 }
 
 void UseDecl::emit(Emitter& e) const {
@@ -272,6 +323,13 @@ const Def* HoleExpr::emit_(Emitter& e) const { return e.world().mut_hole_type();
 const Def* PathExpr::emit_(Emitter& e) const {
     assert(decl());
     if (auto def = decl()->def()) return def;
+    if (auto nom = decl()->isa<NomDecl>()) {
+        if (auto def = nom->emit_ahead(e)) return def;
+        e.error()
+            .e(loc(), "nominal type `{}` refers to itself", dbg().sym())
+            .n("a `nom` can only refer to itself through a sigma, a variant, or a function type")
+            .bail();
+    }
     e.error().e(loc(), "`{}` is a module and not a value", dbg().sym()).bail();
 }
 
@@ -408,16 +466,42 @@ const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
     return rhs()->emit(e);
 }
 
+/// A `nom`'s intro and elim are private to the `mod` that declared it; the type itself is not.
+static void check_nom_scope(Emitter& e, Loc loc, const Nom* nom) {
+    auto [decl, owner] = e.nom_decl(nom);
+    if (!owner || e.within(owner)) return;
+    auto where = owner->isa<File>() ? fe::format_cite("file `{}`", owner->loc().src->path().filename().string())
+                                    : fe::format_cite("module `{}`", owner->dbg());
+    e.error()
+        .e(loc, "`inj` and `#` on nominal type `{}` are only allowed within {}", nom, where)
+        .n(decl->loc(), "declared here")
+        .bail();
+}
+
 const Def* PrefixExpr::emit_(Emitter& e) const {
     auto def = rhs()->emit(e);
     switch (op().tag()) {
-        case Tag::T_extract: return e.world().unwrap(def);
+        case Tag::T_extract:
+            if (auto nom = def->isa_type<Nom>()) {
+                check_nom_scope(e, loc(), nom);
+                e.adopt_names(nom);
+                return e.world().struc(def);
+            }
+            if (!def->zonk()->isa_type<Single>()) {
+                auto& err = e.error().e(
+                    loc(), "operand of prefix `#` is of type `{}` but must be of nominal or singleton type",
+                    type_of(def));
+                if (def->zonk()->isa<Nom>()) err.n("`{}` is a nominal type itself; `#` unwraps a value of it", def);
+                err.bail();
+            }
+            return e.world().unwrap(def);
         default: std::unreachable();
     }
 }
 
 /// `T#C` or `T#i` selects case `C` or `i` of the Variant `T`: a constructor function - or its value for a `[]` payload.
-static const Def* emit_ctor(Emitter& e, const Variant* variant, const Expr* index) {
+/// If @p nom is given, `T` is its body and the constructor wraps its result into @p nom.
+static const Def* emit_ctor(Emitter& e, const Variant* variant, const Expr* index, const Nom* nom = nullptr) {
     auto& w = e.world();
     auto i  = std::optional<nat_t>();
 
@@ -436,10 +520,11 @@ static const Def* emit_ctor(Emitter& e, const Variant* variant, const Expr* inde
                variant->num_ops(), *i)
             .bail();
 
+    auto wrap    = [&](const Def* val) { return nom ? w.name(nom, val) : val; };
     auto payload = variant->op(*i);
-    if (payload == w.sigma()) return w.inj(variant, *i, w.tuple());
-    auto ctor = w.mut_lam(w.pi(payload, variant));
-    return ctor->set(true, w.inj(variant, *i, ctor->var()));
+    if (payload == w.sigma()) return wrap(w.inj(variant, *i, w.tuple()));
+    auto ctor = w.mut_lam(w.pi(payload, nom ? static_cast<const Def*>(nom) : variant));
+    return ctor->set(true, wrap(w.inj(variant, *i, ctor->var())));
 }
 
 const Def* InfixExpr::emit_(Emitter& e) const {
@@ -454,6 +539,13 @@ const Def* InfixExpr::emit_(Emitter& e) const {
         case Tag::T_extract: {
             auto tup = lhs()->emit(e);
             if (auto variant = tup->isa<Variant>()) return emit_ctor(e, variant, rhs());
+            if (auto nom = tup->isa<Nom>()) {
+                if (auto variant = nom->op()->isa<Variant>()) {
+                    check_nom_scope(e, loc(), nom);
+                    e.adopt_names(nom);
+                    return emit_ctor(e, variant, rhs(), nom);
+                }
+            }
             return w.extract(tup, emit_index(e, tup));
         }
         case Tag::T_arrow_l: {
@@ -494,7 +586,9 @@ const Def* InfixExpr::emit_(Emitter& e) const {
     switch (op().tag()) {
         case Tag::T_arrow_r: return w.pi(l, r);
         case Tag::T_at: return w.app(l, r);
-        case Tag::K_inj: return w.inj(r, l);
+        case Tag::K_inj:
+            if (auto nom = r->isa<Nom>()) check_nom_scope(e, loc(), nom);
+            return w.inj(r, l);
         default: return w.implicit_app(c, w.tuple({l, r})); // MIM_INFIX_SUGAR
     }
 }
@@ -773,7 +867,11 @@ void ModDecl::emit_decls(Emitter& e) const {
         decl->emit(e);
 }
 
-void ModDecl::emit(Emitter& e) const { emit_decls(e); }
+void ModDecl::emit(Emitter& e) const {
+    e.push_mod(this);
+    emit_decls(e);
+    e.pop_mod();
+}
 
 void LetDecl::emit(Emitter& e) const {
     auto _ = e.world().push(loc());
@@ -805,6 +903,38 @@ void RecDecl::emit_body(Emitter& e) const {
     body()->emit_body(e, def_);
     // TODO immutabilize?
     e.attach(annex_, sub_, dbg().sym(), def_);
+}
+
+void NomDecl::emit_decl(Emitter& e) const {
+    if (!has_mut_body()) return;
+    auto _ = e.world().push(loc());
+    emit_nom(e, body()->emit_decl(e, e.world().type_infer_univ()));
+}
+
+void NomDecl::emit_body(Emitter& e) const {
+    auto _ = e.world().push(loc());
+    if (has_mut_body()) {
+        body()->emit_body(e, def_->as<Nom>()->op());
+    } else {
+        if (def_) return; // see emit_ahead
+        emitting_ = true;
+        emit_nom(e, body()->emit(e));
+    }
+    e.attach(annex_, sub_, dbg().sym(), def_);
+}
+
+const Def* NomDecl::emit_ahead(Emitter& e) const {
+    if (!has_mut_body() && !emitting_) emit_body(e);
+    return def_;
+}
+
+void NomDecl::emit_nom(Emitter& e, const Def* body) const {
+    // World::dump finds a file's annexes by their qualified sym.
+    auto sym = annex_ ? annex_->qualified(e.driver(), dbg().sym()) : dbg().sym();
+    auto nom = e.world().nom(e.world().next_gid(), body);
+    nom->set(sym);
+    e.add_nom(nom);
+    def_ = nom;
 }
 
 Lam* LamDecl::Dom::emit_value(Emitter& e) const {

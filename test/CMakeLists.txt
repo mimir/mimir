@@ -46,6 +46,7 @@ add_mim_test(mim-test
         cast.cpp
         dump.cpp
         lexer.cpp
+        nom.cpp
         restricted_dep_types.cpp
         test.cpp
         variant.cpp

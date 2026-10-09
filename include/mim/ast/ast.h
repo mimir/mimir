@@ -1114,6 +1114,8 @@ public:
 
     Dbg dbg() const override { return dbg_; }
     const Expr* body() const { return body_.get(); }
+    /// Only such a body is emitted as a mutable, so only it may refer to the declaration itself.
+    bool has_mut_body() const;
 
     void bind(Scopes&) const override;
     virtual void bind_decl(Scopes&) const;
@@ -1128,11 +1130,31 @@ public:
     virtual void stream_(fe::Tab&, std::ostream&) const;
     std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
 
+protected:
+    mutable AnnexInfo* annex_ = nullptr;
+    mutable sub_t sub_        = 0;
+
 private:
     Dbg dbg_;
     Ptr<Expr> body_;
-    mutable AnnexInfo* annex_ = nullptr;
-    mutable sub_t sub_        = 0;
+};
+
+/// `nom dbg = body;` - a nominal newtype.
+class NomDecl : public RecDecl {
+public:
+    NomDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr> body)
+        : RecDecl(loc, mods, dbg, body) {}
+
+    void emit_decl(Emitter&) const override;
+    void emit_body(Emitter&) const override;
+    /// Emits a `nom` without a mutable body as soon as a sibling refers to it; `nullptr` on a cycle.
+    const Def* emit_ahead(Emitter&) const;
+    void stream_(fe::Tab&, std::ostream&) const override;
+
+private:
+    void emit_nom(Emitter&, const Def* body) const;
+
+    mutable bool emitting_ = false;
 };
 
 /// `tag dbg dom_0 ... dom_n-1: codom = body;` with LamDecl::tag `lam`/`con`/`fun` or anonymous `λ`/`cn`/`fn`.
@@ -1176,14 +1198,11 @@ public:
     void bind_body(Scopes&) const override;
     void emit_decl(Emitter&) const override;
     void emit_body(Emitter&) const override;
-    std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
     void stream_(fe::Tab&, std::ostream&) const override;
 
 private:
     Tok::Tag tag_;
     Ptr<Expr> codom_;
-    mutable AnnexInfo* annex_ = nullptr;
-    mutable sub_t sub_        = 0;
 };
 
 /// `mutual decl* end` groups RecDecl%s that may refer to each other.

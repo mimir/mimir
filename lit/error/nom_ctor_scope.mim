@@ -1,0 +1,13 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+// A constructor of a `nom` is as private as its `inj`.
+mod m
+    pub lam Opt (T: *) =
+        nom O = | None | Some: T;
+        O;
+end
+
+extern lam f () = (m.Opt Nat)#None;
+
+// CHECK: {{.*}}nom_ctor_scope.mim:10:19-10:34: error: `inj` and `#` on nominal type `O` are only allowed within module `m`
+// CHECK: {{.*}}nom_ctor_scope.mim:6:9-6:32: note: declared here

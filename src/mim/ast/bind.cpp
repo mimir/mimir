@@ -478,9 +478,14 @@ void MutualDecl::bind(Scopes& s) const {
         decl->bind_body(s);
 }
 
+bool RecDecl::has_mut_body() const {
+    return body()->isa<PiExpr>() || InfixExpr::isa_op(Tag::T_arrow_r, body()) || body()->isa<SigmaExpr>()
+        || body()->isa<VariantExpr>();
+}
+
 void RecDecl::bind_decl(Scopes& s) const {
-    if (!body()->isa<PiExpr>() && !InfixExpr::isa_op(Tag::T_arrow_r, body()) && !body()->isa<SigmaExpr>()
-        && !body()->isa<VariantExpr>())
+    // A `nom` over any other body is merely not recursive.
+    if (!isa<NomDecl>() && !has_mut_body())
         s.error()
             .e(body()->loc(), "unsupported expression in a recursive declaration")
             .n("must be a sigma, a variant, or a function type; use `lam`/`con`/`fun` to declare a recursive function");
