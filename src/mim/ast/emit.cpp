@@ -30,6 +30,10 @@ public:
             world().annexes().attach(annex->plugin_id(), annex->id.tag, sub, annex->qualified(driver(), name), def);
     }
 
+    void attach_alias(AnnexInfo* annex, sub_t sub, Sym name) {
+        world().annexes().attach_alias(annex->plugin_id(), annex->id.tag, sub, annex->qualified(driver(), name));
+    }
+
     /// @name Names
     /// Field and constructor names live on the Def, so same-shaped types share one table.
     ///@{
@@ -724,51 +728,44 @@ const Def* SingleExpr::emit_(Emitter& e) const {
  */
 
 void AxmDecl::emit(Emitter& e) const {
-    if (!annex_) return; // Skip emit if binding failed
-    auto _      = e.world().push(loc());
-    mim_type_   = type()->emit(e);
-    auto& id    = annex_->id;
-    auto plugin = annex_->plugin_id();
-
-    std::tie(id.curry, id.trip) = Axm::infer_curry_and_trip(mim_type_);
+    auto _                 = e.world().push(loc());
+    auto type              = type_->emit(e);
+    auto [n_curry, n_trip] = Axm::infer_curry_and_trip(type);
     if (curry_) {
-        if (curry_.lit_u() > id.curry)
-            e.error().e(curry_.loc(), "curry counter cannot be greater than {}", id.curry).bail();
+        if (curry_.lit_u() > n_curry)
+            e.error().e(curry_.loc(), "curry counter cannot be greater than {}", n_curry).bail();
         else
-            id.curry = curry_.lit_u();
+            n_curry = curry_.lit_u();
     }
 
     if (trip_) {
-        if (trip_.lit_u() > id.curry)
-            e.error().e(trip_.loc(), "trip counter cannot be greater than curry counter {}", (int)id.curry).bail();
+        if (trip_.lit_u() > n_curry)
+            e.error().e(trip_.loc(), "trip counter cannot be greater than curry counter {}", (int)n_curry).bail();
         else
-            id.trip = trip_.lit_u();
+            n_trip = trip_.lit_u();
     }
 
-    auto norm = e.driver().normalizer(plugin, id.tag, sub_);
-    auto name = annex_->qualified(e.driver(), dbg().sym());
-    auto axm  = e.world().axm(norm, id.curry, id.trip, mim_type_, plugin, id.tag, sub_)->set(name);
-    def_      = axm;
-    e.world().annexes().attach(plugin, id.tag, sub_, name, axm);
-}
-
-void AxmDecl::Sibling::emit(Emitter& e) const {
-    if (!annex_) return; // skip emit if binding failed
-    auto& id    = annex_->id;
-    auto plugin = annex_->plugin_id();
-    auto norm   = e.driver().normalizer(plugin, id.tag, sub_);
-    auto name   = annex_->qualified(e.driver(), dbg().sym());
-    auto axm    = e.world().axm(norm, id.curry, id.trip, owner()->mim_type(), plugin, id.tag, sub_)->set(name);
-    def_        = axm;
-    e.world().annexes().attach(plugin, id.tag, sub_, name, axm);
+    for (auto name : names()) {
+        auto annex = name->annex_;
+        if (!annex) continue; // binding failed
+        auto plugin = annex->plugin_id();
+        auto tag    = annex->id.tag;
+        auto sub    = name->sub_;
+        auto norm   = e.driver().normalizer(plugin, tag, sub);
+        auto sym    = annex->qualified(e.driver(), name->dbg().sym());
+        auto axm    = e.world().axm(norm, n_curry, n_trip, type, plugin, tag, sub)->set(sym);
+        name->def_  = axm;
+        e.world().annexes().attach(plugin, tag, sub, sym, axm);
+        for (auto alias : name->aliases())
+            e.attach_alias(annex, sub, alias.sym());
+    }
 }
 
 void AliasDecl::emit(Emitter& e) const {
     if (!annex_) return; // skip emit if binding failed
     auto target = path()->decl();
     def_        = target->def();
-    auto name   = annex_->qualified(e.driver(), dbg().sym());
-    e.world().annexes().attach_alias(annex_->plugin_id(), annex_->id.tag, sub_, name);
+    e.attach_alias(annex_, sub_, dbg().sym());
 }
 
 void ModDecl::emit_decls(Emitter& e) const {

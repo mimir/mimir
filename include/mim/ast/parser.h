@@ -172,11 +172,9 @@ private:
     /// `mod` doesn't call this at all: as pure AST grouping it supports neither `extern` nor `anx`
     /// (see Parser::parse_mod_decl).
     void check_no_extern(const Mods&, fe::Cite entity);
-    void parse_axm_decl(Tracker, Mods, Ptrs<ValDecl>&);
-    /// Parses the `(tag_0 [= alias]*, ...): type[, normalizer[, curry[, trip]]]` tail shared by a bare
-    /// `axm (...)` group and the `axm tag.(...)` family-sugar; each Dbgs is one tag's `[primary, alias, ...]`.
-    Ptrs<ValDecl> parse_axm_group(Vis);
-    /// The `: type[, normalizer[, curry[, trip]]]` tail shared by a plain `axm` and Parser::parse_axm_group.
+    Ptr<ValDecl> parse_axm_decl(Tracker, Mods);
+    /// `(tag_0 [= alias]*, ...)` of an `axm` family.
+    Ptrs<AxmDecl::Name> parse_axm_names();
     std::tuple<Ptr<Expr>, Dbg, Tok, Tok> parse_axm_tail();
     Ptr<ValDecl> parse_alias_decl(Tracker, Mods);
     Ptr<ValDecl> parse_let_decl(Tracker, Mods);

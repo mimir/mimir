@@ -71,7 +71,7 @@ struct Mods {
 struct AnnexInfo {
     AnnexInfo(Sym sym_plugin, Sym sym_tag, tag_t id_tag)
         : sym{sym_plugin, sym_tag}
-        , id{id_tag, 0, 0} {}
+        , id{id_tag} {}
 
     /// The mangled `plugin` part of the flags.
     /// Derived from sym.plugin which is guaranteed mangleable by the time an AnnexInfo exists.
@@ -91,7 +91,6 @@ struct AnnexInfo {
 
     struct {
         tag_t tag;
-        u8 curry, trip;
     } id;
 
     fe::Vector<fe::Vector<Sym>> subs; ///< List of subs which is a list of aliases.
@@ -1042,62 +1041,67 @@ private:
     Ptr<Expr> value_;
 };
 
-/// `axm dbg: type, normalizer, curry, trip;`
-class AxmDecl : public ValDecl {
+/// `axm dbg: type, normalizer, curry, trip;` or a family `axm (name, ...): type, normalizer, curry, trip;`.
+/// A family prefixed with `tag.` binds as a module and nests its names as subtags of the annex `tag`.
+class AxmDecl : public ValDecl, public fe::VLA<AxmDecl> {
 public:
-    /// A further tag sharing AxmDecl::type/normalizer/curry/trip with the AxmDecl that owns them.
-    /// Only ever synthesized by Parser::parse_axm_group when desugaring `axm tag.(sub_0, ..., sub_n-1): ...;`
-    /// into `mod tag axm sub_0: ...; ... end`: AxmDecl::Sibling is `sub_1`, ..., `sub_n-1`.
-    class Sibling : public ValDecl {
+    /// `dbg = alias_0 = ... = alias_n-1` - one axiom of the family, which each of its names binds to.
+    class Name : public Decl, public fe::VLA<Name> {
     public:
-        Sibling(Loc loc, Vis vis, Dbg dbg, const AxmDecl* owner)
-            : ValDecl(loc, Mods{vis, /*is_extern=*/false, /*is_anx=*/true})
-            , dbg_(dbg)
-            , owner_(owner) {}
+        using VLA_Types = std::tuple<Dbg>;
 
-        Dbg dbg() const override { return dbg_; }
-        const AxmDecl* owner() const { return owner_; }
+        Name(Loc loc)
+            : Decl(loc) {}
 
-        void bind(Scopes&) const override;
-        void emit(Emitter&) const override;
-        void stream(fe::Tab&, std::ostream&) const override;
+        auto names() const { return vla<0>(); }
+        Dbg dbg() const override { return names().front(); }
+        auto aliases() const { return names().subspan(1); }
+        bool is_anx() const override { return true; }
         std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
 
+        void stream(fe::Tab&, std::ostream&) const override;
+
     private:
-        Dbg dbg_;
-        const AxmDecl* owner_;
         mutable AnnexInfo* annex_ = nullptr;
         mutable sub_t sub_        = 0;
+
+        friend class AxmDecl;
     };
 
-    AxmDecl(Loc loc, Vis vis, Dbg dbg, Ptr<Expr> type, Dbg normalizer, Tok curry, Tok trip)
-        : ValDecl(loc, Mods{vis, /*is_extern=*/false, /*is_anx=*/true})
-        , dbg_(dbg)
+    using VLA_Types = std::tuple<Ptr<Name>>;
+
+    AxmDecl(Loc l, Vis v, Dbg mod, Scope* members, bool is_family, Ptr<Expr> type, Dbg normalizer, Tok curry, Tok trip)
+        : ValDecl(l, Mods{v, /*is_extern=*/false, /*is_anx=*/true})
+        , mod_(mod)
+        , members_(members)
+        , is_family_(is_family)
         , type_(type)
         , normalizer_(normalizer)
         , curry_(curry)
         , trip_(trip) {}
 
-    Dbg dbg() const override { return dbg_; }
+    /// The `mod.` prefix, if any.
+    Dbg dbg() const override { return mod_; }
+    const Scope* scope() const override { return members_; }
+    auto names() const { return vla<0>(); }
+    /// Whether the names are spelled as a parenthesized list, even if it is just one.
+    bool is_family() const { return is_family_; }
     const Expr* type() const { return type_.get(); }
     Dbg normalizer() const { return normalizer_; }
     Tok curry() const { return curry_; }
     Tok trip() const { return trip_; }
-    const Def* mim_type() const { return mim_type_; }
 
     void bind(Scopes&) const override;
     void emit(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
-    std::pair<AnnexInfo*, sub_t> annex_sub() const override { return {annex_, sub_}; }
 
 private:
-    Dbg dbg_;
+    Dbg mod_;
+    Scope* members_;
+    bool is_family_;
     Ptr<Expr> type_;
     Dbg normalizer_;
     Tok curry_, trip_;
-    mutable AnnexInfo* annex_    = nullptr;
-    mutable sub_t sub_           = 0;
-    mutable const Def* mim_type_ = nullptr;
 };
 
 /// `rec dbg = body;`
