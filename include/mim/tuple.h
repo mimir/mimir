@@ -404,7 +404,7 @@ private:
     friend class World;
 };
 
-/// Matches `(ff, tt)#cond` - where `cond` is **not** a Lit%eral.
+/// Matches `(ff, tt)#cond` - where `cond` is a Bool but **not** a Lit%eral.
 /// @note If `cond` is a Lit%eral, either
 /// * `(x, y)#lit` would have been folded to `x`/`y` anyway, or
 /// * we have something like this: `pair#0_2`

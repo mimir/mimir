@@ -25,6 +25,7 @@ private:
 
     DefSet analyzed_;
     LamMap<bool> candidates_;
+    LamSet inlining_;
 };
 
 } // namespace mim
