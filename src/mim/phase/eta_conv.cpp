@@ -12,9 +12,11 @@ void EtaConv::analyze(const Def* def) {
     if (auto [_, ins] = analyzed_.emplace(def); !ins) return;
 
     if (auto app = def->isa<App>()) {
-        visit(app->type(), Lattice::Unknown_1);
+        // clang-format off
+        visit(app->type(),   Lattice::Unknown_1);
         visit(app->callee(), Lattice::Known);
-        visit(app->arg(), Lattice::Unknown_1);
+        visit(app->arg(),    Lattice::Unknown_1);
+        // clang-format on
     } else {
         for (auto d : def->deps())
             visit(d, Lattice::Unknown_1);
