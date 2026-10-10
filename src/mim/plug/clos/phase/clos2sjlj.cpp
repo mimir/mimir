@@ -177,7 +177,7 @@ void Clos2SJLJ::convert(Lam* lam) {
 
 // convert() substitutes within the *already rewritten* body, so a new-world Def means "substitute in place".
 const Def* Clos2SJLJ::rewrite(const Def* def) {
-    return !def->is_base() && &def->world() == &new_world() ? subst_exn_closures(def) : RWPhase::rewrite(def);
+    return new_world().owns(def) ? subst_exn_closures(def) : RWPhase::rewrite(def);
 }
 
 const Def* Clos2SJLJ::subst_exn_closures(const Def* def) {

@@ -465,7 +465,7 @@ protected:
 private:
     Analysis* analysis_;
     bool bootstrapping_ = true;
-    std::unique_ptr<World> new_world_; ///< Owns Rewriter::world.
+    std::unique_ptr<World> new_world_; ///< Owns Rewriter::world while running.
 };
 
 /// An RWPhase that searches for a pattern and replaces it.

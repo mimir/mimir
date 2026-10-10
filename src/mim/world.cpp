@@ -170,7 +170,7 @@ World::World(Driver* driver, Sym name)
     data_.lit_bool[0] = lit_idx(2, 0_u64);
     data_.lit_bool[1] = lit_idx(2, 1_u64);
     data_.lit_nat_max = lit_nat(nat_t(-1));
-    seal(DefVec(move_.sea.begin(), move_.sea.end()));
+    seal(std::ranges::to<DefVec>(move_.sea));
 }
 
 World::World(World& base, const State& state)
@@ -215,22 +215,27 @@ size_t World::absorb(World& world) {
 }
 
 void World::seal(Defs roots) {
-    assert(is_base() && worlds_.active == this);
-    auto defs = DefVec(move_.sea.begin(), move_.sea.end());
-    for (auto def : defs)
-        if (auto mut = def->isa_mut()) mut->var(), mut->free_vars();
+    assert(is_base());
+    auto _            = activate();
+    state_.pod.frozen = false;
 
-    auto visited = DefSet();
-    auto stack   = DefVec(roots.begin(), roots.end());
-    while (!stack.empty()) {
-        auto def = stack.back();
-        stack.pop_back();
-        if (!def->is_base() || !visited.emplace(def).second) continue;
+    auto muts = fe::Vector<Def*>();
+    for (auto def : move_.sea)
+        if (auto mut = def->isa_mut()) muts.emplace_back(mut);
+    for (auto mut : muts) // Def::var may insert into the sea
+        mut->var(), mut->free_vars();
+
+    auto queue = fe::BFSWorklist<DefSet>();
+    for (auto root : roots)
+        queue.push(root);
+    while (!queue.empty()) {
+        auto def = queue.pop();
+        if (!def->is_base()) continue;
         if (def->is_closed()) const_cast<Def*>(def)->sealed_ = true;
         for (auto d : def->deps())
-            stack.emplace_back(d);
-        if (auto var = def->isa<Var>()) stack.emplace_back(var->binder());
-        if (auto type = def->isa<Type>()) stack.emplace_back(type->level());
+            queue.push(d);
+        if (auto var = def->isa<Var>()) queue.push(var->binder());
+        if (auto type = def->isa<Type>()) queue.push(type->level());
     }
 
     state_.pod.frozen = true;

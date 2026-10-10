@@ -86,7 +86,8 @@ class World;
 /// Resolves Def::world() for all World%s of one Driver; owned by the base World.
 /// A Def of the base World is shared by all others and, hence, belongs to the active one.
 struct Worlds {
-    static constexpr size_t Num_Slots = 8;
+    static constexpr size_t Slot_Bits = 3;
+    static constexpr size_t Num_Slots = 1 << Slot_Bits;
 
     World* active = nullptr;
     std::array<World*, Num_Slots> slots{};
@@ -876,9 +877,9 @@ private:
     u32 mark_ = 0;
     u32 gid_;
     u32 num_ops_ : 27;
-    u32 base_    : 1 = 0; ///< @see is_base()
-    u32 sealed_  : 1 = 0; ///< @see is_sealed()
-    u32 slot_    : 3 = 0; ///< Index into Worlds::slots.
+    u32 base_    : 1                 = 0; ///< @see is_base()
+    u32 sealed_  : 1                 = 0; ///< @see is_sealed()
+    u32 slot_    : Worlds::Slot_Bits = 0; ///< Index into Worlds::slots.
     size_t hash_;
     Vars vars_; // Mutable: local vars; Immutable: free vars.
     Muts muts_; // Immutable: local_muts; Mutable: users;

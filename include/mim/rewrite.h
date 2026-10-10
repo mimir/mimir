@@ -48,12 +48,9 @@ public:
     /// Use this for a context-free mapping - e.g. a Var of a rebuilt binder - that must stay valid after a
     /// scope opened by rewrite_mut_Seq's scalarization is popped again.
     const Def* map_root(const Def* old_def, const Def* new_def) {
-        auto& root = old2news_.front();
-        if (journal_) {
-            auto i = root.find(old_def);
-            journal_->emplace_back(old_def, i != root.end() ? i->second : nullptr);
-        }
-        return root[old_def] = new_def;
+        auto [i, ins] = old2news_.front().try_emplace(old_def, new_def);
+        if (probing_) journal_.emplace_back(old_def, ins ? nullptr : i->second);
+        return i->second = new_def;
     }
 
     // clang-format off
@@ -108,8 +105,9 @@ public:
 
 private:
     World* world_;
-    Def* curr_mut_                                          = nullptr;
-    fe::Vector<std::pair<const Def*, const Def*>>* journal_ = nullptr; ///< Undoes map_root() if try_keep() fails.
+    Def* curr_mut_ = nullptr;
+    fe::Vector<std::pair<const Def*, const Def*>> journal_; ///< Undoes map_root() if try_keep() fails.
+    size_t probing_ = 0;                                    ///< Nesting depth of try_keep().
 
 protected:
     fe::Vector<Def2Def> old2news_;

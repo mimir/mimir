@@ -98,6 +98,9 @@ public:
     /// @name Base
     ///@{
     bool is_base() const { return !base_; }
+    /// Is @p def one of this World's own Def%s?
+    /// Unlike `&def->world() == this`, this is never `true` for a Def::is_base Def of another World.
+    bool owns(const Def* def) const { return def->is_base() ? is_base() : &def->world() == this; }
     World& base() { return base_ ? *base_ : *this; }
     const World& base() const { return base_ ? *base_ : *this; }
     Worlds& worlds() { return base().worlds_; }
@@ -111,6 +114,7 @@ public:
 
     /// Computes everything a Def caches lazily up front and freezes this base World.
     /// Marks the closed Def%s reachable from @p roots as Def::is_sealed.
+    /// The base World is not frozen while it absorb()s.
     void seal(Defs roots);
     ///@}
 
@@ -172,7 +176,6 @@ public:
     /// }
     /// ```
     [[nodiscard]] auto freeze() const { return fe::Restore(state_.pod.frozen, true); }
-    [[nodiscard]] auto thaw() const { return fe::Restore(state_.pod.frozen, false); } ///< Opposite of freeze().
     ///@}
 
     /// @name Debugging Features
@@ -1006,7 +1009,6 @@ private:
         assert(w1.base_ && w1.base_ == w2.base_);
         using std::swap;
         // clang-format off
-        swap(w1.driver_,  w2.driver_ );
         swap(w1.slot_,    w2.slot_   );
         swap(w1.zonker_,  w2.zonker_ );
         swap(w1.state_,   w2.state_  );

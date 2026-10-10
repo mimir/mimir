@@ -152,7 +152,7 @@ void Analysis::drain() {
  */
 
 void RWPhase::run() {
-    if (!new_world_) retarget(*(new_world_ = old_world().inherit()));
+    retarget(*(new_world_ = old_world().inherit()));
     Phase::run();
 }
 
@@ -168,14 +168,14 @@ void RWPhase::start() {
     // A base Def built while rewriting belongs to the new World; after the swap that is the old one.
     auto _ = new_world().activate();
 
-    // A sealed annex is shared and only rewritten if the program reaches it.
-    for (const auto& [flags, e] : old_world().annexes())
-        if (e.def->is_sealed()) new_world().annexes().attach(flags, e.sym, e.def);
-
     // The annex half is a fixed tax proportional to the loaded plugins' annex graph - not to the program.
+    // A sealed annex is shared and only rewritten if the program reaches it.
     auto gid = new_world().curr_gid();
     for (const auto& [flags, e] : old_world().annexes())
-        if (!e.def->is_sealed()) rewrite_annex(flags, e.sym, e.def);
+        if (e.def->is_sealed())
+            new_world().annexes().attach(flags, e.sym, e.def);
+        else
+            rewrite_annex(flags, e.sym, e.def);
     profile_count("rw.defs.annex", new_world().curr_gid() - gid);
 
     bootstrapping_ = false;
@@ -206,9 +206,8 @@ const Def* RWPhase::rewrite_mut(Def* old_mut) {
 }
 
 const Def* RWPhase::rewrite(const Def* old_def) {
-    if (bootstrapping_ || !old_def->is_sealed()) return Rewriter::rewrite(old_def);
     // A sealed Def is shared with the annexes, which are rewritten while bootstrapping.
-    auto _ = fe::Restore(bootstrapping_, true);
+    auto _ = fe::Restore(bootstrapping_, bootstrapping_ || old_def->is_sealed());
     return Rewriter::rewrite(old_def);
 }
 
@@ -245,12 +244,8 @@ void RWPhase::rewrite_external(Def* old_mut) {
 
 void Seal::start() {
     auto& base = old_world().base();
-    {
-        auto _  = base.thaw();
-        auto __ = base.activate();
-        profile_count("seal.defs", base.absorb(old_world()));
-        base.seal(DefVec(old_world().annexes().defs().begin(), old_world().annexes().defs().end()));
-    }
+    profile_count("seal.defs", base.absorb(old_world()));
+    base.seal(std::ranges::to<DefVec>(old_world().annexes().defs()));
     RWPhase::start();
 }
 

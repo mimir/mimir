@@ -183,7 +183,6 @@ Def* Def::finalize() {
 
 Def* Def::set(Defs ops) {
     watch();
-    assert((!is_base() || !world().base().is_frozen()) && "the base World is immutable");
     invalidate();
 
     size_t n = ops.size();
@@ -203,7 +202,6 @@ Def* Def::set(Defs ops) {
 
 Def* Def::set(size_t i, const Def* def) {
     watch();
-    assert((!is_base() || !world().base().is_frozen()) && "the base World is immutable");
     invalidate();
     def = check(i, def);
     assert(def && !op(i) && curr_op_++ == i);
@@ -214,14 +212,12 @@ Def* Def::set(size_t i, const Def* def) {
 }
 
 Def* Def::set_type(const Def* type) {
-    assert((!is_base() || !world().base().is_frozen()) && "the base World is immutable");
     invalidate();
     type_ = type;
     return this;
 }
 
 Def* Def::unset() {
-    assert((!is_base() || !world().base().is_frozen()) && "the base World is immutable");
     invalidate();
 #ifndef NDEBUG
     curr_op_ = 0;
@@ -351,6 +347,7 @@ Vars Def::free_vars(World& w, bool& todo, u32 run) {
 }
 
 void Def::invalidate() {
+    assert((!is_base() || !world().base().is_frozen()) && "the base World is immutable");
     if (mark_ != 0) {
         mark_ = 0;
         // TODO optimize if vars empty?

@@ -73,26 +73,27 @@ const Def* Rewriter::rewrite_mut(Def* old_mut) {
 #undef CODE_IMM
 
 bool Rewriter::try_keep(Def* mut) {
-    auto journal = fe::Vector<std::pair<const Def*, const Def*>>();
-    auto outer   = std::exchange(journal_, &journal);
-    old2news_.emplace_back();
+    auto mark = journal_.size();
+    ++probing_;
+    push();
     old2news_.back()[mut] = mut;
     bool same             = std::ranges::all_of(mut->deps(), [this](const Def* d) { return rewrite(d) == d; });
-    journal_              = outer;
     auto frame            = std::move(old2news_.back());
-    old2news_.pop_back();
+    pop();
+    --probing_;
 
     if (same) {
         old2news_.back().insert(frame.begin(), frame.end());
-        if (outer) outer->append_range(journal);
     } else {
         auto& root = old2news_.front();
-        for (auto [old_def, new_def] : journal | std::views::reverse)
+        for (auto [old_def, new_def] : std::span(journal_).subspan(mark) | std::views::reverse)
             if (new_def)
                 root[old_def] = new_def;
             else
                 root.erase(old_def);
+        journal_.resize(mark);
     }
+    if (!probing_) journal_.clear();
 
     return same;
 }
@@ -213,7 +214,7 @@ const Def* Rewriter::rewrite_mut_Variant(Variant* d) {
 }
 
 const Def* Rewriter::rewrite_imm_Axm(const Axm* a) {
-    if (a->is_base() || &a->world() != &world()) {
+    if (!world().owns(a)) {
         auto type = rewrite(a->type());
         return world().axm(a->normalizer(), a->curry(), a->trip(), type, a->plugin(), a->tag(), a->sub());
     }
