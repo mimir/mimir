@@ -124,11 +124,15 @@ const Def* World::Annexes::attach(flags_t flags, Sym sym, const Def* def) {
     if (driver().is_loaded(Annex::demangle(flags))) {
         fe::assert_emplace(flags2entry_, flags, Annexes::Entry{sym, def});
         fe::assert_emplace(sym2flags_, sym, flags);
-        def2flags_.emplace(def, flags);
         def->annex_ = true;
         return def;
     }
     return nullptr;
+}
+
+void World::Annexes::index_defs() {
+    for (const auto& [flags, e] : flags2entry_)
+        def2flags_.emplace(e.def, flags);
 }
 
 void World::Annexes::attach_alias(flags_t flags, Sym sym) {
@@ -148,31 +152,20 @@ public:
     Importer(World& world)
         : Rewriter(world) {}
 
-    using Rewriter::retarget;
-
-    const Def* import(const Def* root) {
-        auto _ = fe::Restore(root_, root);
-        return rewrite(root);
-    }
+    const Def* import(const Def* root) { return Rewriter::rewrite(root); }
 
     const Def* rewrite(const Def* def) final {
         if (auto new_def = lookup(def)) return new_def;
-        if (def != root_)
-            if (auto flags = world().driver().library().annexes().flags(def)) return world().annex(*flags);
+        if (auto flags = world().driver().library().annexes().flags(def)) return world().annex(*flags);
         return Rewriter::rewrite(def);
     }
-
-private:
-    const Def* root_ = nullptr;
 };
+
+void World::drop_importer() { importer_.reset(); }
 
 const Def* World::import(const Def* def) {
     if (!importer_) importer_ = std::make_unique<Importer>(*this);
     return importer_->import(def);
-}
-
-void World::retarget_importer() {
-    if (importer_) importer_->retarget(*this);
 }
 
 const Def* World::annex(Sym sym) {
@@ -199,6 +192,7 @@ void World::move_to_library() {
     auto& lib = driver().library();
     swap(*this, lib);
     swap(state_, lib.state_);
+    lib.annexes().index_defs();
     for (auto mut : lib.externals().muts())
         import(mut)->as_mut()->externalize();
 }

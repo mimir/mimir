@@ -106,8 +106,6 @@ private:
 protected:
     fe::Vector<Def2Def> old2news_;
 
-    void retarget(World& world) { world_ = &world; } ///< Builds all further rewrites into @p world.
-
     /// Updates curr_mut() to @p new_mut and restores it at the end of the scope.
     [[nodiscard]] auto enter(Def* new_mut) { return fe::Restore(curr_mut_, new_mut); }
 

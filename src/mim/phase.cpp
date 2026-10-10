@@ -159,10 +159,11 @@ void RWPhase::start() {
 
     // A missing annex is first imported into the old World - so it passes through this phase like any other.
     auto _ = fe::Restore(new_world().annex_fallback, std::function([this](flags_t flags) {
-                             auto old_def = old_world().annex(flags);
-                             auto sym     = old_world().annexes().flags2entry().at(flags).sym;
-                             auto __      = fe::Restore(bootstrapping_, true);
-                             return new_world().annexes().attach(flags, sym, rewrite_root(old_def));
+                             old_world().annex(flags);
+                             auto& e = old_world().annexes().flags2entry().at(flags);
+                             auto __ = fe::Restore(bootstrapping_, true);
+                             rewrite_annex(flags, e.sym, e.def);
+                             return new_world().annexes().flags2entry().at(flags).def;
                          }));
 
     // The annex half only covers the annexes the old World has.
@@ -191,8 +192,6 @@ bool RWPhase::analyze() {
 
     return false;
 }
-
-const Def* RWPhase::annex(flags_t flags) { return new_world().annex(flags); }
 
 void RWPhase::rewrite_annex(flags_t f, Sym sym, const Def* def) {
     auto new_def = rewrite_root(def);

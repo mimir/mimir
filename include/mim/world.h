@@ -5,7 +5,6 @@
 #include <functional>
 #include <map>
 #include <memory>
-#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -233,11 +232,9 @@ public:
         }
         auto& sym2flags() { return sym2flags_; }
         const auto& sym2flags() const { return sym2flags_; }
-        /// The flags of the annex @p def, if it is one.
-        std::optional<flags_t> flags(const Def* def) const {
-            if (auto i = def2flags_.find(def); i != def2flags_.end()) return i->second;
-            return {};
-        }
+        /// The flags of the annex @p def, if it is one; needs index_defs().
+        const flags_t* flags(const Def* def) const { return def->is_annex() ? fe::lookup(def2flags_, def) : nullptr; }
+        void index_defs(); ///< Builds the reverse index flags() relies on.
         size_t size() const { return flags2entry_.size(); }
         ///@}
 
@@ -303,8 +300,7 @@ public:
         return annex_miss(flags);
     }
 
-    /// Supplies an annex this World does not have yet - before falling back to Driver::library.
-    /// RWPhase uses this to rewrite the old World's annex instead.
+    /// Supplies an annex this World does not have yet, before falling back to Driver::library; @see RWPhase.
     std::function<const Def*(flags_t)> annex_fallback;
     /// Lookup annex by Axm::id
     const Def* annex(Enum auto id) { return annex(static_cast<flags_t>(id)); }
@@ -784,7 +780,7 @@ public:
 private:
     const Def* annex_miss(flags_t);
     class Importer;
-    void retarget_importer();
+    void drop_importer(); ///< An Importer maps into the contents it was created for; those have moved.
 
     Shape check_index(const Def* index); ///< Validates @p index and folds its size-1 axes away.
     /// Type-checks a *scalar* @p index of `Idx size`; `true` if the axis has folded out of @p type.
@@ -994,10 +990,9 @@ private:
         swap(w1.state_,   w2.state_);
         swap(w1.data_,    w2.data_ );
         swap(w1.move_,    w2.move_ );
-        swap(w1.importer_, w2.importer_);
         // clang-format on
-        w1.retarget_importer();
-        w2.retarget_importer();
+        w1.drop_importer();
+        w2.drop_importer();
 
         swap(w1.data_.univ->world_, w2.data_.univ->world_);
         assert(&w1.univ()->world() == &w1);
