@@ -58,7 +58,7 @@ const Def* AddMem::rewrite(const Def* old_def) {
             tuple && std::ranges::any_of(tuple->ops(), [](const Def* op) { return isa_mem(op); }))
             return rewrite_imm_Tuple(tuple);
     }
-    auto new_def = Rewriter::rewrite(old_def);
+    auto new_def = RWPhase::rewrite(old_def);
     // Rewrite every memory operand to the current memory - after threading the operand's producers, which
     // advances curr_mem_ along the way. Placeholders (`⊥`/`⊤ : mem.M 0`) are thereby spliced into the chain.
     if (curr_mem_ && !preserving_ && !is_bootstrapping() && !old_def->isa_mut() && old_def->type() && isa_mem(old_def))

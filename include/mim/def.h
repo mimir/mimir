@@ -3,6 +3,7 @@
 #include <concepts>
 
 #include <algorithm>
+#include <array>
 #include <format>
 #include <limits>
 #include <optional>
@@ -81,6 +82,15 @@ class Var;
 class Def;
 class Driver;
 class World;
+
+/// Resolves Def::world() for all World%s of one Driver; owned by the base World.
+/// A Def of the base World is shared by all others and, hence, belongs to the active one.
+struct Worlds {
+    static constexpr size_t Num_Slots = 8;
+
+    World* active = nullptr;
+    std::array<World*, Num_Slots> slots{};
+};
 
 /// Grants fe::Patricia access to Def::gid_.
 struct DefKey {
@@ -322,10 +332,10 @@ private:
 protected:
     /// @name C'tors and D'tors
     ///@{
-    Def(World*, Node, const Def* type, Defs ops, flags_t flags); ///< Constructor for an *immutable* Def.
-    Def(Node, const Def* type, Defs ops, flags_t flags);         ///< As above but World retrieved from @p type.
-    Def(Node, const Def* type, size_t num_ops, flags_t flags);   ///< Constructor for a *mutable* Def.
-    Def(Node, Def* binder);                                      ///< Constructor for a Var; stores its @p binder.
+    Def(Worlds*, Node, const Def* type, Defs ops, flags_t flags); ///< Constructor for an *immutable* Def.
+    Def(Node, const Def* type, Defs ops, flags_t flags);          ///< As above but World retrieved from @p type.
+    Def(Node, const Def* type, size_t num_ops, flags_t flags);    ///< Constructor for a *mutable* Def.
+    Def(Node, Def* binder);                                       ///< Constructor for a Var; stores its @p binder.
     ///@}
 
 public:
@@ -554,13 +564,14 @@ public:
 
     /// Mutables reachable by following *immutable* deps(); `mut->local_muts()` is by definition the set `{ mut }`.
     Muts local_muts() const {
+        if (sealed_) return {};
         if (auto mut = isa_mut()) return Muts(mut);
         return muts_;
     }
 
     /// Var%s reachable by following *immutable* deps().
     /// @note `var->local_vars()` is by definition the set `{ var }`.
-    Vars local_vars() const { return mut_ ? Vars() : vars_; }
+    Vars local_vars() const { return mut_ || sealed_ ? Vars() : vars_; }
 
     /// Global set of free Var%s: extends local_vars() by transitively following *mutables* as well.
     /// @note On a *mutable* this simply forwards to the caching non-`const` overload below.
@@ -604,6 +615,14 @@ public:
     void internalize();
     void transfer_external(Def* to);
     bool is_annex() const noexcept { return annex_; }
+    ///@}
+
+    /// @name base
+    ///@{
+    /// Does this Def live in the Driver's base World - shared by all other World%s?
+    bool is_base() const noexcept { return base_; }
+    /// A closed is_base() Def: other World%s treat it as an opaque constant without free Var%s or local mutables.
+    bool is_sealed() const noexcept { return sealed_; }
     ///@}
 
     /// @name dirty
@@ -841,7 +860,7 @@ protected:
         const Axm* axm_;         ///< App only: Curried App%s of Axm%s use this member to propagate the Axm.
         const Var* var_;         ///< Mutable only: Var of a mutable.
         Def* binder_;            ///< Var only: the binder this Var refers to (*not* an official op).
-        mutable World* world_;
+        Worlds* worlds_;         ///< Univ only.
     };
     flags_t flags_;
     u8 curry_ = 0;
@@ -856,7 +875,10 @@ private:
     unsigned dep_       : 4;
     u32 mark_ = 0;
     u32 gid_;
-    u32 num_ops_;
+    u32 num_ops_ : 27;
+    u32 base_    : 1 = 0; ///< @see is_base()
+    u32 sealed_  : 1 = 0; ///< @see is_sealed()
+    u32 slot_    : 3 = 0; ///< Index into Worlds::slots.
     size_t hash_;
     Vars vars_; // Mutable: local vars; Immutable: free vars.
     Muts muts_; // Immutable: local_muts; Mutable: users;
@@ -924,8 +946,8 @@ public:
     static constexpr size_t Num_Ops = 0;
 
 private:
-    Univ(World& world)
-        : Def(&world, Node, nullptr, Defs{}, 0) {}
+    Univ(Worlds& worlds)
+        : Def(&worlds, Node, nullptr, Defs{}, 0) {}
 
     friend class World;
 };
@@ -1173,17 +1195,19 @@ private:
 // They are tiny and called millions of times, and `libmim` is a shared object - out of line they would be
 // opaque PLT calls in every other TU.
 inline World& Def::world() const noexcept {
-    // Walks up the type chain till it bottoms out in Univ - the only node that actually stores its World.
-    // clang-format off
-    for (auto def = this;;) {
+    // Walks up the type chain till it bottoms out in Univ - the only node that actually stores its Worlds.
+    auto def = this;
+    while (def->node_ != Node::Univ) {
+        // clang-format off
         switch (def->node_) {
-            case Node::Univ: return *def->world_;
-            case Node::Type: return *def->op(0)->type()->as<Univ>()->world_; // op(0) is Type::level
-            case Node::Var:  def = def->binder_; break;                      // a Var has no type_ of its own
-            default:         def = def->type_;   break;
+            case Node::Type: def = def->op(0)->type(); break; // op(0) is Type::level
+            case Node::Var:  def = def->binder_;       break; // a Var has no type_ of its own
+            default:         def = def->type_;         break;
         }
+        // clang-format on
     }
-    // clang-format on
+    auto worlds = def->worlds_;
+    return base_ ? *worlds->active : *worlds->slots[slot_];
 }
 
 inline const Def* Def::type() const noexcept {

@@ -17,6 +17,8 @@ private:
     void analyze(const Def*);
     void visit(const Def*, bool candidate); // lattice: true -> false
 
+    /// A Def::is_sealed Def is closed - nothing to substitute - and its annex code stays as is.
+    const Def* rewrite(const Def* def) final { return def->is_sealed() ? def : RWPhase::rewrite(def); }
     const Def* rewrite_imm_App(const App*) final;
     bool is_candidate(Lam* lam) const { return fe::assert_lookup(candidates_, lam); }
 

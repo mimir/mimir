@@ -7,6 +7,8 @@ namespace mim::plug::gpu::phase {
 void SplitOffKernels::start() {
     analyze();
 
+    auto _ = new_world().activate();
+
     for (const auto& [f, entry] : old_world().annexes())
         rewrite_annex(f, entry.sym, entry.def);
 

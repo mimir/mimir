@@ -380,9 +380,13 @@ public:
     /// @name Construction
     ///@{
     RWPhase(World& world, std::string name, Analysis* analysis = nullptr)
-        : RWPhase(world, std::move(name), analysis, world.inherit()) {}
+        : Phase(world, std::move(name))
+        , Rewriter(world)
+        , analysis_(analysis) {}
     RWPhase(World& world, flags_t annex, Analysis* analysis = nullptr)
-        : RWPhase(world, annex, analysis, world.inherit()) {}
+        : Phase(world, annex)
+        , Rewriter(world)
+        , analysis_(analysis) {}
     ///@}
 
     /// @name Analysis
@@ -414,6 +418,12 @@ public:
     virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
 
+    /// Rewrites a Def::is_sealed Def - shared with the annexes - while is_bootstrapping().
+    const Def* rewrite(const Def*) override;
+    using Rewriter::rewrite;
+    /// Keeps a Def::is_base mutable as is - instead of copying it - if rewriting does not change it.
+    const Def* rewrite_mut(Def*) override;
+
     /// Returns whether we are currently bootstrapping (rewriting annexes).
     /// While bootstrapping, look up other annexes via RWPhase::annex, as they might not yet exist.
     bool is_bootstrapping() const { return bootstrapping_; }
@@ -438,8 +448,11 @@ public:
     }
     ///@}
 
+    /// Creates new_world() - not earlier: a PhaseMan constructs its whole pipeline up front - and runs.
+    void run() override;
+
 protected:
-    void start() override;
+    void start() override; ///< Swaps the two World%s at the end and releases the old one.
 
     /// Rewrites a *root* - i.e.\ an annex or an external.
     /// Defaults to rewrite(); override if roots need to be exempt from some of your rewrites.
@@ -450,17 +463,6 @@ protected:
     virtual void finalize() {}
 
 private:
-    RWPhase(World& world, std::string name, Analysis* analysis, std::unique_ptr<World>&& new_world)
-        : Phase(world, std::move(name))
-        , Rewriter(*new_world)
-        , analysis_(analysis)
-        , new_world_(std::move(new_world)) {}
-    RWPhase(World& world, flags_t annex, Analysis* analysis, std::unique_ptr<World>&& new_world)
-        : Phase(world, annex)
-        , Rewriter(*new_world)
-        , analysis_(analysis)
-        , new_world_(std::move(new_world)) {}
-
     Analysis* analysis_;
     bool bootstrapping_ = true;
     std::unique_ptr<World> new_world_; ///< Owns Rewriter::world.
@@ -481,9 +483,12 @@ public:
 
 private:
     const Def* rewrite(const Def* def) final {
-        for (bool todo = true; todo;) {
-            todo = false;
-            if (auto subst = replace(def)) todo = true, def = subst;
+        {
+            auto _ = old_world().activate();
+            for (bool todo = true; todo;) {
+                todo = false;
+                if (auto subst = replace(def)) todo = true, def = subst;
+            }
         }
 
         return Rewriter::rewrite(def);
@@ -514,6 +519,17 @@ public:
         : RWPhase(world, "cleanup") {}
     Cleanup(World& world, flags_t annex)
         : RWPhase(world, annex) {}
+};
+
+/// A Cleanup that first moves the whole World into World::base - and then rebuilds the program out of it again.
+/// From then on, all World%s share the annexes as Def::is_sealed constants instead of rebuilding them in every RWPhase.
+class Seal : public RWPhase {
+public:
+    Seal(World& world)
+        : RWPhase(world, "seal") {}
+
+private:
+    void start() final;
 };
 
 /// Organizes several Phase%s into a pipeline.

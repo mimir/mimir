@@ -145,12 +145,13 @@ void World::Annexes::attach_alias(flags_t flags, Sym sym) {
 bool World::Lock::guard_ = false;
 #endif
 
-World::World(Driver* driver, const State& state)
+World::World(Driver* driver, Sym name)
     : driver_(driver)
     , zonker_(*this)
-    , state_(state)
+    , state_(State(name))
     , move_(driver) {
-    data_.univ        = insert<Univ>(*this);
+    worlds_.active    = this;
+    data_.univ        = insert<Univ>(worlds_);
     data_.lit_univ_0  = lit_univ(0);
     data_.lit_univ_1  = lit_univ(1);
     data_.type_0      = type(lit_univ_0());
@@ -169,13 +170,71 @@ World::World(Driver* driver, const State& state)
     data_.lit_bool[0] = lit_idx(2, 0_u64);
     data_.lit_bool[1] = lit_idx(2, 1_u64);
     data_.lit_nat_max = lit_nat(nat_t(-1));
+    seal(DefVec(move_.sea.begin(), move_.sea.end()));
 }
 
-World::World(Driver* driver, Sym name)
-    : World(driver, State(name)) {}
+World::World(World& base, const State& state)
+    : driver_(base.driver_)
+    , base_(&base)
+    , zonker_(*this)
+    , state_(state)
+    , move_(driver_)
+    , data_(base.data_) {
+    auto& slots = worlds().slots;
+    auto i      = std::ranges::find(slots, nullptr);
+    if (i == slots.end()) fe::throwf("more than {} program worlds alive at once", Worlds::Num_Slots);
+    slot_ = u8(i - slots.begin());
+    *i    = this;
+}
 
 // ~Def() has nothing to do, so World does not run it.
-World::~World() = default;
+World::~World() {
+    if (base_) {
+        auto& worlds = base_->worlds_;
+        assert(worlds.slots[slot_] == this);
+        worlds.slots[slot_] = nullptr;
+        if (worlds.active == this) worlds.active = nullptr;
+    }
+}
+
+size_t World::absorb(World& world) {
+    assert(is_base() && world.base_ == this);
+    using std::swap;
+    auto& layer = absorbed_.emplace_back(std::make_unique<Move>(driver_));
+    swap(*layer, world.move_);
+    swap(layer->externals, world.move_.externals);
+    swap(layer->annexes, world.move_.annexes);
+
+    auto n = layer->sea.size();
+    for (auto def : layer->sea)
+        const_cast<Def*>(def)->base_ = true;
+    move_.sea.insert(layer->sea.begin(), layer->sea.end());
+    layer->sea    = {};
+    layer->substs = {};
+    return n;
+}
+
+void World::seal(Defs roots) {
+    assert(is_base() && worlds_.active == this);
+    auto defs = DefVec(move_.sea.begin(), move_.sea.end());
+    for (auto def : defs)
+        if (auto mut = def->isa_mut()) mut->var(), mut->free_vars();
+
+    auto visited = DefSet();
+    auto stack   = DefVec(roots.begin(), roots.end());
+    while (!stack.empty()) {
+        auto def = stack.back();
+        stack.pop_back();
+        if (!def->is_base() || !visited.emplace(def).second) continue;
+        if (def->is_closed()) const_cast<Def*>(def)->sealed_ = true;
+        for (auto d : def->deps())
+            stack.emplace_back(d);
+        if (auto var = def->isa<Var>()) stack.emplace_back(var->binder());
+        if (auto type = def->isa<Type>()) stack.emplace_back(type->level());
+    }
+
+    state_.pod.frozen = true;
+}
 
 static_assert(std::is_trivially_destructible_v<Dbg> && std::is_trivially_destructible_v<Vars>
                   && std::is_trivially_destructible_v<Muts> && std::is_trivially_destructible_v<NormalizeFn>,

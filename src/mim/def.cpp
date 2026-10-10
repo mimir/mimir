@@ -40,8 +40,8 @@ static constexpr unsigned node2dep(Node node, bool mut) {
     return fe::to_underlying(dep);
 }
 
-Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
-    : world_(world)
+Def::Def(Worlds* worlds, Node node, const Def* type, Defs ops, flags_t flags)
+    : worlds_(worlds)
     , flags_(flags)
     , node_(node)
     , mut_(false)
@@ -183,6 +183,7 @@ Def* Def::finalize() {
 
 Def* Def::set(Defs ops) {
     watch();
+    assert((!is_base() || !world().base().is_frozen()) && "the base World is immutable");
     invalidate();
 
     size_t n = ops.size();
@@ -202,6 +203,7 @@ Def* Def::set(Defs ops) {
 
 Def* Def::set(size_t i, const Def* def) {
     watch();
+    assert((!is_base() || !world().base().is_frozen()) && "the base World is immutable");
     invalidate();
     def = check(i, def);
     assert(def && !op(i) && curr_op_++ == i);
@@ -212,12 +214,14 @@ Def* Def::set(size_t i, const Def* def) {
 }
 
 Def* Def::set_type(const Def* type) {
+    assert((!is_base() || !world().base().is_frozen()) && "the base World is immutable");
     invalidate();
     type_ = type;
     return this;
 }
 
 Def* Def::unset() {
+    assert((!is_base() || !world().base().is_frozen()) && "the base World is immutable");
     invalidate();
 #ifndef NDEBUG
     curr_op_ = 0;
@@ -332,7 +336,9 @@ Vars Def::free_vars(World& w, bool& todo, u32 run) {
         if constexpr (init) fvs = vars.merge(fvs, op->local_vars());
 
         for (auto mut : op->local_muts()) {
-            if constexpr (init) mut->muts_ = muts.insert(mut->muts_, this); // register "this" as user of local_mut
+            // A base mutable is never Def::set and, hence, needs no users to invalidate.
+            if constexpr (init)
+                if (!mut->is_base()) mut->muts_ = muts.insert(mut->muts_, this); // register "this" as user of local_mut
             fvs = vars.merge(fvs, mut->free_vars<init>(w, todo, run));
         }
     }

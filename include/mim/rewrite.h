@@ -47,7 +47,14 @@ public:
     /// Like map() but records into the *root* map, so the entry outlives the current push()/pop() scope.
     /// Use this for a context-free mapping - e.g. a Var of a rebuilt binder - that must stay valid after a
     /// scope opened by rewrite_mut_Seq's scalarization is popped again.
-    const Def* map_root(const Def* old_def, const Def* new_def) { return old2news_.front()[old_def] = new_def; }
+    const Def* map_root(const Def* old_def, const Def* new_def) {
+        auto& root = old2news_.front();
+        if (journal_) {
+            auto i = root.find(old_def);
+            journal_->emplace_back(old_def, i != root.end() ? i->second : nullptr);
+        }
+        return root[old_def] = new_def;
+    }
 
     // clang-format off
     const Def* map(const Def* old_def ,       Defs new_defs);
@@ -101,10 +108,17 @@ public:
 
 private:
     World* world_;
-    Def* curr_mut_ = nullptr;
+    Def* curr_mut_                                          = nullptr;
+    fe::Vector<std::pair<const Def*, const Def*>>* journal_ = nullptr; ///< Undoes map_root() if try_keep() fails.
 
 protected:
     fe::Vector<Def2Def> old2news_;
+
+    void retarget(World& world) { world_ = &world; } ///< Builds all further rewrites into @p world.
+
+    /// Rewrites the deps of @p mut under the assumption that @p mut maps to itself.
+    /// @returns whether none of them changed; otherwise, forgets everything mapped while trying.
+    bool try_keep(Def* mut);
 
     /// Updates curr_mut() to @p new_mut and restores it at the end of the scope.
     [[nodiscard]] auto enter(Def* new_mut) { return fe::Restore(curr_mut_, new_mut); }

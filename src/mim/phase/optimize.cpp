@@ -9,6 +9,7 @@ void optimize(World& world) {
     // The freshly compiled world may still contain solved-but-unresolved Hole%s, let's try to resolve them before
     // running the optimization pipeline.
     Cleanup(world).run();
+    Seal(world).run();
 
     // clang-format off
     auto compilation_functions = {

@@ -72,6 +72,31 @@ const Def* Rewriter::rewrite_mut(Def* old_mut) {
 #undef CODE_MUT
 #undef CODE_IMM
 
+bool Rewriter::try_keep(Def* mut) {
+    auto journal = fe::Vector<std::pair<const Def*, const Def*>>();
+    auto outer   = std::exchange(journal_, &journal);
+    old2news_.emplace_back();
+    old2news_.back()[mut] = mut;
+    bool same             = std::ranges::all_of(mut->deps(), [this](const Def* d) { return rewrite(d) == d; });
+    journal_              = outer;
+    auto frame            = std::move(old2news_.back());
+    old2news_.pop_back();
+
+    if (same) {
+        old2news_.back().insert(frame.begin(), frame.end());
+        if (outer) outer->append_range(journal);
+    } else {
+        auto& root = old2news_.front();
+        for (auto [old_def, new_def] : journal | std::views::reverse)
+            if (new_def)
+                root[old_def] = new_def;
+            else
+                root.erase(old_def);
+    }
+
+    return same;
+}
+
 DefVec Rewriter::rewrite(Defs ops) {
     auto new_ops = DefVec(ops.size());
     for (size_t i = 0, e = ops.size(); i != e; ++i)
@@ -188,7 +213,7 @@ const Def* Rewriter::rewrite_mut_Variant(Variant* d) {
 }
 
 const Def* Rewriter::rewrite_imm_Axm(const Axm* a) {
-    if (&a->world() != &world()) {
+    if (a->is_base() || &a->world() != &world()) {
         auto type = rewrite(a->type());
         return world().axm(a->normalizer(), a->curry(), a->trip(), type, a->plugin(), a->tag(), a->sub());
     }

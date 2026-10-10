@@ -33,7 +33,10 @@ void Phase::run() {
     auto profiling = driver().flags().profile != Flags::Profile::None;
     if (profiling) driver().profiler().start(name());
     world().verify().log().i("🚀 launch phase `{}`", name());
-    start();
+    {
+        auto _ = world().activate();
+        start();
+    }
     world().verify().log().i("🏁 finish phase `{}`", name());
     if (profiling) driver().profiler().stop();
 }
@@ -148,6 +151,11 @@ void Analysis::drain() {
  * RWPhase
  */
 
+void RWPhase::run() {
+    if (!new_world_) retarget(*(new_world_ = old_world().inherit()));
+    Phase::run();
+}
+
 void RWPhase::start() {
     auto max_iters = driver().flags().max_fp_iters;
     bool todo      = true;
@@ -157,10 +165,17 @@ void RWPhase::start() {
         todo = analyze();
     }
 
+    // A base Def built while rewriting belongs to the new World; after the swap that is the old one.
+    auto _ = new_world().activate();
+
+    // A sealed annex is shared and only rewritten if the program reaches it.
+    for (const auto& [flags, e] : old_world().annexes())
+        if (e.def->is_sealed()) new_world().annexes().attach(flags, e.sym, e.def);
+
     // The annex half is a fixed tax proportional to the loaded plugins' annex graph - not to the program.
     auto gid = new_world().curr_gid();
     for (const auto& [flags, e] : old_world().annexes())
-        rewrite_annex(flags, e.sym, e.def);
+        if (!e.def->is_sealed()) rewrite_annex(flags, e.sym, e.def);
     profile_count("rw.defs.annex", new_world().curr_gid() - gid);
 
     bootstrapping_ = false;
@@ -171,7 +186,30 @@ void RWPhase::start() {
     finalize(); // inside the span: work deferred by the root walk belongs to the root walk
     profile_count("rw.defs.external", new_world().curr_gid() - gid);
 
+    for (const auto& [flags, e] : old_world().annexes())
+        if (auto new_def = e.def->is_sealed() ? lookup(e.def) : nullptr; new_def && new_def != e.def)
+            new_world().annexes().reattach(flags, new_def);
+
     swap(old_world(), new_world());
+    retarget(old_world());
+    new_world_.reset();
+}
+
+const Def* RWPhase::rewrite_mut(Def* old_mut) {
+    // Most RWPhase%s leave the shared annex graph alone: keep a base mutable unless rewriting changes it.
+    // Code is copied nonetheless, as many RWPhase%s Def::set the Lam%s they get back.
+    if (old_mut->is_base()
+        && (old_mut->isa<Pi>() || old_mut->isa<Sigma>() || old_mut->isa<Seq>() || old_mut->isa<Variant>())
+        && try_keep(old_mut))
+        return old_mut;
+    return Rewriter::rewrite_mut(old_mut);
+}
+
+const Def* RWPhase::rewrite(const Def* old_def) {
+    if (bootstrapping_ || !old_def->is_sealed()) return Rewriter::rewrite(old_def);
+    // A sealed Def is shared with the annexes, which are rewritten while bootstrapping.
+    auto _ = fe::Restore(bootstrapping_, true);
+    return Rewriter::rewrite(old_def);
 }
 
 bool RWPhase::analyze() {
@@ -185,8 +223,9 @@ bool RWPhase::analyze() {
 }
 
 const Def* RWPhase::annex(flags_t flags) {
-    if (auto e = fe::lookup(new_world().annexes().flags2entry(), flags)) return e->def;
     auto& e = old_world().annexes().flags2entry().at(flags);
+    if (e.def->is_sealed()) return rewrite_root(e.def);
+    if (auto new_e = fe::lookup(new_world().annexes().flags2entry(), flags)) return new_e->def;
     return new_world().annexes().attach(flags, e.sym, rewrite_root(e.def));
 }
 
@@ -198,6 +237,21 @@ void RWPhase::rewrite_annex(flags_t f, Sym sym, const Def* def) {
 void RWPhase::rewrite_external(Def* old_mut) {
     auto new_mut = rewrite_root(old_mut)->as_mut();
     if (old_mut->is_external()) new_mut->externalize();
+}
+
+/*
+ * Seal
+ */
+
+void Seal::start() {
+    auto& base = old_world().base();
+    {
+        auto _  = base.thaw();
+        auto __ = base.activate();
+        profile_count("seal.defs", base.absorb(old_world()));
+        base.seal(DefVec(old_world().annexes().defs().begin(), old_world().annexes().defs().end()));
+    }
+    RWPhase::start();
 }
 
 /*

@@ -233,6 +233,7 @@ private:
     fe::Log log_;
     mutable Names names_;
     fe::Profiler profiler_;
+    World base_; ///< @see World::is_base
     World world_;
     Paths plugin_dirs_, import_dirs_, prefixes_;
     Flags2Phases phases_;

@@ -2,6 +2,7 @@
 
 #include <concepts>
 
+#include <algorithm>
 #include <functional>
 #include <map>
 #include <memory>
@@ -36,8 +37,9 @@ struct Flags;
 /// The World's factory methods just calculate a hash and lookup the Def, if it is already present, or create a new one
 /// otherwise. This corresponds to value numbering.
 ///
-/// You can create several worlds.
-/// All worlds are completely independent from each other.
+/// Each Driver owns a *base* World that is shared by all other World%s of that Driver: a program World hash-conses
+/// against it and never duplicates what is already there.
+/// The base World holds the builtins and is frozen otherwise.
 ///
 /// Note that types are also just Def%s and will be hashed as well.
 class World {
@@ -83,21 +85,33 @@ public:
     ///@{
     World& operator=(World) = delete;
 
-    explicit World(Driver*, Sym name);
-    World(Driver*, const State&);
-    World(World&& other) noexcept
-        : World(&other.driver(), other.state()) {
-        swap(*this, other);
-    }
+    explicit World(Driver*, Sym name); ///< Creates a *base* World.
+    World(World& base, const State&);  ///< Creates a program World on top of @p base.
+    World(World& base, Sym name)
+        : World(base, State(name)) {}
     ~World();
 
-    /// Inherits the State into the new World.
-    /// World::curr_gid will be offset to not collide with the original World.
-    std::unique_ptr<World> inherit() {
-        auto s = state();
-        s.pod.curr_gid += move_.sea.size();
-        return std::make_unique<World>(&driver(), s);
-    }
+    /// Inherits the State into a new program World on top of the same base().
+    std::unique_ptr<World> inherit() { return std::make_unique<World>(base(), state()); }
+    ///@}
+
+    /// @name Base
+    ///@{
+    bool is_base() const { return !base_; }
+    World& base() { return base_ ? *base_ : *this; }
+    const World& base() const { return base_ ? *base_ : *this; }
+    Worlds& worlds() { return base().worlds_; }
+
+    /// Makes this World the one an is_base() Def resolves to via Def::world() until the end of the scope.
+    [[nodiscard]] auto activate() { return fe::Restore(worlds().active, this); }
+
+    /// Moves all Def%s of the program @p world into this base World - but leaves its externals() and annexes() there.
+    /// @returns the number of moved Def%s.
+    size_t absorb(World& world);
+
+    /// Computes everything a Def caches lazily up front and freezes this base World.
+    /// Marks the closed Def%s reachable from @p roots as Def::is_sealed.
+    void seal(Defs roots);
     ///@}
 
     /// @name Getters/Setters
@@ -114,12 +128,13 @@ public:
     void set(std::string_view name) { state_.pod.name = sym(name); }
 
     /// Manage global identifier - a unique number for each Def.
-    u32 curr_gid() const { return state_.pod.curr_gid; }
-    u32 next_gid() { return ++state_.pod.curr_gid; }
+    /// The counter is shared with the base() World.
+    u32 curr_gid() const { return base().state_.pod.curr_gid; }
+    u32 next_gid() { return ++base().state_.pod.curr_gid; }
 
     /// Manage run - used to track fixed-point iterations to compute Def::free_vars
-    u32 curr_run() const { return data_.curr_run; }
-    u32 next_run() { return ++data_.curr_run; }
+    u32 curr_run() const { return base().data_.curr_run; }
+    u32 next_run() { return ++base().data_.curr_run; }
 
     /// Retrieve compile Flags.
     Flags& flags();
@@ -157,6 +172,7 @@ public:
     /// }
     /// ```
     [[nodiscard]] auto freeze() const { return fe::Restore(state_.pod.frozen, true); }
+    [[nodiscard]] auto thaw() const { return fe::Restore(state_.pod.frozen, false); } ///< Opposite of freeze().
     ///@}
 
     /// @name Debugging Features
@@ -245,6 +261,13 @@ public:
         /// Registers a further Sym for an *already* attach()ed annex, sharing its flags_t; @see mim::ast::AliasDecl.
         void attach_alias(flags_t, Sym);
         void attach_alias(plugin_t p, tag_t t, sub_t s, Sym sym) { attach_alias(Annex::flags(p, t, s), sym); }
+
+        /// Overwrites the Def of an *already* attach()ed annex, keeping its Sym.
+        const Def* reattach(flags_t flags, const Def* def) {
+            flags2entry_.at(flags).def = def;
+            def->annex_                = true;
+            return def;
+        }
         ///@}
 
         /// @name Iterators
@@ -794,9 +817,18 @@ private:
 #ifdef MIM_ENABLE_CHECKS
         if (flags().reeval_breakpoints && breakpoints().contains(def->gid())) fe::breakpoint();
         for (auto op : def->ops())
-            assert(&op->world() == this && "op of new Def belongs to a different World");
-        assert((!def->type() || &def->type()->world() == this) && "type of new Def belongs to a different World");
+            assert((op->is_base() || &op->world() == this) && "op of new Def belongs to a different World");
+        assert((!def->type() || def->type()->is_base() || &def->type()->world() == this)
+               && "type of new Def belongs to a different World");
 #endif
+
+        if (base_ && (!def->type() || def->type()->is_base())
+            && std::ranges::all_of(def->ops(), [](const Def* op) { return op->is_base(); })) {
+            if (auto i = base_->move_.sea.find(def); i != base_->move_.sea.end()) {
+                deallocate<T>(state, def);
+                return static_cast<const T*>(*i);
+            }
+        }
 
         if (is_frozen()) {
             auto i = move_.sea.find(def);
@@ -818,7 +850,7 @@ private:
 
     template<class T>
     void deallocate(fe::Arena::State state, const T* ptr) {
-        --state_.pod.curr_gid;
+        --base().state_.pod.curr_gid;
         ptr->~T();
         move_.arena.defs.deallocate(state);
     }
@@ -862,13 +894,18 @@ private:
         auto num_bytes = sizeof(Def) + sizeof(uintptr_t) * num_ops;
         auto ptr       = move_.arena.defs.allocate(num_bytes, alignof(T));
         auto res       = new (ptr) T(std::forward<Args>(args)...);
-        res->gid_      = next_gid(); // here, so Def's ctors need not walk the type chain to find this World
-        assert(res->num_ops() == num_ops);
+        if (res->num_ops_ != num_ops) fe::throwf("a Def cannot have {} ops", num_ops);
+        res->gid_  = next_gid(); // here, so Def's ctors need not walk the type chain to find this World
+        res->base_ = is_base();
+        res->slot_ = slot_;
         return res;
     }
     ///@}
 
     Driver* driver_;
+    World* base_ = nullptr;
+    u8 slot_     = 0;
+    Worlds worlds_; ///< Only meaningful in the base World.
     Zonker zonker_;
     State state_;
 
@@ -937,6 +974,7 @@ private:
             // clang-format on
         }
     } move_;
+    fe::Vector<std::unique_ptr<Move>> absorbed_; ///< Keeps the arenas of absorb()ed World%s alive.
 
     struct {
         const Univ* univ;
@@ -961,19 +999,28 @@ private:
         u32 curr_run                                  = 0;
     } data_;
 
+    /// Swaps two program World%s on top of the same base().
+    /// Def::world() follows the contents: the slots - and the active World - are swapped along.
     friend void swap(World& w1, World& w2) noexcept {
+        if (&w1 == &w2) return;
+        assert(w1.base_ && w1.base_ == w2.base_);
         using std::swap;
         // clang-format off
         swap(w1.driver_,  w2.driver_ );
+        swap(w1.slot_,    w2.slot_   );
         swap(w1.zonker_,  w2.zonker_ );
-        swap(w1.state_,   w2.state_);
-        swap(w1.data_,    w2.data_ );
-        swap(w1.move_,    w2.move_ );
+        swap(w1.state_,   w2.state_  );
+        swap(w1.data_,    w2.data_   );
+        swap(w1.move_,    w2.move_   );
         // clang-format on
 
-        swap(w1.data_.univ->world_, w2.data_.univ->world_);
-        assert(&w1.univ()->world() == &w1);
-        assert(&w2.univ()->world() == &w2);
+        auto& worlds           = w1.worlds();
+        worlds.slots[w1.slot_] = &w1;
+        worlds.slots[w2.slot_] = &w2;
+        if (worlds.active == &w1)
+            worlds.active = &w2;
+        else if (worlds.active == &w2)
+            worlds.active = &w1;
     }
 };
 

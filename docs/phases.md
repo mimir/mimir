@@ -232,6 +232,21 @@ Push such work onto your own worklist and drain it in [`finalize()`](@ref mim::R
 [`Cleanup`](@ref mim::Cleanup) is simply an [`RWPhase`](@ref mim::RWPhase) with no custom rewrites.
 Because an [`RWPhase`](@ref mim::RWPhase) reconstructs only what is reachable from the world roots, rebuilding automatically eliminates dead and unreachable code.
 
+### The Base World {#phases_base_world}
+
+The annex graph is proportional to the loaded plugins - not to the program - and an [`RWPhase`](@ref mim::RWPhase) would otherwise rebuild all of it on **every** run.
+So [`optimize()`](@ref mim::optimize) runs [`Seal`](@ref mim::Seal) once up front.
+It moves the whole world into the [`Driver`](@ref mim::Driver)'s [base world](@ref mim::World::base), which all other worlds share and hash-cons against, and then rebuilds the program out of it again.
+From then on:
+
+- A [sealed](@ref mim::Def::is_sealed) annex - closed and shared - is no longer walked; the program reaches what it needs.
+- A sealed [`Def`](@ref mim::Def) the program reaches is rewritten while [`is_bootstrapping()`](@ref mim::RWPhase::is_bootstrapping), just as if the annex walk had reached it first.
+- A [base](@ref mim::Def::is_base) type-level mutable keeps its identity unless the rewrite actually changes it; a base [`Lam`](@ref mim::Lam) is copied like any other.
+- A phase whose rewrite provably leaves closed annex code alone may simply return a sealed [`Def`](@ref mim::Def) as is; [`BetaRed`](@ref mim::BetaRed) and [`EtaConv`](@ref mim::EtaConv) do so.
+
+A base [`Def`](@ref mim::Def) belongs to both the old and the new world.
+Its [`world()`](@ref mim::Def::world) is the [active](@ref mim::World::activate) one: the new world while an [`RWPhase`](@ref mim::RWPhase) rewrites, its own world otherwise.
+
 ### Reshaping Aggregates
 
 A phase that drops or reorders the components of a mutable [`Sigma`](@ref mim::Sigma) changes its number of ops, so it needs the index-mapping overload of [`rewrite_stub`](@ref mim::Rewriter::rewrite_stub) together with [`Sieve`](@ref mim::Sieve) - see [Reshaping Aggregates](@ref rewriting) in the Rewriting Guide.
