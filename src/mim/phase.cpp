@@ -145,10 +145,10 @@ void Analysis::drain() {
 }
 
 /*
- * RWBase
+ * RWPhase
  */
 
-void RWBase::start() {
+void RWPhase::start() {
     auto max_iters = driver().flags().max_fp_iters;
     bool todo      = true;
     for (uint32_t i = 0; todo; ++i) {
@@ -157,26 +157,24 @@ void RWBase::start() {
         todo = analyze();
     }
 
-    // Count the Def%s each half of the walk creates.
-    // For an RWPhase the annex half is a fixed tax proportional to the loaded plugins' annex graph - not to the
-    // program - which is exactly why an InplaceRWPhase skips it by default.
-    auto gid = Rewriter::world().curr_gid();
-    if (rewrite_annexes())
-        for (const auto& [flags, e] : Phase::world().annexes())
-            rewrite_annex(flags, e.sym, e.def);
-    profile_count("rw.defs.annex", Rewriter::world().curr_gid() - gid);
+    // The annex half is a fixed tax proportional to the loaded plugins' annex graph - not to the program.
+    auto gid = new_world().curr_gid();
+    for (const auto& [flags, e] : old_world().annexes())
+        rewrite_annex(flags, e.sym, e.def);
+    profile_count("rw.defs.annex", new_world().curr_gid() - gid);
 
     bootstrapping_ = false;
 
-    gid = Rewriter::world().curr_gid();
-    // mutate(): an in-place rewrite_external may re-externalize, which would invalidate a live iterator.
-    for (auto mut : Phase::world().externals().mutate())
+    gid = new_world().curr_gid();
+    for (auto mut : old_world().externals().muts())
         rewrite_external(mut);
     finalize(); // inside the span: work deferred by the root walk belongs to the root walk
-    profile_count("rw.defs.external", Rewriter::world().curr_gid() - gid);
+    profile_count("rw.defs.external", new_world().curr_gid() - gid);
+
+    swap(old_world(), new_world());
 }
 
-bool RWBase::analyze() {
+bool RWPhase::analyze() {
     if (analysis_) {
         analysis_->reset();
         analysis_->run();
@@ -184,15 +182,6 @@ bool RWBase::analyze() {
     }
 
     return false;
-}
-
-/*
- * RWPhase
- */
-
-void RWPhase::start() {
-    RWBase::start();
-    swap(old_world(), new_world());
 }
 
 const Def* RWPhase::annex(flags_t flags) {
@@ -209,55 +198,6 @@ void RWPhase::rewrite_annex(flags_t f, Sym sym, const Def* def) {
 void RWPhase::rewrite_external(Def* old_mut) {
     auto new_mut = rewrite_root(old_mut)->as_mut();
     if (old_mut->is_external()) new_mut->externalize();
-}
-
-/*
- * InplaceRWPhase
- */
-
-void InplaceRWPhase::rewrite_annex(flags_t flags, Sym, const Def* def) {
-    if (auto new_def = rewrite_root(def); new_def != def) {
-        world().annexes().reattach(flags, new_def);
-        invalidate();
-    }
-}
-
-void InplaceRWPhase::rewrite_external(Def* old_mut) {
-    auto new_def = rewrite_root(old_mut);
-    if (new_def == old_mut) return;
-
-    // The rewrite replaced the external itself; carry the external flag over.
-    old_mut->internalize();
-    new_def->as_mut()->externalize();
-    invalidate();
-}
-
-const Def* InplaceRWPhase::rewrite_mut(Def* mut) {
-    if (auto hole = mut->isa<Hole>()) {
-        auto [last, op] = hole->find();
-        return op ? rewrite(op) : last; // an unresolved Hole stays as is
-    }
-
-    // A mutable's identity is tied to its type, so if the rewrite changes the type, we cannot keep it: fall back to
-    // an RWPhase-style rebuild - Rewriter::rewrite_mut stubs a fresh mutable (in this very World) and maps onto it.
-    if (auto type = mut->type(); type && rewrite(type) != type) {
-        profile_count("inplace.muts.rebuilt");
-        invalidate();
-        return Rewriter::rewrite_mut(mut);
-    }
-
-    map(mut, mut); // keep the identity; doubles as the cycle breaker for recursive mutables
-    if (!mut->is_set()) return mut;
-
-    auto _       = enter(mut);
-    auto new_ops = rewrite(mut->ops());
-    if (!std::ranges::equal(new_ops, mut->ops())) {
-        mut->unset()->set(new_ops);
-        profile_count("inplace.muts.reset");
-        invalidate();
-    }
-
-    return mut;
 }
 
 /*

@@ -16,12 +16,12 @@ namespace mim {
 /// This makes `f`'s classification identical whether `f` is bare or wrapped, so the canonical η-form is a genuine
 /// fixed point - the phase does not fight itself and can share one big `compile.phases tt` fixed-point loop with
 /// BetaRed and mem.seo without oscillating.
-class EtaConv : public InplaceRWPhase {
+class EtaConv : public RWPhase {
 public:
     EtaConv(World& world)
-        : InplaceRWPhase(world, "EtaConv") {}
+        : RWPhase(world, "EtaConv") {}
     EtaConv(World& world, flags_t annex)
-        : InplaceRWPhase(world, annex) {}
+        : RWPhase(world, annex) {}
 
 private:
     /// Known and Unknown_* are independent bits; both set means "both positions".
@@ -46,14 +46,6 @@ private:
         return lam && lattice(lam) > Unknown_1;
     }
 
-    /// Does the wrapper @p lam serve this one occurrence alone?
-    /// Only then may we keep it - re-creating it would hand out a fresh identity on every run, so this phase would
-    /// never reach a fixed point in place.
-    bool is_exclusive_wrapper(const Lam* lam) const {
-        if (auto n = fe::lookup(wrapper_uses_, lam)) return *n == 1;
-        return false;
-    }
-
     void join(const Lam* lam, Lattice l) {
         auto& x = lam2lattice_[lam];
         x       = join(x, l);
@@ -71,11 +63,10 @@ private:
     /// η-reduce wrappers but never η-expand - used for callee (Known) positions, where expansion must not happen
     /// but a wrapper `λx.f x` should still collapse to `f` (just as the standalone EtaRed did everywhere).
     const Def* rewrite_no_exp(const Def* old_def);
-    const Def* rewrite_no_eta(const Def* old_def) { return Rewriter::rewrite(old_def); }
+    const Def* rewrite_no_eta(const Def* old_def) { return RWPhase::rewrite(old_def); }
 
     DefSet analyzed_;
     GIDMap<const Lam*, Lattice> lam2lattice_;
-    GIDMap<const Lam*, u32> wrapper_uses_; ///< How many occurrences does a wrapper `λx.f x` serve?
 };
 
 } // namespace mim
