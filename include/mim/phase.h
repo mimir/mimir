@@ -430,7 +430,7 @@ public:
     World& old_world() { return Phase::world(); }    ///< Get **old** Def%s from here.
     World& new_world() { return Rewriter::world(); } ///< Create **new** Def%s into this.
 
-    /// The annex @p flags in new_world(), rewritten on demand if the annex walk has not reached it yet.
+    /// The annex @p flags in new_world(); same as `new_world().annex(flags)`.
     const Def* annex(flags_t flags);
     template<annex_without_subs Id>
     const Def* annex() {

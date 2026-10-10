@@ -81,6 +81,7 @@ public:
     fe::Profiler& profiler() { return profiler_; }
     const fe::Profiler& profiler() const { return profiler_; }
     World& world() { return world_; }
+    World& library() { return library_; }               ///< @see World::move_to_library
     const Version& version() const { return version_; } ///< MimIR Version.
     const Keys& keys() const { return keys_; }          ///< Interned once here: every ast::Lexer borrows them.
     ///@}
@@ -234,6 +235,7 @@ private:
     mutable Names names_;
     fe::Profiler profiler_;
     World world_;
+    World library_;
     Paths plugin_dirs_, import_dirs_, prefixes_;
     Flags2Phases phases_;
     Normalizers normalizers_;

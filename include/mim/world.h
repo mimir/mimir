@@ -5,6 +5,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -232,6 +233,11 @@ public:
         }
         auto& sym2flags() { return sym2flags_; }
         const auto& sym2flags() const { return sym2flags_; }
+        /// The flags of the annex @p def, if it is one.
+        std::optional<flags_t> flags(const Def* def) const {
+            if (auto i = def2flags_.find(def); i != def2flags_.end()) return i->second;
+            return {};
+        }
         size_t size() const { return flags2entry_.size(); }
         ///@}
 
@@ -259,6 +265,7 @@ public:
             swap(a1.driver_,      a2.driver_);
             swap(a1.flags2entry_, a2.flags2entry_);
             swap(a1.sym2flags_,   a2.sym2flags_);
+            swap(a1.def2flags_,   a2.def2flags_);
             // clang-format on
         }
 
@@ -266,6 +273,7 @@ public:
         Driver* driver_;
         std::map<flags_t, Entry> flags2entry_; ///< Authoritative annex table; iterated in flags order.
         std::map<Sym, flags_t> sym2flags_;     ///< Reverse index: an annex's full name to its flags.
+        DefMap<flags_t> def2flags_;            ///< Reverse index: an annex's Def to its flags.
     };
 
     /// @name Externals & Annexes
@@ -286,16 +294,18 @@ public:
     }
 
     /// Lookup annex by Sym.
-    const Def* annex(Sym sym) {
-        if (auto flags = lookup(annexes().sym2flags(), sym)) return annex(*flags);
-        return nullptr;
-    }
+    const Def* annex(Sym sym);
 
     /// Lookup annex by flags.
+    /// An annex this World does not have yet is imported from Driver::library.
     const Def* annex(flags_t flags) {
         if (auto e = fe::lookup(annexes().flags2entry(), flags)) return e->def;
-        fe::throwf("no Axm with ID {}; is plugin `{}` loaded?", flags, Annex::demangle(flags));
+        return annex_miss(flags);
     }
+
+    /// Supplies an annex this World does not have yet - before falling back to Driver::library.
+    /// RWPhase uses this to rewrite the old World's annex instead.
+    std::function<const Def*(flags_t)> annex_fallback;
     /// Lookup annex by Axm::id
     const Def* annex(Enum auto id) { return annex(static_cast<flags_t>(id)); }
 
@@ -761,7 +771,21 @@ public:
     void dot(const char* file = nullptr, DotConfig cfg = {}) const;
     ///@}
 
+    /// @name Library
+    ///@{
+    /// Moves everything into Driver::library and imports only the externals() back.
+    /// From then on, an annex is imported lazily when first looked up.
+    void move_to_library();
+
+    /// Imports @p def of Driver::library into this World.
+    const Def* import(const Def* def);
+    ///@}
+
 private:
+    const Def* annex_miss(flags_t);
+    class Importer;
+    void retarget_importer();
+
     Shape check_index(const Def* index); ///< Validates @p index and folds its size-1 axes away.
     /// Type-checks a *scalar* @p index of `Idx size`; `true` if the axis has folded out of @p type.
     bool is_folded_axis(const Def* type, const Def* index, const Def* size);
@@ -871,6 +895,7 @@ private:
     Driver* driver_;
     Zonker zonker_;
     State state_;
+    std::unique_ptr<Importer> importer_;
 
     struct SeaHash {
         using is_avalanching = void;
@@ -969,7 +994,10 @@ private:
         swap(w1.state_,   w2.state_);
         swap(w1.data_,    w2.data_ );
         swap(w1.move_,    w2.move_ );
+        swap(w1.importer_, w2.importer_);
         // clang-format on
+        w1.retarget_importer();
+        w2.retarget_importer();
 
         swap(w1.data_.univ->world_, w2.data_.univ->world_);
         assert(&w1.univ()->world() == &w1);

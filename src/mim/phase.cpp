@@ -157,7 +157,15 @@ void RWPhase::start() {
         todo = analyze();
     }
 
-    // The annex half is a fixed tax proportional to the loaded plugins' annex graph - not to the program.
+    // A missing annex is first imported into the old World - so it passes through this phase like any other.
+    auto _ = fe::Restore(new_world().annex_fallback, std::function([this](flags_t flags) {
+                             auto old_def = old_world().annex(flags);
+                             auto sym     = old_world().annexes().flags2entry().at(flags).sym;
+                             auto __      = fe::Restore(bootstrapping_, true);
+                             return new_world().annexes().attach(flags, sym, rewrite_root(old_def));
+                         }));
+
+    // The annex half only covers the annexes the old World has.
     auto gid = new_world().curr_gid();
     for (const auto& [flags, e] : old_world().annexes())
         rewrite_annex(flags, e.sym, e.def);
@@ -184,11 +192,7 @@ bool RWPhase::analyze() {
     return false;
 }
 
-const Def* RWPhase::annex(flags_t flags) {
-    if (auto e = fe::lookup(new_world().annexes().flags2entry(), flags)) return e->def;
-    auto& e = old_world().annexes().flags2entry().at(flags);
-    return new_world().annexes().attach(flags, e.sym, rewrite_root(e.def));
-}
+const Def* RWPhase::annex(flags_t flags) { return new_world().annex(flags); }
 
 void RWPhase::rewrite_annex(flags_t f, Sym sym, const Def* def) {
     auto new_def = rewrite_root(def);
