@@ -52,25 +52,27 @@ public:
  * `extern "C"` shims below, looked up with GET_FUN_PTR (see ll.h).
  */
 
+// Arrays may be vectors in SSA values (`simd`) but never in memory, whose layout `mem`'s size arithmetic fixes.
 std::string Emitter::convert_impl(const Def* type, bool simd) {
-    if (auto i = types_.find(type); i != types_.end()) return i->second;
+    auto& cache = simd ? types_ : mem_types_;
+    if (auto i = cache.find(type); i != cache.end()) return i->second;
 
     if (Axm::isa<mem::M>(type)) type->blame(MIM_LL_BE "cannot convert a `mem.M` type").bail();
     std::ostringstream s;
     std::string name;
 
     if (type->isa<Nat>()) {
-        return types_[type] = "i64";
+        return cache[type] = "i64";
     } else if (Idx::isa(type)) {
         // `Idx 1` is zero bits wide information-theoretically, but LLVM has no i0: clamp to i1
         // (its only value is 0, so any i1 zext/trunc of it stays correct).
         auto w              = Idx::expect_bitwidth(type, "a statically-sized index type");
-        return types_[type] = "i" + std::to_string(std::max<nat_t>(1, w));
+        return cache[type] = "i" + std::to_string(std::max<nat_t>(1, w));
     } else if (auto w = math::isa_f(type)) {
         switch (*w) {
-            case 16: return types_[type] = "half";
-            case 32: return types_[type] = "float";
-            case 64: return types_[type] = "double";
+            case 16: return cache[type] = "half";
+            case 32: return cache[type] = "float";
+            case 64: return cache[type] = "double";
             default: type->blame(MIM_LL_BE "unsupported floating-point width {}", *w).bail();
         }
     } else if (auto ptr = Axm::isa<mem::Ptr>(type)) {
@@ -84,7 +86,7 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
             u64 size = 0;
             if (auto arity = Lit::isa(arr->arity())) size = *arity;
             // One LLVM array level per axis, so a fused Arr nests: `«3, 4; i32»` is `[3 x [4 x i32]]`.
-            std::print(s, "[{} x {}]", size, convert(arr->elem(), false));
+            std::print(s, "[{} x {}]", size, convert(arr->elem(), simd));
         }
     } else if (auto pi = type->isa<Pi>()) {
         if (!Pi::isa_returning(pi)) pi->blame(MIM_LL_BE "cannot convert the type of a basic block").bail();
@@ -102,18 +104,20 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
         }
         std::print(s, ")*");
     } else if (auto t = detail::isa_mem_sigma_2(type)) {
-        return convert(t);
+        return convert(t, simd);
     } else if (auto sigma = type->isa<Sigma>()) {
+        // A named type has one form, the SSA one.
         if (sigma->isa_mut()) {
             name          = id(sigma);
-            types_[sigma] = name;
+            types_[sigma] = mem_types_[sigma] = name;
+            simd          = true;
             std::print(s, "{} = type", name);
         }
 
         std::print(s, "{{");
         for (auto sep = ""; auto t : sigma->ops()) {
             if (Axm::isa<mem::M>(t)) continue;
-            std::print(s, "{}{}", sep, convert(t));
+            std::print(s, "{}{}", sep, convert(t, simd));
             sep = ", ";
         }
         std::print(s, "}}");
@@ -121,11 +125,36 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
         type->blame(MIM_LL_BE "cannot convert this type to LLVM").bail();
     }
 
-    if (name.empty()) return types_[type] = s.str();
+    if (name.empty()) return cache[type] = s.str();
 
     if (s.str().empty()) type->blame(MIM_LL_BE "empty type declaration").bail();
     std::println(type_decls_, "{}", s.str());
-    return types_[type] = name;
+    return cache[type] = name;
+}
+
+std::string Emitter::convert_value(BB& bb, const std::string& name, const Def* type, std::string v, bool simd) {
+    auto from = convert(type, !simd);
+    auto to   = convert(type, simd);
+    if (from == to) return v;
+
+    auto elems = DefVec();
+    if (auto arr = type->isa<Arr>())
+        elems = DefVec(Lit::as(arr->arity()), arr->elem());
+    else
+        for (auto t : type->as<Sigma>()->ops())
+            if (!Axm::isa<mem::M>(t)) elems.emplace_back(t);
+
+    auto res = std::string("undef");
+    for (size_t i = 0, n = elems.size(); i != n; ++i) {
+        auto ni = name + ".cv" + std::to_string(i);
+        auto e  = from.front() == '<' ? bb.assign(ni, "extractelement {} {}, i32 {}", from, v, i)
+                                      : bb.assign(ni, "extractvalue {} {}, {}", from, v, i);
+        e       = convert_value(bb, ni, elems[i], e, simd);
+        res     = to.front() == '<'
+                    ? bb.assign(ni + ".i", "insertelement {} {}, {} {}, i32 {}", to, res, convert(elems[i], simd), e, i)
+                    : bb.assign(ni + ".i", "insertvalue {} {}, {} {}, {}", to, res, convert(elems[i], simd), e, i);
+    }
+    return res;
 }
 
 void Emitter::finalize_impl() {
@@ -387,7 +416,7 @@ std::string Emitter::emit_tuple(BB& bb, const std::string& name, const Def* tupl
             // TODO: check dst vs src
             auto namei = name + "." + std::to_string(dst);
             if (t.front() == '<') // not using is_simd to respect the pointer context (Pointer Pointee case)
-                prev = bb.assign(namei, "insertelement {} {}, {} {}, {} {}", t, prev, elem_t, elem, elem_t, dst);
+                prev = bb.assign(namei, "insertelement {} {}, {} {}, i32 {}", t, prev, elem_t, elem, dst);
             else
                 prev = bb.assign(namei, "insertvalue {} {}, {} {}, {}", t, prev, elem_t, elem, dst);
             dst++;
@@ -479,12 +508,14 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         if (Axm::isa<mem::M>(extract->type())) return std::string();
         if (auto sigma = extract->type()->isa<Sigma>(); sigma && sigma->num_ops() == 0) return std::string();
 
+        if (detail::isa_mem_sigma_2(tuple->type())) return v_tup;
+
+        // The emitted type decides, as a phi may carry an array that `is_simd` would take for a vector.
         auto t_tup = convert(tuple->type());
-        if (is_simd(tuple->type()))
+        if (t_tup.front() == '<')
             return bb.assign(name, "extractelement {} {}, i32 {}", t_tup, v_tup, emit_simd_index(bb, name, index));
 
         if (auto li = Lit::isa(index)) {
-            if (detail::isa_mem_sigma_2(tuple->type())) return v_tup;
             // Adjust index: convert() drops mem.M elements from sigmas,
             // so subtract the number of mem elements preceding the index.
             auto v_i = *li;
@@ -511,7 +542,7 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         auto t_val = convert(insert->value()->type());
         auto v_tup = emit(insert->tuple());
         auto v_val = emit(insert->value());
-        if (is_simd(insert->tuple()->type()))
+        if (t_tup.front() == '<')
             return bb.assign(name, "insertelement {} {}, {} {}, i32 {}", t_tup, v_tup, t_val, v_val,
                              emit_simd_index(bb, name, insert->index()));
 
@@ -754,7 +785,7 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
         auto [ptr, i]  = lea->args<2>();
         auto pointee   = Axm::expect<mem::Ptr>(ptr->type(), "a `mem.Ptr`")->arg(2, 0);
         auto v_ptr     = emit(ptr);
-        auto t_pointee = convert(pointee);
+        auto t_pointee = convert(pointee, false);
         auto t_ptr     = convert(ptr->type());
         if (pointee->isa<Sigma>())
             return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, i32 {}", t_pointee, t_ptr, v_ptr,
@@ -794,14 +825,17 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
         emit_unsafe(load->arg(2, 0));
         auto v_ptr     = emit(load->arg(2, 1));
         auto t_ptr     = convert(load->arg(2, 1)->type());
-        auto t_pointee = convert(Axm::expect<mem::Ptr>(load->arg(2, 1)->type(), "a `mem.Ptr`")->arg(2, 0), false);
-        return bb.assign(name, "load {}, {} {}", t_pointee, t_ptr, v_ptr);
+        auto pointee   = Axm::expect<mem::Ptr>(load->arg(2, 1)->type(), "a `mem.Ptr`")->arg(2, 0);
+        auto t_mem     = convert(pointee, false);
+        auto v_mem = bb.assign(t_mem == convert(pointee) ? name : name + ".mem", "load {}, {} {}", t_mem, t_ptr, v_ptr);
+        return convert_value(bb, name, pointee, v_mem, true);
     } else if (auto store = Axm::isa<mem::store>(def)) {
         emit_unsafe(store->arg(3, 0));
         auto v_ptr = emit(store->arg(3, 1));
-        auto v_val = emit(store->arg(3, 2));
+        auto val   = store->arg(3, 2);
+        auto v_val = convert_value(bb, name, val->type(), emit(val), false);
         auto t_ptr = convert(store->arg(3, 1)->type());
-        auto t_val = convert(store->arg(3, 2)->type(), false);
+        auto t_val = convert(val->type(), false);
         std::print(bb.body().emplace_back(), "store {} {}, {} {}", t_val, v_val, t_ptr, v_ptr);
         return std::string();
     } else if (auto q = Axm::isa<clos::alloc_jmpbuf>(def)) {

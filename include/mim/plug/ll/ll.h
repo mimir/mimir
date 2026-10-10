@@ -258,6 +258,8 @@ protected:
     DefMap<std::string> locals_;
     DefMap<std::string> globals_;
     DefMap<std::string> types_;
+    /// The memory form of each type (see `convert_impl`): no vectors, as `mem`'s size arithmetic assumes.
+    DefMap<std::string> mem_types_;
     LamMap<BB> lam2bb_;
 
     std::set<std::string> decls_;
@@ -287,6 +289,8 @@ private:
     // Case groups of emit_bb_impl, split so one recursion level only pays the frame of the group it hits.
     MIM_NOINLINE std::string emit_lit(const Def*);
     MIM_NOINLINE std::string emit_tuple(BB&, const std::string& name, const Def* tuple);
+    /// Converts @p v of @p type from the other form into the SSA (@p simd) or memory form.
+    MIM_NOINLINE std::string convert_value(BB&, const std::string& name, const Def* type, std::string v, bool simd);
     MIM_NOINLINE std::pair<std::string, std::string> emit_gep_index(BB&, const std::string& name, const Def* index);
     MIM_NOINLINE std::optional<std::string> emit_builtin(BB&, const std::string& name, const Def*);
     MIM_NOINLINE std::optional<std::string> emit_core(BB&, const std::string& name, const Def*);
