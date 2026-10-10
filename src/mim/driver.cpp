@@ -60,7 +60,8 @@ void Driver::Imports::add(const fe::Src* src, Sym sym, ast::Tok::Tag tag, bool i
 Driver::Driver(std::string name)
     : fe::Driver(std::make_unique<Diag>(*this))
     , version_(MIM_VERSION)
-    , world_(this, sym(name)) {
+    , world_(this, sym(name))
+    , library_(this, sym(name)) {
 #define CODE(t, str) keys_.emplace(sym(str), ast::Tok::Tag::t);
     MIM_KEY(CODE)
 #undef CODE

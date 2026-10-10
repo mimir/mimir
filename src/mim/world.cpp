@@ -130,11 +130,71 @@ const Def* World::Annexes::attach(flags_t flags, Sym sym, const Def* def) {
     return nullptr;
 }
 
+void World::Annexes::index_defs() {
+    for (const auto& [flags, e] : flags2entry_)
+        def2flags_.emplace(e.def, flags);
+}
+
 void World::Annexes::attach_alias(flags_t flags, Sym sym) {
     if (!driver().is_loaded(Annex::demangle(flags))) return;
     // An alias spelled the same as its target's own (unqualified) name registers the identical
     // qualified string as the target - a benign no-op, not a conflict.
     if (auto [i, ins] = sym2flags_.try_emplace(sym, flags); !ins) assert(i->second == flags);
+}
+
+/*
+ * Library
+ */
+
+/// Imports from Driver::library: an annex therein is looked up via World::annex, so it is imported only once.
+class World::Importer : public Rewriter {
+public:
+    Importer(World& world)
+        : Rewriter(world) {}
+
+    const Def* import(const Def* root) { return Rewriter::rewrite(root); }
+
+    const Def* rewrite(const Def* def) final {
+        if (auto new_def = lookup(def)) return new_def;
+        if (auto flags = world().driver().library().annexes().flags(def)) return world().annex(*flags);
+        return Rewriter::rewrite(def);
+    }
+};
+
+void World::drop_importer() { importer_.reset(); }
+
+const Def* World::import(const Def* def) {
+    if (!importer_) importer_ = std::make_unique<Importer>(*this);
+    return importer_->import(def);
+}
+
+const Def* World::annex(Sym sym) {
+    if (auto flags = fe::lookup(annexes().sym2flags(), sym)) return annex(*flags);
+    if (auto flags = fe::lookup(driver().library().annexes().sym2flags(), sym)) return annex(*flags);
+    return nullptr;
+}
+
+const Def* World::annex_miss(flags_t flags) {
+    if (annex_fallback)
+        if (auto def = annex_fallback(flags)) return def;
+
+    auto& lib = driver().library();
+    if (&lib != this)
+        if (auto e = fe::lookup(lib.annexes().flags2entry(), flags)) {
+            log().d("import annex `{}`", e->sym);
+            return annexes().attach(flags, e->sym, import(e->def));
+        }
+
+    fe::throwf("no Axm with ID {}; is plugin `{}` loaded?", flags, Annex::demangle(flags));
+}
+
+void World::move_to_library() {
+    auto& lib = driver().library();
+    swap(*this, lib);
+    swap(state_, lib.state_);
+    lib.annexes().index_defs();
+    for (auto mut : lib.externals().muts())
+        import(mut)->as_mut()->externalize();
 }
 
 /*
@@ -169,6 +229,9 @@ World::World(Driver* driver, const State& state)
     data_.lit_bool[0] = lit_idx(2, 0_u64);
     data_.lit_bool[1] = lit_idx(2, 1_u64);
     data_.lit_nat_max = lit_nat(nat_t(-1));
+    // A frozen World cannot create them on demand, but e.g. Def::num_tprojs needs them to compute an arity.
+    for (nat_t i = 0; i != Num_Lit_Nats; ++i)
+        lit_nat(i);
 }
 
 World::World(Driver* driver, Sym name)

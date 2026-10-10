@@ -365,9 +365,6 @@ private:
 /// 1. all old World::annexes() during which is_bootstrapping() is `true`, and then
 /// 2. all old World::externals() during which it is `false`.
 ///
-/// During bootstrapping, rewrites that depend on other annexes may need to be skipped,
-/// since those annexes might not yet exist in the new world.
-///
 /// If an associated Analysis is provided, the rewrite can query its abstract results through lattice().
 ///
 /// @note You can override
@@ -415,7 +412,6 @@ public:
     virtual void rewrite_external(Def*);
 
     /// Returns whether we are currently bootstrapping (rewriting annexes).
-    /// While bootstrapping, look up other annexes via RWPhase::annex, as they might not yet exist.
     bool is_bootstrapping() const { return bootstrapping_; }
     ///@}
 
@@ -430,8 +426,7 @@ public:
     World& old_world() { return Phase::world(); }    ///< Get **old** Def%s from here.
     World& new_world() { return Rewriter::world(); } ///< Create **new** Def%s into this.
 
-    /// The annex @p flags in new_world(), rewritten on demand if the annex walk has not reached it yet.
-    const Def* annex(flags_t flags);
+    const Def* annex(flags_t flags) { return new_world().annex(flags); } ///< The annex @p flags in new_world().
     template<annex_without_subs Id>
     const Def* annex() {
         return annex(Annex::base<Id>());
