@@ -84,7 +84,7 @@ const Def* Seq::elem() const { return shape().is_fused() ? world().drop(this, 1)
 Select::Select(const Def* def) {
     if (!def) return;
     auto extract = def->isa<Extract>();
-    if (!extract || Lit::isa(extract->index())) return;
+    if (!extract || Lit::isa(extract->index()) || extract->index()->type() != def->world().type_bool()) return;
     if (auto a = Lit::isa(extract->tuple()->arity()); a && *a == 2) extract_ = extract;
 }
 

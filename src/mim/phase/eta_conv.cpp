@@ -12,9 +12,11 @@ void EtaConv::analyze(const Def* def) {
     if (auto [_, ins] = analyzed_.emplace(def); !ins) return;
 
     if (auto app = def->isa<App>()) {
-        visit(app->type(), Lattice::Unknown_1);
+        // clang-format off
+        visit(app->type(),   Lattice::Unknown_1);
         visit(app->callee(), Lattice::Known);
-        visit(app->arg(), Lattice::Unknown_1);
+        visit(app->arg(),    Lattice::Unknown_1);
+        // clang-format on
     } else {
         for (auto d : def->deps())
             visit(d, Lattice::Unknown_1);
@@ -35,7 +37,7 @@ const Def* EtaConv::rewrite(const Def* old_def) {
     if (auto lam = old_def->isa<Lam>()) {
         if (auto f = lam->eta_reduce()) {
             // η-redex `λx.f x`: reduce unless `f` wants to stay expanded.
-            if (!keep_wrapper(f)) {
+            if (!expand(f)) {
                 profile_count("η-reduction");
                 log().d("eta-reduce {} → {}", lam, f);
                 invalidate();
@@ -44,7 +46,7 @@ const Def* EtaConv::rewrite(const Def* old_def) {
             // Keep it - but as a *fresh* expansion wrapper (with the `tt` filter EtaExp uses), so that a
             // pre-existing wrapper's stale filter does not leak downstream and every occurrence gets its own.
             return Lam::eta_expand(rewrite_no_eta(f));
-        } else if (eta_expand(lam)) {
+        } else if (expand(lam)) {
             // bare Lam used in an unknown position more than once or in both positions: η-expand.
             profile_count("η-expansion");
             auto eta = Lam::eta_expand(rewrite_no_eta(lam));
@@ -59,7 +61,7 @@ const Def* EtaConv::rewrite(const Def* old_def) {
 
 const Def* EtaConv::rewrite_no_exp(const Def* old_def) {
     if (auto lam = old_def->isa<Lam>())
-        if (auto f = lam->eta_reduce(); f && !keep_wrapper(f)) {
+        if (auto f = lam->eta_reduce(); f && !expand(f)) {
             log().d("eta-reduce {} → {}", lam, f);
             invalidate();
             return rewrite_no_exp(f);

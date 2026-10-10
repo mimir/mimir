@@ -112,8 +112,9 @@ protected:
     [[nodiscard]] auto enter(Def* new_mut) { return fe::Restore(curr_mut_, new_mut); }
 
     /// The tail of rewrite_stub: immutabilizes @p new_mut in hindsight, as rewriting may have made it vacuous.
+    /// A stub that already has users stays mutable, as the users captured it during its own rewrite.
     /// Only needed if you fill a stub yourself instead of going through rewrite_stub.
-    const Def* seal_stub(Def* old_mut, Def* new_mut);
+    const Def* seal(Def* old_mut, Def* new_mut);
 };
 
 /// Extends Rewriter for variable substitution.

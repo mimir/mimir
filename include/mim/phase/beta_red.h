@@ -21,7 +21,9 @@ private:
     bool is_candidate(Lam* lam) const { return fe::assert_lookup(candidates_, lam); }
 
     DefSet analyzed_;
+    DefSet on_stack_;
     LamMap<bool> candidates_;
+    LamSet inlining_;
 };
 
 } // namespace mim
