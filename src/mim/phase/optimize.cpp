@@ -6,7 +6,7 @@
 namespace mim {
 
 void optimize(World& world) {
-    world.move_to_library();
+    world.driver().move_to_library(world);
 
     // clang-format off
     auto compilation_functions = {

@@ -81,10 +81,18 @@ public:
     fe::Profiler& profiler() { return profiler_; }
     const fe::Profiler& profiler() const { return profiler_; }
     World& world() { return world_; }
-    World* library() { return library_.get(); } ///< `nullptr` before World::move_to_library.
-    const World* library() const { return library_.get(); }
     const Version& version() const { return version_; } ///< MimIR Version.
     const Keys& keys() const { return keys_; }          ///< Interned once here: every ast::Lexer borrows them.
+    ///@}
+
+    /// @name Library
+    ///@{
+    World* library() { return library_.get(); } ///< `nullptr` before move_to_library().
+    const World* library() const { return library_.get(); }
+    /// Moves everything of @p world into library() and imports only its externals back.
+    /// From then on, @p world imports an annex lazily when first looked up; @see World::import.
+    /// Importing also resolves the Hole%s elaboration solved.
+    void move_to_library(World& world);
     ///@}
 
     /// @name Diagnostic Naming
@@ -245,8 +253,6 @@ private:
     std::vector<std::pair<std::string, fe::View<PluginEnv>>> known_envs_;
     Imports imports_;
     Keys keys_;
-
-    friend class World; // World::move_to_library sets library_
 };
 
 #define GET_FUN_PTR(plugin, f) get_fun_ptr<decltype(f)>(plugin, #f)

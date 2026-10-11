@@ -759,11 +759,6 @@ public:
 
     /// @name Library
     ///@{
-    /// Moves everything into Driver::library and imports only the externals() back.
-    /// From then on, an annex is imported lazily when first looked up.
-    /// Importing also resolves the Hole%s elaboration solved.
-    void move_to_library();
-
     /// Imports @p def of Driver::library into this World.
     const Def* import(const Def* def);
     ///@}

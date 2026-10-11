@@ -120,7 +120,7 @@ int compile(Driver& driver, Opts& opts) {
         file->compile(ast);
         std::exception_ptr opt_error;
         if (opts.no_opt)
-            world.move_to_library();
+            driver.move_to_library(world);
         else
             try {
                 optimize(world);

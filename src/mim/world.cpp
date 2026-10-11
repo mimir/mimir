@@ -188,13 +188,6 @@ const Def* World::annex_miss(flags_t flags) {
     fe::throwf("no Axm with ID {}; is plugin `{}` loaded?", flags, Annex::demangle(flags));
 }
 
-void World::move_to_library() {
-    auto& lib = driver().library_ = inherit();
-    swap(*this, *lib);
-    for (auto mut : lib->externals().muts())
-        import(mut)->as_mut()->externalize();
-}
-
 /*
  * constructor & destructor
  */
