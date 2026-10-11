@@ -65,30 +65,33 @@ const Def* Lower::rewrite_imm_Extract(const Extract* extract) {
 }
 
 const Def* Lower::fastest_axis_2(const App* app, const Def* rank) {
-    auto& nw = new_world();
-    auto b   = rewrite(app->arg()->proj(2, 1));
-    auto fa  = nw.app(nw.app(nw.annex<tensor::fastest_axis>(), b->type()), {rewrite(rank), b});
-    if (auto l = Lit::isa(fa)) return old_world().lit_nat(*l);
-    return rank;
+    auto& w = new_world();
+    auto b  = rewrite(app->arg()->proj(2, 1));
+    return w.app(w.app(w.annex<tensor::fastest_axis>(), b->type()), {rank, b});
 }
 
-const Def* Lower::lower_via_impl(const App* app, const Def* impl) {
+const Def* Lower::lower_via_impl(const App* app, const Def* impl, const Def* fastest_2) {
+    auto& w = new_world();
+
     // The curry chain, innermost App first — hence re-applied in reverse.
     auto args = DefVec();
     for (const App* h = app; h; h = h->callee()->isa<App>())
-        args.emplace_back(h->arg());
+        args.emplace_back(rewrite(h->arg()));
+    if (fastest_2) args.emplace_back(fastest_2);
 
     // The `_impl` is a `lam`, so applying it triggers beta-reduction. Each `_impl`
     // body references the `_impl` variants of its dependencies directly, so the
     // chain bottoms out at the low-level axioms (`map_reduce`, …) in one go.
-    // The instance is built in old_world(), so it passes through this phase like any other code.
+    // As code, the `_impl` itself is rewritten - and thus lowered - only once.
+    auto res = rewrite(impl);
     for (auto a : args | std::views::reverse)
-        impl = old_world().app(impl, a);
-    return rewrite(impl);
+        res = w.app(res, a);
+    return res;
 }
 
 const Def* Lower::rewrite_imm_App(const App* app) {
     auto& ow = old_world();
+    auto& nw = new_world();
 
     if (Axm::isa<tensor::broadcast_in_dim>(app)) return lower_via_impl(app, ow.annex<tensor::broadcast_in_dim_impl>());
     if (Axm::isa<tensor::transpose>(app)) return lower_via_impl(app, ow.annex<tensor::transpose_impl>());
@@ -107,15 +110,15 @@ const Def* Lower::rewrite_imm_App(const App* app) {
     // `tensor.fastest_axis` reflection of the right operand, pre-applied here at the staging
     // point where that operand is concrete (see tensor.dot_product_impl for the decision).
     if (Axm::isa<tensor::product_2d>(app))
-        return lower_via_impl(app, ow.app(ow.annex<tensor::product_2d_impl>(), fastest_axis_2(app, ow.lit_nat(2))));
+        return lower_via_impl(app, ow.annex<tensor::product_2d_impl>(), fastest_axis_2(app, nw.lit_nat(2)));
     if (Axm::isa<tensor::bmm>(app))
-        return lower_via_impl(app, ow.app(ow.annex<tensor::bmm_impl>(), fastest_axis_2(app, ow.lit_nat(3))));
+        return lower_via_impl(app, ow.annex<tensor::bmm_impl>(), fastest_axis_2(app, nw.lit_nat(3)));
     if (Axm::isa<tensor::dot_product>(app)) {
         // The curry chain, outermost app first: [a, b] {s1 s2} [c1, c2, b1, b2] {nc nb} {r1 r2};
         // the right operand's rank is {r1 r2}#1.
         auto groups = app->callee()->as<App>()->callee()->as<App>()->callee()->as<App>();
         auto r2     = groups->callee()->as<App>()->arg()->proj(2, 1);
-        return lower_via_impl(app, ow.app(ow.annex<tensor::dot_product_impl>(), fastest_axis_2(app, r2)));
+        return lower_via_impl(app, ow.annex<tensor::dot_product_impl>(), fastest_axis_2(app, rewrite(r2)));
     }
 
     return RWPhase::rewrite_imm_App(app);

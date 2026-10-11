@@ -104,11 +104,23 @@ struct Slots {
     }
 };
 
+/// Does a slot that declares @p value in shape @p S read it in the shape it is produced in?
+/// Size-1 axes collapse out of the type, so they may differ - and then their maps do not compose.
+static bool reads_as_produced(const Def* value, const Def* S) {
+    if (auto mr = Axm::isa<tensor::map_reduce_post>(value)) {
+        auto shapes = mr->uncurry_args<8>()[2];
+        return shapes->proj(3, 0) == S;
+    }
+    if (auto bc = Axm::isa<tensor::broadcast>(value)) return bc->arg()->proj(3, 1) == S;
+    return true;
+}
+
 /// If `value` is a pure re-indexed read — a copy-combiner map_reduce (reshape/transpose/slice/
 /// flip/repeat lower to these) or a `tensor.broadcast` — returns its source and access map, to be
 /// composed behind the consuming slot's map. Such reads perform no computation, so reading through
 /// them needs neither an injectivity gate nor a consumer count.
-static std::optional<PureRead> read_through(World& w, const Def* value, const Def* slot_map) {
+static std::optional<PureRead> read_through(World& w, const Def* value, const Def* slot_map, const Def* S) {
+    if (!reads_as_produced(value, S)) return {};
     if (auto pr = is_pure_read(value)) {
         // A source whose axes are all size 1 type-collapses to a plain scalar («1; T» ≡ T): the
         // fused op would carry an input the bufferization cannot represent - keep the copy instead.
@@ -208,7 +220,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
 
     for (u64 k = 0; k < nis_nat; ++k) {
         auto inner = Axm::isa<tensor::map_reduce_post>(is->proj(nis_nat, k));
-        if (!inner) continue;
+        if (!inner || !reads_as_produced(inner, Sis->proj(nis_nat, k))) continue;
 
         auto [inner_nis_nps, inner_meta, inner_shapes, inner_in_tys, inner_comb_init, inner_map_out, inner_maps_all,
               inner_is_all]
@@ -464,10 +476,7 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     bool unpack          = false;
     for (u64 k = 0; k < nis_nat && !inner_def; ++k) {
         auto cand = Axm::isa<tensor::map_reduce_post>(is->proj(nis_nat, k));
-        if (!cand || !sole_consumer(cand)) continue;
-        // Size-1 axes collapse out of the type, so the input may be declared in another shape than produced.
-        auto [_, __, cand_shapes, ___, ____, _____, ______, _______] = cand->uncurry_args<8>();
-        if (cand_shapes->proj(3, 0) != Sis->proj(nis_nat, k)) continue;
+        if (!cand || !sole_consumer(cand) || !reads_as_produced(cand, Sis->proj(nis_nat, k))) continue;
 
         auto m     = maps->proj(nis_nat, k);
         auto id_in = m->isa_mut<Lam>();
@@ -600,7 +609,7 @@ const Def* Fuse::fuse_read_through(const App* callee, const Def* arg) {
         for (u64 i = 0; i < n; ++i) {
             auto T = Ts->proj(n, i), R = Rs->proj(n, i), S = Ss->proj(n, i);
             auto m = ms->proj(n, i), v = vs->proj(n, i);
-            if (auto rt = read_through(w, v, m)) {
+            if (auto rt = read_through(w, v, m, S)) {
                 log().d("read input {} of {} through {}", i, callee, v);
                 // The bypassed read forwards its consumers to the source: a shared (or uncounted,
                 // e.g. broadcast) read leaves the source multiply-consumed for the epilogue guard.
