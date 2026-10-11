@@ -38,7 +38,6 @@ target_sources(libmim
         phase/ret_wrap.cpp
         phase/sccp_analysis.cpp
         phase/sccp_transform.cpp
-        phase/unload.cpp
 )
 
 set_target_properties(libmim PROPERTIES PREFIX "")

@@ -131,13 +131,6 @@ const Def* World::Annexes::attach(flags_t flags, Sym sym, const Def* def) {
     return nullptr;
 }
 
-void World::Annexes::detach(plugin_t plugin) {
-    auto of_plugin = [plugin](const auto& p) { return Annex::flags2plugin(p.second) == plugin; };
-    std::erase_if(sym2flags_, of_plugin); // also drops the aliases
-    std::erase_if(def2flags_, of_plugin);
-    std::erase_if(flags2entry_, [plugin](const auto& p) { return Annex::flags2plugin(p.first) == plugin; });
-}
-
 void World::Annexes::attach_alias(flags_t flags, Sym sym) {
     if (!driver().is_loaded(Annex::demangle(flags))) return;
     // An alias spelled the same as its target's own (unqualified) name registers the identical

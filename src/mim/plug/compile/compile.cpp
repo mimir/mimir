@@ -17,7 +17,6 @@
 #include <mim/phase/sccp.h>
 #include <mim/phase/single_erasure.h>
 #include <mim/phase/static_arg_opt.h>
-#include <mim/phase/unload.h>
 
 #include "mim/plug/compile/autogen.h"
 
@@ -67,7 +66,6 @@ static void reg_phases(Flags2Phases& phases) {
     Phase::hook<compile::named,            Named          >(phases);
     Phase::hook<compile::nom_erasure,      NomErasure     >(phases);
     Phase::hook<compile::phases,           PhaseMan       >(phases);
-    Phase::hook<compile::unload,           Unload         >(phases);
     Phase::hook<compile::ret_wrap,         RetWrap        >(phases);
     Phase::hook<compile::scalarize,        Scalarize      >(phases);
     Phase::hook<compile::sccp,             SCCP           >(phases);

@@ -144,9 +144,3 @@ axm single_erasure: Phase;
 /// Drops params that recursive calls merely forward, turning them into loops (mim::StaticArgOpt).
 ///
 axm static_arg_opt: Phase;
-///
-/// ### unload
-///
-/// Unloads a plugin and nukes its annexes on the next World swap.
-///
-axm unload: {n: Nat} → «n; I8» → Phase;

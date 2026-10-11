@@ -249,8 +249,6 @@ public:
         /// Registers a further Sym for an *already* attach()ed annex, sharing its flags_t; @see mim::ast::AliasDecl.
         void attach_alias(flags_t, Sym);
         void attach_alias(plugin_t p, tag_t t, sub_t s, Sym sym) { attach_alias(Annex::flags(p, t, s), sym); }
-
-        void detach(plugin_t); ///< Removes all annexes of this plugin.
         ///@}
 
         /// @name Iterators
