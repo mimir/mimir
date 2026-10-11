@@ -23,7 +23,6 @@ private:
     DefSet analyzed_;
     DefSet on_stack_;
     LamMap<bool> candidates_;
-    LamSet inlining_;
 };
 
 } // namespace mim
