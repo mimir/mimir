@@ -67,8 +67,6 @@ private:
     const Def* env_type() { return new_world().call<mem::Ptr0>(new_world().sigma()); }
 
     /// Dummy return continuation.
-    /// @note Not cached: `mem::M` resolves through new_world()'s annex table, which is only populated once
-    /// bootstrapping is done - and by then everything is hash-consed anyway.
     const Def* dummy_ret() { return new_world().bot(new_world().cn(new_world().call<mem::M>(0))); }
 
     std::queue<Todo> worklist_;

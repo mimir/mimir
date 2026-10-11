@@ -60,6 +60,7 @@ private:
         fe::Bitset plan(const Def* type) const;
 
     private:
+        void prepare() final;
         const Def* rewrite(const Def* old) final;
 
         void inspect(const Def* def);
@@ -73,6 +74,7 @@ private:
         /// Kept out of lattice(), as a lattice write would also map() the Pi to its abstract value -
         /// which breaks as soon as that Pi occurs in a type argument (`mem.slot (H, 0)`).
         DefMap<fe::Bitset> keeps_;
+        bool annexes_pinned_ = false;
     };
 
 public:

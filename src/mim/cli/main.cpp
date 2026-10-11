@@ -119,9 +119,11 @@ int compile(Driver& driver, Opts& opts) {
 
         file->compile(ast);
         std::exception_ptr opt_error;
-        if (opts.no_opt)
-            Cleanup(world).run(); // resolves the Hole%s elaboration solved, as optimize would first
-        else
+        if (opts.no_opt) {
+            world.move_to_library();
+            for (const auto& [flags, _] : driver.library().annexes())
+                world.annex(flags);
+        } else
             try {
                 optimize(world);
             } catch (...) {

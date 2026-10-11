@@ -68,13 +68,8 @@ As a result, existing IR machinery applies automatically, including:
 
 So if your abstract domain fits naturally into MimIR, you can often encode it directly as [`Def`s](@ref mim::Def) and store it in the analysis lattice.
 
-An [`Analysis`](@ref mim::Analysis) visits:
-
-1. all registered annex roots, then
-2. all external mutables.
-
-During the first part, [`mim::Analysis::is_bootstrapping()`](@ref mim::Analysis::is_bootstrapping) is `true`.
-During the second part, it is `false`.
+An [`Analysis`](@ref mim::Analysis) visits everything reachable from the external mutables.
+Axioms and mutable annexes other than `Lam`s are opaque; see [Annexes](@ref phases_annexes).
 
 Typical usage:
 
@@ -138,14 +133,14 @@ This schedules the callee (or does nothing if it is already scheduled), so its b
 
 ### Sparse Fixed-Point Iteration
 
-A **full** round traverses the whole [`World`](@ref mim::World): [`start()`](@ref mim::Analysis) first runs [`prepare()`](@ref mim::Analysis::prepare), then rewrites all annex roots, drains the worklist, does the same for the external mutables, and finally runs [`finalize()`](@ref mim::Analysis::finalize).
+A **full** round traverses the whole [`World`](@ref mim::World): [`start()`](@ref mim::Analysis) first runs [`prepare()`](@ref mim::Analysis::prepare), then rewrites all external mutables, drains the worklist, and finally runs [`finalize()`](@ref mim::Analysis::finalize).
 Whenever [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) changes an entry it [`invalidate`s](@ref mim::Phase::invalidate), requesting another round, and records [`curr_mut()`](@ref mim::Rewriter::curr_mut) as _dirty_.
 
 The first round, and each certification round described below, is full.
 A follow-up round is **sparse**: it re-drains only dirty mutables — plus everything reachable from them — instead of walking the whole World.
 At the start of a sparse round the accumulated lattice is replayed into the rewriter map, so a dirty mutable's body sees the substitutions its (non-revisited) producers installed in earlier rounds.
 An analysis can [`taint()`](@ref mim::Analysis::taint) additional mutables when a change must re-visit more than the writer — e.g. SEO taints all call sites of a `Lam` whose abstract vars changed, which keeps its per-round join restart sound.
-A change that cannot be attributed to any mutable (during the annex walk or [`finalize()`](@ref mim::Analysis::finalize)) forces the next round to be full.
+A change that cannot be attributed to any mutable (e.g. in [`finalize()`](@ref mim::Analysis::finalize)) forces the next round to be full.
 
 Since dirt tracks _writers_ — not readers — a sparse round may miss affected mutables.
 Hence, once sparse rounds quiesce, one final **full** round certifies the fixed point; if it discovers new facts, iteration continues sparsely from its dirt.
@@ -175,9 +170,7 @@ Use:
 ### Execution Model
 
 1. optionally perform a fixed-point analysis with [`analyze()`](@ref mim::RWPhase::analyze),
-2. rewrite the old world roots:
-   1. the annexes,
-   2. the external mutables;
+2. rewrite the external mutables of the old world;
 3. run [`finalize()`](@ref mim::RWPhase::finalize);
 4. swap the **old** and the **new** world.
 
@@ -205,20 +198,21 @@ It returns the abstract value computed by the associated [`Analysis`](@ref mim::
 
 This is the standard way to communicate fixed-point analysis results into the subsequent rewrite.
 
-### Bootstrapping
+### Annexes {#phases_annexes}
 
-Like [`Analysis`](@ref mim::Analysis), an [`RWPhase`](@ref mim::RWPhase) processes annex roots before externals.
+[`optimize()`](@ref mim::optimize) moves all annexes into the [`Driver::library()`](@ref mim::Driver::library); a [`World`](@ref mim::World) imports an annex on first use.
+An [`RWPhase`](@ref mim::RWPhase) does not rewrite an axiom or a mutable annex but resolves it to the annex with the same flags in the new world, which imports it unchanged on demand.
+So a phase never alters such an annex - its shape is what normalizers and backends rely on.
+An immutable annex is just its value and is rewritten like any other immutable.
 
-While annexes are being rewritten, [`mim::RWPhase::is_bootstrapping()`](@ref mim::RWPhase::is_bootstrapping) is `true`.
-
-This matters because annexes may depend on one another.
-During bootstrapping, a rewrite that refers to another annex should look it up via [`RWPhase::annex()`](@ref mim::RWPhase::annex), which rewrites it on demand if it does not exist in the new world yet.
+The exception is an annex `Lam`: it is code, so it passes through the phase like the rest of the program - as an ordinary `Lam`.
+A phase that wants to process a `Lam` it fetches itself - e.g. a `priv` `*_impl` it instantiates - builds the instance in [`old_world()`](@ref mim::RWPhase::old_world) and rewrites it (see [`tensor::phase::Lower`](@ref mim::plug::tensor::phase::Lower)).
 
 ### Roots
 
 [`rewrite_root()`](@ref mim::RWPhase::rewrite_root) is the hook for rewrites that must exempt roots.
-An annex or an external is the program's interface to the outside, so a phase that reshapes definitions usually has to leave the roots themselves alone;
-[`EtaConv`](@ref mim::EtaConv) uses it so that an annex or external keeps its η-shape.
+An external is the program's interface to the outside, so a phase that reshapes definitions usually has to leave the roots themselves alone;
+[`EtaConv`](@ref mim::EtaConv) uses it so that an external keeps its η-shape.
 
 ### Deferred Rewrites
 

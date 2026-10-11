@@ -14,18 +14,7 @@ void Unload::apply(std::string plugin) {
 }
 
 void Unload::start() {
-    auto& flags2entry = world().annexes().flags2entry();
-    auto& sym2flags   = world().annexes().sym2flags();
-    for (auto i = flags2entry.begin(); i != flags2entry.end();) {
-        auto [flags, entry] = *i;
-
-        if (Annex::flags2plugin(flags) == plugin_) {
-            i = flags2entry.erase(i);
-            sym2flags.erase(entry.sym);
-        } else
-            ++i;
-    }
-
+    world().annexes().detach(plugin_);
     // we could also literally unload the shared object now, but it's probably not worth the trouble
 }
 

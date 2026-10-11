@@ -50,8 +50,7 @@ void Analysis::reset() {
     old2news_.clear();
     worklist_.clear();
     push();
-    todo_          = false;
-    bootstrapping_ = true; // every full round walks the annexes again - and that walk *is* the bootstrapping half
+    todo_ = false;
 }
 
 void Analysis::start() {
@@ -63,7 +62,6 @@ void Analysis::start() {
     prepare();
 
     if (curr_sparse_) {
-        bootstrapping_ = false; // a sparse round re-drains program muts - it has no annex half
         log().v("sparse round: re-drain {} dirty muts", seeds.size());
         std::ranges::sort(seeds, GIDLt<Def*>()); // MutSet iteration order is nondeterministic
 
@@ -78,12 +76,6 @@ void Analysis::start() {
             rewrite(mut);
         drain();
     } else {
-        for (const auto& [flags, e] : world().annexes())
-            rewrite_annex(flags, e.sym, e.def);
-        drain();
-
-        bootstrapping_ = false;
-
         for (auto mut : world().externals().muts())
             rewrite_external(mut);
         drain();
@@ -99,8 +91,12 @@ void Analysis::start() {
     if (curr_sparse_ && !todo()) invalidate();
 }
 
-void Analysis::rewrite_annex(flags_t, Sym, const Def* def) { rewrite(def); }
 void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
+
+const Def* Analysis::lookup(const Def* def) {
+    if (auto res = Rewriter::lookup(def)) return res;
+    return world().annexes().opaque(def) ? def : nullptr;
+}
 
 const Def* Analysis::repr_(const Def* slow, const Def* fast) const {
     while (slow != fast) {
@@ -157,28 +153,11 @@ void RWPhase::start() {
         todo = analyze();
     }
 
-    // A missing annex is first imported into the old World - so it passes through this phase like any other.
-    auto _ = fe::Restore(new_world().annex_fallback, std::function([this](flags_t flags) {
-                             old_world().annex(flags);
-                             auto& e = old_world().annexes().flags2entry().at(flags);
-                             auto __ = fe::Restore(bootstrapping_, true);
-                             rewrite_annex(flags, e.sym, e.def);
-                             return new_world().annexes().flags2entry().at(flags).def;
-                         }));
-
-    // The annex half only covers the annexes the old World has.
     auto gid = new_world().curr_gid();
-    for (const auto& [flags, e] : old_world().annexes())
-        rewrite_annex(flags, e.sym, e.def);
-    profile_count("rw.defs.annex", new_world().curr_gid() - gid);
-
-    bootstrapping_ = false;
-
-    gid = new_world().curr_gid();
     for (auto mut : old_world().externals().muts())
         rewrite_external(mut);
     finalize(); // inside the span: work deferred by the root walk belongs to the root walk
-    profile_count("rw.defs.external", new_world().curr_gid() - gid);
+    profile_count("rw.defs", new_world().curr_gid() - gid);
 
     swap(old_world(), new_world());
 }
@@ -193,9 +172,10 @@ bool RWPhase::analyze() {
     return false;
 }
 
-void RWPhase::rewrite_annex(flags_t f, Sym sym, const Def* def) {
-    auto new_def = rewrite_root(def);
-    if (!new_world().annexes().flags2entry().contains(f)) new_world().annexes().attach(f, sym, new_def);
+const Def* RWPhase::lookup(const Def* old_def) {
+    if (auto new_def = Rewriter::lookup(old_def)) return new_def;
+    if (auto flags = old_world().annexes().opaque(old_def)) return map_root(old_def, new_world().annex(*flags));
+    return nullptr;
 }
 
 void RWPhase::rewrite_external(Def* old_mut) {

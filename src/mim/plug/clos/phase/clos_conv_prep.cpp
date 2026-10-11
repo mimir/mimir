@@ -131,7 +131,7 @@ const Def* ClosConvPrep::rewrite_callee_op(const Def* old_op) {
 }
 
 const Def* ClosConvPrep::rewrite_imm_App(const App* app) {
-    if (is_bootstrapping() || Axm::isa<anno>(app)) return RWPhase::rewrite_imm_App(app);
+    if (Axm::isa<anno>(app)) return RWPhase::rewrite_imm_App(app);
 
     // Skip if the surrounding mutable is no Lam with a continuation call as body.
     auto mut  = curr_mut() ? curr_mut()->isa_mut<Lam>() : nullptr;

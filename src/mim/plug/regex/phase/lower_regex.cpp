@@ -26,8 +26,6 @@ const Def* wrap_in_cps2ds(const Def* callee) { return cps::op_cps2ds_dep(callee)
 } // namespace
 
 const Def* LowerRegex::rewrite_imm_App(const App* app) {
-    if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
-
     auto callee = app->callee();
     if (Axm::isa<regex::conj>(callee) || Axm::isa<regex::disj>(callee) || Axm::isa<regex::not_>(callee)
         || Axm::isa<regex::neg_lookahead>(callee) || Axm::isa<regex::range>(callee) || Axm::isa<regex::any>(callee)

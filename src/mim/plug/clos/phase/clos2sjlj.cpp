@@ -195,7 +195,7 @@ const Def* Clos2SJLJ::subst_exn_closures(const Def* def) {
 
 const Def* Clos2SJLJ::rewrite_mut_Lam(Lam* old) {
     auto new_def = RWPhase::rewrite_mut_Lam(old);
-    if (auto lam = new_def->isa_mut<Lam>(); lam && !is_bootstrapping()) convert(lam);
+    if (auto lam = new_def->isa_mut<Lam>()) convert(lam);
     return new_def;
 }
 

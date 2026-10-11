@@ -55,7 +55,7 @@ private:
     void analyze(const Def*);
     void visit(const Def*, Lattice);
 
-    /// An annex or external must keep its shape: neither η-reduce nor η-expand a root.
+    /// An external must keep its shape: neither η-reduce nor η-expand a root.
     const Def* rewrite_root(const Def* def) final { return rewrite_no_eta(def); }
     const Def* rewrite(const Def*) final;
     const Def* rewrite_imm_App(const App*) final;

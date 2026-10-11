@@ -1,5 +1,7 @@
 #include "mim/phase/scalarize.h"
 
+#include <fe/worklist.h>
+
 #include "mim/lam.h"
 #include "mim/tuple.h"
 #include "mim/world.h"
@@ -66,13 +68,22 @@ void Scalarize::Analysis::keep_param(const Def* def) {
     }
 }
 
-void Scalarize::Analysis::inspect(const Def* def) {
-    // Everything reachable from an annex is interface: normalizers and backends rely on its exact shape.
-    if (is_bootstrapping()) {
-        if (auto pi = isa_flattenable(def)) pin(pi);
-        return;
-    }
+void Scalarize::Analysis::prepare() {
+    if (std::exchange(annexes_pinned_, true)) return;
 
+    // Everything reachable from an annex is interface: normalizers and backends rely on its exact shape.
+    auto wl = fe::BFSWorklist<DefSet>();
+    for (auto def : world().annexes().defs())
+        if (world().annexes().opaque(def)) wl.push(def);
+
+    while (!wl.empty()) {
+        auto def = wl.pop();
+        if (auto pi = isa_flattenable(def)) pin(pi);
+        wl.push(def->deps());
+    }
+}
+
+void Scalarize::Analysis::inspect(const Def* def) {
     if (auto app = def->isa<App>()) {
         // The shapes an Axm's signature dictates are interface (e.g. `affine.For`'s body or `autodiff.ad f`):
         // normalizers and plugin phases match on their exact shape.
@@ -156,8 +167,7 @@ void Scalarize::Analysis::inspect(const Def* def) {
 
 const Def* Scalarize::Analysis::rewrite(const Def* old) {
     // Visit the subtree *before* inspecting: pin() seeds `pi ↦ pi` into the rewriter map (via pin),
-    // which would short-circuit the traversal into `old` and skip its subtree for the rest of the round -
-    // during bootstrapping this would hide nested Pis from the blanket annex pin.
+    // which would short-circuit the traversal into `old` and skip its subtree for the rest of the round.
     auto res = mim::Analysis::rewrite(old);
     inspect(old);
     return res;
@@ -186,7 +196,7 @@ fe::Bitset Scalarize::Analysis::plan(const Def* type) const {
  */
 
 const Def* Scalarize::rewrite_imm_Pi(const Pi* pi) {
-    auto mask = is_bootstrapping() ? fe::Bitset() : analysis_.plan(pi);
+    auto mask = analysis_.plan(pi);
     if (mask.none()) return RWPhase::rewrite_imm_Pi(pi);
 
     // build the flattened (one level) domain
@@ -209,7 +219,7 @@ const Def* Scalarize::rewrite_imm_Pi(const Pi* pi) {
 }
 
 const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
-    auto mask = is_bootstrapping() ? fe::Bitset() : analysis_.plan(old->type());
+    auto mask = analysis_.plan(old->type());
     if (mask.none()) return RWPhase::rewrite_mut_Lam(old);
 
     auto& w  = new_world();
@@ -253,9 +263,8 @@ DefVec Scalarize::flatten_args(const App* app, const fe::Bitset& mask) {
 }
 
 const Def* Scalarize::rewrite_imm_App(const App* app) {
-    if (!is_bootstrapping())
-        if (auto mask = analysis_.plan(app->callee_type()); mask.any())
-            return new_world().app(rewrite(app->callee()), flatten_args(app, mask));
+    if (auto mask = analysis_.plan(app->callee_type()); mask.any())
+        return new_world().app(rewrite(app->callee()), flatten_args(app, mask));
 
     return RWPhase::rewrite_imm_App(app);
 }

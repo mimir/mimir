@@ -7,7 +7,6 @@
 namespace mim {
 
 const Def* LamSpec::rewrite_imm_App(const App* old_app) {
-    if (is_bootstrapping()) return RWPhase::rewrite_imm_App(old_app);
     if (auto i = old2new_.find(old_app); i != old2new_.end()) return i->second;
 
     auto old_lam = Lam::isa_rewritable(old_app->callee());

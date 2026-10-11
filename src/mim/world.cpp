@@ -124,15 +124,23 @@ const Def* World::Annexes::attach(flags_t flags, Sym sym, const Def* def) {
     if (driver().is_loaded(Annex::demangle(flags))) {
         fe::assert_emplace(flags2entry_, flags, Annexes::Entry{sym, def});
         fe::assert_emplace(sym2flags_, sym, flags);
+        def2flags_.emplace(def, flags);
         def->annex_ = true;
         return def;
     }
     return nullptr;
 }
 
-void World::Annexes::index_defs() {
-    for (const auto& [flags, e] : flags2entry_)
-        def2flags_.emplace(e.def, flags);
+void World::Annexes::detach(plugin_t plugin) {
+    for (auto i = flags2entry_.begin(); i != flags2entry_.end();) {
+        if (Annex::flags2plugin(i->first) == plugin) {
+            sym2flags_.erase(i->second.sym);
+            def2flags_.erase(i->second.def);
+            i = flags2entry_.erase(i);
+        } else {
+            ++i;
+        }
+    }
 }
 
 void World::Annexes::attach_alias(flags_t flags, Sym sym) {
@@ -156,7 +164,7 @@ public:
 
     const Def* rewrite(const Def* def) final {
         if (auto new_def = lookup(def)) return new_def;
-        if (auto flags = world().driver().library().annexes().flags(def)) return world().annex(*flags);
+        if (auto flags = world().driver().library().annexes().flags(def)) return map(def, world().annex(*flags));
         return Rewriter::rewrite(def);
     }
 };
@@ -175,9 +183,6 @@ const Def* World::annex(Sym sym) {
 }
 
 const Def* World::annex_miss(flags_t flags) {
-    if (annex_fallback)
-        if (auto def = annex_fallback(flags)) return def;
-
     auto& lib = driver().library();
     if (&lib != this)
         if (auto e = fe::lookup(lib.annexes().flags2entry(), flags)) {
@@ -192,7 +197,6 @@ void World::move_to_library() {
     auto& lib = driver().library();
     swap(*this, lib);
     swap(state_, lib.state_);
-    lib.annexes().index_defs();
     for (auto mut : lib.externals().muts())
         import(mut)->as_mut()->externalize();
 }

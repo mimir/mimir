@@ -25,11 +25,12 @@ private:
     /// wraps it; an axis that is none of these decidably keeps the shape op.
     const Def* read_through(const Def* base, Defs index);
 
-    const Def* lower_via_impl(const App*, const Def* impl_annex);
+    const Def* lower_via_impl(const App*, const Def* impl);
     /// `tensor.fastest_axis` applied to the dot family's right operand (of the given rank):
     /// the reflection the dot `_impl`s take as their leading argument, pre-applied here because the
     /// operand is only concrete at this staging point. The schedule decision built on the answer
     /// stays in the `_impl`'s IR (see tensor.dot_product_impl).
+    /// It reflects on the lowered operand in new_world(); the answer is a literal or the sentinel rank.
     const Def* fastest_axis_2(const App*, const Def* rank);
 };
 

@@ -25,7 +25,7 @@ std::tuple<fe::Vector<ClosLit>, const Def*> isa_branch(const Def* callee) {
 } // namespace
 
 const Def* BranchClosElim::rewrite_imm_App(const App* app) {
-    if (is_bootstrapping() || !Pi::isa_cn(app->callee_type())) return RWPhase::rewrite_imm_App(app);
+    if (!Pi::isa_cn(app->callee_type())) return RWPhase::rewrite_imm_App(app);
 
     auto& w = new_world();
     if (auto [branches, index] = isa_branch(app->callee()); index) {

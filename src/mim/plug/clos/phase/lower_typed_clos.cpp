@@ -104,7 +104,6 @@ Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
 }
 
 const Def* LowerTypedClos::rewrite(const Def* def) {
-    if (is_bootstrapping()) return RWPhase::rewrite(def); // rebuild the annexes verbatim
     if (auto new_def = lookup(def)) return new_def;
 
     assert((!def->isa<Var>() || !def->as<Var>()->binder()->isa_mut<Lam>()) && "Lam vars should appear in a map!");
@@ -157,8 +156,6 @@ const Def* LowerTypedClos::rewrite(const Def* def) {
 
 // Give first-class BBs their dummy return continuation.
 const Def* LowerTypedClos::rewrite_imm_App(const App* app) {
-    if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
-
     if (auto p = app->callee()->isa<Extract>();
         p && isa_clos_type(p->tuple()->type()) && Pi::isa_basicblock(app->callee_type())) {
         auto new_arg    = insert_ret(rewrite(app->arg()), dummy_ret()); // arg before callee; see the base hook
@@ -170,8 +167,6 @@ const Def* LowerTypedClos::rewrite_imm_App(const App* app) {
 }
 
 const Def* LowerTypedClos::rewrite_imm(const Def* def) {
-    if (is_bootstrapping()) return RWPhase::rewrite_imm(def);
-
     // Leaves and axioms need no mem threading; let the base rebuild them.
     switch (def->node()) {
         case Node::Bot:

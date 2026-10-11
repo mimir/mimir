@@ -127,9 +127,7 @@ protected:
 
 /// Traverses the current World using Rewriter infrastructure while staying in the same world.
 ///
-/// It recursively rewrites
-/// 1. all World::annexes() (during which Analysis::is_bootstrapping() is `true`), and then
-/// 2. all World::externals() (during which it is `false`).
+/// It recursively rewrites all World::externals() but treats World::Annexes::opaque() annexes as opaque.
 ///
 /// Analysis provides a reusable lattice() mapping old Def%s to abstract values, represented as ordinary MimIR Def%s.
 ///
@@ -159,7 +157,7 @@ public:
         : Phase(world, annex)
         , Rewriter(world) {}
 
-    /// Clears the rewriter map and resets Phase::todo() and is_bootstrapping() for the next fixed-point iteration.
+    /// Clears the rewriter map and resets Phase::todo() for the next fixed-point iteration.
     /// lattice() is **preserved** across iterations so that abstract values accumulated in earlier
     /// rounds remain available - this is what makes fixed-point convergence possible.
     /// The dirty set survives as well; start() consumes it to decide whether the round can be sparse.
@@ -170,7 +168,6 @@ public:
     /// @name Getters
     ///@{
     using Phase::world; ///< Disambiguates the Phase/Rewriter double base; for an Analysis both denote the same World.
-    bool is_bootstrapping() const { return bootstrapping_; }
     ///@}
 
     /// @name Sparse Fixed-Point Iteration
@@ -295,7 +292,7 @@ protected:
     void taint(Def* mut) { dirty_.emplace(mut); }
 
     /// Observable analysis information changed: records curr_mut() as *dirty* - the seed set of the next sparse
-    /// round - and invalidate()s. Outside of any mutable (annex walk, finalize()) the change cannot be
+    /// round - and invalidate()s. Outside of any mutable (e.g. in finalize()) the change cannot be
     /// attributed to a mutable; then the next round falls back to a full one.
     /// The lattice writes above do this for you; call it directly when a subclass keeps facts of its own.
     void touch() {
@@ -314,8 +311,8 @@ protected:
     virtual void prepare() {} ///< Run **before** the main analysis.
     /// Run **after** the main analysis - only in **full** rounds, so it always sees the complete abstract World.
     virtual void finalize() {}
-    virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
+    const Def* lookup(const Def*) override;
     const Def* rewrite_imm_Proxy(const Proxy* proxy) override { return proxy; } ///< By default: ignore Proxy%s.
 
     /// Rewrites @p def and then maps the result to its repr().
@@ -355,15 +352,14 @@ private:
     bool nonlocal_      = false; ///< The lattice changed outside of any mut; the next round must be a full one.
     bool curr_sparse_   = false; ///< Is the current round sparse?
     bool dense_         = false; ///< @see make_dense()
-    bool bootstrapping_ = true;
-    size_t num_drained_ = 0; ///< muts drained this round; flushed into the fe::Profiler
+    size_t num_drained_ = 0;     ///< muts drained this round; flushed into the fe::Profiler
 };
 
 /// Rebuilds old_world() into new_world() and then swaps them.
 ///
-/// It is a Phase *and* a Rewriter, runs an optional analyze() to a fixed point, and then rewrites
-/// 1. all old World::annexes() during which is_bootstrapping() is `true`, and then
-/// 2. all old World::externals() during which it is `false`.
+/// It is a Phase *and* a Rewriter that runs an optional analyze() to a fixed point.
+/// Then, it rewrites all old World::externals().
+/// An World::Annexes::opaque() annex is not rewritten but resolved to the annex of the same flags in new_world().
 ///
 /// If an associated Analysis is provided, the rewrite can query its abstract results through lattice().
 ///
@@ -408,11 +404,8 @@ public:
 
     /// @name Rewrite
     ///@{
-    virtual void rewrite_annex(flags_t, Sym, const Def*);
     virtual void rewrite_external(Def*);
-
-    /// Returns whether we are currently bootstrapping (rewriting annexes).
-    bool is_bootstrapping() const { return bootstrapping_; }
+    const Def* lookup(const Def*) override;
     ///@}
 
     /// @name World
@@ -425,18 +418,12 @@ public:
     World& world() = delete;                         ///< Hides both and forbids direct access.
     World& old_world() { return Phase::world(); }    ///< Get **old** Def%s from here.
     World& new_world() { return Rewriter::world(); } ///< Create **new** Def%s into this.
-
-    const Def* annex(flags_t flags) { return new_world().annex(flags); } ///< The annex @p flags in new_world().
-    template<annex_without_subs Id>
-    const Def* annex() {
-        return annex(Annex::base<Id>());
-    }
     ///@}
 
 protected:
     void start() override;
 
-    /// Rewrites a *root* - i.e.\ an annex or an external.
+    /// Rewrites an external.
     /// Defaults to rewrite(); override if roots need to be exempt from some of your rewrites.
     virtual const Def* rewrite_root(const Def* def) { return rewrite(def); }
 
@@ -457,7 +444,6 @@ private:
         , new_world_(std::move(new_world)) {}
 
     Analysis* analysis_;
-    bool bootstrapping_ = true;
     std::unique_ptr<World> new_world_; ///< Owns Rewriter::world.
 };
 

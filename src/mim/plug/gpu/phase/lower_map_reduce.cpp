@@ -351,8 +351,6 @@ const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
 }
 
 const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
-    if (is_bootstrapping()) return Super::rewrite_imm_App(app);
-
     auto& w = new_world();
     auto c  = rewrite(app->callee())->as<App>();
 

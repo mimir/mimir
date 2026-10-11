@@ -232,9 +232,13 @@ public:
         }
         auto& sym2flags() { return sym2flags_; }
         const auto& sym2flags() const { return sym2flags_; }
-        /// The flags of the annex @p def, if it is one; needs index_defs().
+        /// The flags of the annex @p def, if it is one.
         const flags_t* flags(const Def* def) const { return def->is_annex() ? fe::lookup(def2flags_, def) : nullptr; }
-        void index_defs(); ///< Builds the reverse index flags() relies on.
+        /// Like flags() but only for an Axm or a mutable other than a Lam - whose identity phases must preserve.
+        /// A Lam is code, and an immutable is just its value.
+        const flags_t* opaque(const Def* def) const {
+            return def->isa<Axm>() || (def->isa_mut() && !def->isa<Lam>()) ? flags(def) : nullptr;
+        }
         size_t size() const { return flags2entry_.size(); }
         ///@}
 
@@ -248,6 +252,8 @@ public:
         /// Registers a further Sym for an *already* attach()ed annex, sharing its flags_t; @see mim::ast::AliasDecl.
         void attach_alias(flags_t, Sym);
         void attach_alias(plugin_t p, tag_t t, sub_t s, Sym sym) { attach_alias(Annex::flags(p, t, s), sym); }
+
+        void detach(plugin_t); ///< Removes all annexes of this plugin.
         ///@}
 
         /// @name Iterators
@@ -300,8 +306,6 @@ public:
         return annex_miss(flags);
     }
 
-    /// Supplies an annex this World does not have yet, before falling back to Driver::library; @see RWPhase.
-    std::function<const Def*(flags_t)> annex_fallback;
     /// Lookup annex by Axm::id
     const Def* annex(Enum auto id) { return annex(static_cast<flags_t>(id)); }
 
@@ -771,6 +775,7 @@ public:
     ///@{
     /// Moves everything into Driver::library and imports only the externals() back.
     /// From then on, an annex is imported lazily when first looked up.
+    /// Importing also resolves the Hole%s elaboration solved.
     void move_to_library();
 
     /// Imports @p def of Driver::library into this World.

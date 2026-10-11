@@ -463,9 +463,11 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     const Def* inner_def = nullptr;
     bool unpack          = false;
     for (u64 k = 0; k < nis_nat && !inner_def; ++k) {
-        auto cand = is->proj(nis_nat, k);
-        if (!Axm::isa<tensor::map_reduce_post>(cand)) continue;
-        if (!sole_consumer(cand)) continue;
+        auto cand = Axm::isa<tensor::map_reduce_post>(is->proj(nis_nat, k));
+        if (!cand || !sole_consumer(cand)) continue;
+        // Size-1 axes collapse out of the type, so the input may be declared in another shape than produced.
+        auto [_, __, cand_shapes, ___, ____, _____, ______, _______] = cand->uncurry_args<8>();
+        if (cand_shapes->proj(3, 0) != Sis->proj(nis_nat, k)) continue;
 
         auto m     = maps->proj(nis_nat, k);
         auto id_in = m->isa_mut<Lam>();

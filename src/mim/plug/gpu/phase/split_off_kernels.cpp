@@ -7,16 +7,11 @@ namespace mim::plug::gpu::phase {
 void SplitOffKernels::start() {
     analyze();
 
-    for (const auto& [f, entry] : old_world().annexes())
-        rewrite_annex(f, entry.sym, entry.def);
-
     for (auto kernel : kernels_)
         rewrite(kernel);
 }
 
 bool SplitOffKernels::analyze() {
-    for (auto def : old_world().annexes().defs())
-        analyze(def);
     for (auto def : old_world().externals().muts())
         analyze(def);
 
