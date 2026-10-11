@@ -6,9 +6,7 @@
 namespace mim {
 
 void optimize(World& world) {
-    // The freshly compiled world may still contain solved-but-unresolved Hole%s, let's try to resolve them before
-    // running the optimization pipeline.
-    Cleanup(world).run();
+    world.driver().move_to_library(world);
 
     // clang-format off
     auto compilation_functions = {

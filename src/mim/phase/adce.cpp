@@ -43,7 +43,7 @@ const Def* ADCE::Analysis::rewrite_imm_App(const App* app) {
 }
 
 void ADCE::Analysis::finalize() {
-    for (auto def : world().roots())
+    for (auto def : world().externals().muts())
         analyze(def);
 }
 

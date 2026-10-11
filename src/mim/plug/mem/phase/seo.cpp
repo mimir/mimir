@@ -385,7 +385,7 @@ static bool keep(Lam* lam, const Def* old_var, const Def* abstr) {
 }
 
 void SEO::Analysis::finalize() {
-    for (auto def : world().roots())
+    for (auto def : world().externals().muts())
         analyze(def);
 }
 

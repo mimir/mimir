@@ -124,6 +124,7 @@ const Def* World::Annexes::attach(flags_t flags, Sym sym, const Def* def) {
     if (driver().is_loaded(Annex::demangle(flags))) {
         fe::assert_emplace(flags2entry_, flags, Annexes::Entry{sym, def});
         fe::assert_emplace(sym2flags_, sym, flags);
+        def2flags_.emplace(def, flags);
         def->annex_ = true;
         return def;
     }
@@ -138,6 +139,27 @@ void World::Annexes::attach_alias(flags_t flags, Sym sym) {
 }
 
 /*
+ * Library
+ */
+
+const Def* World::annex(Sym sym) {
+    if (auto flags = fe::lookup(annexes().sym2flags(), sym)) return annex(*flags);
+    if (auto lib = driver().library())
+        if (auto flags = fe::lookup(lib->annexes().sym2flags(), sym)) return annex(*flags);
+    return nullptr;
+}
+
+const Def* World::annex_miss(flags_t flags) {
+    if (auto lib = driver().library(); lib && lib != this)
+        if (auto e = fe::lookup(lib->annexes().flags2entry(), flags)) {
+            log().d("import annex `{}`", e->sym);
+            return annexes().attach(flags, e->sym, import(e->def));
+        }
+
+    fe::throwf("no Axm with ID {}; is plugin `{}` loaded?", flags, Annex::demangle(flags));
+}
+
+/*
  * constructor & destructor
  */
 
@@ -149,21 +171,23 @@ World::World(Driver* driver, const State& state)
     : driver_(driver)
     , zonker_(*this)
     , state_(state)
+    , importer_(*this)
     , move_(driver) {
-    data_.univ        = insert<Univ>(*this);
-    data_.lit_univ_0  = lit_univ(0);
-    data_.lit_univ_1  = lit_univ(1);
-    data_.type_0      = type(lit_univ_0());
-    data_.type_1      = type(lit_univ_1());
-    data_.type_bot    = insert<Bot>(type());
-    data_.type_top    = insert<Top>(type());
-    data_.sigma       = unify<Sigma>(type(), Defs{})->as<Sigma>();
-    data_.tuple       = unify<Tuple>(sigma(), Defs{})->as<Tuple>();
-    data_.type_nat    = insert<mim::Nat>(*this);
-    data_.type_idx    = insert<mim::Idx>(pi(type_nat(), type()));
-    data_.top_nat     = insert<Top>(type_nat());
-    data_.lit_nat_0   = lit_nat(0);
-    data_.lit_nat_1   = lit_nat(1);
+    data_.univ       = insert<Univ>(*this);
+    data_.lit_univ_0 = lit_univ(0);
+    data_.lit_univ_1 = lit_univ(1);
+    data_.type_0     = type(lit_univ_0());
+    data_.type_1     = type(lit_univ_1());
+    data_.type_bot   = insert<Bot>(type());
+    data_.type_top   = insert<Top>(type());
+    data_.sigma      = unify<Sigma>(type(), Defs{})->as<Sigma>();
+    data_.tuple      = unify<Tuple>(sigma(), Defs{})->as<Tuple>();
+    data_.type_nat   = insert<mim::Nat>(*this);
+    data_.type_idx   = insert<mim::Idx>(pi(type_nat(), type()));
+    data_.top_nat    = insert<Top>(type_nat());
+    // A frozen World cannot create them on demand, but e.g. Def::num_tprojs needs them to compute an arity.
+    for (nat_t i = 0; i != Num_Lit_Nats; ++i)
+        data_.lit_nats[i] = lit(type_nat(), i);
     data_.lit_idx_1_0 = lit_idx(1, 0);
     data_.type_bool   = type_idx(2);
     data_.lit_bool[0] = lit_idx(2, 0_u64);

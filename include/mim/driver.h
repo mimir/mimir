@@ -85,6 +85,16 @@ public:
     const Keys& keys() const { return keys_; }          ///< Interned once here: every ast::Lexer borrows them.
     ///@}
 
+    /// @name Library
+    ///@{
+    World* library() { return library_.get(); } ///< `nullptr` before move_to_library().
+    const World* library() const { return library_.get(); }
+    /// Moves everything of @p world into library() and imports only its externals back.
+    /// From then on, @p world imports an annex lazily when first looked up; @see World::import.
+    /// Importing also resolves the Hole%s elaboration solved.
+    void move_to_library(World& world);
+    ///@}
+
     /// @name Diagnostic Naming
     /// Scratch state for PlainNames: which plain Def::sym each gid claimed while one message is formatted.
     /// It lives here - not in a global - so that concurrent Driver%s never share it.
@@ -234,6 +244,7 @@ private:
     mutable Names names_;
     fe::Profiler profiler_;
     World world_;
+    std::unique_ptr<World> library_;
     Paths plugin_dirs_, import_dirs_, prefixes_;
     Flags2Phases phases_;
     Normalizers normalizers_;

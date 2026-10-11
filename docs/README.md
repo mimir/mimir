@@ -61,7 +61,7 @@ Watch what happens to `sq`.
 When `f` applies `sq nat.mul`, that application is [β-reduced](https://en.wikipedia.org/wiki/Lambda_calculus) **on the fly, during graph construction** — not in any later pass.
 This is permitted because `sq` carries the default `tt` [`filter`](@ref mim::Lam::filter) that every direct-style function gets, which greenlights inlining.
 What remains is the bare `x * x`, with **no trace** of `sq` or its abstraction over `T` and `` `* ``.
-The original `sq` lambda is now simply unreachable from the world's [roots](@ref mim::World::roots) (`sq` is not `extern`), so traversing the graph never reaches it; a [`Cleanup`](@ref mim::Cleanup) phase later drops it for good:
+The original `sq` lambda is now simply unreachable from the world's [roots](@ref mim::World::externals) (`sq` is not `extern`), so traversing the graph never reaches it; a [`Cleanup`](@ref mim::Cleanup) phase later drops it for good:
 
 @image html sq.svg "The MimIR graph of `f` — the abstraction has evaporated (type edges elided)"
 @image html sq-dark.svg "The MimIR graph of `f` — the abstraction has evaporated (type edges elided)"

@@ -121,12 +121,8 @@ const DefSet& FreeDefAna::run(Lam* lam) {
 
 void ClosConv::rewrite_external(Def* old_mut) {
     push(); // each external gets its own substitution scope
-    auto new_def = rewrite_root(old_mut);
+    RWPhase::rewrite_external(old_mut);
     pop();
-    // Non-closure externals (e.g. data) carry their external-ness over directly;
-    // converted Lam%s are externalized through their wrapper inside make_stub instead.
-    if (auto new_mut = new_def->isa_mut(); new_mut && old_mut->is_external() && !new_mut->is_external())
-        new_mut->externalize();
 }
 
 void ClosConv::finalize() {
@@ -141,17 +137,17 @@ void ClosConv::finalize() {
 }
 
 const Def* ClosConv::rewrite_imm_Pi(const Pi* pi) {
-    if (!is_bootstrapping() && Pi::isa_cn(pi)) return clos_type_of(pi);
+    if (Pi::isa_cn(pi)) return clos_type_of(pi);
     return RWPhase::rewrite_imm_Pi(pi);
 }
 
 const Def* ClosConv::rewrite_mut_Pi(Pi* pi) {
-    if (!is_bootstrapping() && Pi::isa_cn(pi)) return clos_type_of(pi);
+    if (Pi::isa_cn(pi)) return clos_type_of(pi);
     return RWPhase::rewrite_mut_Pi(pi);
 }
 
 const Def* ClosConv::rewrite_mut_Lam(Lam* old_lam) {
-    if (is_bootstrapping() || !Lam::isa_cn(old_lam)) return RWPhase::rewrite_mut_Lam(old_lam);
+    if (!Lam::isa_cn(old_lam)) return RWPhase::rewrite_mut_Lam(old_lam);
 
     auto& w      = new_world();
     auto stub    = make_stub(old_lam);
@@ -165,8 +161,6 @@ const Def* ClosConv::rewrite_mut_Lam(Lam* old_lam) {
 }
 
 const Def* ClosConv::rewrite_imm_App(const App* app) {
-    if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
-
     if (auto a = Axm::isa<anno>(app))
         if (auto handled = rewrite_anno(a)) return handled;
 
@@ -213,12 +207,11 @@ const Def* ClosConv::rewrite_imm_Extract(const Extract* ex) {
     // Map such a projection onto the corresponding var of the enclosing Lam's converted stub.
     // This is a known workaround; the principled fix is to capture escaping enclosing BBs/ret_vars in the
     // environment (tracked by issue #117).
-    if (!is_bootstrapping())
-        if (auto [var, lam] = isa_var_proj<Lam>(ex); var && lam && lam->ret_var() == var) {
-            auto new_fn  = make_stub(lam).fn;
-            auto new_idx = skip_env(env_param(new_fn->type()->as<Pi>()), Lit::as(var->index()));
-            return new_fn->var(new_fn->num_vars(), new_idx);
-        }
+    if (auto [var, lam] = isa_var_proj<Lam>(ex); var && lam && lam->ret_var() == var) {
+        auto new_fn  = make_stub(lam).fn;
+        auto new_idx = skip_env(env_param(new_fn->type()->as<Pi>()), Lit::as(var->index()));
+        return new_fn->var(new_fn->num_vars(), new_idx);
+    }
     return RWPhase::rewrite_imm_Extract(ex);
 }
 

@@ -111,7 +111,6 @@ The **Graph** tab lays out `--output-dot` with [Graphviz](https://graphviz.org/)
 
 See @ref cli for what each one does.
 Since they are compile-time flags, toggling one re-runs the compiler.
-`--dot-all-annexes` has no checkbox: it buries any program of this size in the annexes it pulls in.
 
 Layout happens on the page, so a graph beyond 512 KB of DOT is refused rather than attempted.
 The last two checkboxes are the ones that buy room — on an optimized `ackermann.mim` the tooltips are two fifths of the file and the labels another third, and the two together take it from 30 KB to 7 KB.

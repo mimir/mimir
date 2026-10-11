@@ -42,7 +42,8 @@ anx lam LocalPtr(T: *): *  = mem.Ptr (T, addr_space_local);
 ///
 /// ### Stream Types
 ///
-axm Stream: *;
+/// An opaque handle - a pointer on every GPU runtime.
+anx let Stream = mem.Ptr0 I8;
 axm default_stream: Stream;
 ///
 /// ## Operations

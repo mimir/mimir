@@ -2,6 +2,7 @@
 
 #include <fe/assert.h>
 
+#include "mim/driver.h"
 #include "mim/world.h"
 
 // Don't use fancy C++-lambdas; it's way too annoying stepping through them in a debugger.
@@ -352,6 +353,16 @@ const Def* Zonker::rewire_mut(Def* mut) {
     if (auto new_imm = mut->immutabilize()) return map(mut, new_imm);
 
     return mut;
+}
+
+/*
+ * Importer
+ */
+
+const Def* Importer::rewrite(const Def* def) {
+    if (auto new_def = lookup(def)) return new_def;
+    if (auto flags = world().driver().library()->annexes().flags(def)) return map(def, world().annex(*flags));
+    return Rewriter::rewrite(def);
 }
 
 } // namespace mim

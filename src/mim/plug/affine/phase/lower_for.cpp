@@ -22,8 +22,6 @@ const Def* merge(bool term, const Def* elem, const Def* prod, const Def* mem) {
 } // namespace
 
 const Def* LowerFor::rewrite_imm_App(const App* app) {
-    if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
-
     if (auto for_ax = Axm::isa<affine::For>(app)) {
         log().d("lower for: {}", for_ax);
         auto [old_body, old_exit, args]               = for_ax->uncurry_args<3>();

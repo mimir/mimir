@@ -44,12 +44,12 @@ const Def* AddMem::rewrite(const Def* old_def) {
     // mem, inside one it must not - but the rewrite memo is shared. Whichever mode first touches a
     // shared type (e.g. a plain 'Cn F32' return pi) would poison the other, hash-order-dependently.
     // While preserving, rebuild immutable types fresh, neither reading nor storing the memo.
-    if (preserving_ && !is_bootstrapping()) {
+    if (preserving_) {
         if (auto pi = old_def->isa_imm<Pi>()) return rewrite_imm_Pi(pi);
         if (auto sigma = old_def->isa_imm<Sigma>()) return rewrite_imm_Sigma(sigma);
         if (auto arr = old_def->isa_imm<Arr>()) return rewrite_imm_Seq(arr);
     }
-    if (curr_mem_ && !preserving_ && !is_bootstrapping()) {
+    if (curr_mem_ && !preserving_) {
         // A tuple with a direct memory operand is context-dependent: the operand splices to the memory
         // current *at this use*. Two ops with hash-consed identical argument tuples (e.g. two `(⊥, val)`
         // buffer fills) must splice *different* memories - so never store or reuse such a tuple via the
@@ -61,14 +61,13 @@ const Def* AddMem::rewrite(const Def* old_def) {
     auto new_def = Rewriter::rewrite(old_def);
     // Rewrite every memory operand to the current memory - after threading the operand's producers, which
     // advances curr_mem_ along the way. Placeholders (`⊥`/`⊤ : mem.M 0`) are thereby spliced into the chain.
-    if (curr_mem_ && !preserving_ && !is_bootstrapping() && !old_def->isa_mut() && old_def->type() && isa_mem(old_def))
-        return curr_mem_;
+    if (curr_mem_ && !preserving_ && !old_def->isa_mut() && old_def->type() && isa_mem(old_def)) return curr_mem_;
     return new_def;
 }
 
 const Def* AddMem::rewrite_imm_Pi(const Pi* pi) {
     auto new_pi = Rewriter::rewrite_imm_Pi(pi)->as<Pi>();
-    if (is_bootstrapping() || preserving_) return new_pi;
+    if (preserving_) return new_pi;
 
     // Only continuations are mem-extended; a pi that already threads memory is left alone.
     if (Pi::isa_cn(pi) && !has_leading_mem(pi)) {
@@ -104,7 +103,7 @@ const Def* AddMem::rewrite_imm_Pi(const Pi* pi) {
 }
 
 const Def* AddMem::rewrite_mut_Lam(Lam* old_lam) {
-    if (is_bootstrapping() || preserving_) return Rewriter::rewrite_mut_Lam(old_lam);
+    if (preserving_) return Rewriter::rewrite_mut_Lam(old_lam);
 
     // Pinned ABI (an axm-app argument and everything below it): rewrite verbatim - no memory threaded or added.
     if (preserved_.contains(old_lam)) {
@@ -136,7 +135,7 @@ const Def* AddMem::rewrite_mut_Lam(Lam* old_lam) {
 }
 
 const Def* AddMem::rewrite_imm_App(const App* app) {
-    if (is_bootstrapping() || preserving_ || !curr_mem_) return Rewriter::rewrite_imm_App(app);
+    if (preserving_ || !curr_mem_) return Rewriter::rewrite_imm_App(app);
 
     auto& w = new_world();
 
@@ -172,7 +171,7 @@ const Def* AddMem::rewrite_imm_App(const App* app) {
 }
 
 const Def* AddMem::rewrite_imm_Tuple(const Tuple* tuple) {
-    if (is_bootstrapping() || preserving_ || !curr_mem_) return Rewriter::rewrite_imm_Tuple(tuple);
+    if (preserving_ || !curr_mem_) return Rewriter::rewrite_imm_Tuple(tuple);
 
     // The current memory must be threaded through the operands in the right order, because a memory operand
     // (which resolves to the *current* memory) is positioned freely relative to the operands that establish

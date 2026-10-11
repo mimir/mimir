@@ -262,11 +262,10 @@ public:
 };
 
 /// Options for Def::dot, World::dot, and Nest::dot.
-/// @note Def::dot and World::dot honor DotConfig::max; World::dot also honors DotConfig::all_annexes.
+/// @note Def::dot and World::dot honor DotConfig::max.
 /// Nest::dot only honors DotConfig::dark.
 struct DotConfig {
     int max             = std::numeric_limits<int>::max(); ///< Maximum recursion depth.
-    bool all_annexes    = false;                           ///< Include all annexes - even if unused (World::dot only).
     bool follow_types   = false;                           ///< Follow Def::type() dependencies.
     bool inline_consts  = false; ///< Wire up literals, axioms, etc. with normal edges instead of detaching them.
     bool default_filter = false; ///< Show Lam::filter() even if it has its default value.

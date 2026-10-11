@@ -111,8 +111,6 @@ bool is_gpu_auto_init(const Def* def) { return Axm::isa<gpu::auto_init>(def) != 
 } // namespace
 
 void HostEmitter::start() {
-    for (auto def : world().annexes().defs())
-        find_kernels(def);
     for (auto def : world().externals().muts())
         find_kernels(def);
 

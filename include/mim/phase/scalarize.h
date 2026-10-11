@@ -24,7 +24,7 @@ namespace mim {
 /// Hence, a Lam may escape (be stored, passed as argument) and still get its signature flattened.
 ///
 /// A Pi is *pinned* (left untouched) if
-/// * it is reachable from an annex (normalizers and backends rely on its exact shape),
+/// * it is reachable from an opaque annex the program uses (normalizers and backends rely on its exact shape),
 /// * an Axm application's signature dictates it - what the Axm consumes and produces,
 ///   plus a *bare* function argument's type (`autodiff.ad f`) - except for subtrees that are
 ///   merely substituted in via (type) arguments (`T` in `mem.store T`), which stay flattenable,
@@ -73,6 +73,7 @@ private:
         /// Kept out of lattice(), as a lattice write would also map() the Pi to its abstract value -
         /// which breaks as soon as that Pi occurs in a type argument (`mem.slot (H, 0)`).
         DefMap<fe::Bitset> keeps_;
+        DefSet interface_; ///< Everything reachable from the opaque annexes reached so far.
     };
 
 public:

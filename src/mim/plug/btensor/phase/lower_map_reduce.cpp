@@ -78,7 +78,6 @@ const Def* build_pointwise(World& w,
 } // namespace
 
 const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
-    if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
     if (Axm::isa<btensor::map_reduce_post>(app)) return lower_map_reduce_post(app);
     if (Axm::isa<btensor::broadcast>(app)) return lower_broadcast(app);
     if (Axm::isa<btensor::pad>(app)) return lower_pad(app);
