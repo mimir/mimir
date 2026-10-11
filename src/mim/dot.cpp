@@ -3,7 +3,6 @@
 #include <print>
 
 #include "mim/def.h"
-#include "mim/driver.h"
 #include "mim/lam.h"
 #include "mim/nest.h"
 #include "mim/world.h"
@@ -274,9 +273,6 @@ void World::dot(std::ostream& os, DotConfig cfg) const {
     dot.prologue();
     for (auto external : externals().muts())
         dot.recurse(external, cfg.max);
-    if (auto lib = driver().library(); lib && cfg.all_annexes)
-        for (auto annex : lib->annexes().defs())
-            dot.recurse(annex, cfg.max);
     dot.epilogue();
 }
 

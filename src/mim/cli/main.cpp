@@ -207,7 +207,6 @@ int main(int argc, char** argv) {
             .opt(opts.outs[NestDot].name() , "file"      , ""  , "--output-nest"         , "Emits the program's nesting tree using Graphviz' DOT language.")
             .opt(opts.outs[PY].name()      , "file"      , ""  , "--output-py"           , "Emits a Python enum to be used to interface with a plugin in Python.")
             .grp("DOT Output")
-            .opt(opts.dot.all_annexes      , ""          , ""  , "--dot-all-annexes"     , "Emits all annexes in DOT output - even unused ones.")
             .opt(opts.dot.dark             , ""          , ""  , "--dot-dark"            , "Drops the white background of the DOT output and lightens its edges, so that it embeds into a dark backdrop.")
             .opt(opts.dot.default_filter   , ""          , ""  , "--dot-default-filter"  , "Always shows a lambda's filter in DOT output - even if it is the default one (`ff` for continuations, `tt` for direct-style functions).")
             .opt(opts.dot.follow_types     , ""          , ""  , "--dot-follow-types"    , "Follows type dependencies in DOT output.")
