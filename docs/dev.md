@@ -604,8 +604,7 @@ The two fused rows only ever count their outermost axis; a [`Shape`](@ref mim::S
 There are several ways to iterate over a MimIR program.
 Which one is best depends on what you want to do and how much structure you need during the traversal.
 
-The simplest approach is to start from [`World::annexes`](@ref mim::World::annexes) and [`World::externals`](@ref mim::World::externals) and recursively visit [`Def::deps`](@ref mim::Def::deps).
-Oftentimes, you can use [`World::roots`](@ref mim::World::roots) if you don't need to distinguish between annexes and externals:
+The simplest approach is to start from the [`World::externals`](@ref mim::World::externals) - the program's roots - and recursively visit [`Def::deps`](@ref mim::Def::deps):
 
 ```cpp
 void visit(DefSet& done, const Def* def) {
@@ -620,8 +619,8 @@ void visit(DefSet& done, const Def* def) {
 void visit() {
     DefSet done;
 
-    for (auto def : world.roots())
-        visit(done, def);
+    for (auto mut : world.externals().muts())
+        visit(done, mut);
 }
 ```
 

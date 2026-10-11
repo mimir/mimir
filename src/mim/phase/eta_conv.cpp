@@ -3,7 +3,7 @@
 namespace mim {
 
 bool EtaConv::analyze() {
-    for (auto def : old_world().roots())
+    for (auto def : old_world().externals().muts())
         visit(def, Lattice::Known);
     return false; // no fixed-point necessary
 }

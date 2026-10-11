@@ -13,7 +13,6 @@ set(MIM_PLUGINS
     ll_nvptx
     math
     mem
-    nvptx
     opt
     option
     ord

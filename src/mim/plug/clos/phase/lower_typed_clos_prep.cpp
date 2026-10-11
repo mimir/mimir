@@ -97,7 +97,7 @@ bool LowerTypedClosPrep::analyze() {
         }
     };
 
-    for (auto def : old_world().roots())
+    for (auto def : old_world().externals().muts())
         visit(visit, def);
 
     return changed;

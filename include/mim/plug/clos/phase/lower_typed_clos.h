@@ -46,7 +46,6 @@ private:
         Lam* new_lam;
     };
 
-    void rewrite_external(Def*) final;
     void finalize() final;
     const Def* rewrite(const Def* def) final;
     const Def* rewrite_imm(const Def* def) final;

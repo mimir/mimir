@@ -61,7 +61,7 @@ bool ClosConvPrep::analyze() {
                 visit(visit, op);
         }
     };
-    for (auto def : old_world().roots())
+    for (auto def : old_world().externals().muts())
         visit(visit, def);
 
     return false;

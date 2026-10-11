@@ -179,8 +179,8 @@ const Def* RWPhase::lookup(const Def* old_def) {
 }
 
 void RWPhase::rewrite_external(Def* old_mut) {
-    auto new_mut = rewrite_root(old_mut)->as_mut();
-    if (old_mut->is_external()) new_mut->externalize();
+    // A phase may have externalized the new mutable itself already, or replaced it by an immutable.
+    if (auto new_mut = rewrite(old_mut)->isa_mut(); new_mut && !new_mut->is_external()) new_mut->externalize();
 }
 
 /*

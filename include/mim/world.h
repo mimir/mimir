@@ -287,15 +287,6 @@ public:
     Annexes& annexes() { return move_.annexes; }
     const Annexes& annexes() const { return move_.annexes; }
 
-    /// annexes() + externals().muts() in this order.
-    auto roots() const {
-        auto res = DefVec(); // TODO use std::views::concat - once we have C++26
-        res.reserve(annexes().size() + externals().size());
-        res.append_range(annexes().defs());
-        res.append_range(externals().muts());
-        return res;
-    }
-
     /// Lookup annex by Sym.
     const Def* annex(Sym sym);
 

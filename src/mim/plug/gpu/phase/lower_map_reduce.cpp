@@ -337,7 +337,7 @@ Lam* build_teardown(World& w,
 void LowerMapReduce::start() {
     DefSet seen;
     auto has_gpu_init
-        = std::ranges::any_of(old_world().roots(), [&](auto def) { return contains_gpu_init(def, seen); });
+        = std::ranges::any_of(old_world().externals().muts(), [&](auto def) { return contains_gpu_init(def, seen); });
     if (has_gpu_init) {
         log().w("not lowering any map-reduce operations to GPU: the program already contains an explicit `gpu.init`");
         return;

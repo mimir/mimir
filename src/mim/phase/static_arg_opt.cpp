@@ -3,7 +3,7 @@
 namespace mim {
 
 bool StaticArgOpt::analyze() {
-    for (auto def : old_world().roots())
+    for (auto def : old_world().externals().muts())
         analyze(def);
     return false; // no fixed-point necessary
 }

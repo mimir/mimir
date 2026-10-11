@@ -423,10 +423,6 @@ public:
 protected:
     void start() override;
 
-    /// Rewrites an external.
-    /// Defaults to rewrite(); override if roots need to be exempt from some of your rewrites.
-    virtual const Def* rewrite_root(const Def* def) { return rewrite(def); }
-
     /// Run **after** all roots have been walked but still **before** the two worlds are swapped.
     /// This is where you drain a worklist of rewrites your hooks deferred (see e.g. clos::phase::ClosConv).
     virtual void finalize() {}

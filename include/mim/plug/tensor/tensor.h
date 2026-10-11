@@ -110,7 +110,7 @@ DefMap<u64> count_consumers(const World& world, std::predicate<const Def*> auto 
     };
 
     auto wl = fe::BFSWorklist<DefSet>();
-    wl.push(world.roots());
+    wl.push(world.externals().muts());
 
     while (!wl.empty()) {
         auto def         = wl.pop();

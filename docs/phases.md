@@ -208,10 +208,10 @@ An immutable annex is just its value and is rewritten like any other immutable.
 The exception is an annex `Lam`: it is code, so it passes through the phase like the rest of the program - as an ordinary `Lam`.
 A phase that wants to process a `Lam` it fetches itself - e.g. a `priv` `*_impl` it instantiates - builds the instance in [`old_world()`](@ref mim::RWPhase::old_world) and rewrites it (see [`tensor::phase::Lower`](@ref mim::plug::tensor::phase::Lower)).
 
-### Roots
+### Externals
 
-[`rewrite_root()`](@ref mim::RWPhase::rewrite_root) is the hook for rewrites that must exempt roots.
-An external is the program's interface to the outside, so a phase that reshapes definitions usually has to leave the roots themselves alone;
+[`rewrite_external()`](@ref mim::RWPhase::rewrite_external) is the hook for rewrites that must exempt the externals.
+An external is the program's interface to the outside, so a phase that reshapes definitions usually has to leave the externals themselves alone;
 [`EtaConv`](@ref mim::EtaConv) uses it so that an external keeps its η-shape.
 
 ### Deferred Rewrites

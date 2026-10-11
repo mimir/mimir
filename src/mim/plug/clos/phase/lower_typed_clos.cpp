@@ -13,13 +13,6 @@ const Def* insert_ret(const Def* def, const Def* ret) {
 }
 } // namespace
 
-void LowerTypedClos::rewrite_external(Def* old_mut) {
-    auto new_def = rewrite_root(old_mut);
-    // Converted Lam%s are externalized inside make_stub; other externals carry over here.
-    if (auto new_mut = new_def->isa_mut(); new_mut && old_mut->is_external() && !new_mut->is_external())
-        new_mut->externalize();
-}
-
 void LowerTypedClos::finalize() {
     while (!worklist_.empty()) {
         auto [lvm, lcm, old_lam, new_lam] = worklist_.front();

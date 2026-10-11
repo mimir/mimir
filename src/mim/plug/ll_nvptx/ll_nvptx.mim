@@ -16,7 +16,6 @@
 /// ## Dependencies
 ///
 plugin gpu;
-plugin nvptx;
 plugin opt;
 import compile;
 ///

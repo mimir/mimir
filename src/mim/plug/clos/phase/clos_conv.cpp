@@ -121,12 +121,8 @@ const DefSet& FreeDefAna::run(Lam* lam) {
 
 void ClosConv::rewrite_external(Def* old_mut) {
     push(); // each external gets its own substitution scope
-    auto new_def = rewrite_root(old_mut);
+    RWPhase::rewrite_external(old_mut);
     pop();
-    // Non-closure externals (e.g. data) carry their external-ness over directly;
-    // converted Lam%s are externalized through their wrapper inside make_stub instead.
-    if (auto new_mut = new_def->isa_mut(); new_mut && old_mut->is_external() && !new_mut->is_external())
-        new_mut->externalize();
 }
 
 void ClosConv::finalize() {

@@ -278,7 +278,7 @@ Because `iter` carries the `@(core.pe.is_closed n)` [partial-evaluation](https:/
 A mismatch would fail the build.
 
 Now notice what _survives_.
-Only `iter` is `extern`, hence the sole [root](@ref mim::World::roots).
+Only `iter` is `extern`, hence the sole [root](@ref mim::World::externals).
 `succ`, `add`, `mul`, `pow`, and the assertion are all unreachable from the roots, so [`Cleanup`](@ref mim::Cleanup) prunes them.
 The graph MimIR keeps is therefore just `iter` itself:
 
