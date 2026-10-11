@@ -132,15 +132,10 @@ const Def* World::Annexes::attach(flags_t flags, Sym sym, const Def* def) {
 }
 
 void World::Annexes::detach(plugin_t plugin) {
-    for (auto i = flags2entry_.begin(); i != flags2entry_.end();) {
-        if (Annex::flags2plugin(i->first) == plugin) {
-            sym2flags_.erase(i->second.sym);
-            def2flags_.erase(i->second.def);
-            i = flags2entry_.erase(i);
-        } else {
-            ++i;
-        }
-    }
+    auto of_plugin = [plugin](const auto& p) { return Annex::flags2plugin(p.second) == plugin; };
+    std::erase_if(sym2flags_, of_plugin); // also drops the aliases
+    std::erase_if(def2flags_, of_plugin);
+    std::erase_if(flags2entry_, [plugin](const auto& p) { return Annex::flags2plugin(p.first) == plugin; });
 }
 
 void World::Annexes::attach_alias(flags_t flags, Sym sym) {
@@ -164,7 +159,7 @@ public:
 
     const Def* rewrite(const Def* def) final {
         if (auto new_def = lookup(def)) return new_def;
-        if (auto flags = world().driver().library().annexes().flags(def)) return map(def, world().annex(*flags));
+        if (auto flags = world().driver().library()->annexes().flags(def)) return map(def, world().annex(*flags));
         return Rewriter::rewrite(def);
     }
 };
@@ -178,14 +173,14 @@ const Def* World::import(const Def* def) {
 
 const Def* World::annex(Sym sym) {
     if (auto flags = fe::lookup(annexes().sym2flags(), sym)) return annex(*flags);
-    if (auto flags = fe::lookup(driver().library().annexes().sym2flags(), sym)) return annex(*flags);
+    if (auto lib = driver().library())
+        if (auto flags = fe::lookup(lib->annexes().sym2flags(), sym)) return annex(*flags);
     return nullptr;
 }
 
 const Def* World::annex_miss(flags_t flags) {
-    auto& lib = driver().library();
-    if (&lib != this)
-        if (auto e = fe::lookup(lib.annexes().flags2entry(), flags)) {
+    if (auto lib = driver().library(); lib && lib != this)
+        if (auto e = fe::lookup(lib->annexes().flags2entry(), flags)) {
             log().d("import annex `{}`", e->sym);
             return annexes().attach(flags, e->sym, import(e->def));
         }
@@ -194,10 +189,9 @@ const Def* World::annex_miss(flags_t flags) {
 }
 
 void World::move_to_library() {
-    auto& lib = driver().library();
-    swap(*this, lib);
-    swap(state_, lib.state_);
-    for (auto mut : lib.externals().muts())
+    auto& lib = driver().library_ = inherit();
+    swap(*this, *lib);
+    for (auto mut : lib->externals().muts())
         import(mut)->as_mut()->externalize();
 }
 
@@ -214,28 +208,26 @@ World::World(Driver* driver, const State& state)
     , zonker_(*this)
     , state_(state)
     , move_(driver) {
-    data_.univ        = insert<Univ>(*this);
-    data_.lit_univ_0  = lit_univ(0);
-    data_.lit_univ_1  = lit_univ(1);
-    data_.type_0      = type(lit_univ_0());
-    data_.type_1      = type(lit_univ_1());
-    data_.type_bot    = insert<Bot>(type());
-    data_.type_top    = insert<Top>(type());
-    data_.sigma       = unify<Sigma>(type(), Defs{})->as<Sigma>();
-    data_.tuple       = unify<Tuple>(sigma(), Defs{})->as<Tuple>();
-    data_.type_nat    = insert<mim::Nat>(*this);
-    data_.type_idx    = insert<mim::Idx>(pi(type_nat(), type()));
-    data_.top_nat     = insert<Top>(type_nat());
-    data_.lit_nat_0   = lit_nat(0);
-    data_.lit_nat_1   = lit_nat(1);
+    data_.univ       = insert<Univ>(*this);
+    data_.lit_univ_0 = lit_univ(0);
+    data_.lit_univ_1 = lit_univ(1);
+    data_.type_0     = type(lit_univ_0());
+    data_.type_1     = type(lit_univ_1());
+    data_.type_bot   = insert<Bot>(type());
+    data_.type_top   = insert<Top>(type());
+    data_.sigma      = unify<Sigma>(type(), Defs{})->as<Sigma>();
+    data_.tuple      = unify<Tuple>(sigma(), Defs{})->as<Tuple>();
+    data_.type_nat   = insert<mim::Nat>(*this);
+    data_.type_idx   = insert<mim::Idx>(pi(type_nat(), type()));
+    data_.top_nat    = insert<Top>(type_nat());
+    // A frozen World cannot create them on demand, but e.g. Def::num_tprojs needs them to compute an arity.
+    for (nat_t i = 0; i != Num_Lit_Nats; ++i)
+        data_.lit_nats[i] = lit(type_nat(), i);
     data_.lit_idx_1_0 = lit_idx(1, 0);
     data_.type_bool   = type_idx(2);
     data_.lit_bool[0] = lit_idx(2, 0_u64);
     data_.lit_bool[1] = lit_idx(2, 1_u64);
     data_.lit_nat_max = lit_nat(nat_t(-1));
-    // A frozen World cannot create them on demand, but e.g. Def::num_tprojs needs them to compute an arity.
-    for (nat_t i = 0; i != Num_Lit_Nats; ++i)
-        lit_nat(i);
 }
 
 World::World(Driver* driver, Sym name)

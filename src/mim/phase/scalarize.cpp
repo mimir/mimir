@@ -68,22 +68,19 @@ void Scalarize::Analysis::keep_param(const Def* def) {
     }
 }
 
-void Scalarize::Analysis::prepare() {
-    if (std::exchange(annexes_pinned_, true)) return;
-
-    // Everything reachable from an annex is interface: normalizers and backends rely on its exact shape.
-    auto wl = fe::BFSWorklist<DefSet>();
-    for (auto def : world().annexes().defs())
-        if (world().annexes().opaque(def)) wl.push(def);
-
-    while (!wl.empty()) {
-        auto def = wl.pop();
-        if (auto pi = isa_flattenable(def)) pin(pi);
-        wl.push(def->deps());
-    }
-}
-
 void Scalarize::Analysis::inspect(const Def* def) {
+    // Everything reachable from an opaque annex is interface: normalizers and backends rely on its exact shape.
+    if (world().annexes().opaque(def)) {
+        auto wl = fe::BFSWorklist<DefSet&>(interface_);
+        wl.push(def);
+        while (!wl.empty()) {
+            auto d = wl.pop();
+            if (auto pi = isa_flattenable(d)) pin(pi);
+            wl.push(d->deps());
+        }
+        return;
+    }
+
     if (auto app = def->isa<App>()) {
         // The shapes an Axm's signature dictates are interface (e.g. `affine.For`'s body or `autodiff.ad f`):
         // normalizers and plugin phases match on their exact shape.

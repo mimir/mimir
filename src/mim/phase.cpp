@@ -156,7 +156,7 @@ void RWPhase::start() {
     auto gid = new_world().curr_gid();
     for (auto mut : old_world().externals().muts())
         rewrite_external(mut);
-    finalize(); // inside the span: work deferred by the root walk belongs to the root walk
+    finalize();
     profile_count("rw.defs", new_world().curr_gid() - gid);
 
     swap(old_world(), new_world());

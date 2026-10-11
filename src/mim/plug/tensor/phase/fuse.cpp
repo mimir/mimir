@@ -220,7 +220,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
 
     for (u64 k = 0; k < nis_nat; ++k) {
         auto inner = Axm::isa<tensor::map_reduce_post>(is->proj(nis_nat, k));
-        if (!inner || !reads_as_produced(inner, Sis->proj(nis_nat, k))) continue;
+        if (!inner) continue;
 
         auto [inner_nis_nps, inner_meta, inner_shapes, inner_in_tys, inner_comb_init, inner_map_out, inner_maps_all,
               inner_is_all]
@@ -234,7 +234,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         auto [inner_is, inner_post_is]                                          = inner_is_all->projs<2>();
 
         auto inner_nis_nat = Lit::isa<u64>(inner_nis);
-        if (!inner_nis_nat) continue;
+        if (!inner_nis_nat || inner_So != Sis->proj(nis_nat, k)) continue; // see reads_as_produced
 
         // Epilogue inputs on the inner would have to be re-read inside the fused combiner; only
         // epilogue-free inners fuse (their identity post is checked below).

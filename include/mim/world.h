@@ -234,8 +234,7 @@ public:
         const auto& sym2flags() const { return sym2flags_; }
         /// The flags of the annex @p def, if it is one.
         const flags_t* flags(const Def* def) const { return def->is_annex() ? fe::lookup(def2flags_, def) : nullptr; }
-        /// Like flags() but only for an Axm or a mutable other than a Lam - whose identity phases must preserve.
-        /// A Lam is code, and an immutable is just its value.
+        /// Like flags() but only for an Axm or a non-Lam mutable - whose identity phases must preserve.
         const flags_t* opaque(const Def* def) const {
             return def->isa<Axm>() || (def->isa_mut() && !def->isa<Lam>()) ? flags(def) : nullptr;
         }
@@ -544,13 +543,9 @@ public:
     /// World::lit would hash-cons a Lit just to launder an integer. Worth ~4% of an `-Og` Debug compile.
     static constexpr nat_t Num_Lit_Nats = 64;
 
-    const Lit* lit_nat(nat_t a) {
-        if (a >= Num_Lit_Nats) return lit(type_nat(), a);
-        if (auto cached = data_.lit_nats[a]) return cached;
-        return data_.lit_nats[a] = lit(type_nat(), a); // stays null while frozen - then we simply retry
-    }
-    const Lit* lit_nat_0() { return data_.lit_nat_0; }
-    const Lit* lit_nat_1() { return data_.lit_nat_1; }
+    const Lit* lit_nat(nat_t a) { return a < Num_Lit_Nats ? data_.lit_nats[a] : lit(type_nat(), a); }
+    const Lit* lit_nat_0() { return data_.lit_nats[0]; }
+    const Lit* lit_nat_1() { return data_.lit_nats[1]; }
     const Lit* lit_nat_max() { return data_.lit_nat_max; }
     const Lit* lit_idx_1_0() { return data_.lit_idx_1_0; }
     // clang-format off
@@ -969,8 +964,6 @@ private:
         const Idx* type_idx;
         const Lit* lit_univ_0;
         const Lit* lit_univ_1;
-        const Lit* lit_nat_0;
-        const Lit* lit_nat_1;
         const Lit* lit_nat_max;
         const Lit* lit_idx_1_0;
         std::array<const Lit*, 2> lit_bool;
