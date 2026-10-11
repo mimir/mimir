@@ -233,11 +233,9 @@ public:
         auto& sym2flags() { return sym2flags_; }
         const auto& sym2flags() const { return sym2flags_; }
         /// The flags of the annex @p def, if it is one.
-        const flags_t* flags(const Def* def) const { return def->is_annex() ? fe::lookup(def2flags_, def) : nullptr; }
+        const flags_t* flags(const Def* d) const { return d->is_annex() ? fe::lookup(def2flags_, d) : nullptr; }
         /// Like flags() but only for an Axm or a non-Lam mutable - whose identity phases must preserve.
-        const flags_t* opaque(const Def* def) const {
-            return def->isa<Axm>() || (def->isa_mut() && !def->isa<Lam>()) ? flags(def) : nullptr;
-        }
+        const flags_t* opaque(const Def* d) const { return d->isa<Axm>() || !d->isa_mut<Lam>() ? flags(d) : nullptr; }
         size_t size() const { return flags2entry_.size(); }
         ///@}
 
