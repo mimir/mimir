@@ -199,4 +199,19 @@ private:
     }
 };
 
+/// Imports from Driver::library: an annex therein is looked up via World::annex, so it is imported only once.
+class Importer : public Rewriter {
+public:
+    Importer(World& world)
+        : Rewriter(world) {}
+
+    const Def* import(const Def* root) { return Rewriter::rewrite(root); }
+    const Def* rewrite(const Def*) final;
+
+    friend void swap(Importer& i1, Importer& i2) noexcept {
+        using std::swap;
+        swap(static_cast<Rewriter&>(i1), static_cast<Rewriter&>(i2));
+    }
+};
+
 } // namespace mim

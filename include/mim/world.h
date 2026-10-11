@@ -306,7 +306,10 @@ public:
     const Def* annex() {
         return annex(Annex::base<id>());
     }
-    ///@}
+
+    /// Imports @p def of Driver::library into this World.
+    const Def* import(const Def* def) { return importer_.import(def); }
+    //@}
 
     /// @name Univ, Type, Var, Proxy, Hole
     ///@{
@@ -757,16 +760,8 @@ public:
     void dot(const char* file = nullptr, DotConfig cfg = {}) const;
     ///@}
 
-    /// @name Library
-    ///@{
-    /// Imports @p def of Driver::library into this World.
-    const Def* import(const Def* def);
-    ///@}
-
 private:
     const Def* annex_miss(flags_t);
-    class Importer;
-    void drop_importer(); ///< An Importer maps into the contents it was created for; those have moved.
 
     Shape check_index(const Def* index); ///< Validates @p index and folds its size-1 axes away.
     /// Type-checks a *scalar* @p index of `Idx size`; `true` if the axis has folded out of @p type.
@@ -877,7 +872,7 @@ private:
     Driver* driver_;
     Zonker zonker_;
     State state_;
-    std::unique_ptr<Importer> importer_;
+    Importer importer_;
 
     struct SeaHash {
         using is_avalanching = void;
@@ -969,14 +964,13 @@ private:
     friend void swap(World& w1, World& w2) noexcept {
         using std::swap;
         // clang-format off
-        swap(w1.driver_,  w2.driver_ );
-        swap(w1.zonker_,  w2.zonker_ );
-        swap(w1.state_,   w2.state_);
-        swap(w1.data_,    w2.data_ );
-        swap(w1.move_,    w2.move_ );
+        swap(w1.driver_,   w2.driver_  );
+        swap(w1.zonker_,   w2.zonker_  );
+        swap(w1.state_,    w2.state_   );
+        swap(w1.importer_, w2.importer_);
+        swap(w1.data_,     w2.data_    );
+        swap(w1.move_,     w2.move_    );
         // clang-format on
-        w1.drop_importer();
-        w2.drop_importer();
 
         swap(w1.data_.univ->world_, w2.data_.univ->world_);
         assert(&w1.univ()->world() == &w1);

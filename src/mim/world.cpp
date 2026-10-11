@@ -149,28 +149,6 @@ void World::Annexes::attach_alias(flags_t flags, Sym sym) {
  * Library
  */
 
-/// Imports from Driver::library: an annex therein is looked up via World::annex, so it is imported only once.
-class World::Importer : public Rewriter {
-public:
-    Importer(World& world)
-        : Rewriter(world) {}
-
-    const Def* import(const Def* root) { return Rewriter::rewrite(root); }
-
-    const Def* rewrite(const Def* def) final {
-        if (auto new_def = lookup(def)) return new_def;
-        if (auto flags = world().driver().library()->annexes().flags(def)) return map(def, world().annex(*flags));
-        return Rewriter::rewrite(def);
-    }
-};
-
-void World::drop_importer() { importer_.reset(); }
-
-const Def* World::import(const Def* def) {
-    if (!importer_) importer_ = std::make_unique<Importer>(*this);
-    return importer_->import(def);
-}
-
 const Def* World::annex(Sym sym) {
     if (auto flags = fe::lookup(annexes().sym2flags(), sym)) return annex(*flags);
     if (auto lib = driver().library())
@@ -200,6 +178,7 @@ World::World(Driver* driver, const State& state)
     : driver_(driver)
     , zonker_(*this)
     , state_(state)
+    , importer_(*this)
     , move_(driver) {
     data_.univ       = insert<Univ>(*this);
     data_.lit_univ_0 = lit_univ(0);
