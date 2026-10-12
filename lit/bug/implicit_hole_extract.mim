@@ -1,0 +1,9 @@
+// RUN: %mim %s -o - | %FileCheck %s
+// CHECK: extern lam f
+// CHECK: icmp
+plugin core;
+
+lam apply {E: *} (pred: E → Bool) (x: E): Bool = pred x;
+lam is_diag (q: [I32, I32]): Bool = let (a, b) = q; core.icmp.e (a, b);
+
+extern lam f (q: [I32, I32]): Bool = apply is_diag q;

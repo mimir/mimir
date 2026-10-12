@@ -590,7 +590,7 @@ const Def* World::extract1(const Def* d, const Def* index) {
     auto index_ty = index->unfold_type();
     auto size     = Idx::isa(index_ty);
     auto lidx     = Lit::isa(index);
-    auto type     = d->unfold_type();
+    auto type     = d->unfold_type()->zonk(); // a Var's type may still be a since-resolved Hole of its binder
 
     if (is_folded_axis(type, index, size)) return d;
 
