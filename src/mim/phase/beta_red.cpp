@@ -2,26 +2,18 @@
 
 namespace mim {
 
-static bool is_trivial(Lam* lam, const Var* var) {
-    if (auto app = lam->body()->isa<App>()) {
-        if (lam->ret_var() == app->callee() || !app->callee()->has_free_var(var))
-            return std::ranges::all_of(app->targs(), [&](const Def* arg) {
-                if (auto ex = arg->isa<Extract>(); ex && ex->tuple() == var) return true;
-                return arg == var || !arg->has_free_var(var);
-            });
-    }
-    return false;
-}
-
 static bool is_trivial(Lam* lam) {
-    if (auto var = lam->has_var()) return is_trivial(lam, var);
+    if (auto var = lam->has_var()) {
+        if (auto app = lam->body()->isa<App>()) {
+            if (lam->ret_var() == app->callee() || !app->callee()->has_free_var(var))
+                return std::ranges::all_of(app->targs(), [&](const Def* arg) {
+                    if (auto ex = arg->isa<Extract>(); ex && ex->tuple() == var) return true;
+                    return arg == var || !arg->has_free_var(var);
+                });
+        }
+        return false;
+    }
     return true;
-}
-
-static Lam* forwardee(Lam* lam) {
-    if (auto app = lam->body()->isa<App>())
-        if (auto callee = app->callee()->isa_mut<Lam>(); callee && callee->is_set()) return callee;
-    return nullptr;
 }
 
 bool BetaRed::analyze() {
@@ -36,7 +28,7 @@ bool BetaRed::analyze() {
     while (!worklist.empty()) {
         auto lam = worklist.front();
         worklist.pop_front();
-        if (auto callee = forwardee(lam)) {
+        if (auto callee = lam->forwardee()) {
             if (auto& once = once_[callee]; once) {
                 once = false;
                 if (trivial_.contains(callee) && !cyclic_.contains(callee)) worklist.emplace_back(callee);
@@ -74,39 +66,22 @@ void BetaRed::visit(const Def* def, bool candidate) {
 
 const Def* BetaRed::rewrite_imm_App(const App* app) {
     if (auto old_lam = app->callee()->isa_mut<Lam>(); old_lam && old_lam->is_set() && is_candidate(old_lam))
-        return reduce(old_lam, rewrite(app->arg()));
+        return reduce(old_lam, app->arg());
     return RWPhase::rewrite_imm_App(app);
 }
 
-const Def* BetaRed::reduce(Lam* old_lam, const Def* new_arg) {
+const Def* BetaRed::reduce(Lam* old_lam, const Def* old_arg) {
     profile_count("β-reduction");
     log().d("β-reduction `{}`", old_lam);
     invalidate();
 
-    auto var = old_lam->has_var();
-    if (!var) return rewrite(old_lam->body());
-
-    if (is_once(old_lam)) {
-        map(var, new_arg);
+    if (auto var = old_lam->has_var(); var && is_once(old_lam)) {
+        map(var, rewrite(old_arg));
         return rewrite(old_lam->body());
     }
 
-    // The old body may already be memoized for a rebuilt copy of old_lam, so substitute var directly.
-    auto& w    = new_world();
-    auto subst = [&, this](this auto&& self, const Def* def) -> const Def* {
-        if (def == var) return new_arg;
-        if (!def->has_free_var(var)) return this->rewrite(def);
-        if (auto ex = def->isa<Extract>(); ex && ex->tuple() == var) return w.extract(new_arg, self(ex->index()));
-        auto tuple = def->as<Tuple>();
-        auto ops   = DefVec(tuple->ops(), [&](const Def* op) { return self(op); });
-        return tuple->type()->has_free_var(var) ? w.tuple(ops) : w.tuple(this->rewrite(tuple->type()), ops);
-    };
-
-    auto app     = old_lam->body()->as<App>();
-    auto fwd_arg = subst(app->arg());
-    if (auto callee = app->callee()->isa_mut<Lam>(); callee && callee->is_set() && is_candidate(callee))
-        return reduce(callee, fwd_arg);
-    return new_world().app(subst(app->callee()), fwd_arg);
+    // The old body may already be memoized for a rebuilt copy of old_lam, so reduce in the old world.
+    return rewrite(old_lam->reduce_body(old_arg));
 }
 
 } // namespace mim

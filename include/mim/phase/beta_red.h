@@ -18,7 +18,7 @@ private:
     void visit(const Def*, bool candidate); // lattice: true -> false
 
     const Def* rewrite_imm_App(const App*) final;
-    const Def* reduce(Lam*, const Def* new_arg);
+    const Def* reduce(Lam*, const Def* old_arg);
     bool is_once(Lam* lam) const { return fe::assert_lookup(once_, lam); }
     bool is_candidate(Lam* lam) const { return !cyclic_.contains(lam) && (is_once(lam) || trivial_.contains(lam)); }
 
