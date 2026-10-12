@@ -1,8 +1,8 @@
-// Runtime wrappers for the MimIR `ll_nvptx` backend.
+// Runtime wrappers for the MimIR `nvptx` backend.
 //
 // Like `ll`'s `mim_rt.c`, this file is compiled to textual LLVM IR by `clang` at build time (see
 // `add_mim_runtime` in `cmake/Mim.cmake`) and embedded into or linked with the host module emitted
-// by the `ll_nvptx` backend (`-X ll_nvptx:rt=embed|extern`); see issue #486.
+// by the `nvptx` backend (`-X nvptx:rt=embed|extern`); see issue #486.
 //
 // It intentionally does not include <cuda.h>: the wrappers only touch the CUresult return codes
 // that the backend already has in hand, so they stay self-contained and build without the CUDA

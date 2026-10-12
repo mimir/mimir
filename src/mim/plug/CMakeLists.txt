@@ -10,9 +10,9 @@ set(MIM_PLUGINS
     demo
     gpu
     ll
-    ll_nvptx
     math
     mem
+    nvptx
     opt
     option
     ord

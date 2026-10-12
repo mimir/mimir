@@ -4,11 +4,19 @@
 
 namespace mim {
 
-std::pair<const Def*, const Def*> DispatchNormalize::finish_Lam(Lam*, const Def* filter, const Def* body) {
+const Def* DispatchNormalize::rewrite_mut_Lam(Lam* old_lam) {
+    auto new_lam = new_world().mut_lam(rewrite(old_lam->type())->as<Pi>());
+    map(old_lam, new_lam);
+    if (!old_lam->is_set()) return new_lam;
+
+    auto _      = enter(old_lam);
+    auto filter = rewrite(old_lam->filter());
+    auto body   = rewrite(old_lam->body());
     if (auto dispatch = Dispatch(body))
         if (auto callee = normalize(dispatch); callee != dispatch.callee())
             body = new_world().app(callee, dispatch.arg());
-    return {filter, body};
+    new_lam->set(filter, body);
+    return seal(old_lam, new_lam);
 }
 
 const Def* DispatchNormalize::normalize(Switch sw) {

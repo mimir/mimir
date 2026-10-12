@@ -97,5 +97,5 @@ extern lam _default_compile (): compile.Phase =
         compile.named "refly.remove_dbg_repl",
         compile.named "gpu.check_addr_spaces_repl",
         compile.named "ll.emit",
-        compile.named "ll_nvptx.emit",
+        compile.named "nvptx.emit",
     );

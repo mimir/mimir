@@ -114,7 +114,7 @@ struct BB {
 class Emitter;
 
 /// The heavy, target-independent emitter methods are compiled once into `libmim_ll` (see ll.cpp).
-/// `libmim_ll_nvptx` reaches them through these `extern "C"` shims instead of recompiling the bodies;
+/// `libmim_nvptx` reaches them through these `extern "C"` shims instead of recompiling the bodies;
 /// Emitter caches the pointers via `GET_FUN_PTR` in its constructor.
 extern "C" {
 MIM_EXPORT void mim_ll_convert(Emitter&, const Def*, bool simd, std::string& res);
@@ -132,7 +132,7 @@ public:
         , ostream_(ostream) {
         auto& driver = world.driver();
         // Ensure libmim_ll is loaded so the shims below resolve (e.g. when a derived backend like
-        // ll_nvptx uses us). Loading merely registers ll.emit; it does not run it.
+        // nvptx uses us). Loading merely registers ll.emit; it does not run it.
         if (!driver.is_loaded("ll")) driver.load("ll");
         convert_       = driver.GET_FUN_PTR("ll", mim_ll_convert);
         finalize_      = driver.GET_FUN_PTR("ll", mim_ll_finalize);
@@ -175,8 +175,8 @@ public:
 
     /// Locates the runtime module `rt/<filename>` (produced by `add_mim_runtime`) in the driver's
     /// search paths, reads it, and stores it for `Rt::embed` splicing.
-    /// Backends share this instead of duplicating the lookup: `ll` loads `ll_rt.ll`, `ll_nvptx`
-    /// loads `ll_nvptx_rt.ll`, and so on — one merged module per plugin.
+    /// Backends share this instead of duplicating the lookup: `ll` loads `ll_rt.ll`, `nvptx`
+    /// loads `nvptx_rt.ll`, and so on — one merged module per plugin.
     /// @returns whether the module was found.
     bool load_rt_module(std::string_view filename);
 
@@ -204,7 +204,6 @@ protected:
 
     /// As above but yielding an empty string is permitted.
     std::string emit_unsafe(const Def* def) {
-        if (auto i = globals_.find(def); i != globals_.end()) return i->second;
         if (auto i = locals_.find(def); i != locals_.end()) return i->second;
 
         auto place          = scheduler_.smart(curr_lam_, def);
@@ -256,7 +255,6 @@ protected:
     Scheduler scheduler_;
     Scheduler::Schedule schedule_;
     DefMap<std::string> locals_;
-    DefMap<std::string> globals_;
     DefMap<std::string> types_;
     LamMap<BB> lam2bb_;
 
@@ -357,8 +355,6 @@ inline static const Def* find_common_simd_src(const App* app) {
 }
 
 inline std::string Emitter::id(const Def* def, bool force_bb /*= false*/) const {
-    if (auto global = def->isa<Global>()) return "@" + global->unique_name();
-
     if (auto lam = def->isa_mut<Lam>(); lam && !force_bb) {
         if (lam->type()->ret_pi()) {
             if (lam->is_external() || !lam->is_set())
@@ -418,7 +414,8 @@ inline void Emitter::start() {
         std::println(md_decls, "!{} = !{{!\"llvm.loop.vectorize.enable\", i1 true}}", LoopMdBase);
         std::println(md_decls, "!{} = !{{!\"llvm.loop.vectorize.enable\", i1 false}}", LoopMdBase + 1);
         for (const auto& [_, md] : loop_md_)
-            std::println(md_decls, "!{} = distinct !{{!{}, !{}}}", md.first, md.first, md.second ? LoopMdBase : LoopMdBase + 1);
+            std::println(md_decls, "!{} = distinct !{{!{}, !{}}}", md.first, md.first,
+                         md.second ? LoopMdBase : LoopMdBase + 1);
         section(md_decls.str());
     }
 }

@@ -71,7 +71,7 @@ A table is titled with a link to the plugin it belongs to - [ll](@ref xarg_ll), 
 ### Environment Variables {#clipluginenv}
 
 A plugin may also read environment variables - typically to locate an external toolchain it shells out to.
-It declares them as [`mim::PluginEnv`](@ref mim::PluginEnv)s next to the code that reads them, so the [_Plugin Environment Variables_ tables](@ref envs) under [Usage](@ref cliusage) are generated - and cross-linked with the plugin pages - just like the `-X` tables above; [ll_nvptx](@ref env_ll_nvptx) is one.
+It declares them as [`mim::PluginEnv`](@ref mim::PluginEnv)s next to the code that reads them, so the [_Plugin Environment Variables_ tables](@ref envs) under [Usage](@ref cliusage) are generated - and cross-linked with the plugin pages - just like the `-X` tables above; [nvptx](@ref env_nvptx) is one.
 Since a plugin only announces them once it is loaded, `mim -p <plugin> --help` lists the ones belonging to `<plugin>`.
 
 <div class="section_buttons">

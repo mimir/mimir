@@ -119,7 +119,7 @@ Lam* Clos2SJLJ::get_lpad(Lam* lam, const Def* rb) {
     return lpad;
 }
 
-std::pair<const Def*, const Def*> Clos2SJLJ::finish_Lam(Lam* lam, const Def* filter, const Def* body) {
+std::pair<const Def*, const Def*> Clos2SJLJ::convert(Lam* lam, const Def* filter, const Def* body) {
     auto& w = new_world();
     if (!Lam::isa_cn(lam)) return {filter, body};
     get_exn_closures(body);
@@ -168,13 +168,13 @@ std::pair<const Def*, const Def*> Clos2SJLJ::finish_Lam(Lam* lam, const Def* fil
     auto branch    = w.extract(w.tuple(branches), tag);
 
     // Finally, replace the exception closures (which now live in the branch envs) with throw closures.
-    push(); // cur_jbuf_/cur_rbuf_ are per-Lam, so the substitution must not outlive this finish_Lam()
+    push(); // cur_jbuf_/cur_rbuf_ are per-Lam, so the substitution must not outlive this convert()
     body = subst_exn_closures(clos_apply(branch, m1));
     pop();
     return {filter, body};
 }
 
-// finish_Lam() substitutes within the *already rewritten* body, so a new-world Def means "substitute in place".
+// convert() substitutes within the *already rewritten* body, so a new-world Def means "substitute in place".
 const Def* Clos2SJLJ::rewrite(const Def* def) {
     return &def->world() == &new_world() ? subst_exn_closures(def) : RWPhase::rewrite(def);
 }
@@ -190,6 +190,17 @@ const Def* Clos2SJLJ::subst_exn_closures(const Def* def) {
     if (def->isa_mut() || !def->is_term()) return def;
     if (def->isa<Var>()) return def; // atomic; binder is in binder_ and not descended into here
     return rewrite_imm(def)->set(def->dbg_key());
+}
+
+const Def* Clos2SJLJ::rewrite_mut_Lam(Lam* old_lam) {
+    auto new_lam = new_world().mut_lam(rewrite(old_lam->type())->as<Pi>());
+    map(old_lam, new_lam);
+    if (!old_lam->is_set()) return new_lam;
+
+    auto _              = enter(old_lam);
+    auto [filter, body] = convert(new_lam, rewrite(old_lam->filter()), rewrite(old_lam->body()));
+    new_lam->set(filter, body);
+    return seal(old_lam, new_lam);
 }
 
 } // namespace mim::plug::clos::phase

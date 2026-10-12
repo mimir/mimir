@@ -29,7 +29,6 @@
     X(Lit,    Judge::Intro) /* keep this first - causes Lit to appear left in Def::less/Def::greater*/             \
     X(Axm,    Judge::Intro)                                                                                        \
     X(Var,    Judge::Intro)                                                                                        \
-    X(Global, Judge::Intro)                                                                                        \
     X(Proxy,  Judge::Intro)                                                                                        \
     X(Hole,   Judge::Hole )                                                                                        \
     X(Type,   Judge::Meta ) X(Univ,  Judge::Meta ) X(UMax,    Judge::Meta) X(UInc,   (Judge::Meta               )) \
@@ -64,7 +63,6 @@
     X(Nom)    X(Name)  X(Struc)
 
 #define MIM_MUT_NODE(X)                                                                                            \
-    X(Global)                                                                                                      \
     X(Hole)                                                                                                        \
     X(Pi)    X(Lam)                                                                                                \
     X(Sigma)                                                                                                       \
@@ -237,7 +235,7 @@ template<class F> concept MutPred   = std::predicate<F, Def*>;
 /// CRTP-based mixin to declare setters for Def::loc \& Def::name using a *covariant* return type.
 /// Forwards every argument list the Def::set%ters accept and hands back a @p P instead of a Def.
 /// @note Setters::Fwd keeps this variadic out of the overload set of the `set` members subclasses declare
-/// themselves (Global::set, Pi::set, ...) - none of those is a template on @p Ow, so they keep winning.
+/// themselves (Pi::set, Sigma::set, ...) - none of those is a template on @p Ow, so they keep winning.
 template<class P, class D = Def>
 class // D is only needed to make the resolution `D::template set` lazy
 #ifdef _MSC_VER
@@ -1127,41 +1125,6 @@ public:
 
     static constexpr auto Node      = mim::Node::Proxy;
     static constexpr size_t Num_Ops = std::dynamic_extent;
-
-private:
-    friend class World;
-};
-
-/// @deprecated A global variable in the data segment.
-/// A Global may be mutable or immutable.
-/// @deprecated Will be removed.
-class Global : public Def, public Setters<Global> {
-private:
-    Global(const Def* type, bool is_mutable)
-        : Def(Node, type, 1, is_mutable) {}
-
-public:
-    using Setters<Global>::set;
-
-    /// @name ops
-    ///@{
-    const Def* init() const { return op(0); }
-    void set(const Def* init) { Def::set(0, init); }
-    ///@}
-
-    /// @name type
-    ///@{
-    const App* type() const;
-    const Def* alloced_type() const;
-    ///@}
-
-    /// @name Getters
-    ///@{
-    bool is_mutable() const { return flags(); }
-    ///@}
-
-    static constexpr auto Node      = mim::Node::Global;
-    static constexpr size_t Num_Ops = 1;
 
 private:
     friend class World;

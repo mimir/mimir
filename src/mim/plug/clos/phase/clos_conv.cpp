@@ -215,15 +215,6 @@ const Def* ClosConv::rewrite_imm_Extract(const Extract* ex) {
     return RWPhase::rewrite_imm_Extract(ex);
 }
 
-const Def* ClosConv::rewrite_mut_Global(Global* global) {
-    // Globals are rewritten once and shared, in isolation from any surrounding continuation scope.
-    if (auto i = glob_muts_.find(global); i != glob_muts_.end()) return i->second;
-    push();
-    auto new_global = RWPhase::rewrite_mut_Global(global);
-    pop();
-    return glob_muts_[global] = new_global;
-}
-
 const Pi* ClosConv::rewrite_ret_cn(const Pi* pi) {
     assert(Pi::isa_basicblock(pi));
     return new_world().cn(DefVec(pi->num_doms(), [&, nd = pi->num_doms()](auto i) { return rewrite(pi->dom(nd, i)); }));

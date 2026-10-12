@@ -17,8 +17,10 @@ public:
 
 private:
     const Def* rewrite(const Def*) final;
-    /// Restructures @p filter and @p body of @p lam if @p body passes exception closures.
-    std::pair<const Def*, const Def*> finish_Lam(Lam* lam, const Def* filter, const Def* body) final;
+    const Def* rewrite_mut_Lam(Lam*) final;
+
+    /// Restructures the rewritten @p filter and @p body of @p lam if @p body passes exception closures.
+    std::pair<const Def*, const Def*> convert(Lam* lam, const Def* filter, const Def* body);
 
     const Def* void_ptr() { return new_world().annex<clos::BufPtr>(); }
     const Def* jb_type() { return void_ptr(); }

@@ -106,7 +106,6 @@ private:
     const Def* rewrite_mut_Lam(Lam*) final;
     const Def* rewrite_imm_App(const App*) final;
     const Def* rewrite_imm_Extract(const Extract*) final;
-    const Def* rewrite_mut_Global(Global*) final;
     ///@}
 
     /// Handles the `clos.anno.{returning,free_bb,fstclass_bb}` wrappers; returns `nullptr` if @p a is none of these.
@@ -124,8 +123,8 @@ private:
     FreeDefAna fva_;
     DefMap<Stub> closures_; ///< old_fn *and* new fn ↦ Stub.
 
-    /// Muts that must be rewritten uniformly across the whole module: closure types and globals.
-    /// Such muts must not depend on defs living inside the scope of a continuation.
+    /// Closure types must be rewritten uniformly across the whole module.
+    /// They must not depend on defs living inside the scope of a continuation.
     Def2Def glob_muts_;
 
     std::queue<Lam*> body_worklist_; ///< New fns whose bodies are yet to be rewritten.

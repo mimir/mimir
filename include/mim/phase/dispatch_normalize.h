@@ -13,7 +13,7 @@ public:
         : RWPhase(world, annex) {}
 
 private:
-    std::pair<const Def*, const Def*> finish_Lam(Lam*, const Def*, const Def*) final;
+    const Def* rewrite_mut_Lam(Lam*) final;
     /// η-expands the targets of @p sw to Lam%s, recursively.
     const Def* normalize(Switch sw);
     const Def* eta_expand(const Def*);

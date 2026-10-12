@@ -244,7 +244,6 @@ const Def* Def::var_type() {
         case MutNode::Arr:
         case MutNode::Pack:    return world().type_indices(as<Seq>()->shape());
         case MutNode::Sigma:   return this;
-        case MutNode::Global:
         case MutNode::Hole:
         case MutNode::Variant: return nullptr;
     }
@@ -567,7 +566,6 @@ const Def* Def::immutabilize() {
         case MutNode::Variant: return is_immutabilizable() ? w.variant(ops()) : nullptr;
         case MutNode::Rule:    return nullptr; // TODO should we ever immutabilize Rules?
         case MutNode::Lam:
-        case MutNode::Global:
         case MutNode::Hole:    return nullptr;
         case MutNode::Arr:
         case MutNode::Pack: {
@@ -596,7 +594,6 @@ size_t Def::reduction_offset() const noexcept {
         case MutNode::Pack:
         case MutNode::Pi:
         case MutNode::Rule:    return 1;
-        case MutNode::Global:
         case MutNode::Hole:
         case MutNode::Variant: return size_t(-1);
     }
@@ -674,12 +671,5 @@ std::optional<nat_t> Idx::size2bitwidth(const Def* size) {
     if (auto s = Lit::isa(size)) return size2bitwidth(*s);
     return {};
 }
-
-/*
- * Global
- */
-
-const App* Global::type() const { return Def::type()->as<App>(); }
-const Def* Global::alloced_type() const { return type()->arg(2, 0); }
 
 } // namespace mim
