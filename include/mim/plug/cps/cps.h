@@ -21,8 +21,9 @@ inline const Def* op_cps2ds_dep(const Def* k) {
     auto l    = w.mut_lam(T, w.type())->set("Uf");
     auto body = U;
 
+    // U only refers to `var#0`; the second component is a placeholder that is never projected.
     if (auto [dom, var] = K->dom()->isa_binder<Sigma>(); dom)
-        body = VarRewriter(var, l->var()).rewrite(U); // TODO typeof(dom->var()) != typeof(l->var())
+        body = VarRewriter(var, w.tuple({l->var(), w.tuple()})).rewrite(U);
     l->set(true, body);
 
     return w.app(w.app(w.app(w.annex<cps::cps2ds_dep>(), T), l), k);
