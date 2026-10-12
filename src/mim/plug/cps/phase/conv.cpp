@@ -39,13 +39,13 @@ const Def* Conv::convert(Lam* old_lam) {
     if (auto old_var = old_pi->has_var()) {
         // dependent codom: bind it against a fresh mutable Sigma [a: A, Cn B[old_var → a]]
         auto sigma = w.mut_sigma(2);
+        sigma->set(0, new_dom); // the codom may project sigma->var(2, 0), which needs its type
         sigma->var();
         scoped_ = w.vars().insert(scoped_, sigma->has_var());
         push();
         map(old_var, sigma->var(2, 0));
         auto new_codom = rewrite(old_pi->codom());
         pop();
-        sigma->set(0, new_dom);
         sigma->set(1, w.cn(new_codom));
         new_lam = w.mut_con(sigma);
     } else {
