@@ -17,10 +17,8 @@ public:
 
 private:
     const Def* rewrite(const Def*) final;
-    const Def* rewrite_mut_Lam(Lam*) final;
-
-    /// Restructures the (already rewritten, new-world) @p lam if its body passes exception closures.
-    void convert(Lam* lam);
+    /// Restructures @p filter and @p body of @p lam if @p body passes exception closures.
+    std::pair<const Def*, const Def*> finish_Lam(Lam* lam, const Def* filter, const Def* body) final;
 
     const Def* void_ptr() { return new_world().annex<clos::BufPtr>(); }
     const Def* jb_type() { return void_ptr(); }
@@ -30,7 +28,7 @@ private:
     Lam* get_throw(const Def* res_type);
     Lam* get_lpad(Lam* lam, const Def* rb);
 
-    void get_exn_closures(Lam* lam);
+    void get_exn_closures(const Def* body);
     void get_exn_closures(const Def* def, DefSet& visited);
 
     /// Substitutes closure literals of tagged exception Lam%s by throw closures; does not descend into mutables.

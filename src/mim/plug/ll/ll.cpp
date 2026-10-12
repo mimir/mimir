@@ -259,7 +259,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
         for (size_t i = 0; i != n; ++i)
             bbs[i] = emit(dispatch.target(i));
 
-        if (auto branch = Branch(app)) return bb.tail("br i1 {}, label {}, label {}", v_index, bbs[1], bbs[0]);
+        if (n == 2) return bb.tail("br i1 {}, label {}, label {}", v_index, bbs[1], bbs[0]);
 
         auto t_index = convert(dispatch.index()->type());
         bb.tail("switch {} {}, label {} [ ", t_index, v_index, bbs[0]);

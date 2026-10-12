@@ -71,6 +71,10 @@ public:
     virtual const Def* rewrite_imm(const Def*);
     virtual const Def* rewrite_mut(Def*);
     virtual const Def* rewrite_stub(Def*, Def*);
+    /// Post-processes the rewritten @p filter and @p body of @p new_lam before rewrite_stub sets them.
+    virtual std::pair<const Def*, const Def*> finish_Lam(Lam* new_lam, const Def* filter, const Def* body) {
+        return {filter, body};
+    }
     /// Like above, but @p new_mut may have a *different* number of ops than @p old_mut:
     /// `new_mut->op(i)` is rewritten from `old_mut->op(new2old[i])`.
     /// This is what a Phase needs that reshapes an aggregate; @see Sieve.

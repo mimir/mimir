@@ -81,11 +81,17 @@ Shape Shape::fold(Shape shape) const {
 
 const Def* Seq::elem() const { return shape().is_fused() ? world().drop(this, 1) : body(); }
 
-Select::Select(const Def* def) {
+Switch::Switch(const Def* def) {
     if (!def) return;
     auto extract = def->isa<Extract>();
-    if (!extract || Lit::isa(extract->index()) || extract->index()->type() != def->world().type_bool()) return;
-    if (auto a = Lit::isa(extract->tuple()->arity()); a && *a == 2) extract_ = extract;
+    if (!extract || Lit::isa(extract->index())) return;
+    if (auto n = Lit::isa(extract->tuple()->arity()); n && Idx::isa_lit(extract->index()->type()) == n)
+        extract_ = extract;
+}
+
+Select::Select(const Def* def)
+    : Switch(def) {
+    if (extract_ && num_targets() != 2) extract_ = nullptr;
 }
 
 Branch::Branch(const Def* def)
@@ -96,15 +102,9 @@ Branch::Branch(const Def* def)
 const Def* Branch::callee() const { return app()->callee(); }
 const Def* Branch::arg() const { return app()->arg(); }
 
-Dispatch::Dispatch(const Def* def) {
-    auto app = def->isa<App>();
-    if (!app) return;
-    auto extract = app->callee()->isa<Extract>();
-    if (!extract || Lit::isa(extract->index())) return;
-    if (Lit::isa(extract->tuple()->arity())) {
-        app_     = app;
-        extract_ = extract;
-    }
+Dispatch::Dispatch(const Def* def)
+    : Switch(App::callee_of(def)) {
+    if (extract()) app_ = def->as<App>();
 }
 
 const Def* Dispatch::callee() const { return app()->callee(); }

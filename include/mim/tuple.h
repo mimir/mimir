@@ -404,24 +404,36 @@ private:
     friend class World;
 };
 
-/// Matches `(ff, tt)#cond` - where `cond` is a Bool but **not** a Lit%eral.
-/// @note If `cond` is a Lit%eral, either
-/// * `(x, y)#lit` would have been folded to `x`/`y` anyway, or
-/// * we have something like this: `pair#0_2`
-class Select {
+/// Matches a jump table `(target_0, target_1, ...)#index` where `index` is a non-Lit%eral `Idx n` and `n` the arity.
+class Switch {
 public:
-    Select(const Def*);
+    Switch(const Def*);
 
     explicit operator bool() const noexcept { return extract_; }
 
     const Extract* extract() const { return extract_; }
-    const Def* pair() const { return extract()->tuple(); }
-    const Def* cond() const { return extract()->index(); }
-    const Def* tt() const { return pair()->proj(2, 1); }
-    const Def* ff() const { return pair()->proj(2, 0); }
+    const Def* tuple() const { return extract()->tuple(); }
+    const Def* index() const { return extract()->index(); }
 
-private:
+    size_t num_targets() const { return Lit::as(tuple()->arity()); }
+    const Def* target(size_t i) const { return tuple()->proj(num_targets(), i); }
+
+protected:
     const Extract* extract_ = nullptr;
+};
+
+/// Matches `(ff, tt)#cond` - where `cond` is a Bool but **not** a Lit%eral.
+/// @note If `cond` is a Lit%eral, either
+/// * `(x, y)#lit` would have been folded to `x`/`y` anyway, or
+/// * we have something like this: `pair#0_2`
+class Select : public Switch {
+public:
+    Select(const Def*);
+
+    const Def* pair() const { return tuple(); }
+    const Def* cond() const { return index(); }
+    const Def* tt() const { return target(1); }
+    const Def* ff() const { return target(0); }
 };
 
 /// Matches `(ff, tt)#cond arg` where `cond` is **not** a Lit%eral.
@@ -440,8 +452,8 @@ private:
     const App* app_ = nullptr;
 };
 
-/// Matches a dispatch through a jump table of the form:
-/// `(target_0, target_1, ...)#index arg` where `index` is **not** a Lit%eral.
+/// Matches `(target_0, target_1, ...)#index arg`.
+/// `(target_0, target_1, ...)#index` is matched as a Switch.
 /// @note Subsumes Branch.
 /// If you want to deal with Branch separately, match Branch first:
 /// ```
@@ -451,7 +463,7 @@ private:
 ///     // now, the generic case
 /// }
 /// ```
-class Dispatch {
+class Dispatch : public Switch {
 public:
     Dispatch(const Def*);
 
@@ -461,16 +473,8 @@ public:
     const Def* callee() const;
     const Def* arg() const;
 
-    const Extract* extract() const { return extract_; }
-    const Def* tuple() const { return extract()->tuple(); }
-    const Def* index() const { return extract()->index(); }
-
-    size_t num_targets() const { return Lit::as(extract()->tuple()->arity()); }
-    const Def* target(size_t i) const { return tuple()->proj(num_targets(), i); }
-
 private:
-    const App* app_         = nullptr;
-    const Extract* extract_ = nullptr;
+    const App* app_ = nullptr;
 };
 
 /// @name Helpers to work with Tuples/Sigmas/Arrays/Packs
