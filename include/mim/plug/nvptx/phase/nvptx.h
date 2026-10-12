@@ -9,10 +9,10 @@ namespace mim {
 
 class World;
 
-namespace plug::ll_nvptx {
+namespace plug::nvptx {
 
 /// Prefix for this backend's fe::throwf messages; see MIM_LL_BE.
-#define MIM_LL_NVPTX_BE "ll_nvptx backend: "
+#define MIM_NVPTX_BE "nvptx backend: "
 
 namespace ll = mim::plug::ll;
 
@@ -23,6 +23,6 @@ struct DeviceEmitFlags {
 void emit_host(World&, std::ostream&, std::optional<std::string>, ll::Emitter::Rt rt = ll::Emitter::Rt::embed);
 DeviceEmitFlags emit_device(World&, std::ostream&);
 
-} // namespace plug::ll_nvptx
+} // namespace plug::nvptx
 
 } // namespace mim

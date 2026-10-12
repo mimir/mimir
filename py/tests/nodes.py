@@ -37,7 +37,6 @@ def _every_node(w) -> list[tuple[mim.Def, type]]:
         (w.pack(n4, i8v), mim.Pack),
         (w.extract(var, 0), mim.Extract),
         (w.insert(var, 1, i8v), mim.Insert),
-        (getattr(w, "global")(i8, False), mim.Global),
         (join, mim.Join),
         (w.bot(i8), mim.Bot),
         (w.top(i8), mim.Top),

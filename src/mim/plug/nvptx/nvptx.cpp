@@ -1,4 +1,4 @@
-#include "mim/plug/ll_nvptx/phase/ll_nvptx.h"
+#include "mim/plug/nvptx/phase/nvptx.h"
 
 #include <fe/sys.h>
 
@@ -7,12 +7,12 @@
 
 #include <mim/plug/gpu/gpu.h>
 
-#include "mim/plug/ll_nvptx/ll_nvptx.h"
+#include "mim/plug/nvptx/nvptx.h"
 
 using namespace std::string_literals;
 using namespace std::string_view_literals;
 
-namespace mim::plug::ll_nvptx {
+namespace mim::plug::nvptx {
 
 namespace {
 
@@ -106,12 +106,12 @@ std::string find_libdevice() {
     if (std::filesystem::exists(debian_fallback)) return debian_fallback.string();
 
     fe::throwf<fe::sys::CmdNotFound>(
-        MIM_LL_NVPTX_BE "unable to find `{}`; try setting the `CUDA_HOME` environment variable", Libdevice_Name);
+        MIM_NVPTX_BE "unable to find `{}`; try setting the `CUDA_HOME` environment variable", Libdevice_Name);
 }
 
 void link_libdevice(const NvptxCompileArgs& c) {
     if (!std::filesystem::exists(c.libdevice_path))
-        fe::throwf(MIM_LL_NVPTX_BE "libdevice path does not exist: `{}`", c.libdevice_path);
+        fe::throwf(MIM_NVPTX_BE "libdevice path does not exist: `{}`", c.libdevice_path);
     auto llvm_link = fe::sys::require_cmd("llvm-link");
     fe::sys::require_run(std::format("{} {} {} {} -o {}", llvm_link, c.link_llvm_args, c.dev_ll_name, c.libdevice_path,
                                      c.dev_bc_raw_name));
@@ -167,7 +167,7 @@ public:
         c.dev_bc_raw_name = name + "_dev_raw.bc"s;
         c.dev_bc_opt_name = name + "_dev_opt.bc"s;
 
-        world().log().d("ll_nvptx backend args: {}", fe::Join(args()));
+        world().log().d("nvptx backend args: {}", fe::Join(args()));
 
         // clang-format off
         if (auto v = arg_value(args(), "o", "output"))          c.host_ll_name   = *v;
@@ -198,7 +198,7 @@ public:
         }
         if (c.embed_device_code) {
             if (!c.embed_ptx && !c.embed_cubin)
-                fe::throwf(MIM_LL_NVPTX_BE "embedding requested with no images (neither PTX nor CUBIN)");
+                fe::throwf(MIM_NVPTX_BE "embedding requested with no images (neither PTX nor CUBIN)");
             try {
                 if (c.compute_cap.empty()) c.compute_cap = get_compute_capability();
                 if (device_flags.uses_libdevice) {
@@ -227,11 +227,11 @@ public:
     }
 };
 
-} // namespace mim::plug::ll_nvptx
+} // namespace mim::plug::nvptx
 
 using namespace mim;
 
-static void reg_phases(Flags2Phases& phases) { Phase::hook<plug::ll_nvptx::emit, plug::ll_nvptx::Emit>(phases); }
+static void reg_phases(Flags2Phases& phases) { Phase::hook<plug::nvptx::emit, plug::nvptx::Emit>(phases); }
 
 // clang-format off
 static constexpr PluginArg known_args[] = {
@@ -255,7 +255,7 @@ static constexpr PluginEnv known_envs[] = {
 };
 // clang-format on
 
-MIM_PLUGIN_ENTRY(ll_nvptx) {
+MIM_PLUGIN_ENTRY(nvptx) {
     plugin.register_phases = reg_phases;
     plugin.args            = known_args;
     plugin.num_args        = std::size(known_args);

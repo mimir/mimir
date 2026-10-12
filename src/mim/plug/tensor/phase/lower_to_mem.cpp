@@ -367,13 +367,17 @@ const Def* LowerToMem::rewrite_mut_Lam(Lam* lam) {
     // Scope the fresh-memory bookkeeping: ops lowered while this body is rewritten mint their receiving
     // continuations into pending_, which are chained in front of the finished body. Nested lams anchor
     // their own requests (and their own per-lam op memo).
-    auto _  = fe::Restore(pending_, {});
-    auto __ = fe::Restore(fresh_memo_, {});
-    return rewrite_stub(lam, new_world().mut_lam(conv_type(lam)));
-}
+    auto _       = fe::Restore(pending_, {});
+    auto __      = fe::Restore(fresh_memo_, {});
+    auto new_lam = new_world().mut_lam(conv_type(lam));
+    map(lam, new_lam);
+    if (!lam->is_set()) return new_lam;
 
-std::pair<const Def*, const Def*> LowerToMem::finish_Lam(Lam*, const Def* filter, const Def* body) {
-    return {filter, wrap_fresh_mem(body)};
+    auto ___    = enter(lam);
+    auto filter = rewrite(lam->filter());
+    auto body   = wrap_fresh_mem(rewrite(lam->body()));
+    new_lam->set(filter, body);
+    return seal(lam, new_lam);
 }
 
 const Pi* LowerToMem::conv_type(Lam* lam) {

@@ -165,9 +165,6 @@ const Def* Rewriter::rewrite_imm_Tuple(const Tuple* d) {
     return world().tuple(new_type, new_ops);
 }
 
-const Def* Rewriter::rewrite_mut_Global(Global* d) {
-    return rewrite_stub(d, world().global(rewrite(d->type()), d->is_mutable()));
-}
 const Def* Rewriter::rewrite_mut_Lam(Lam* d) { return rewrite_stub(d, world().mut_lam(rewrite(d->type())->as<Pi>())); }
 const Def* Rewriter::rewrite_mut_Rule(Rule* d) {
     return rewrite_stub(d, world().mut_rule(rewrite(d->type())->as<Reform>()));
@@ -244,16 +241,6 @@ const Def* Rewriter::rewrite_stub(Def* old_mut, Def* new_mut) {
     if (!old_mut->is_set()) return new_mut;
 
     auto _ = enter(old_mut);
-    if (auto old_lam = old_mut->isa<Lam>()) {
-        if (auto new_lam = new_mut->isa<Lam>()) {
-            auto filter = rewrite(old_lam->filter());
-            auto body   = rewrite(old_lam->body());
-            auto [f, b] = finish_Lam(new_lam, filter, body);
-            new_lam->set(f, b);
-            return seal(old_mut, new_mut);
-        }
-    }
-
     for (size_t i = 0, e = old_mut->num_ops(); i != e; ++i)
         new_mut->set(i, rewrite(old_mut->op(i)));
 

@@ -603,12 +603,6 @@ public:
     const Def* match(Defs);
     ///@}
 
-    /// @name Globals
-    /// @deprecated Will be removed.
-    ///@{
-    Global* global(const Def* type, bool is_mutable = true) { return insert<Global>(type, is_mutable); }
-    ///@}
-
     /// @name Types
     ///@{
     const Nat* type_nat() { return data_.type_nat; }

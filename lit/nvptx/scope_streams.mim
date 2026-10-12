@@ -1,5 +1,5 @@
 // RUN: rm -f %{s:stem}.ll %{s:stem}_dev.ll %t
-// RUN: %mim %S/../gpu/%{s:stem}.mim -p ll_nvptx -o -
+// RUN: %mim %S/../gpu/%{s:stem}.mim -p nvptx -o -
 // RUN: %FileCheck %s --input-file=%{s:stem}.ll --check-prefix=HOST
 // RUN: %FileCheck %s --input-file=%{s:stem}_dev.ll --check-prefix=DEVICE
 // RUN: %if system-linux && cuda %{ clang %{s:stem}.ll -o %t -lcuda -Wno-override-module %}
