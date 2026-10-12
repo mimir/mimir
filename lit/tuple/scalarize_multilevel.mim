@@ -6,9 +6,12 @@ plugin refly;
 
 use core.ops.n;
 
+extern fun foo [Nat]: Nat;
+
 con f (t: «2, 2; Nat», r: Cn Nat) =
     let ((a, b), (c, d)) = t;
-    r (a + b + c + d);
+    ret x = foo $ (a + b + c + d);
+    r x;
 
 extern con main(i: Idx 2, r: Cn Nat) =
     (f (((10, 20), (30, 40)), r), f (((50, 60), (70, 80)), r))#i;

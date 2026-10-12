@@ -104,6 +104,7 @@ public:
     ///@{
     const Def* filter() const { return op(0); }
     const Def* body() const { return op(1); }
+    Lam* forwardee() const; ///< `λ x = f arg` where `f` is a mut Lam that is_set();
     ///@}
 
     /// @name type

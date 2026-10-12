@@ -24,6 +24,12 @@ Pi* Pi::set_dom(Defs doms) { return Def::set(0, world().sigma(doms))->as<Pi>(); 
  * Lam
  */
 
+Lam* Lam::forwardee() const {
+    if (auto app = body()->isa<App>())
+        if (auto callee = app->callee()->isa_mut<Lam>(); callee && callee->is_set()) return callee;
+    return nullptr;
+}
+
 Lam* Lam::set_filter(Filter filter) { return Def::set(0, world().filter(filter))->as<Lam>(); }
 Lam* Lam::set(Filter filter, const Def* body) { return Def::set({world().filter(filter), body})->as<Lam>(); }
 Lam* Lam::app(Filter f, const Def* callee, const Def* arg) {
