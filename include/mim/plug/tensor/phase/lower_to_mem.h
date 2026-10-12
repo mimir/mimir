@@ -35,13 +35,13 @@ private:
     void start() override;
     const Def* rewrite(const Def*) override;
     const Def* rewrite_mut_Lam(Lam*) override;
+    std::pair<const Def*, const Def*> finish_Lam(Lam*, const Def*, const Def*) override;
     const Def* rewrite_imm_App(const App*) override;
     const Def* rewrite_imm_Extract(const Extract*) override;
     const Def* rewrite_imm_Insert(const Insert*) override;
 
-    /// The conversion part of LowerToMem::rewrite_mut_Lam (boundary conversion, local continuations, or the
-    /// generic RWPhase rewrite); the override itself only scopes the fresh-memory bookkeeping around it.
-    const Def* conv_mut_Lam(Lam*);
+    /// The type of @p lam with its tensor-typed domain converted.
+    const Pi* conv_type(Lam* lam);
 
     /// Splits the Extract @p d into the recorded tensor it reads and its *rewritten* index.
     /// A size-1 axis folds out of the array type, so the index is already the folded one `buffer` expects.
@@ -114,11 +114,11 @@ private:
     /// distinguishing tag required.
     const Def* fresh_mem();
 
-    /// Chains the LowerToMem::pending_ continuations in front of @p new_lam's freshly rewritten body:
-    /// `new_lam ↦ mem.fresh (0, k₁)`, `k₁ ↦ mem.fresh (0, k₂)`, …, and the last one carries the body.
+    /// Chains the LowerToMem::pending_ continuations in front of the freshly rewritten @p body:
+    /// yields `mem.fresh (0, k₁)` with `k₁ ↦ mem.fresh (0, k₂)`, …, and the last one carries @p body.
     /// AddMem resolves each request by jumping to the continuation with the scheduler-placed current memory,
     /// and the `tt` filter beta-reduces the continuations away again as soon as that happens.
-    void wrap_fresh_mem(Lam* new_lam);
+    const Def* wrap_fresh_mem(const Def* body);
 
     /// The fresh-memory continuations minted while the current lam's body is being rewritten.
     fe::Vector<Lam*> pending_;

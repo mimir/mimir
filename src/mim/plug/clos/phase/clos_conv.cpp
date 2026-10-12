@@ -269,7 +269,6 @@ ClosConv::Stub ClosConv::make_stub(const DefSet& fvs, Lam* old_lam) {
             new_ext_lam->app(false, new_fn, clos_insert_env(ep, env, new_ext_lam->var()));
             // new_fn's body is rewritten later via the body worklist.
         } else {
-            new_ext_lam->unset();
             new_fn->app(false, new_ext_lam, clos_remove_env(ep, new_fn->var()));
         }
     }

@@ -76,17 +76,17 @@ axm adce: Phase;
 ///
 axm beta_red: Phase;
 ///
-/// ### branch_normalize
-///
-/// η-expands non-Lam branch targets so both sides of a branch are Lam%s (mim::BranchNormalize).
-///
-axm branch_normalize: Phase;
-///
 /// ### cleanup
 ///
 /// Removes dead and unreachable code by rebuilding the World (mim::Cleanup).
 ///
 axm cleanup: Phase;
+///
+/// ### dispatch_normalize
+///
+/// η-expands non-Lam dispatch targets so every target of a jump table is a Lam (mim::DispatchNormalize).
+///
+axm dispatch_normalize: Phase;
 ///
 /// ### eta_conv
 ///

@@ -16,8 +16,8 @@ bool isa_cnt(const App* body, const Def* def, size_t i) {
 
 const Def* isa_br(const App* body, const Def* def) {
     if (!Pi::isa_cn(body->callee_type())) return nullptr;
-    auto proj = body->callee()->isa<Extract>();
-    return (proj && proj->tuple() == def && proj->tuple()->isa<Tuple>()) ? proj->tuple() : nullptr;
+    auto sw = Switch(body->callee());
+    return sw && sw.tuple() == def && def->isa<Tuple>() ? def : nullptr;
 }
 
 bool isa_callee_br(const App* body, const Def* def, size_t i) {
@@ -143,13 +143,9 @@ const Def* ClosConvPrep::rewrite_imm_App(const App* app) {
     // Eta-expand branches in callee position.
     const Def* new_callee = nullptr;
     if (Pi::isa_cn(app->callee_type())) {
-        if (auto br = app->callee()->isa<Extract>()) {
-            auto branches = br->tuple();
-            if (branches->isa<Tuple>() && branches->type()->isa<Arr>()) {
-                auto new_ops
-                    = DefVec(branches->num_ops(), [&](size_t i) { return rewrite_callee_op(branches->op(i)); });
-                new_callee = w.extract(w.tuple(new_ops), rewrite(br->index()));
-            }
+        if (auto sw = Switch(app->callee()); sw && sw.tuple()->isa<Tuple>()) {
+            auto new_ops = DefVec(sw.num_targets(), [&](size_t i) { return rewrite_callee_op(sw.target(i)); });
+            new_callee   = w.extract(w.tuple(new_ops), rewrite(sw.index()));
         }
     }
     if (!new_callee) new_callee = rewrite(app->callee());

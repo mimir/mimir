@@ -311,17 +311,14 @@ const Def* LowerToMem::fresh_mem() {
     return k->var();
 }
 
-void LowerToMem::wrap_fresh_mem(Lam* new_lam) {
-    auto& w     = new_world();
-    auto filter = new_lam->filter();
-    auto body   = new_lam->body();
-    new_lam->unset();
+const Def* LowerToMem::wrap_fresh_mem(const Def* body) {
+    auto& w = new_world();
     // The last-minted continuation carries the original body; the lam ends up requesting the first memory.
     for (auto k : pending_ | std::views::reverse) {
         k->set(true, body); // filter `tt`: k vanishes as soon as AddMem substitutes the real memory
         body = w.app(w.annex<mem::fresh>(), w.tuple({w.lit_nat_0(), k}));
     }
-    new_lam->set(filter, body);
+    return body;
 }
 
 const Def* LowerToMem::rewrite(const Def* old_def) {
@@ -370,27 +367,20 @@ const Def* LowerToMem::rewrite_mut_Lam(Lam* lam) {
     // Scope the fresh-memory bookkeeping: ops lowered while this body is rewritten mint their receiving
     // continuations into pending_, which are chained in front of the finished body. Nested lams anchor
     // their own requests (and their own per-lam op memo).
-    auto _       = fe::Restore(pending_, {});
-    auto __      = fe::Restore(fresh_memo_, {});
-    auto new_def = conv_mut_Lam(lam);
-    if (!pending_.empty()) wrap_fresh_mem(new_def->as_mut<Lam>());
-    return new_def;
+    auto _  = fe::Restore(pending_, {});
+    auto __ = fe::Restore(fresh_memo_, {});
+    return rewrite_stub(lam, new_world().mut_lam(conv_type(lam)));
 }
 
-const Def* LowerToMem::conv_mut_Lam(Lam* lam) {
-    // Rebuilds `lam` as a continuation over the converted domain `dom`.
-    auto rebuild = [&](const Def* dom) {
-        auto new_lam = new_world().mut_con(dom)->set(lam->dbg_key());
-        map(lam, new_lam);
-        if (lam->num_vars() != 0) map(lam->var(), new_lam->var());
-        new_lam->set(rewrite(lam->filter()), rewrite(lam->body()));
-        return new_lam;
-    };
+std::pair<const Def*, const Def*> LowerToMem::finish_Lam(Lam*, const Def* filter, const Def* body) {
+    return {filter, wrap_fresh_mem(body)};
+}
 
+const Pi* LowerToMem::conv_type(Lam* lam) {
+    auto& w = new_world();
     // A bufferized function: convert tensor-typed parameters to `buffer.Buf`, including inside grouped
     // sigma parameters and continuation domains. No memory is introduced here — AddMem does that.
     if (is_tensor_fn(lam)) {
-        auto& w  = new_world();
         auto dom = lam->type()->dom();
         auto n   = dom->num_projs();
         DefVec doms(n, [&](size_t i) -> const Def* {
@@ -398,17 +388,16 @@ const Def* LowerToMem::conv_mut_Lam(Lam* lam) {
             if (auto pi = Pi::isa_cn(d)) return w.cn(conv_boundary(pi->dom()));
             return conv_boundary(d);
         });
-        return rebuild(w.sigma(doms));
+        return w.cn(w.sigma(doms));
     }
 
     // A local continuation carrying tensor types (a return continuation of a bufferized call, a join point,
     // an error continuation): convert its domain the same way. This is context-independent, so the order in
     // which references reach it does not matter.
     if (!lam->is_external() && lam->is_set() && !op_args_.contains(lam))
-        if (auto pi = Pi::isa_cn(lam->type()); pi && mentions_tensor(pi->dom()))
-            return rebuild(conv_boundary(pi->dom()));
+        if (auto pi = Pi::isa_cn(lam->type()); pi && mentions_tensor(pi->dom())) return w.cn(conv_boundary(pi->dom()));
 
-    return RWPhase::rewrite_mut_Lam(lam);
+    return rewrite(lam->type())->as<Pi>();
 }
 
 const Def* LowerToMem::rewrite_imm_App(const App* app) {

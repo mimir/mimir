@@ -244,6 +244,16 @@ const Def* Rewriter::rewrite_stub(Def* old_mut, Def* new_mut) {
     if (!old_mut->is_set()) return new_mut;
 
     auto _ = enter(old_mut);
+    if (auto old_lam = old_mut->isa<Lam>()) {
+        if (auto new_lam = new_mut->isa<Lam>()) {
+            auto filter = rewrite(old_lam->filter());
+            auto body   = rewrite(old_lam->body());
+            auto [f, b] = finish_Lam(new_lam, filter, body);
+            new_lam->set(f, b);
+            return seal(old_mut, new_mut);
+        }
+    }
+
     for (size_t i = 0, e = old_mut->num_ops(); i != e; ++i)
         new_mut->set(i, rewrite(old_mut->op(i)));
 
