@@ -92,15 +92,14 @@ const Def* BetaRed::reduce(Lam* old_lam, const Def* new_arg) {
     }
 
     // The old body may already be memoized for a rebuilt copy of old_lam, so substitute var directly.
-    auto subst = [&](this auto&& self, const Def* def) -> const Def* {
+    auto& w    = new_world();
+    auto subst = [&, this](this auto&& self, const Def* def) -> const Def* {
         if (def == var) return new_arg;
-        if (!def->has_free_var(var)) return rewrite(def);
-        if (auto ex = def->isa<Extract>(); ex && ex->tuple() == var)
-            return new_world().extract(new_arg, self(ex->index()));
+        if (!def->has_free_var(var)) return this->rewrite(def);
+        if (auto ex = def->isa<Extract>(); ex && ex->tuple() == var) return w.extract(new_arg, self(ex->index()));
         auto tuple = def->as<Tuple>();
         auto ops   = DefVec(tuple->ops(), [&](const Def* op) { return self(op); });
-        return tuple->type()->has_free_var(var) ? new_world().tuple(ops)
-                                                : new_world().tuple(rewrite(tuple->type()), ops);
+        return tuple->type()->has_free_var(var) ? w.tuple(ops) : w.tuple(this->rewrite(tuple->type()), ops);
     };
 
     auto app     = old_lam->body()->as<App>();
