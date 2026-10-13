@@ -1,0 +1,22 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// A two-level mem.lea chain into a nested aggregate.
+
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun test(m: mem.M 0, a b c: Nat): [mem.M 0, Nat] =
+    ret (m, p) = mem.slot ([Nat, [Nat, Nat]], 0) $ m;
+    let m      = mem.store (m, mem.lea (p, 0_2), a);
+    let q      = mem.lea (p, 1_2);
+    let m      = mem.store (m, q, (b, b));
+    let m      = mem.store (m, mem.lea (q, 1_2), c);
+    let (m, x) = mem.load (m, mem.lea (q, 1_2));
+    let (m, y) = mem.load (m, mem.lea (q, 0_2));
+    let (m, z) = mem.load (m, mem.lea (p, 0_2));
+    return (m, x + y + z);
+
+// CHECK-NOT: mem.{{m?slot|lea|load|store}}
+// CHECK: core.nat.add (b, c)

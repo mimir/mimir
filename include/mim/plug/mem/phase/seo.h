@@ -141,6 +141,8 @@ private:
 
     /// Was the SSA construction able to eliminate this sloxy?
     const Def* isa_optimized_sloxy(const Def*) const;
+    /// Does @p old_ptr point (via literal mem.lea%s) into a promoted slot? Then yields its sloxy.
+    const Def* isa_promoted(const Def* old_ptr) const;
     /// The (memoized) new signature of @p old_lam.
     const Sig& sig_of(Lam* old_lam);
     /// The new spelling of @p old_lam's var: kept projections become new vars, dropped ones their

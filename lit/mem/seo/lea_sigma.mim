@@ -1,0 +1,20 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// Field stores via mem.lea mix with a whole-slot load; the slot is promoted.
+
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun test(m: mem.M 0, a b: Nat): [mem.M 0, Nat] =
+    ret (m, p) = mem.slot ([Nat, Nat], 0) $ m;
+    let m      = mem.store (m, mem.lea (p, 0_2), a);
+    let m      = mem.store (m, mem.lea (p, 1_2), b);
+    let (m, x) = mem.load (m, mem.lea (p, 0_2));
+    let (m, t) = mem.load (m, p);
+    let (y, _) = t;
+    return (m, x + y);
+
+// CHECK-NOT: mem.{{m?slot|lea|load|store}}
+// CHECK: core.nat.mul (2, a)

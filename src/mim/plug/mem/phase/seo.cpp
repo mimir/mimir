@@ -210,6 +210,39 @@ static bool returns_mem(const App* app) {
 
 static const Var* slot_var(const Def* ptr) { return ptr->as<Extract>()->tuple()->as<Var>(); }
 
+/// The sloxy @p abstr_ptr points into, and the literal mem.lea indices on the way, outermost first.
+static std::pair<const Proxy*, DefVec> sloxy_path(const Def* abstr_ptr) {
+    auto path = DefVec();
+    for (auto ptr = abstr_ptr;;) {
+        if (auto sloxy = Proxy::isa<Proxy_Sloxy>(ptr)) {
+            std::ranges::reverse(path);
+            return {sloxy, path};
+        }
+
+        auto lea = Axm::isa<mem::lea>(ptr);
+        if (!lea) return {};
+        auto [base, index] = lea->args<2>();
+        auto agg           = pointee(base);
+        auto n             = Lit::isa(agg->arity());
+        if (!index->isa<Lit>() || !n || (!agg->isa<Sigma>() && *n >= ptr->world().flags().scalarize_threshold))
+            return {};
+        path.emplace_back(index);
+        ptr = base;
+    }
+}
+
+static const Def* extract_path(const Def* agg, Defs path) {
+    for (auto index : path)
+        agg = agg->world().extract(agg, index);
+    return agg;
+}
+
+static const Def* insert_path(const Def* agg, Defs path, const Def* val) {
+    if (path.empty()) return val;
+    auto& w = agg->world();
+    return w.insert(agg, path[0], insert_path(w.extract(agg, path[0]), path.subspan(1), val));
+}
+
 Vars SEO::Analysis::reachable_slots(VarWorklist& todo) {
     auto& vars = world().vars();
     auto res   = Vars();
@@ -366,13 +399,16 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_ptr       = rewrite(ptr);
         auto abstr_val       = rewrite(val);
 
-        if (auto sloxy = Proxy::isa<Proxy_Sloxy>(abstr_ptr)) {
-            auto& stored = slot2stored_[slot_var(sloxy->op(1))];
-            if (auto grown = world().vars().merge(stored, abstr_val->free_vars()); grown != stored)
-                stored = grown, touch();
-            sloxy2val(sloxy, abstr_val);
-            log().d("store: {} ← {}", sloxy, abstr_val);
-            return abstr_mem;
+        if (auto [sloxy, path] = sloxy_path(abstr_ptr); sloxy) {
+            if (auto agg = path.empty() ? abstr_val : sloxy2val(sloxy)) {
+                auto& stored = slot2stored_[slot_var(sloxy->op(1))];
+                if (auto grown = world().vars().merge(stored, abstr_val->free_vars()); grown != stored)
+                    stored = grown, touch();
+                lattice(ptr, abstr_ptr); // lets the rewrite recognize a promoted lea
+                sloxy2val(sloxy, insert_path(agg, path, abstr_val));
+                log().d("store: {} ← {}", abstr_ptr, abstr_val);
+                return abstr_mem;
+            }
         }
         log().d("store to unknown ptr: {} ← {}", abstr_ptr, abstr_val);
     } else if (auto load = Axm::isa<mem::load>(app)) {
@@ -381,9 +417,11 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_mem  = rewrite(mem);
         auto abstr_ptr  = rewrite(ptr);
 
-        if (auto sloxy = Proxy::isa<Proxy_Sloxy>(abstr_ptr)) {
-            if (auto abstr_val = sloxy2val(sloxy)) {
-                log().d("load: {} → {}", sloxy, abstr_val);
+        if (auto [sloxy, path] = sloxy_path(abstr_ptr); sloxy) {
+            if (auto agg = sloxy2val(sloxy)) {
+                auto abstr_val = extract_path(agg, path);
+                log().d("load: {} → {}", abstr_ptr, abstr_val);
+                lattice(ptr, abstr_ptr);
                 lattice(val, abstr_val);
                 return world().tuple({abstr_mem, abstr_val});
             }
@@ -513,6 +551,12 @@ void SEO::Analysis::analyze(const Def* def) {
  * Apply analysis info to code
  */
 
+const Def* SEO::isa_promoted(const Def* old_ptr) const {
+    if (auto abstr = lattice(old_ptr))
+        if (auto [sloxy, _] = sloxy_path(abstr); sloxy && isa_optimized_sloxy(sloxy->op(1))) return sloxy;
+    return nullptr;
+}
+
 const Def* SEO::isa_optimized_sloxy(const Def* def) const {
     if (auto l = lattice(def))
         if (auto sloxy = Proxy::isa<Proxy_Sloxy>(l)) return sloxy;
@@ -577,11 +621,11 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
         return map(old_app, mem::op_slot(rewrite(T), rewrite(a), new_mem, new_ret_lam));
     } else if (auto store = Axm::isa<mem::store>(old_app)) {
         auto [mem, ptr, val] = store->args<3>();
-        if (isa_optimized_sloxy(ptr)) return rewrite(mem);
+        if (isa_promoted(ptr)) return rewrite(mem);
     } else if (auto load = Axm::isa<mem::load>(old_app)) {
         auto [res_mem, res_val] = load->projs<2>();
         auto [mem, ptr]         = load->args<2>();
-        if (auto sloxy = isa_optimized_sloxy(ptr)) {
+        if (auto sloxy = isa_promoted(ptr)) {
             auto abstr_val = abstracted(res_val);
             assert(abstr_val && "a promoted slot implies every load from it resolved");
             log().d("load from {} resolved to {}", sloxy, abstr_val);
@@ -638,7 +682,7 @@ const Def* SEO::var_of(Lam* old_lam) {
     for (size_t i = 0; i != n; ++i)
         if (auto j = sig.sieve[i]; j != Sieve::Gone)
             elems[i] = new_lam->var(sig.sieve.num_new(), j);
-        else if (auto abstr = lattice(old_lam->var(n, i)); Proxy::isa<Proxy_Sloxy>(abstr))
+        else if (auto abstr = lattice(old_lam->var(n, i)); sloxy_path(abstr).first)
             elems[i] = new_world().bot(rewrite(old_lam->dom(n, i))); // a promoted slot carries no value
         else
             elems[i] = rewrite(abstr); // SCCP propagate
@@ -661,7 +705,7 @@ Lam* SEO::build_lam(Lam* old_lam) {
             new_doms.emplace_back(rewrite(old_lam->dom(n, i)));
         else if (auto abstr = lattice(old_lam->var(n, i)); isa_bundle(abstr, old_lam))
             profile_count("seo.gvn.vars_merged");
-        else if (!Proxy::isa<Proxy_Sloxy>(abstr))
+        else if (!sloxy_path(abstr).first)
             profile_count("seo.sccp.vars_eliminated");
     for (size_t i = 0, e = sig.phis.size(); i != e; ++i)
         if (sig.sieve.cat(i) != Sieve::Gone) new_doms.emplace_back(rewrite(sig.phis[i].phi->type()));
