@@ -1,7 +1,5 @@
 #include "mim/plug/mem/phase/seo.h"
 
-#include <fe/worklist.h>
-
 #include <mim/lam.h>
 
 #include "mim/plug/mem/mem.h"
@@ -202,28 +200,66 @@ bool SEO::Analysis::can_supply(Lam* lam, const Def* sloxy) {
     return true;
 }
 
+// A direct-style call whose effects come back implicitly - not through a continuation the per-Lam store state follows.
+static bool returns_mem(const App* app) {
+    if (isa_mem(app)) return true;
+    if (auto sigma = app->type()->isa<Sigma>())
+        return std::ranges::any_of(sigma->ops(), [](const Def* op) { return Axm::isa<mem::M>(op); });
+    return false;
+}
+
 static const Var* slot_var(const Def* ptr) { return ptr->as<Extract>()->tuple()->as<Var>(); }
 
-void SEO::Analysis::live(Lam* lam, Defs abstr_args) {
-    if (slots_.empty()) return;
+Vars SEO::Analysis::reachable_slots(VarWorklist& todo) {
+    auto& vars = world().vars();
+    auto res   = Vars();
+    while (!todo.empty()) {
+        auto var = todo.pop();
+        if (var2slot_.contains(var)) res = vars.insert(res, var);
+        if (auto abstr = lattice(var); abstr && abstr != var) todo.push(abstr->free_vars());
+        if (auto stored = fe::lookup(slot2stored_, var)) todo.push(*stored);
+    }
+    return res;
+}
 
-    auto todo = fe::DFSWorklist<GIDSet<const Var*>>();
+void SEO::Analysis::live(Lam* lam, Defs abstr_args) {
+    if (var2slot_.empty()) return;
+
+    auto todo = VarWorklist();
     todo.push(lam->free_vars());
     if (auto var = lam->has_var()) todo.push(var);
     for (auto arg : abstr_args)
         todo.push(arg->free_vars());
 
-    auto& vars = world().vars();
     auto& live = lam2live_[lam];
-    auto grown = live;
-    while (!todo.empty()) {
-        auto var = todo.pop();
-        if (slot_vars_.contains(var)) grown = vars.insert(grown, var);
-        if (auto abstr = lattice(var); abstr && abstr != var) todo.push(abstr->free_vars());
-        if (auto stored = fe::lookup(slot2stored_, var)) todo.push(*stored);
+    auto grown = world().vars().merge(live, reachable_slots(todo));
+    if (grown != live) live = grown, touch();
+}
+
+void SEO::Analysis::pin_reachable_slots(const Def* abstr_callee, const Def* abstr_arg) {
+    if (var2slot_.empty()) return;
+
+    auto todo = VarWorklist();
+    todo.push(abstr_callee->free_vars());
+    if (auto tuple = abstr_arg->isa<Tuple>()) {
+        for (auto op : tuple->ops())
+            if (!isa_mem(op)) todo.push(op->free_vars());
+    } else if (!isa_mem(abstr_arg)) {
+        todo.push(abstr_arg->free_vars());
     }
 
-    if (grown != live) live = grown, touch();
+    for (auto var : reachable_slots(todo)) {
+        log().d("slot var {} reaches a direct-style call", var);
+        pin_slot(var2slot_[var]);
+    }
+}
+
+void SEO::Analysis::pin_slot(const App* slot) {
+    auto [_, ret_lam, __, ptr] = split_slot(slot);
+    pin(slot);
+    pin(ptr);
+    // Once slot is ⊤, apply_known no longer refreshes the whole var, whose stale sloxy would resurface via ptr.
+    pin(ret_lam->var());
 }
 
 void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
@@ -311,7 +347,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 auto sloxy         = world().proxy(ptr->type(), {curr_mut(), ptr}, Proxy_Sloxy)->set(slot->dbg_key());
                 sloxy2slot_[sloxy] = slot;
                 slots_.emplace(ptr);
-                slot_vars_ = world().vars().insert(slot_vars_, ret_lam->has_var());
+                var2slot_[ret_lam->has_var()] = slot;
                 log().d("slot {} → sloxy {}", ptr, sloxy);
                 // The slot is ptr's *defining* site: mark first_ so the ⊥ joined below cannot restart it away.
                 fe::assert_emplace(first_, ptr);
@@ -358,6 +394,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
     } else {
         auto abstr_callee = rewrite(app->callee());
         auto abstr_arg    = rewrite(app->arg());
+        if (returns_mem(app)) pin_reachable_slots(abstr_callee, abstr_arg);
         if (auto known = Lam::isa_rewritable(abstr_callee)) {
             auto n = known->num_tvars();
             return apply_known(known, DefVec(n, [&](size_t i) { return abstr_arg->proj(n, i); }));
@@ -424,12 +461,10 @@ void SEO::Analysis::analyze(const Def* def) {
 
     if (auto proxy = def->isa<Proxy>()) {
         if (proxy->tag() == Proxy_Sloxy) {
-            auto ptr  = proxy->op(1); // the continuation's slot var; see rewrite_imm_App
             auto slot = fe::lookup(sloxy2slot_, proxy);
             assert(slot);
-            pin(slot);
-            pin(ptr);
             log().d("sloxy {} survived; pinning slot {} to ⊤", proxy, slot);
+            pin_slot(slot->as<App>());
         }
         return; // never walk a proxy's deps (would drag in meta info)
     }
@@ -438,12 +473,13 @@ void SEO::Analysis::analyze(const Def* def) {
     if (auto app = def->isa<App>()) {
         if (auto slot = Axm::isa<mem::slot>(app)) {
             // The slot jump applies its continuation, so `ret_lam` is known - not reached as a value.
-            auto [mem, ret_lam, _, __] = split_slot(slot);
-            analyze(app->type());
-            analyze(mem); // the ptr var has no argument - the slot itself defines it
-            for (auto d : ret_lam->deps())
-                analyze(d);
-            return;
+            if (auto [mem, ret_lam, _, __] = split_slot(slot); ret_lam) {
+                analyze(app->type());
+                analyze(mem); // the ptr var has no argument - the slot itself defines it
+                for (auto d : ret_lam->deps())
+                    analyze(d);
+                return;
+            }
         }
 
         if (auto lam = Lam::isa_rewritable(app->callee())) {
@@ -523,6 +559,7 @@ const SEO::Sig& SEO::sig_of(Lam* old_lam) {
 const Def* SEO::rewrite_imm_App(const App* old_app) {
     if (auto slot = Axm::isa<mem::slot>(old_app)) {
         auto [mem, ret_lam, _, ptr] = split_slot(slot);
+        if (!ret_lam) return Super::rewrite_imm_App(old_app);
 
         if (isa_optimized_sloxy(ptr)) {
             // The slot was promoted away: jump straight to the (rebuilt) continuation, dropping the ptr var.

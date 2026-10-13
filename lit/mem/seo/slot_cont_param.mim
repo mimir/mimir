@@ -1,0 +1,10 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// The slot's continuation is a parameter, not a Lam.
+
+plugin core;
+plugin mem;
+
+extern con test(m: mem.M 0, k: Cn [mem.M 0, mem.Ptr0 Nat]) = mem.slot (Nat, 0) (m, k);
+
+// CHECK: mem.mslot

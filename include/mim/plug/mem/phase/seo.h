@@ -2,6 +2,8 @@
 
 #include <set>
 
+#include <fe/worklist.h>
+
 #include <mim/def.h>
 #include <mim/phase.h>
 #include <mim/tuple.h>
@@ -80,6 +82,12 @@ private:
         // SSA
         /// Grows lam2live_ by closing @p lam's free Var%s and @p abstr_args over the lattice and slot2stored_.
         void live(Lam* lam, Defs abstr_args);
+        using VarWorklist = fe::DFSWorklist<GIDSet<const Var*>>;
+        /// The slot Var%s reachable from @p todo through the lattice and slot2stored_.
+        Vars reachable_slots(VarWorklist& todo);
+        /// A direct-style call may access every slot reachable from its abstract callee and non-mem args.
+        void pin_reachable_slots(const Def* abstr_callee, const Def* abstr_arg);
+        void pin_slot(const App* slot);
         void propagate_phis(Lam*, DefVec& vars, DefVec& abstr_args);
         const Def* sloxy2val(const Def* sloxy) { return lam2sloxy2val(curr_mut<Lam>(), sloxy); }
         const Def* sloxy2val(const Def* sloxy, const Def* val) { return lam2sloxy2val_[curr_mut<Lam>()][sloxy] = val; }
@@ -96,7 +104,7 @@ private:
         DefSet first_;
         Def2Def sloxy2slot_;                            // global (kept between iterations)
         std::set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
-        Vars slot_vars_;                                // the Var%s of the slot continuations
+        VarMap<const App*> var2slot_;                   // slot continuation Var ↦ its slot
         VarMap<Vars> slot2stored_;                      // free Var%s of the values stored behind a slot
         LamMap<Vars> lam2live_;                         // slot Var%s a Lam may access; only grows
         LamSet unknowns_;            // Lam%s reached as a *value*; their signature must stay untouched
