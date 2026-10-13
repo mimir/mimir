@@ -217,8 +217,7 @@ static std::pair<const Proxy*, DefVec> sloxy_path(const Def* abstr_ptr) {
             auto [base, index] = lea->args<2>();
             auto agg           = pointee(base);
             auto n             = Lit::isa(agg->arity());
-            if (!index->isa<Lit>() || !n || (!agg->isa<Sigma>() && *n >= ptr->world().flags().scalarize_threshold))
-                return {};
+            if (!index->isa<Lit>() || !n || agg->num_tprojs() != *n) return {};
             path.emplace_back(index);
             ptr = base;
         } else

@@ -638,8 +638,14 @@ void Def::transfer_external(Def* to) {
 
 std::string Def::unique_name() const { return sym().str() + "_"s + std::to_string(gid()); }
 
+static bool is_seq_arity(const Def* def) {
+    if (def->isa<Seq>()) return true;
+    if (auto t = def->type(); t && !t->isa<Type>()) return is_seq_arity(t);
+    return false;
+}
+
 nat_t Def::num_tprojs() const {
-    if (auto a = Lit::isa(arity()); a && *a < world().flags().scalarize_threshold) return *a;
+    if (auto a = Lit::isa(arity()); a && (*a < world().flags().scalarize_threshold || !is_seq_arity(this))) return *a;
     return 1;
 }
 

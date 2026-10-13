@@ -539,7 +539,9 @@ Internally, however, all functions still have exactly one domain and one codomai
 
 There are also thresholded variants prefixed with `t`, which take [`mim::Flags::scalarize_threshold`](@ref mim::Flags::scalarize_threshold) (`--scalarize-threshold`) into account.
 
-[`mim::Def::num_tprojs`](@ref mim::Def::num_tprojs) behaves like [`mim::Def::num_projs`](@ref mim::Def::num_projs), but returns `1` if the arity exceeds the threshold.
+[`mim::Def::num_tprojs`](@ref mim::Def::num_tprojs) behaves like [`mim::Def::num_projs`](@ref mim::Def::num_projs), but returns `1` if the arity of a [pack](@ref mim::Pack) or [array](@ref mim::Arr) - or of a value of array type - exceeds the threshold.
+Splitting a [`Seq`](@ref mim::Seq) materializes all of its elements, whereas a [sigma](@ref mim::Sigma)'s components already exist as [`Def`s](@ref mim::Def).
+Keep in mind that a uniform sigma such as `[Nat, Nat, Nat]` already is the array `«3; Nat»`.
 Similarly, [`mim::Def::tproj`](@ref mim::Def::tproj), [`mim::Def::tprojs`](@ref mim::Def::tprojs), [`mim::Lam::tvars`](@ref mim::Lam::tvars), and related methods follow the same rule.
 
 **See also:**
@@ -595,8 +597,11 @@ The transformations follow suit and yield a null `Shape` without a statically kn
 | `‹2, n; 0›`        | [`Pack`](@ref mim::Pack)   | `2`                           | `2`                                     | `2`                                       |
 | `x: [Nat, Bool]`   | [`Var`](@ref mim::Var)     | `2`                           | `2`                                     | `2`                                       |
 | `‹32; 0›`          | [`Pack`](@ref mim::Pack)   | `32`                          | `32`                                    | `1`                                       |
+| `«32; Nat»`        | [`Arr`](@ref mim::Arr)     | `32`                          | `32`                                    | `1`                                       |
+| `x: «32; Nat»`     | [`Var`](@ref mim::Var)     | `32`                          | `32`                                    | `1`                                       |
+| `[Bool, Nat, …]`   | [`Sigma`](@ref mim::Sigma) | `32`                          | `32`                                    | `32`                                      |
 
-The last line assumes `mim::Flags::scalarize_threshold = 32`.
+The last four lines assume `mim::Flags::scalarize_threshold = 32` and a non-uniform `Sigma` of 32 components.
 The two fused rows only ever count their outermost axis; a [`Shape`](@ref mim::Shape) is what accounts for the rest.
 
 ## Iterating over the Program

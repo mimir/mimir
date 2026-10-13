@@ -222,7 +222,7 @@ const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
     auto l         = seq->shape().is_fused() ? std::nullopt : Lit::isa(new_shape);
     if (l && *l == 0) return world().prod(seq->is_intro());
 
-    if (auto var = seq->has_var(); var && l && *l <= world().flags().scalarize_threshold) {
+    if (auto var = seq->has_var(); var && l && *l < world().flags().scalarize_threshold) {
         auto new_ops = fe::Vector<const Def*, 32>(*l);
         for (size_t i = 0, e = *l; i != e; ++i) {
             push();
