@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include <fe/container.h>
+#include <fe/restore.h>
 #include <fe/worklist.h>
 
 #include "mim/check.h"
@@ -369,7 +370,14 @@ const Def* World::app(const Def* callee, const Def* arg) {
                 auto i    = move_.substs.find({var, arg});
                 auto body = i != move_.substs.end() ? i->second->ops()[1] : nullptr;
                 if (body != Filling) {
-                    if (!body) log().d("partially evaluate {} ({})", lam, arg);
+                    if (body) return reduce(var, arg, 1);
+                    if (data_.pe_depth == flags().pe_fuel)
+                        callee->blame("partial evaluation of `{}` ran out of fuel", lam)
+                            .n("nested more than {} partial evaluations; raise the limit with `--pe-fuel`",
+                               flags().pe_fuel)
+                            .bail();
+                    log().d("partially evaluate `{} ({})`", lam, arg);
+                    auto _ = fe::Restore(data_.pe_depth, data_.pe_depth + 1);
                     return reduce(var, arg, 1);
                 }
             }

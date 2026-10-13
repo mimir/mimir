@@ -1,0 +1,15 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+// RUN: (! %mim --pe-fuel 8 %s 2>&1) | %FileCheck %s --check-prefix=FUEL
+
+// Non-terminating partial evaluation runs out of fuel instead of overflowing the stack.
+
+plugin core;
+
+use core.ops.n;
+
+lam f(n: Nat): Nat = f (n + 1);
+lam g(m: Nat, x: «f m; Nat»): [] = ();
+
+// CHECK: error: partial evaluation of `f` ran out of fuel
+// CHECK: nested more than 1024 partial evaluations; raise the limit with `--pe-fuel`
+// FUEL: nested more than 8 partial evaluations
