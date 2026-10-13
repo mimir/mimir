@@ -340,7 +340,7 @@ std::string shape(Ctx* ctx, const Seq* seq, const Def* var) {
 bool destructible(Ctx* ctx, const Def* def, const Def* type, size_t n) {
     if (!def) return false;
     if (n <= 1) {
-        // Def::num_tprojs keeps a def above Flags::scalarize_threshold whole, so its components have no name either.
+        // Def::num_tprojs keeps a Seq above Flags::scalarize_threshold whole, so its components have no name either.
         if (ctx && def->num_projs() > 1) ctx->opaque.emplace(def);
         return false;
     }

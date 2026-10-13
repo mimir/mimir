@@ -232,7 +232,7 @@ int main(int argc, char** argv) {
             .opt(flags.max_fp_iters        , "num"       , ""  , "--max-fp-iters"        , "Maximum number of fixed-point iterations before a phase errors out; guards against non-monotone analyses.")
             .opt(flags.pe_fuel             , "num"       , ""  , "--pe-fuel"             , "Maximum nesting depth of partial evaluations before erroring out; guards against non-terminating specialization.")
             .opt(opts.no_opt               , ""          , ""  , "--no-opt"              , "Elaborates the input but skips the optimization pipeline, so no backend runs; `--output-*` still works.")
-            .opt(flags.scalarize_threshold , "threshold" , ""  , "--scalarize-threshold" , "MimIR will not scalarize tuples/packs/sigmas/arrays with a number of elements greater than or equal this threshold.")
+            .opt(flags.scalarize_threshold , "threshold" , ""  , "--scalarize-threshold" , "MimIR will not scalarize packs/arrays with a number of elements greater than or equal this threshold.")
 #ifdef MIM_ENABLE_CHECKS
             .grp("Developer Options")
             .opt(breakpoints               , "gid"       , "-b", "--break"               , "Triggers a breakpoint when a node with this global id is created.")

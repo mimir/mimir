@@ -1,0 +1,18 @@
+// RUN: %mim -p opt %s -o - --scalarize-threshold 2 | %FileCheck %s
+plugin core;
+
+use core.ops.n;
+
+extern fun foo [Nat]: Nat;
+
+con f (t: [Nat, Bool, Nat], r: Cn Nat) =
+    let (a, b, c) = t;
+    ret x = foo $ (a + (0, c)#b);
+    r x;
+
+extern con main(i: Idx 2, r: Cn Nat) =
+    (f ((10, tt, 30), r), f ((40, ff, 60), r))#i;
+
+// Unlike an Arr, a Sigma is scalarized regardless of the threshold.
+// CHECK-DAG: f (10, tt, 30)
+// CHECK-DAG: f (40, ff, 60)

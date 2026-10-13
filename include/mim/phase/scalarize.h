@@ -42,8 +42,8 @@ namespace mim {
 /// re-running it converges to a full flatten; each run that peels calls invalidate().
 ///
 /// Flattening respects Flags::scalarize_threshold via the thresholded projection helpers
-/// (Def::num_tprojs, Pi::tdom, App::targ): a parameter is only expanded if its arity is
-/// below the threshold.
+/// (Def::num_tprojs, Pi::tdom, App::targ): an Arr parameter is only expanded if its arity is
+/// below the threshold; a Sigma parameter always is.
 /// It will not flatten mutable @p Sigma%s or @p Arr%ays (their vars have no static arity).
 class Scalarize : public RWPhase {
 private:
