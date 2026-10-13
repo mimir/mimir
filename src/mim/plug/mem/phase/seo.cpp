@@ -10,6 +10,7 @@ namespace mim::plug::mem::phase {
  * Helpers
  */
 
+// All of them track their Vars: liveness and ⊥-site visibility depend on them.
 enum {
     Proxy_SCCP_Top, // proxy(var)                        <- var reached ⊤ for propagation but still awaits GVN bundling
     Proxy_Bundle,   // proxy(lam, var1, var2, ..., varn) <- GVN congruence class
@@ -45,7 +46,9 @@ void SEO::Analysis::reset() {
 
 // SCCP
 
-const Proxy* SEO::Analysis::mk_sccp_top(const Def* var) { return world().proxy(var->type(), {var}, Proxy_SCCP_Top); }
+const Proxy* SEO::Analysis::mk_sccp_top(const Def* var) {
+    return world().proxy(var->type(), {var}, Proxy_SCCP_Top, true);
+}
 
 const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     log().d("sccp join: {} ⊔ {}", var, def);
@@ -110,7 +113,7 @@ static const Proxy* isa_bundle(const Def* def, Lam* lam) {
 }
 
 const Proxy* SEO::Analysis::mk_bundle(Lam* lam, const Def* var, Defs bundle_vars) {
-    return world().proxy(var->type(), Def::cat(lam, bundle_vars), Proxy_Bundle)->set(var->dbg_key());
+    return world().proxy(var->type(), Def::cat(lam, bundle_vars), Proxy_Bundle, true)->set(var->dbg_key());
 }
 
 void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, fe::Span<const Def*> abstr_vars) {
@@ -180,7 +183,7 @@ void SEO::Analysis::gvn_split(Lam* lam, Defs vars, fe::Span<const Def*> abstr_ar
 
 // lam's Var makes the phi only visible where lam's future param is.
 static const Def* mk_phi(World& w, Lam* lam, const Def* sloxy) {
-    return w.proxy(pointee(sloxy), {lam->var(), sloxy}, Proxy_Phi)->set(sloxy->dbg_key());
+    return w.proxy(pointee(sloxy), {lam->var(), sloxy}, Proxy_Phi, true)->set(sloxy->dbg_key());
 }
 
 const Def* SEO::Analysis::lam2sloxy2val(Lam* lam, const Def* sloxy) {
@@ -363,7 +366,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         if (!is_top(slot)) {
             if (auto [mem, ret_lam, _, ptr] = split_slot(slot); ret_lam) {
                 auto abstr_mem = rewrite(mem);
-                auto sloxy     = world().proxy(ptr->type(), {curr_mut(), ptr}, Proxy_Sloxy)->set(slot->dbg_key());
+                auto sloxy     = world().proxy(ptr->type(), {curr_mut(), ptr}, Proxy_Sloxy, true)->set(slot->dbg_key());
                 slots_.emplace(ptr);
                 var2slot_[ret_lam->has_var()] = slot;
                 log().d("slot {} → sloxy {}", ptr, sloxy);

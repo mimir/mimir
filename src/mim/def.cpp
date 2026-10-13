@@ -65,12 +65,16 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     auto muts = Muts();
     World* w  = nullptr;
 
-    auto collect = [&](const Def* d, bool only_vars = false) {
-        dep |= only_vars ? d->dep_ & fe::to_underlying(Dep::Var) : d->dep_;
+    auto collect = [&](const Def* d, bool with_vars = true, bool with_muts = true) {
+        if (!with_vars && !with_muts) return;
+        auto mask = ~0u;
+        if (!with_vars) mask &= ~fe::to_underlying(Dep::Var);
+        if (!with_muts) mask &= ~fe::to_underlying(Dep::Mut);
+        dep |= d->dep_ & mask;
         // A Def without Dep::Var and Dep::Mut has neither local Vars nor local Muts.
         if (!(d->dep_ & (fe::to_underlying(Dep::Var) | fe::to_underlying(Dep::Mut)))) return;
-        auto dvars = d->local_vars();
-        auto dmuts = only_vars ? Muts() : d->local_muts();
+        auto dvars = with_vars ? d->local_vars() : Vars();
+        auto dmuts = with_muts ? d->local_muts() : Muts();
         if ((vars && dvars) || (muts && dmuts)) {
             if (!w) w = &d->world();
             vars = w->vars().merge(vars, dvars);
@@ -90,7 +94,10 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
         ptr[i]  = op;
         gids    = gids << 32 | op->gid();
         if (i & 1) h = fe::hash_combine(h, gids), gids = 0;
-        collect(op, node == Node::Proxy);
+        if (node == Node::Proxy)
+            collect(op, flags & Proxy::Vars_Bit, flags & Proxy::Muts_Bit);
+        else
+            collect(op);
     }
     if (gids) h = fe::hash_combine(h, gids); // gid 0 is never handed out, so this odd tail cannot alias a pair
 

@@ -1101,23 +1101,33 @@ private:
 };
 
 /// Used as intermediate value during optimizatinos such as Analysis.
-/// @note Def::ops() are hashed as normal and contribute to Def::local_vars() and hence to Def::free_vars(),
-/// but **not** to Def::local_muts(): a mutable op is typically meta information to memoize certain things.
-/// Should another user need a different policy, two Proxy flags could select whether Vars and Muts are tracked.
+/// @note Def::ops() are hashed as normal, but they only contribute to Def::local_vars() / Def::local_muts() -
+/// and hence to Def::free_vars() - if tracks_vars() / tracks_muts() is set.
+/// Ops are typically meta information to memoize certain things that do not carry semantic information per se.
 class Proxy : public Def, public Setters<Proxy> {
+public:
+    static constexpr flags_t Vars_Bit = flags_t(1) << 63;
+    static constexpr flags_t Muts_Bit = flags_t(1) << 62;
+
 private:
-    Proxy(const Def* type, flags_t tag, Defs ops)
-        : Def(Node, type, ops, tag) {}
+    Proxy(const Def* type, flags_t flags, Defs ops)
+        : Def(Node, type, ops, flags) {}
+
+    static constexpr flags_t mk_flags(u32 tag, bool vars, bool muts) {
+        return flags_t(tag) | (vars ? Vars_Bit : 0) | (muts ? Muts_Bit : 0);
+    }
 
 public:
     using Setters<Proxy>::set;
 
     /// @name Getters
     ///@{
-    flags_t tag() const { return flags_; }
+    u32 tag() const { return u32(flags_); }
+    bool tracks_vars() const { return flags_ & Vars_Bit; }
+    bool tracks_muts() const { return flags_ & Muts_Bit; }
     ///@}
 
-    template<flags_t Tag>
+    template<u32 Tag>
     static const Proxy* isa(const Def* def) {
         if (auto proxy = def->isa<Proxy>(); proxy && proxy->tag() == Tag) return proxy;
         return nullptr;
