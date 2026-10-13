@@ -1,0 +1,24 @@
+// RUN: %mim %s -o - | %FileCheck %s
+plugin compile;
+
+lam g0 (_: [])@ff: Nat    = 0;
+lam g1 (_: Idx 1)@ff: Nat = 1;
+lam g2 (_: «23»)@ff: Nat  = 2;
+lam g3 (_: Nat)@ff: Nat   = 3;
+
+lam take0 (f: [] → Nat)@ff: Nat    = f ();
+lam take1 (f: Idx 1 → Nat)@ff: Nat = f 0₁;
+lam take2 (f: «23» → Nat)@ff: Nat  = f ‹23›;
+lam take3 (f: «23» → Nat)@ff: Nat  = f ‹23›;
+
+extern lam foo(): «4; Nat» =
+    let a = take0 (lm _: [] = g0 ());
+    let b = take1 (lm _: Idx 1 = g1 0₁);
+    let c = take2 (lm (x: «23») = g2 ‹#x›);
+    let d = take3 (lm (x: «23») = g3 (#x));
+    (a, b, c, d);
+
+extern lam _compile(): compile.Phase =
+    compile.eta_conv;
+
+// CHECK: (take0 g0, take1 g1, take2 g2, take3 {{[[:alnum:]_]+}});

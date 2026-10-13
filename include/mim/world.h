@@ -325,6 +325,8 @@ public:
             return type(lit_univ(level));
     }
     const Def* var(Def* mut);
+    const Def*
+    inhabitant(const Def* type); ///< The sole inhabitant of @p type, if it is a singleton, `nullptr` otherwise.
     const Proxy* proxy(const Def* type, Defs ops, flags_t tag) { return unify<Proxy>(type, tag, ops); }
 
     Hole* mut_hole(const Def* type) { return insert<Hole>(type); }

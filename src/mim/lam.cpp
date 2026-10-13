@@ -43,8 +43,6 @@ Lam* Lam::branch(Filter filter, const Def* cond, const Def* t, const Def* f, con
 
 Defs Lam::reduce(Defs args) const { return Def::reduce(world().tuple(args)); }
 
-// TODO maybe we can eta-reduce immutable Lams in some edge casess like: lm _: [] = f ();
-
 const Def* Lam::isa_ret_arg(const Def* d) {
     auto lam = d->isa_mut<Lam>();
     if (!lam || !lam->is_set()) return nullptr;
@@ -52,31 +50,32 @@ const Def* Lam::isa_ret_arg(const Def* d) {
     return app && app->callee() == lam->ret_var() ? app->arg() : nullptr;
 }
 
-const Def* Lam::eta_callee() const {
-    if (!is_set()) return nullptr;
-    if (auto var = has_var()) {
-        if (auto app = body()->isa<App>())
-            if (app->arg() == var && !app->callee()->has_free_var(var)) return app->callee();
-    }
+static const Def* eta_step(const Def* def) {
+    if (auto lam = def->isa<Lam>(); lam && lam->is_set())
+        if (auto app = lam->body()->isa<App>()) {
+            auto var = lam->has_var();
+            if (var && app->callee()->has_free_var(var)) return nullptr;
+            // The sole inhabitant of a singleton dom is η-equal to the Var.
+            if ((var && app->arg() == var) || app->arg() == lam->world().inhabitant(lam->dom())) return app->callee();
+        }
     return nullptr;
 }
 
-static const Def* eta_next(const Def* def) {
-    auto lam = def->isa<Lam>();
-    return lam ? lam->eta_callee() : nullptr;
-}
+const Def* Lam::eta_reduce(const Def* def) {
+    auto advance = [](const Def*& d) {
+        auto next = eta_step(d);
+        if (next) d = next;
+        return next != nullptr;
+    };
 
-const Def* Lam::eta_reduce() const {
-    auto f = this->eta_callee();
-    // Floyd: the hare checks each Lam it passes, so it meets `this` before the tortoise iff `this` is on the cycle.
-    for (auto slow = f, fast = f; fast;) {
-        for (int i = 0; i != 2; ++i) {
-            if (fast == this) return nullptr;
-            if (!(fast = eta_next(fast))) return f;
+    auto slow = def, fast = def;
+    while (advance(fast) && advance(fast))
+        if (advance(slow); slow == fast) {
+            // Floyd: restarting one pointer and stepping both in lockstep meets at the cycle's entry.
+            for (slow = def; slow != fast; advance(slow), advance(fast)) {}
+            break;
         }
-        if ((slow = eta_next(slow)) == fast) return f;
-    }
-    return f;
+    return fast == def ? nullptr : fast;
 }
 
 Lam* Lam::eta_expand(Filter filter, const Def* f) {
