@@ -220,17 +220,16 @@ static std::pair<const Proxy*, DefVec> sloxy_path(const Def* abstr_ptr) {
         if (auto sloxy = Proxy::isa<Proxy_Sloxy>(ptr)) {
             std::ranges::reverse(path);
             return {sloxy, path};
-        }
-
-        auto lea = Axm::isa<mem::lea>(ptr);
-        if (!lea) return {};
-        auto [base, index] = lea->args<2>();
-        auto agg           = pointee(base);
-        auto n             = Lit::isa(agg->arity());
-        if (!index->isa<Lit>() || !n || (!agg->isa<Sigma>() && *n >= ptr->world().flags().scalarize_threshold))
+        } else if (auto lea = Axm::isa<mem::lea>(ptr)) {
+            auto [base, index] = lea->args<2>();
+            auto agg           = pointee(base);
+            auto n             = Lit::isa(agg->arity());
+            if (!index->isa<Lit>() || !n || (!agg->isa<Sigma>() && *n >= ptr->world().flags().scalarize_threshold))
+                return {};
+            path.emplace_back(index);
+            ptr = base;
+        } else
             return {};
-        path.emplace_back(index);
-        ptr = base;
     }
 }
 
