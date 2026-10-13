@@ -376,7 +376,7 @@ const Def* World::app(const Def* callee, const Def* arg) {
                             .n("nested more than {} partial evaluations; raise the limit with `--pe-fuel`",
                                flags().pe_fuel)
                             .bail();
-                    log().d("partially evaluate {} ({})", lam, arg);
+                    log().d("partially evaluate `{} ({})`", lam, arg);
                     auto _ = fe::Restore(data_.pe_depth, data_.pe_depth + 1);
                     return reduce(var, arg, 1);
                 }
