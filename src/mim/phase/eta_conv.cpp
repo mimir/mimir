@@ -24,24 +24,22 @@ void EtaConv::analyze(const Def* def) {
 }
 
 void EtaConv::visit(const Def* def, Lattice l) {
-    if (auto lam = def->isa_mut<Lam>()) {
-        // Wrapper-transparency: a use of `λx.f x` counts as a use of `f` at the same lattice `l`.
-        // Do *not* descend into the wrapper's body (which would classify `f` as Known).
-        if (auto f = lam->eta_reduce()) return visit(f, l);
-        join(lam, l);
-    }
+    // Wrapper-transparency: a use of `λx.f x` counts as a use of `f` at the same lattice `l`.
+    // Do *not* descend into the wrapper's body (which would classify `f` as Known).
+    if (auto f = Lam::eta_reduce(def)) return visit(f, l);
+    if (auto lam = def->isa_mut<Lam>()) join(lam, l);
     analyze(def);
 }
 
 const Def* EtaConv::rewrite(const Def* old_def) {
     if (auto lam = old_def->isa<Lam>()) {
-        if (auto f = lam->eta_reduce()) {
+        if (auto f = Lam::eta_reduce(lam)) {
             // η-redex `λx.f x`: reduce unless `f` wants to stay expanded.
             if (!expand(f)) {
                 profile_count("η-reduction");
                 log().d("eta-reduce {} → {}", lam, f);
                 invalidate();
-                return rewrite(f);
+                return rewrite_no_eta(f);
             }
             // Keep it - but as a *fresh* expansion wrapper (with the `tt` filter EtaExp uses), so that a
             // pre-existing wrapper's stale filter does not leak downstream and every occurrence gets its own.
@@ -60,13 +58,12 @@ const Def* EtaConv::rewrite(const Def* old_def) {
 }
 
 const Def* EtaConv::rewrite_no_exp(const Def* old_def) {
-    if (auto lam = old_def->isa<Lam>())
-        if (auto f = lam->eta_reduce(); f && !expand(f)) {
-            log().d("eta-reduce {} → {}", lam, f);
-            invalidate();
-            return rewrite_no_exp(f);
-        }
-    return RWPhase::rewrite(old_def);
+    if (auto f = Lam::eta_reduce(old_def); f && !expand(f)) {
+        log().d("eta-reduce {} → {}", old_def, f);
+        invalidate();
+        return rewrite_no_eta(f);
+    }
+    return rewrite_no_eta(old_def);
 }
 
 const Def* EtaConv::rewrite_imm_App(const App* app) {

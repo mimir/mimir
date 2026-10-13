@@ -179,11 +179,11 @@ public:
     ///@{
     static Lam* eta_expand(Filter, const Def* f);
     static Lam* eta_expand(const Def* f) { return eta_expand(true, f); } ///< Use `true` Filter.
-    const Def* eta_callee() const; ///< Yields `f` if `this` is `λ x = f x` where `x` ∉ `FV(f)`.
-    /// Yields the callee of body(), if eta-convertible and `nullptr` otherwise.
-    /// η-convertible means: `λ x = f x` where `x` ∉ `FV(f)`.
-    /// A Lam on an η-cycle like `ping = λn.pong n; pong = λn.ping n` diverges and is not η-convertible.
-    const Def* eta_reduce() const;
+    /// Fast-forwards @p def along its chain of η-redexes `λ x = f x` where `x` ∉ `FV(f)`.
+    /// Yields the end of the chain or `nullptr` if @p def is no η-redex.
+    /// A chain running into an η-cycle like `ping = λn.pong n; pong = λn.ping n` ends at the cycle's entry.
+    /// Hence, a Lam on such a cycle is no η-redex.
+    static const Def* eta_reduce(const Def* def);
     ///@}
 
     /// @name Rewritable
