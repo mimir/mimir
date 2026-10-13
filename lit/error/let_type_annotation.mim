@@ -6,4 +6,3 @@ extern lam f (): Nat = x;
 // CHECK-NEXT: 3 | let x: Bool = 5;
 // CHECK-NEXT:   |     ^^^^^^^
 // CHECK-NEXT:   = note: expected `Bool`, got `Nat`
-// CHECK-NEXT:   = note: type `Bool` annotated here

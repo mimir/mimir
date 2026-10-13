@@ -225,13 +225,10 @@ const Def* IdPtrn::emit_value(Emitter& e, const Def* def) const {
     e.error()
         .e(loc(), "value bound to `{}` is not assinable to its annotated type", dbg().sym())
         .n("expected `{}`, got `{}`", id_ty, type_of(def))
-        .n("type `{}` annotated here", id_ty)
-    .bail();
+        .bail();
 }
 
-const Def* IdPtrn::emit_value_without_type_check(Emitter& e, const Def* def) const {
-    return def_ = def->set(dbg());
-}
+const Def* IdPtrn::emit_value_without_type_check(Emitter& e, const Def* def) const { return def_ = def->set(dbg()); }
 
 const Def* GrpPtrn::emit_value(Emitter&, const Def* def) const { return def_ = def->set(dbg()); }
 
