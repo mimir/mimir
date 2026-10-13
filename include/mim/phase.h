@@ -202,8 +202,7 @@ public:
     /// Analysis::lattice_force.
     const Def* repr(const Def* def) const {
         assert(!is_cyclic(def) && "lattice chain must not loop");
-        while (auto next = follow(def))
-            def = next;
+        for (auto next = follow(def); next != def; def = next, next = follow(def)) {}
         return def;
     }
 
@@ -332,10 +331,10 @@ protected:
     ///@}
 
 private:
-    /// The next def on @p def's chain, or `nullptr` if @p def ends it (⊥ or ⊤).
+    /// The next def on @p def's chain, or @p def itself if it ends it (⊥ or ⊤).
     const Def* follow(const Def* def) const {
         auto i = lattice_.find(def);
-        return i == lattice_.end() || i->second == def ? nullptr : i->second;
+        return i == lattice_.end() ? def : i->second;
     }
 
     bool is_cyclic(const Def* def) const;

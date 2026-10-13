@@ -54,27 +54,18 @@ static const Def* eta_step(const Def* def) {
     if (auto lam = def->isa<Lam>(); lam && lam->is_set())
         if (auto app = lam->body()->isa<App>()) {
             auto var = lam->has_var();
-            if (var && app->callee()->has_free_var(var)) return nullptr;
+            if (var && app->callee()->has_free_var(var)) return def;
             // The sole inhabitant of a singleton dom is η-equal to the Var.
-            if ((var && app->arg() == var) || app->arg() == lam->world().inhabitant(lam->dom())) return app->callee();
+            if (app->arg() == var || app->arg() == lam->world().inhabitant(lam->dom())) return app->callee();
         }
-    return nullptr;
+    return def;
 }
 
 const Def* Lam::eta_reduce(const Def* def) {
-    auto advance = [](const Def*& d) {
-        auto next = eta_step(d);
-        if (next) d = next;
-        return next != nullptr;
-    };
-
-    auto slow = def, fast = def;
-    while (advance(fast) && advance(fast))
-        if (advance(slow); slow == fast) {
-            // Floyd: restarting one pointer and stepping both in lockstep meets at the cycle's entry.
-            for (slow = def; slow != fast; advance(slow), advance(fast)) {}
-            break;
-        }
+    // Floyd: the chain's end is a fixpoint of eta_step, i.e. a cycle of length 1.
+    auto slow = eta_step(def), fast = eta_step(slow);
+    for (; slow != fast; slow = eta_step(slow), fast = eta_step(eta_step(fast))) {}
+    for (slow = def; slow != fast; slow = eta_step(slow), fast = eta_step(fast)) {}
     return fast == def ? nullptr : fast;
 }
 

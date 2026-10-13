@@ -99,12 +99,9 @@ const Def* Analysis::lookup(const Def* def) {
 }
 
 bool Analysis::is_cyclic(const Def* def) const {
-    for (auto slow = def, fast = def;;) {
-        if (fast = follow(fast); !fast) return false;
-        if (fast = follow(fast); !fast) return false;
-        slow = follow(slow);
-        if (slow == fast) return true;
-    }
+    auto slow = follow(def), fast = follow(slow);
+    for (; slow != fast; slow = follow(slow), fast = follow(follow(fast))) {}
+    return follow(fast) != fast;
 }
 
 const Def* Analysis::rewrite(const Def* def) {
