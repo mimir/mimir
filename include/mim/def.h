@@ -1101,9 +1101,9 @@ private:
 };
 
 /// Used as intermediate value during optimizatinos such as Analysis.
-/// @note Def::ops() are hashed as normal but they do **not** contribute to Def::local_vars(), nor Def::local_muts() and
-/// hence not to Def::free_vars(). This is by design as those ops typically are some meta information to memoize certain
-/// things that do not carry semantic information per se.
+/// @note Def::ops() are hashed as normal and contribute to Def::local_vars() and hence to Def::free_vars(),
+/// but **not** to Def::local_muts(): a mutable op is typically meta information to memoize certain things.
+/// Should another user need a different policy, two Proxy flags could select whether Vars and Muts are tracked.
 class Proxy : public Def, public Setters<Proxy> {
 private:
     Proxy(const Def* type, flags_t tag, Defs ops)

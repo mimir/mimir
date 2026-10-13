@@ -78,6 +78,8 @@ private:
         void gvn_split(Lam*, Defs, fe::Span<const Def*>, fe::Span<const Def*>);
 
         // SSA
+        /// Grows lam2live_ by closing @p lam's free Var%s and @p abstr_args over the lattice and slot2stored_.
+        void live(Lam* lam, Defs abstr_args);
         void propagate_phis(Lam*, DefVec& vars, DefVec& abstr_args);
         const Def* sloxy2val(const Def* sloxy) { return lam2sloxy2val(curr_mut<Lam>(), sloxy); }
         const Def* sloxy2val(const Def* sloxy, const Def* val) { return lam2sloxy2val_[curr_mut<Lam>()][sloxy] = val; }
@@ -94,6 +96,9 @@ private:
         DefSet first_;
         Def2Def sloxy2slot_;                            // global (kept between iterations)
         std::set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
+        Vars slot_vars_;                                // the Var%s of the slot continuations
+        VarMap<Vars> slot2stored_;                      // free Var%s of the values stored behind a slot
+        LamMap<Vars> lam2live_;                         // slot Var%s a Lam may access; only grows
         LamSet unknowns_;            // Lam%s reached as a *value*; their signature must stay untouched
         LamMap<MutSet> lam2callers_; // all muts that apply a Lam; tainted when the Lam's abstract vars change
     };

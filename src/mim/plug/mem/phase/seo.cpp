@@ -1,5 +1,7 @@
 #include "mim/plug/mem/phase/seo.h"
 
+#include <fe/worklist.h>
+
 #include <mim/lam.h>
 
 #include "mim/plug/mem/mem.h"
@@ -14,7 +16,7 @@ enum {
     Proxy_SCCP_Top, // proxy(var)                        <- var reached ⊤ for propagation but still awaits GVN bundling
     Proxy_Bundle,   // proxy(lam, var1, var2, ..., varn) <- GVN congruence class
     Proxy_Sloxy,    // proxy(lam, ptr)                   <- slot invoked at lam where ptr is the slot cons's ptr var
-    Proxy_Phi,      // proxy(lam, sloxy)                 <- phi we need at lam for sloxy
+    Proxy_Phi,      // proxy(lam_var, sloxy)             <- phi we need at lam for sloxy
 };
 
 static size_t idx_of(Defs vars, const Def* p) {
@@ -56,7 +58,7 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // As ⊥ never restarts the join, cur is at worst last round's value; a quiet round thus checks the final one.
     if (def->isa<Bot>()) {
         if (!cur) return lattice(var, def), def;
-        if (auto caller = curr_mut(); caller && !is_visible(cur, caller)) {
+        if (auto caller = curr_mut(); caller && !Proxy::isa<Proxy_Sloxy>(cur) && !is_visible(cur, caller)) {
             log().d("cannot propagate {} → {}: invisible at ⊥-site {}", var, cur, caller);
             return pin(var), var;
         }
@@ -178,8 +180,9 @@ void SEO::Analysis::gvn_split(Lam* lam, Defs vars, fe::Span<const Def*> abstr_ar
 
 // SSA
 
+// lam's Var makes the phi only visible where lam's future param is.
 static const Def* mk_phi(World& w, Lam* lam, const Def* sloxy) {
-    return w.proxy(pointee(sloxy), {lam, sloxy}, Proxy_Phi)->set(sloxy->dbg_key());
+    return w.proxy(pointee(sloxy), {lam->var(), sloxy}, Proxy_Phi)->set(sloxy->dbg_key());
 }
 
 const Def* SEO::Analysis::lam2sloxy2val(Lam* lam, const Def* sloxy) {
@@ -199,8 +202,37 @@ bool SEO::Analysis::can_supply(Lam* lam, const Def* sloxy) {
     return true;
 }
 
+static const Var* slot_var(const Def* ptr) { return ptr->as<Extract>()->tuple()->as<Var>(); }
+
+void SEO::Analysis::live(Lam* lam, Defs abstr_args) {
+    if (slots_.empty()) return;
+
+    auto todo = fe::DFSWorklist<GIDSet<const Var*>>();
+    todo.push(lam->free_vars());
+    if (auto var = lam->has_var()) todo.push(var);
+    for (auto arg : abstr_args)
+        todo.push(arg->free_vars());
+
+    auto& vars = world().vars();
+    auto& live = lam2live_[lam];
+    auto grown = live;
+    while (!todo.empty()) {
+        auto var = todo.pop();
+        if (slot_vars_.contains(var)) grown = vars.insert(grown, var);
+        if (auto abstr = lattice(var); abstr && abstr != var) todo.push(abstr->free_vars());
+        if (auto stored = fe::lookup(slot2stored_, var)) todo.push(*stored);
+    }
+
+    if (grown != live) live = grown, touch();
+}
+
 void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
+    const auto& live = lam2live_[lam];
     for (auto ptr : slots()) {
+        if (!live.contains(slot_var(ptr))) {
+            profile_count("seo.phis.dead");
+            continue;
+        }
         if (auto sloxy = Proxy::isa<Proxy_Sloxy>(rewrite(ptr))) {
             if (auto value = sloxy2val(sloxy)) {
                 auto phi = mk_phi(world(), lam, sloxy);
@@ -237,6 +269,7 @@ const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
         return abstr_targs[i];
     });
 
+    live(known, all_abstr_args);
     propagate_phis(known, all_vars, all_abstr_args);
 
     auto all_abstr_vars = DefVec(all_vars.size());
@@ -278,6 +311,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 auto sloxy         = world().proxy(ptr->type(), {curr_mut(), ptr}, Proxy_Sloxy)->set(slot->dbg_key());
                 sloxy2slot_[sloxy] = slot;
                 slots_.emplace(ptr);
+                slot_vars_ = world().vars().insert(slot_vars_, ret_lam->has_var());
                 log().d("slot {} → sloxy {}", ptr, sloxy);
                 // The slot is ptr's *defining* site: mark first_ so the ⊥ joined below cannot restart it away.
                 fe::assert_emplace(first_, ptr);
@@ -297,6 +331,9 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_val       = rewrite(val);
 
         if (auto sloxy = Proxy::isa<Proxy_Sloxy>(abstr_ptr)) {
+            auto& stored = slot2stored_[slot_var(sloxy->op(1))];
+            if (auto grown = world().vars().merge(stored, abstr_val->free_vars()); grown != stored)
+                stored = grown, touch();
             sloxy2val(sloxy, abstr_val);
             log().d("store: {} ← {}", sloxy, abstr_val);
             return abstr_mem;
@@ -342,6 +379,7 @@ void SEO::Analysis::leave() {
             for (auto mut : abstr->local_muts())
                 if (auto dst = mut->isa<Lam>(); dst && dst->is_open()) {
                     log().d("unknown edge: {} → {}", src, dst);
+                    live(dst, {});
                     propagate_phis(dst, phi_vars, phi_abstr_args);
                 }
         };
