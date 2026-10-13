@@ -403,6 +403,13 @@ bool Def::nests(const Def* def) {
     return false;
 }
 
+bool Def::in_scope(Def* mut) const {
+    return std::ranges::all_of(free_vars(), [mut](const Var* fv) {
+        auto binder = fv->binder();
+        return binder == mut || binder->nests(mut);
+    });
+}
+
 /*
  * Def - misc
  */

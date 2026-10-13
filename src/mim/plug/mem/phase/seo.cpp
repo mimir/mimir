@@ -26,13 +26,6 @@ static size_t idx_of(Defs vars, const Def* p) {
 
 static const Proxy* isa_bundle(const Def* def, Lam* lam);
 
-/// Is every free Var of @p def bound by @p mut or by a mutable that nests @p mut?
-static bool is_visible(const Def* def, Def* mut) {
-    for (auto fv : def->free_vars())
-        if (auto binder = fv->binder(); binder != mut && !binder->nests(mut)) return false;
-    return true;
-}
-
 void SEO::Analysis::reset() {
     Super::reset();
     visited_.clear();
@@ -59,7 +52,7 @@ const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     // As ⊥ never restarts the join, cur is at worst last round's value; a quiet round thus checks the final one.
     if (def->isa<Bot>()) {
         if (!cur) return lattice(var, def), def;
-        if (auto caller = curr_mut(); caller && !Proxy::isa<Proxy_Sloxy>(cur) && !is_visible(cur, caller)) {
+        if (auto caller = curr_mut(); caller && !Proxy::isa<Proxy_Sloxy>(cur) && !cur->in_scope(caller)) {
             log().d("cannot propagate {} → {}: invisible at ⊥-site {}", var, cur, caller);
             return pin(var), var;
         }

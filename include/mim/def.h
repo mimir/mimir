@@ -580,6 +580,9 @@ public:
     /// Does @p this nest @p def?
     /// Also strict: a @p def that only uses @p this%'s own Var sits at @p this%'s level and is *not* nested.
     bool nests(const Def* def);
+    /// Is every free Var of @p this bound by @p mut or by a mutable that nests @p mut?
+    /// I.e., may @p mut use @p this?
+    bool in_scope(Def* mut) const;
     ///@}
 
     /// @name free_vars predicates

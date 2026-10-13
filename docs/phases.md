@@ -373,12 +373,50 @@ This is a textbook use of [`Analysis`](@ref mim::Analysis):
 - store them in [`Analysis::lattice()`](@ref mim::Analysis::lattice),
 - iterate to a fixed point.
 
+### Transformation
+
+\include "mim/phase/sccp_transform.cpp"
+
+Once the lattice is stable, the outer SCCP phase starts rewriting.
+During rewriting, it can query abstract values for old-world definitions through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
+
+When it sees an application of a lambda whose parameters have propagated values, it rebuilds a specialized lambda:
+
+- parameters with known propagated expressions are removed,
+- remaining parameters are kept,
+- the lambda body is rewritten with the propagated values substituted,
+- the call site is rebuilt with only the remaining arguments.
+
+Which parameters survive is stated once as a [`Sieve`](@ref mim::Sieve) over the old [`Var`s](@ref mim::Var), and all three rebuilds read it back:
+[`gather`](@ref mim::Sieve::gather) picks the surviving domains and arguments, while [`operator[]`](@ref mim::Sieve::operator[]) maps each old parameter either to its new [`Var`](@ref mim::Var) or - on [`Gone`](@ref mim::Sieve::Gone) - to its propagated value.
+
+So SCCP follows the standard [`RWPhase`](@ref mim::RWPhase) pattern:
+
+1. analyze the old world,
+2. rewrite into a new world using the computed facts,
+3. swap worlds.
+
+### Discussion
+
+Separating SCCP into analysis and rewrite keeps both parts simple:
+
+- the analysis never mutates or partially rewrites the program,
+- the rewrite does not need to discover facts on the fly,
+- fixed-point logic stays in the analysis stage where it belongs,
+- the handoff from analysis to rewrite is explicit through [`Analysis::lattice()`](@ref mim::Analysis::lattice) and [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
+
+This separation is the main design pattern to follow for nontrivial optimizations.
+
+@note
+The complete SCCP example is roughly 130 lines of C++ source code.
+Most of the usual compiler boilerplate is absorbed by the existing [`Analysis`](@ref mim::Analysis), [`RWPhase`](@ref mim::RWPhase), and [`Rewriter`](@ref mim::Rewriter) infrastructure, so the implementation can focus on the optimization itself.
+
 ### SSA without Dominance {#ssa-without-dominance}
 
-The very first line of `propagate()` is a guard that has no counterpart in the lattice algebra:
+The very first line of `propagate()` is a guard that has no counterpart in the lattice algebra; a [second one](#sccp-bot-site) guards the ⊥ case of the join:
 
 ```cpp
-if (lam_of(var)->nests(def)) return pin(var);
+if (lam_of(var)->nests(def)) return pin(var), var;
 ```
 
 It is the MimIR analogue of the _dominance_ side condition that a classical SSA-based SCCP has to enforce, so it is worth spelling out what it replaces.
@@ -419,21 +457,49 @@ Its role — deciding whether a candidate value is _available_ at the point wher
 
 Now the guard reads directly:
 
-- `var` is a parameter of `L = lam_of(var)`; its call sites live _outside_ `L`.
-- If `L->nests(def)`, the joined value refers to binders that only come into existence _within_ `L`'s own body.
-  Such a value simply does not exist at `L`'s call sites, so propagating it into `var` — and thus substituting it at `var`'s uses — would hoist a computation out of the region where its operands are defined.
+- `var` is a parameter of `L = lam_of(var)`, and the joined value replaces `var` throughout `L`'s body.
+- If `L->nests(def)`, the joined value refers to binders that only come into existence _within_ `L`'s own body, so only a call site inside `L` — a recursive jump — can pass it.
+  Substituting it for `var` would use those binders before they exist: on entry to `L`, nothing below `L` has been bound yet.
   This is the exact situation dominance forbids, so the analysis pins `var` to ⊤ ([`pin`](@ref mim::Analysis::pin)) instead.
-- If `L` does _not_ nest `def`, the value is in scope at every call site — the analogue of _"the definition dominates all uses"_ — and propagation is sound.
+- A call site _outside_ `L` cannot pass such a value: it passes ⊥, which the [⊥-site check](#sccp-bot-site) handles, or a different value, which joins to ⊤ anyway.
+  But when `L` is only entered through an escaping value, its recursive call sites are the only known ones, and this guard is all that stands in the way.
 
-In other words, where classical SCCP walks a dominator tree to certify availability, MimIR asks a single scope question: _is this value visible at the binder it would replace?_
-[`Def::nests`](@ref mim::Def::nests) is that availability oracle, and it falls straight out of the free-variable structure that MimIR maintains anyway — no auxiliary dominance computation required.
+In other words, where classical SCCP walks a dominator tree to certify availability, MimIR asks scope questions: _is this value visible at the binder it would replace, and at every caller?_
+[`Def::nests`](@ref mim::Def::nests) and [`Def::in_scope`](@ref mim::Def::in_scope) are those availability oracles, and they fall straight out of the free-variable structure that MimIR maintains anyway — no auxiliary dominance computation required.
+
+#### ⊥-sites {#sccp-bot-site}
+
+`L->nests(def)` only rules out values from _below_ `L`.
+A value from a _sibling_ scope passes it, and the join alone never notices when that is wrong:
+
+```mim
+(init, early)#c () where
+    con early () = exit ⊥:Nat;
+    con init () =
+        ret y = get $ ();
+        exit y;
+    con exit (v: Nat) = ...;
+end;
+```
+
+`y` is bound by `init`'s continuation, which does not nest `exit`, so `exit` happily joins `v ↦ y`.
+`early` passes ⊥, and `y ⊔ ⊥ = y` — but ⊥ is a contribution that says nothing, not a promise to be compatible with whatever the other sites send.
+Once `y` replaces `v`, `exit`'s body mentions `y`, so `exit` now _lives inside_ `init`'s continuation — and `early`, outside of it, can no longer jump there.
+
+So `propagate()` checks a ⊥-site, too: the joined value must be in scope at the calling mutable,
+i.e. [`cur->in_scope(caller)`](@ref mim::Def::in_scope) — every free Var of `cur` is bound by `caller` itself or by a mutable that [nests](@ref mim::Def::nests) `caller`.
+Otherwise `var` is pinned to ⊤.
+In dominance terms: the definition must dominate _every_ predecessor edge, including the ones that carry no information.
+
+The check needs no ordering: if the ⊥-site happens to be visited before `cur` arrives, the lattice change triggers another round, and the [full round](#phases_analysis) that certifies the fixed point revisits the ⊥-site with the final `cur`.
+`mem.seo` performs the very same ⊥-site check; there, it also catches a φ of an unrelated loop header flowing into a block that a ⊥-site jumps to as well.
 
 #### Why this is hard elsewhere
 
 The availability obligation is cheap to _state_ but awkward to _discharge_ in most IRs, and this is where MimIR's structural answer stands out.
 
 - **CFG + SSA** answers it with the dominator tree, as sketched above.
-  This works, but only because the CFG has already fixed _where_ every value lives; the whole machinery presupposes a schedule.
+  This works, but only because the CFG has already fixed _where_ every value lives; the whole machinery presupposes a schedule - which may overapproximate actual data dependencies.
 - **Sea-of-nodes** deliberately refuses that commitment: data nodes float, and only control, φ, and memory nodes are pinned.
   That freedom is the entire point — it is what lets the optimizer move computations around without fighting a premature schedule.
   But it makes availability ill-posed: a floating expression has no location, so _"is it available here?"_ is not even a well-formed question until the node is anchored.
@@ -485,44 +551,6 @@ Neither move is carried out by anything; both are readings of the very free-vari
 The contrast with a scoped compiler is sharp.
 MLton runs contification _after_ closure conversion, and Fluet & Weeks describe their own loop example as moving `loop` back inside `sum` after closure conversion took it out — a dominator analysis reconstructing a nesting that an earlier phase destroyed.
 A scopeless IR never loses that nesting, so there is no hoisting-versus-contification phase ordering to get right and no oracle to consult.
-
-### Transformation
-
-\include "mim/phase/sccp_transform.cpp"
-
-Once the lattice is stable, the outer SCCP phase starts rewriting.
-During rewriting, it can query abstract values for old-world definitions through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
-
-When it sees an application of a lambda whose parameters have propagated values, it rebuilds a specialized lambda:
-
-- parameters with known propagated expressions are removed,
-- remaining parameters are kept,
-- the lambda body is rewritten with the propagated values substituted,
-- the call site is rebuilt with only the remaining arguments.
-
-Which parameters survive is stated once as a [`Sieve`](@ref mim::Sieve) over the old [`Var`s](@ref mim::Var), and all three rebuilds read it back:
-[`gather`](@ref mim::Sieve::gather) picks the surviving domains and arguments, while [`operator[]`](@ref mim::Sieve::operator[]) maps each old parameter either to its new [`Var`](@ref mim::Var) or - on [`Gone`](@ref mim::Sieve::Gone) - to its propagated value.
-
-So SCCP follows the standard [`RWPhase`](@ref mim::RWPhase) pattern:
-
-1. analyze the old world,
-2. rewrite into a new world using the computed facts,
-3. swap worlds.
-
-### Discussion
-
-Separating SCCP into analysis and rewrite keeps both parts simple:
-
-- the analysis never mutates or partially rewrites the program,
-- the rewrite does not need to discover facts on the fly,
-- fixed-point logic stays in the analysis stage where it belongs,
-- the handoff from analysis to rewrite is explicit through [`Analysis::lattice()`](@ref mim::Analysis::lattice) and [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
-
-This separation is the main design pattern to follow for nontrivial optimizations.
-
-@note
-The complete SCCP example is roughly 130 lines of C++ source code.
-Most of the usual compiler boilerplate is absorbed by the existing [`Analysis`](@ref mim::Analysis), [`RWPhase`](@ref mim::RWPhase), and [`Rewriter`](@ref mim::Rewriter) infrastructure, so the implementation can focus on the optimization itself.
 
 ## Choosing the Right Base Class
 
