@@ -1,0 +1,21 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=KEEP
+// RUN: %mim -p opt --scalarize-threshold 100 %s -o - | %FileCheck %s --check-prefix=PROMOTE
+
+// An array slot at or above Flags::scalarize_threshold is not promoted.
+
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun test(m: mem.M 0, a: Nat): [mem.M 0, Nat] =
+    ret (m, p) = mem.slot («64; Nat», 0) $ m;
+    let m      = mem.store (m, mem.lea (p, 0_64), a);
+    let m      = mem.store (m, mem.lea (p, 3_64), 2);
+    let (m, x) = mem.load (m, mem.lea (p, 0_64));
+    let (m, y) = mem.load (m, mem.lea (p, 3_64));
+    return (m, x + y);
+
+// KEEP: mem.mslot
+// PROMOTE-NOT: mem.{{m?slot|lea|load|store}}
+// PROMOTE: core.nat.add (2, a)

@@ -2,6 +2,8 @@
 
 #include <set>
 
+#include <fe/worklist.h>
+
 #include <mim/def.h>
 #include <mim/phase.h>
 #include <mim/tuple.h>
@@ -78,6 +80,14 @@ private:
         void gvn_split(Lam*, Defs, fe::Span<const Def*>, fe::Span<const Def*>);
 
         // SSA
+        /// Grows lam2live_ by closing @p lam's free Var%s and @p abstr_args over the lattice and slot2stored_.
+        void live(Lam* lam, Defs abstr_args);
+        using VarWorklist = fe::DFSWorklist<GIDSet<const Var*>>;
+        /// The slot Var%s reachable from @p todo through the lattice and slot2stored_.
+        Vars reachable_slots(VarWorklist& todo);
+        /// A direct-style call may access every slot reachable from its abstract callee and non-mem args.
+        void pin_reachable_slots(const Def* abstr_callee, const Def* abstr_arg);
+        void pin_slot(const App* slot);
         void propagate_phis(Lam*, DefVec& vars, DefVec& abstr_args);
         const Def* sloxy2val(const Def* sloxy) { return lam2sloxy2val(curr_mut<Lam>(), sloxy); }
         const Def* sloxy2val(const Def* sloxy, const Def* val) { return lam2sloxy2val_[curr_mut<Lam>()][sloxy] = val; }
@@ -92,8 +102,12 @@ private:
         LamMap<Def2Def> lam2sloxy2val_;
         DefSet visited_;
         DefSet first_;
-        Def2Def sloxy2slot_;                            // global (kept between iterations)
-        std::set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
+
+        // global (kept between iterations)
+        DefSet slots_; // actually slot ptrs
+        VarMap<const App*> var2slot_;                   // slot continuation Var ↦ its slot
+        VarMap<Vars> slot2stored_;                      // free Var%s of the values stored behind a slot
+        LamMap<Vars> lam2live_;                         // slot Var%s a Lam may access; only grows
         LamSet unknowns_;            // Lam%s reached as a *value*; their signature must stay untouched
         LamMap<MutSet> lam2callers_; // all muts that apply a Lam; tainted when the Lam's abstract vars change
     };
@@ -126,8 +140,8 @@ private:
 
     bool analyze() final;
 
-    /// Was the SSA construction able to eliminate this sloxy?
-    const Def* isa_optimized_sloxy(const Def*) const;
+    /// Does @p old_ptr point (via literal mem.lea%s) into a promoted slot? Then yields its sloxy.
+    const Def* isa_promoted(const Def* old_ptr) const;
     /// The (memoized) new signature of @p old_lam.
     const Sig& sig_of(Lam* old_lam);
     /// The new spelling of @p old_lam's var: kept projections become new vars, dropped ones their

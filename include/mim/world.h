@@ -327,7 +327,10 @@ public:
     const Def* var(Def* mut);
     const Def*
     inhabitant(const Def* type); ///< The sole inhabitant of @p type, if it is a singleton, `nullptr` otherwise.
-    const Proxy* proxy(const Def* type, Defs ops, flags_t tag) { return unify<Proxy>(type, tag, ops); }
+    /// @see Proxy::tracks_vars, Proxy::tracks_muts
+    const Proxy* proxy(const Def* type, Defs ops, u32 tag, bool vars = false, bool muts = false) {
+        return unify<Proxy>(type, Proxy::mk_flags(tag, vars, muts), ops);
+    }
 
     Hole* mut_hole(const Def* type) { return insert<Hole>(type); }
     Hole* mut_hole_univ() { return mut_hole(univ()); }

@@ -143,10 +143,11 @@ inline const Def* op_slot(const Def* type, const Def* mem, const Def* ret) {
 /// Decomposes the continuation-based @p slot into `(mem, ret_lam, ret_mem, ptr)`,
 /// where `ret_mem` is the continuation's mem and `ptr` is the continuation's slot var;
 /// the slot's lifetime is `ret_lam`'s scope.
+/// All but `mem` are `nullptr` if the continuation is no mutable Lam.
 inline std::tuple<const Def*, Lam*, const Def*, const Def*> split_slot(const App* slot) {
     auto [mem, ret] = slot->args<2>();
-    auto ret_lam    = ret->isa_mut<Lam>();
-    return {mem, ret_lam, ret_lam->var(2, 0), ret_lam->var(2, 1)};
+    if (auto ret_lam = ret->isa_mut<Lam>()) return {mem, ret_lam, ret_lam->var(2, 0), ret_lam->var(2, 1)};
+    return {mem, nullptr, nullptr, nullptr};
 }
 
 ///@}

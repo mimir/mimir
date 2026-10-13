@@ -1,0 +1,19 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// Array slot below Flags::scalarize_threshold accessed with literal indices.
+
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun test(m: mem.M 0, a: Nat): [mem.M 0, Nat] =
+    ret (m, p) = mem.slot («4; Nat», 0) $ m;
+    let m      = mem.store (m, mem.lea (p, 0_4), a);
+    let m      = mem.store (m, mem.lea (p, 3_4), 2);
+    let (m, x) = mem.load (m, mem.lea (p, 0_4));
+    let (m, y) = mem.load (m, mem.lea (p, 3_4));
+    return (m, x + y);
+
+// CHECK-NOT: mem.{{m?slot|lea|load|store}}
+// CHECK: core.nat.add (2, a)

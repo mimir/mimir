@@ -19,7 +19,15 @@ const Def* SCCP::Analysis::propagate(const Def* var, const Def* def) {
         return def;
     }
 
-    if (def->isa<Bot>() || cur == def || cur == var) return cur; // cur ⊔ ⊥ = cur ⊔ cur = cur; ⊤ stays ⊤
+    if (cur == var) return cur; // ⊤ stays ⊤
+
+    // cur ⊔ ⊥ = cur, but the ⊥-site's caller must see cur as well.
+    if (def->isa<Bot>()) {
+        if (auto caller = curr_mut(); caller && !cur->in_scope(caller)) return pin(var), var;
+        return cur;
+    }
+
+    if (cur == def) return cur; // cur ⊔ cur = cur
 
     if (cur->isa<Bot>()) { // ⊥ ⊔ def = def; lattice(var, def) invalidates, as it overwrites cur
         lattice(var, def);

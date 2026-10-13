@@ -1,0 +1,26 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// Like ds_capture.mim, but the ptr is passed to the direct-style `incn` as an argument.
+
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+lam incn (m: mem.M 0, q: mem.Ptr0 Nat, n: Nat)@ff: mem.M 0 =
+    lam stop (m: mem.M 0): mem.M 0 = m;
+    lam go (m: mem.M 0): mem.M 0 =
+        let (m, x) = mem.load (m, q);
+        incn (mem.store (m, q, x + 1), q, n - 1);
+    (go, stop)#(n == 0) m;
+
+extern fun test(m: mem.M 0, n: Nat): [mem.M 0, Nat] =
+    ret (m, p) = mem.slot (Nat, 0) $ m;
+    let m      = mem.store (m, p, 1);
+    let m      = incn (m, p, n);
+    let (m, x) = mem.load (m, p);
+    return (m, x);
+
+// CHECK: let [[M:[[:alnum:]_]+]] = incn
+// CHECK: mem.load @ (Nat, 0) ([[M]], p)
+// CHECK: mem.mslot (Nat, 0)

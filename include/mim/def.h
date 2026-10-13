@@ -580,6 +580,9 @@ public:
     /// Does @p this nest @p def?
     /// Also strict: a @p def that only uses @p this%'s own Var sits at @p this%'s level and is *not* nested.
     bool nests(const Def* def);
+    /// Is every free Var of @p this bound by @p mut or by a mutable that nests @p mut?
+    /// I.e., may @p mut use @p this?
+    bool in_scope(Def* mut) const;
     ///@}
 
     /// @name free_vars predicates
@@ -1101,23 +1104,33 @@ private:
 };
 
 /// Used as intermediate value during optimizatinos such as Analysis.
-/// @note Def::ops() are hashed as normal but they do **not** contribute to Def::local_vars(), nor Def::local_muts() and
-/// hence not to Def::free_vars(). This is by design as those ops typically are some meta information to memoize certain
-/// things that do not carry semantic information per se.
+/// @note Def::ops() are hashed as normal, but they only contribute to Def::local_vars() / Def::local_muts() -
+/// and hence to Def::free_vars() - if tracks_vars() / tracks_muts() is set.
+/// Ops are typically meta information to memoize certain things that do not carry semantic information per se.
 class Proxy : public Def, public Setters<Proxy> {
+public:
+    static constexpr flags_t Vars_Bit = flags_t(1) << 63;
+    static constexpr flags_t Muts_Bit = flags_t(1) << 62;
+
 private:
-    Proxy(const Def* type, flags_t tag, Defs ops)
-        : Def(Node, type, ops, tag) {}
+    Proxy(const Def* type, flags_t flags, Defs ops)
+        : Def(Node, type, ops, flags) {}
+
+    static constexpr flags_t mk_flags(u32 tag, bool vars, bool muts) {
+        return flags_t(tag) | (vars ? Vars_Bit : 0) | (muts ? Muts_Bit : 0);
+    }
 
 public:
     using Setters<Proxy>::set;
 
     /// @name Getters
     ///@{
-    flags_t tag() const { return flags_; }
+    u32 tag() const { return u32(flags_); }
+    bool tracks_vars() const { return flags_ & Vars_Bit; }
+    bool tracks_muts() const { return flags_ & Muts_Bit; }
     ///@}
 
-    template<flags_t Tag>
+    template<u32 Tag>
     static const Proxy* isa(const Def* def) {
         if (auto proxy = def->isa<Proxy>(); proxy && proxy->tag() == Tag) return proxy;
         return nullptr;
