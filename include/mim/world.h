@@ -954,6 +954,7 @@ private:
         std::array<const Lit*, 2> lit_bool;
         std::array<const Lit*, Num_Lit_Nats> lit_nats = {}; ///< @see World::lit_nat
         u32 curr_run                                  = 0;
+        u32 pe_depth                                  = 0;
     } data_;
 
     friend void swap(World& w1, World& w2) noexcept {
