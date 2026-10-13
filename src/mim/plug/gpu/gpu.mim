@@ -53,7 +53,7 @@ axm default_stream: Stream;
 /// #### init
 ///
 /// Initializes the GPU runtime.
-// TODO: consider allowing multiple contexts and configuration of device number or context flags
+/// @todo Consider allowing multiple contexts and configuration of device number or context flags.
 axm init: mem.M 0 → [mem.M 0, GlobalM, ConstM];
 ///
 /// #### deinit
