@@ -4,8 +4,8 @@
 
 namespace mim::plug::option {
 
-const Def* normalize_unwrap_unsafe(const Def*, const Def*, const Def* arg) {
-    if (auto inj = arg->isa<Inj>()) return inj->op(0);
+const Def* normalize_unwrap_unsafe(const Def* type, const Def*, const Def* arg) {
+    if (auto inj = arg->isa<Inj>(); inj && inj->value()->type() == type) return inj->value();
 
     return nullptr;
 }

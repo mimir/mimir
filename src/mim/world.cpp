@@ -1,5 +1,7 @@
 #include "mim/world.h"
 
+#include <cctype>
+
 #include <algorithm>
 
 #include <fe/container.h>
@@ -164,10 +166,6 @@ const Def* World::annex_miss(flags_t flags) {
  * constructor & destructor
  */
 
-#if (!defined(_MSC_VER) && defined(NDEBUG))
-bool World::Lock::guard_ = false;
-#endif
-
 World::World(Driver* driver, const State& state)
     : driver_(driver)
     , zonker_(*this)
@@ -181,8 +179,8 @@ World::World(Driver* driver, const State& state)
     data_.type_1     = type(lit_univ_1());
     data_.type_bot   = insert<Bot>(type());
     data_.type_top   = insert<Top>(type());
-    data_.sigma      = unify<Sigma>(type(), Defs{})->as<Sigma>();
-    data_.tuple      = unify<Tuple>(sigma(), Defs{})->as<Tuple>();
+    data_.sigma      = unify<Sigma>(type(), Defs{});
+    data_.tuple      = unify<Tuple>(sigma(), Defs{});
     data_.type_nat   = insert<mim::Nat>(*this);
     data_.type_idx   = insert<mim::Idx>(pi(type_nat(), type()));
     data_.top_nat    = insert<Top>(type_nat());
@@ -230,7 +228,7 @@ const Type* World::type(const Def* level) {
     if (!level->isa_type<Univ>())
         level->blame("argument to `Type` must be of type `Univ` but is of type `{}`", type_of(level)).bail();
 
-    return unify<Type>(level)->as<Type>();
+    return unify<Type>(level);
 }
 
 const Def* World::uinc(const Def* op, level_t offset) {
@@ -239,7 +237,7 @@ const Def* World::uinc(const Def* op, level_t offset) {
     if (!op->isa_type<Univ>())
         op->blame("operand of a universe increment must be of type `Univ` but is of type `{}`", type_of(op)).bail();
 
-    if (auto l = Lit::isa(op)) return lit_univ(*l + 1);
+    if (auto l = Lit::isa(op)) return lit_univ(*l + offset);
     return unify<UInc>(op, offset);
 }
 
@@ -296,7 +294,7 @@ const Def* World::umax(Defs ops_) {
 
 const Def* World::inhabitant(const Def* type) {
     if (auto s = Idx::isa(type)) {
-        if (auto l = Lit::isa(s); l && l == 1) return lit_idx_1_0();
+        if (Lit::isa(s) == 1) return lit_idx_1_0();
     } else if (auto s = type->isa<Sigma>(); s && s->num_ops() == 0) {
         return tuple(s, {});
     } else if (auto single = type->isa<Single>()) {
@@ -589,10 +587,7 @@ const Def* World::extract1(const Def* d, const Def* index) {
 
     if (auto pack = d->isa<Pack>()) {
         if (pack->shape().is_fused()) return peel(pack, index); // one axis off a fused Pack yields a sub-Pack
-        if (pack->has_var())
-            return pack->reduce(index);
-        else
-            return pack->body();
+        return pack->reduce(index);
     }
 
     // extract(insert(x, index, val), index) -> val
@@ -764,7 +759,7 @@ const Def* World::seq(bool is_pack, Shape shape, const Def* body) {
         if (*r == 0) return body;
         // A literal-`0` extent empties everything below it: `«2, 0, 3; T»` is `«2; []»`, not `[]`.
         for (nat_t i = 0; i != *r; ++i)
-            if (Shape::extent(shape[i]) == 0) return seq(is_pack, shape.take(i), unit(is_pack));
+            if (Shape::extent(shape[i]) == 0) return seq(is_pack, shape.take(i), prod(is_pack));
     }
 
     // `«a; «b; T»»` ≡ `«a, b; T»` - the very compression that already makes `«3; T»` out of `[T, T, T]`,
@@ -846,7 +841,25 @@ const Def* World::inj(const Def* type, const Def* value) {
     if (type->isa<Variant>())
         value->blame("injecting into variant type `{}` requires the index of a case", type).bail();
     if (type->isa<Nom>()) return name(type, value);
-    if (type->isa<Join>()) return unify<Inj>(type, value, flags_t(0));
+    if (auto join = type->isa<Join>()) {
+        auto value_t = value->unfold_type();
+        // Hole%s are resolved only once no case matches outright, so a mere search never commits to one.
+        auto is_case = [value, value_t](bool infer) {
+            auto alpha = [infer](const Def* a, const Def* b) {
+                return infer ? Checker::alpha<Checker::Check>(a, b) : Checker::alpha<Checker::Test>(a, b);
+            };
+            return [=](const Def* c) {
+                // An open value may still turn out to be the singleton's inhabitant.
+                if (auto single = c->isa<Single>())
+                    return alpha(single->op(), value)
+                        || (!value->is_closed() && alpha(single->op()->unfold_type(), value_t));
+                return alpha(value_t, c);
+            };
+        };
+        if (!std::ranges::any_of(join->ops(), is_case(false)) && !std::ranges::any_of(join->ops(), is_case(true)))
+            value->blame("value of type `{}` is not a case of union type `{}`", type_of(value), type).bail();
+        return unify<Inj>(type, value, flags_t(0));
+    }
     if (auto v = Checker::assignable(type, value)) return v;
     value->blame("value is not assignable to `{}`", type)
         .n("`{}` is neither a union nor a nominal type, so `inj` into it is the identity", type)
@@ -967,7 +980,10 @@ const Def* World::single(const Def* op) {
         .bail();
 }
 
-const Def* World::wrap(const Def* op) { return unify<Wrap>(single(op), op); }
+const Def* World::wrap(const Def* op) {
+    op = op->zonk();
+    return unify<Wrap>(single(op), op);
+}
 
 const Def* World::unwrap(const Def* op) {
     op = op->zonk();
@@ -1000,22 +1016,15 @@ const Def* World::struc(const Def* value) {
 
 Sym World::append_suffix(Sym symbol, std::string suffix) {
     auto name = symbol.str();
-
-    auto pos = name.find(suffix);
-    if (pos != std::string::npos) {
-        auto num = name.substr(pos + suffix.size());
-        if (num.empty()) {
-            name += "_1";
-        } else {
-            num  = num.substr(1);
-            num  = std::to_string(std::stoi(num) + 1);
-            name = name.substr(0, pos + suffix.size()) + "_" + num;
-        }
-    } else {
-        name += suffix;
+    if (auto pos = name.rfind(suffix); pos != std::string::npos) {
+        auto end = pos + suffix.size();
+        auto num = std::string_view(name).substr(end);
+        if (num.empty()) return sym(name + "_1");
+        if (num.size() > 1 && num[0] == '_'
+            && std::ranges::all_of(num.substr(1), [](char c) { return std::isdigit((unsigned char)c); }))
+            return sym(name.substr(0, end) + "_" + std::to_string(std::stoull(std::string(num.substr(1))) + 1));
     }
-
-    return sym(std::move(name));
+    return sym(name + suffix);
 }
 
 Defs World::reduce(const Var* var, const Def* arg) {
@@ -1030,8 +1039,8 @@ Defs World::reduce(const Var* var, const Def* arg) {
     auto rw     = VarRewriter(var, arg); // one rewriter for all slots: they share their sub-rewrites
     for (size_t i = 0; i != n; ++i) {
         auto& slot = reduct->ops()[i];
-        if (slot) continue;
         assert(slot != Filling && "op requires its own reduction");
+        if (slot) continue;
         slot = Filling;
         slot = rw.rewrite(ops[i]);
     }

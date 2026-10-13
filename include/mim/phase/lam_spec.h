@@ -12,8 +12,6 @@ public:
 
 private:
     const Def* rewrite_imm_App(const App*) final;
-
-    Def2Def old2new_;
 };
 
 } // namespace mim

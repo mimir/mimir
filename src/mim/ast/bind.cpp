@@ -192,7 +192,7 @@ void Path::bind(Scopes& s, bool quiet) const {
         auto scope  = decl_->scope();
         auto member = scope ? fe::lookup(*scope, dbg.sym()) : nullptr;
         if (!member) {
-            if (!quiet) {
+            if (!quiet && !decl_->isa<DummyDecl>()) {
                 if (scope) {
                     s.error().e(dbg.loc(), "`{}` has no member `{}`", prev.sym(), dbg.sym());
                 } else {
@@ -230,8 +230,8 @@ void LitExpr::bind(Scopes& s) const {
     if (type()) {
         type()->bind(s);
         if (ISA(tag(), C_LIT_TYPED)) s.error().e(type()->loc(), "a `{}` must not have a type annotation", tag());
-    } else {
-        if (tag() == Tag::L_f) s.error().e(loc(), "floating-point literal requires a type annotation");
+    } else if (tag() == Tag::L_f) {
+        s.error().e(loc(), "floating-point literal requires a type annotation");
     }
 }
 
@@ -284,10 +284,7 @@ void PiExpr::Dom::bind(Scopes& s, bool quiet) const {
 void PiExpr::bind(Scopes& s) const {
     s.push();
     dom()->bind(s);
-    if (codom()) {
-        if (ISA(tag(), C_CN)) s.error().e(codom()->loc(), "a continuation must not have a codomain");
-        codom()->bind(s);
-    }
+    if (codom()) codom()->bind(s);
     s.pop();
 }
 
@@ -304,8 +301,10 @@ void AppExpr::bind(Scopes& s) const {
 void RetExpr::bind(Scopes& s) const {
     callee()->bind(s);
     arg()->bind(s);
+    s.push();
     ptrn()->bind(s, true, false);
     body()->bind(s);
+    s.pop();
 }
 
 void SigmaExpr::bind(Scopes& s) const {
@@ -402,7 +401,7 @@ void AxmDecl::bind(Scopes& s) const {
             annex->normalizer = normalizer();
             annex->pi         = pi;
         } else if (annex) {
-            if (pi ^ *annex->pi)
+            if (annex->pi != pi)
                 s.error().e(dbg.loc(),
                             "all declarations of annex `{}` must be function types if one of them is (they share one "
                             "annex tag - via mod-nesting or a `tag.(...)` family - and must agree in shape)",
@@ -507,8 +506,8 @@ void LamDecl::Dom::bind(Scopes& s, bool quiet) const {
 
 void LamDecl::bind_decl(Scopes& s) const {
     s.push();
-    for (size_t i = 0, e = num_doms(); i != e; ++i)
-        dom(i)->bind(s);
+    for (auto&& dom : doms())
+        dom->bind(s);
 
     if (auto filter = doms().back()->filter()) {
         if (auto pe = filter->isa<PrimaryExpr>()) {

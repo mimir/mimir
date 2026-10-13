@@ -292,7 +292,7 @@ struct DotConfig {
 /// | Idx               | Lit               |                   |
 /// In addition there is:
 /// * Var: A variable. Currently the following Def%s may be binders:
-///     * Pi, Lam, Sigma, Arr, Pack
+///     * Pi, Lam, Sigma, Arr, Pack, Rule
 /// * Axm: To introduce new entities.
 /// * Proxy: Used for intermediate values during optimizations.
 /// * Hole: A metavariable filled in by the type inference (always mutable as holes are filled in later).

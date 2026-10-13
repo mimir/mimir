@@ -193,9 +193,8 @@ const Def* Rewriter::rewrite_imm_Axm(const Axm* a) {
 const Def* Rewriter::rewrite_imm_Extract(const Extract* ex) {
     auto new_index = rewrite(ex->index());
     if (auto index = Lit::isa(new_index)) {
-        if (auto tuple = ex->tuple()->isa<Tuple>()) return map(ex, rewrite(tuple->op(*index)));
-        if (auto pack = ex->tuple()->isa_imm<Pack>(); pack && pack->arity()->is_closed())
-            return map(ex, rewrite(pack->body()));
+        if (auto tuple = ex->tuple()->isa<Tuple>()) return rewrite(tuple->op(*index));
+        if (auto pack = ex->tuple()->isa_imm<Pack>(); pack && pack->arity()->is_closed()) return rewrite(pack->body());
     }
 
     auto new_tuple = rewrite(ex->tuple());
@@ -294,36 +293,12 @@ const Def* VarRewriter::rewrite_mut(Def* mut) {
  * Zonker
  */
 
-const Def* Zonker::map(const Def* old_def, const Def* new_def) {
-    auto repr = lookup(new_def); // always normalize new_def to its representative
-    if (!repr) repr = new_def;
-    return old2news_.back()[old_def] = repr;
-}
-
 const Def* Zonker::lookup(const Def* old_def) {
-    for (auto& old2new : old2news_ | std::views::reverse) {
-        const Def* repr;
-        auto path = DefVec();
-        while (true) {
-            repr = get(old_def);
-
-            if (repr == nullptr) break;
-
-            path.emplace_back(repr);
-            if (repr == old_def) break; // explicit self-map
-
-            old_def = repr;
-        }
-
-        if (path.empty()) continue;
-
-        // path compression: flatten all visited nodes
-        for (auto def : path)
-            old2new[def] = repr;
-
-        return repr;
-    }
-
+    // Holes only ever get set, so a cached result goes stale once a Hole within it got set since.
+    // A self-map is a fixpoint, though: e.g. `binder#i` keeps a set Hole in its type until the binder is rewired.
+    if (auto new_def = fe::lookup(old2news_.back(), old_def);
+        new_def && (new_def == old_def || new_def->isa_mut() || !new_def->needs_zonk()))
+        return new_def;
     return nullptr;
 }
 

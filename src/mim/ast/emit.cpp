@@ -223,7 +223,7 @@ const Def* IdPtrn::emit_value(Emitter& e, const Def* def) const {
     if (auto res = Checker::assignable(id_ty, def)) return def_ = res->set(dbg());
 
     e.error()
-        .e(loc(), "value bound to `{}` is not assinable to its annotated type", dbg().sym())
+        .e(loc(), "value bound to `{}` is not assignable to its annotated type", dbg().sym())
         .n("expected `{}`, got `{}`", id_ty, type_of(def))
         .bail();
 }
@@ -698,11 +698,8 @@ void PiExpr::Dom::emit_type(Emitter& e) const {
         auto ret_t = e.world().cn(ret()->emit_type(e));
         sigma->set(1, ret_t);
 
-        if (auto imm = sigma->immutabilize())
-            dom_t = imm;
-        else
-            dom_t = sigma;
-        pi_->set_dom(dom_t);
+        auto imm = sigma->immutabilize();
+        pi_->set_dom(imm ? imm : sigma);
     } else {
         pi_->set_dom(dom_t);
         emit_var(e, ptrn(), pi_);
@@ -790,7 +787,7 @@ const Def* TupleExpr::emit_(Emitter& e) const {
 
 const Def* SeqExpr::emit_(Emitter& e) const {
     auto s = arity()->emit_type(e);
-    if (auto lit_s = Lit::isa(s); lit_s && *lit_s == 0) return e.world().unit(is_pack());
+    if (auto lit_s = Lit::isa(s); lit_s && *lit_s == 0) return e.world().prod(is_pack());
 
     if (arity()->dbg().is_anon()) { // immutable
         auto b = body()->emit(e);

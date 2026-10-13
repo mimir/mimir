@@ -23,7 +23,7 @@ private:
     }
 
     Lattice lattice(const Def* def) {
-        if (auto i = def2lattice_.find(def); i != def2lattice_.end()) return i->second;
+        if (auto l = fe::lookup(def2lattice_, def)) return *l;
         return Bot;
     }
 

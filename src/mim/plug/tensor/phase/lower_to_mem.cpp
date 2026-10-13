@@ -40,13 +40,6 @@ const Def* splat_scalar(const Def* d) {
     return (d->is_closed() && !d->type()->isa<Arr>()) ? d : nullptr;
 }
 
-std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const Def* exit, Sym name) {
-    auto& w       = bound->world();
-    auto body     = w.mut_con({w.type_i64(), acc->type(), w.cn(acc->type())})->set(name);
-    auto for_loop = w.call<affine::For>(body, exit, Defs{w.lit_i64(0), bound, w.lit_i64(1), acc});
-    return {body, for_loop};
-}
-
 /// Is `app` a tensor op whose lowering consumes a LowerToMem::fresh_mem?
 bool wants_fresh_mem(const App* app) {
     return Axm::isa<tensor::generate>(app) || Axm::isa<tensor::broadcast>(app) || Axm::isa<tensor::map_reduce_post>(app)
@@ -106,8 +99,9 @@ void LowerToMem::collect_tensor_types() {
         auto def = wl.pop();
 
         if (auto app = def->isa<App>()) {
-            if (auto [axm, curry, trip] = Axm::get(app); axm && curry == 0 && axm->plugin() == tensor::Plugin_Id)
-                ops_seen_ = true;
+            auto [axm, curry, trip] = Axm::get(app);
+            bool tensor_op          = axm && curry == 0 && axm->plugin() == tensor::Plugin_Id;
+            ops_seen_ |= tensor_op;
             if (Axm::isa<tensor::buf>(app)) {
                 // What an array value *is* cannot be read off its type - an `(x y: I32)` group *is* a
                 // `«2; I32»` - so a tensor no other tensor op mentions says so itself.
@@ -196,8 +190,7 @@ void LowerToMem::collect_tensor_types() {
                 add_tensor_ty(app->arg()->proj(3, 0)->type());
                 add_tensor_ty(app->arg()->proj(3, 1)->type());
                 add_tensor_ty(app->arg()->proj(3, 2)->type());
-            } else if (auto [axm, curry, trip] = Axm::get(app);
-                       axm && curry == 0 && axm->plugin() == tensor::Plugin_Id) {
+            } else if (tensor_op) {
                 // Any other tensor op (a symbolic `shape`, …) has no buffer-world lowering.
                 gate("unbufferizable tensor op", app);
             }
@@ -588,8 +581,8 @@ const Def* LowerToMem::lower_generate(const App* app) {
     auto [br, bs, bT]       = Axm::isa<buffer::Buf>(out_ty)->args<3>();
     auto mem_ty             = w.call<mem::M>(0);
     auto result_ty          = w.sigma({mem_ty, out_ty});
-    auto unit               = w.tuple(Defs{});
-    auto fun                = w.mut_fun(w.sigma({mem_ty, unit->type()}), result_ty)->set("tensor_generate");
+    auto unit               = w.tuple();
+    auto fun                = w.mut_fun(w.sigma({mem_ty, w.sigma()}), result_ty)->set("tensor_generate");
     auto call               = w.app(cps::op_cps2ds_dep(fun), w.tuple({fresh_mem(), unit}));
     auto [args, cont]       = fun->vars<2>();
     auto [fun_mem, ignored] = args->projs<2>();
@@ -597,18 +590,7 @@ const Def* LowerToMem::lower_generate(const App* app) {
     auto [alloc_mem, out] = buffer::op_alloc(br, bs, bT, fun_mem)->projs<2>();
     const Def* acc        = w.tuple({alloc_mem, out});
     auto current          = fun;
-    DefVec iters;
-    iters.reserve(rn);
-    for (u64 d = 0; d < rn; ++d) {
-        auto bound               = w.call<core::bitcast>(w.type_i64(), s_out->proj(rn, d));
-        auto [loop, loop_call]   = counting_for(bound, acc, cont, w.sym("generate_" + std::to_string(d)));
-        auto [iter, next, yield] = loop->vars<3>();
-        iters.push_back(iter);
-        cont = yield;
-        acc  = next;
-        current->set(true, loop_call);
-        current = loop;
-    }
+    auto iters            = affine::counting_nest(current, cont, acc, s_out->projs(rn), "generate");
 
     auto [loop_mem, loop_out] = acc->projs<2>();
     auto elem                 = w.call(body, w.tuple(iters));
@@ -785,6 +767,12 @@ const Def* LowerToMem::lower_concat(const App* app) {
     return out;
 }
 
+const Def* LowerToMem::make_buffer(const Def* old_arg, const Def* r, const Def* shape) {
+    auto value = materialize(old_arg->type(), old_arg);
+    if (Axm::isa<buffer::Buf>(value->type())) return value;
+    return buffer::op_lit(r, shape, value->type(), bot_mem(), value)->proj(2, 1);
+}
+
 const Def* LowerToMem::lower_gather(const App* app) {
     auto& w = new_world();
     auto c  = rewrite(app->callee())->as<App>();
@@ -794,14 +782,8 @@ const Def* LowerToMem::lower_gather(const App* app) {
     auto [s_src, s_idx]    = shapes->projs<2>();
     if (!check_gather_shape_constraints(r, dim, s_src, s_idx)) return RWPhase::rewrite_imm_App(app);
     auto [old_input, old_index] = app->args<2>();
-    auto make_buffer            = [&](const Def* old_arg, const Def* shape) {
-        auto value = materialize(old_arg->type(), old_arg);
-        if (Axm::isa<buffer::Buf>(value->type())) return value;
-        auto [m, buf] = buffer::op_lit(r, rewrite(shape), rewrite(value->type()), bot_mem(), value)->projs<2>();
-        return buf;
-    };
-    auto input = make_buffer(old_input, s_src);
-    auto index = make_buffer(old_index, s_idx);
+    auto input                  = make_buffer(old_input, r, s_src);
+    auto index                  = make_buffer(old_index, r, s_idx);
 
     auto op                 = w.app(w.annex<btensor::gather>(), {T, r});
     auto [out_mem, out_buf] = w.call(op, Defs{s_src, s_idx}, dim, Defs{fresh_mem(), input, index})->projs<2>();
@@ -817,15 +799,9 @@ const Def* LowerToMem::lower_scatter(const App* app) {
     auto [s_src, s_idx, s_updates] = shapes->projs<3>();
     if (!check_scatter_shape_constraints(r, dim, s_src, s_idx, s_updates)) return RWPhase::rewrite_imm_App(app);
     auto [old_input, old_index, old_updates] = app->args<3>();
-    auto make_buffer                         = [&](const Def* old_arg, const Def* shape) {
-        auto value = materialize(old_arg->type(), old_arg);
-        if (Axm::isa<buffer::Buf>(value->type())) return value;
-        auto [m, buf] = buffer::op_lit(r, rewrite(shape), rewrite(value->type()), bot_mem(), value)->projs<2>();
-        return buf;
-    };
-    auto input   = make_buffer(old_input, s_src);
-    auto index   = make_buffer(old_index, s_idx);
-    auto updates = make_buffer(old_updates, s_updates);
+    auto input                               = make_buffer(old_input, r, s_src);
+    auto index                               = make_buffer(old_index, r, s_idx);
+    auto updates                             = make_buffer(old_updates, r, s_updates);
 
     auto op = w.app(w.annex<btensor::scatter>(), {T, r});
     auto [out_mem, out_buf]

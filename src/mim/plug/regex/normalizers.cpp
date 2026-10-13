@@ -78,7 +78,7 @@ bool compare_re(const Def* lhs, const Def* rhs) {
     auto lhs_range = Axm::isa<range>(lhs);
     auto rhs_range = Axm::isa<range>(rhs);
     // sort ranges by increasing lower bound
-    if (lhs_range && rhs_range) return Lit::as(lhs_range->arg()->proj(2, 0)) < Lit::as(rhs_range->arg()->proj(2, 0));
+    if (lhs_range && rhs_range) return Lit::as(lhs_range->arg(2, 0)) < Lit::as(rhs_range->arg(2, 0));
     // ranges to the end
     if (lhs_range) return false;
     if (rhs_range) return true;
@@ -93,8 +93,6 @@ void make_vector_unique(DefVec& args) {
         args.erase(new_end, args.end());
     }
 }
-
-bool is_in_range(Range range, nat_t needle) { return needle >= range.first && needle <= range.second; }
 
 auto get_range(const Def* rng) -> Range {
     auto rng_match = Axm::isa<range, false>(rng);
@@ -124,11 +122,6 @@ void merge_ranges(DefVec& args) {
     std::transform(new_ranges.begin(), new_ranges.end(), std::back_inserter(args), app_range{world});
 
     make_vector_unique(args);
-}
-
-template<cls A, cls B>
-bool equals_any(const Def* cls0, const Def* cls1) {
-    return (Axm::isa(A, cls0) && Axm::isa(B, cls1)) || (Axm::isa(A, cls1) && Axm::isa(B, cls0));
 }
 
 bool equals_any(const Def* lhs, const Def* rhs) {
@@ -182,7 +175,6 @@ const Def* normalize_disj(const Def* type, const Def*, const Def* arg) {
                 make_vector_unique(new_args);
                 merge_ranges(new_args);
 
-                const Def* to_remove = nullptr;
                 for (const auto* cls0 : new_args) {
                     for (const auto* cls1 : new_args)
                         if (equals_any(cls0, cls1)) return make_any();
@@ -196,11 +188,9 @@ const Def* normalize_disj(const Def* type, const Def*, const Def* arg) {
                     }
                 }
 
-                erase(new_args, to_remove);
                 world.log().d("final ranges: {}", fe::Join(new_args));
 
-                if (new_args.size() > 2) return make_binary_tree<disj>(new_args);
-                if (new_args.size() > 1) return world.call<disj, false>(new_args);
+                if (new_args.size() > 1) return make_binary_tree<disj>(new_args);
                 return new_args.back();
         }
     }
@@ -211,16 +201,13 @@ const Def* normalize_range(const Def* type, const Def* callee, const Def* arg) {
     auto& world     = type->world();
     auto [lhs, rhs] = arg->projs<2>();
 
-    if (!lhs->isa<Var>() && !rhs->isa<Var>()) // before first PE.
-        if (lhs->as<Lit>()->get() > rhs->as<Lit>()->get()) return world.raw_app(type, callee, {rhs, lhs});
+    if (auto l = Lit::isa(lhs), r = Lit::isa(rhs); l && r && *l > *r) return world.raw_app(type, callee, {rhs, lhs});
 
     return {};
 }
 
 const Def* any_unwanted_for_not(const Def* arg) {
-    if (auto ax = Axm::isa<regex::range>(arg)) return nullptr;
-    if (auto ax = Axm::isa<regex::not_>(arg)) return nullptr;
-    if (auto ax = Axm::isa<regex::any>(arg)) return nullptr;
+    if (Axm::isa<regex::range>(arg) || Axm::isa<regex::not_>(arg) || Axm::isa<regex::any>(arg)) return nullptr;
     if (auto disj = Axm::isa<regex::disj>(arg)) {
         for (const auto* disj_arg : disj->args())
             if (auto ret = any_unwanted_for_not(disj_arg)) return ret;

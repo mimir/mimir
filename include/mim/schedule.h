@@ -60,7 +60,7 @@ public:
     const Nest& nest() const { return *nest_; }
     Def* root() const { return nest_->root()->mut(); }
     const Uses& uses(const Def* def) const {
-        if (auto i = def2uses_.find(def); i != def2uses_.end()) return i->second;
+        if (auto uses = fe::lookup(def2uses_, def)) return *uses;
         return empty_;
     }
     ///@}

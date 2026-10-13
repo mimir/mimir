@@ -281,6 +281,7 @@ TEST_CASE("DFA minimization") {
 
     auto min_start = min_dfa->get_start();
     CHECK_FALSE(min_start->is_accepting());
+    CHECK(min_dfa->get_reachable_states().size() == min_dfa->num_states());
 
     auto min_stateB = min_start->get_transition('a');
     CHECK(min_start->get_transition('b') == min_stateB);

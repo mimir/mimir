@@ -98,9 +98,10 @@ int compile(Driver& driver, Opts& opts) {
             file->stream(tab, *s);
 
             // Md is emitted while parsing, so nothing else needs a World; binding still catches scoping errors.
-            auto only_parse = opts.plugin_args.empty()
-                           && std::ranges::none_of(std::views::iota(0, int(Num_Emits)),
-                                                   [&](int i) { return i != AST && i != Md && outs[i].os(); });
+            auto only_parse
+                = opts.plugin_args.empty() && std::ranges::none_of(std::views::iota(0, int(Num_Emits)), [&](int i) {
+                      return i != AST && i != Md && !outs[i].name().empty();
+                  });
             if (only_parse) {
                 file->bind(ast);
                 ast.error().ack();
@@ -290,8 +291,8 @@ int main(int argc, char** argv) {
         if (list_search_paths) {
             auto list = [](std::string_view kind, const fe::Vector<fs::path>& paths) {
                 std::cout << kind << ':' << std::endl;
-                for (auto&& path : paths | std::views::drop(1)) // skip first empty path
-                    std::cout << "    " << path << std::endl;
+                for (auto&& path : paths)
+                    if (!path.empty()) std::cout << "    " << path << std::endl;
             };
             list("plugins", driver.plugin_paths());
             list("imports", driver.import_paths());

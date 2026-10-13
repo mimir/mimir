@@ -250,8 +250,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         auto inner_rn = Lit::isa<u64>(inner_Rn);
         if (!inner_ro || !inner_rn || *inner_ro != *inner_rn) continue;
         if (inner_Sr != inner_So) continue;
-        auto id_lam = inner_map_out->isa_mut<Lam>();
-        if (!id_lam || !id_lam->is_set() || id_lam->body() != id_lam->var()) continue;
+        if (!is_identity_map(inner_map_out)) continue;
 
         // A non-identity inner epilogue cannot be dropped when the inner combiner is inlined;
         // threading it through the fused combiner chain is future work.
@@ -287,12 +286,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         new_nis_nat += infos[i] ? infos[i]->nis : 1;
     }
 
-    DefVec new_Tis_vec(new_nis_nat);
-    DefVec new_Ris_vec(new_nis_nat);
-    DefVec new_Sis_vec(new_nis_nat);
-    DefVec new_maps_vec(new_nis_nat);
-    DefVec new_is_vec(new_nis_nat);
-
+    auto slots = Slots();
     for (u64 i = 0; i < nis_nat; ++i) {
         if (auto& info = infos[i]) {
             auto outer_map_i = maps->proj(nis_nat, i);
@@ -300,31 +294,24 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
             // sole-consumed for the epilogue guard.
             bool shared = !sole_consumer(is->proj(nis_nat, i));
             for (u64 l = 0; l < info->nis; ++l) {
-                auto pos         = new_pos[i] + l;
-                new_Tis_vec[pos] = info->Tis->proj(info->nis, l);
-                new_Ris_vec[pos] = info->Ris->proj(info->nis, l);
-                new_Sis_vec[pos] = info->Sis->proj(info->nis, l);
-                new_is_vec[pos]  = info->is->proj(info->nis, l);
-                if (shared) shared_.insert(new_is_vec[pos]);
+                auto v = info->is->proj(info->nis, l);
+                if (shared) shared_.insert(v);
                 // The inner reads at its own output coordinates; those are the outer's read
                 // coordinates for input i, so the fused access map is the composition.
-                new_maps_vec[pos] = compose_map(w, info->maps->proj(info->nis, l), outer_map_i);
+                slots.push(info->Tis->proj(info->nis, l), info->Ris->proj(info->nis, l), info->Sis->proj(info->nis, l),
+                           compose_map(w, info->maps->proj(info->nis, l), outer_map_i), v);
             }
         } else {
-            auto pos          = new_pos[i];
-            new_Tis_vec[pos]  = Tis->proj(nis_nat, i);
-            new_Ris_vec[pos]  = Ris->proj(nis_nat, i);
-            new_Sis_vec[pos]  = Sis->proj(nis_nat, i);
-            new_maps_vec[pos] = maps->proj(nis_nat, i);
-            new_is_vec[pos]   = is->proj(nis_nat, i);
+            slots.push(Tis->proj(nis_nat, i), Ris->proj(nis_nat, i), Sis->proj(nis_nat, i), maps->proj(nis_nat, i),
+                       is->proj(nis_nat, i));
         }
     }
 
-    auto new_Tis  = w.tuple(new_Tis_vec);
-    auto new_Ris  = w.tuple(new_Ris_vec);
-    auto new_Sis  = w.tuple(new_Sis_vec);
-    auto new_maps = w.tuple(new_maps_vec);
-    auto new_is   = w.tuple(new_is_vec);
+    auto new_Tis  = w.tuple(slots.T);
+    auto new_Ris  = w.tuple(slots.R);
+    auto new_Sis  = w.tuple(slots.S);
+    auto new_maps = w.tuple(slots.maps);
+    auto new_is   = w.tuple(slots.is);
 
     auto new_nis_def = w.lit_nat(new_nis_nat);
 
@@ -343,7 +330,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     // `outer_inputs[i]` is `value_<r>` when input i is the r-th fused input, and the
     // corresponding `new_in` slot otherwise. Each `inner_ret_<r>` closes over the prior
     // `value_<j>`s as free variables — those are bound by the dynamic call chain.
-    auto inputs_sigma        = w.sigma(new_Tis_vec);
+    auto inputs_sigma        = w.sigma(slots.T);
     auto data_sigma          = w.sigma({To, inputs_sigma});
     auto ret_cn_type         = w.cn(To);
     auto new_comb            = w.mut_con({data_sigma, ret_cn_type})->set("fused_comb");
@@ -389,28 +376,6 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     return mr;
 }
 
-// Fuses a trailing elementwise map into the reducing `tensor.map_reduce` producing one of its
-// inputs — the reverse of `fuse_map_reduce` and the direction the producer gate deliberately
-// rejects for `Rr > 0`: a reduction must not be inlined into a consumer's combiner (it would rerun
-// per fold step), but it *can* absorb the consumer into its per-output-cell `post` epilogue (the
-// GEMM-epilogue pattern, e.g. `relu(add(conv, bias))`).
-//
-// The producer input `k0` must be read elementwise over the map's whole domain (identity access
-// map, `Sis#k0 = So`, with the map's `Rr = 0`, `Sr = So` and identity `map_out`) — anything else
-// changes coordinates or drops cells and would need map inversion. All *other* inputs of the map —
-// and the map's own epilogue inputs — become epilogue inputs of the producer, read once per output
-// cell at their (arbitrary) access maps: those maps take the map's loop vector, which under the
-// identity-read gate is exactly the producer's output-cell coordinate system.
-//
-// Result: the producer with
-//   post    := (x, extras) ↦ post_o(f_o(init_o, extras[k0 ↦ post_i(x, extras_i)]), extras_o)
-//   post_is := inner post_is ++ outer is \ k0 ++ outer post_is    (maps concatenated likewise)
-//
-// The producer must be consumed by this map alone (checked via its old-world consumer count):
-// otherwise it stays materialized for the other consumers and additionally runs fused —
-// duplicating the whole reduction loop nest.
-//
-// `callee`/`arg` are new-world (already rewritten): the caller iterates this on freshly fused apps.
 /// Is `map` the row-major reshape read `tensor.reshape_map (s_in, s_out)` — the map that reads a
 /// PACKED producer (its output strip-mined to `s_in`) at the unpacked coordinates `s_out`?
 /// Decided by normalization: both `map` and the canonical unpack map are applied to the same probe
@@ -437,6 +402,28 @@ bool Fuse::sole_consumer(const Def* d) const {
     return cnt != mr_consumers_.end() && cnt->second == 1;
 }
 
+// Fuses a trailing elementwise map into the reducing `tensor.map_reduce` producing one of its
+// inputs — the reverse of `fuse_map_reduce` and the direction the producer gate deliberately
+// rejects for `Rr > 0`: a reduction must not be inlined into a consumer's combiner (it would rerun
+// per fold step), but it *can* absorb the consumer into its per-output-cell `post` epilogue (the
+// GEMM-epilogue pattern, e.g. `relu(add(conv, bias))`).
+//
+// The producer input `k0` must be read elementwise over the map's whole domain (identity access
+// map, `Sis#k0 = So`, with the map's `Rr = 0`, `Sr = So` and identity `map_out`) — anything else
+// changes coordinates or drops cells and would need map inversion. All *other* inputs of the map —
+// and the map's own epilogue inputs — become epilogue inputs of the producer, read once per output
+// cell at their (arbitrary) access maps: those maps take the map's loop vector, which under the
+// identity-read gate is exactly the producer's output-cell coordinate system.
+//
+// Result: the producer with
+//   post    := (x, extras) ↦ post_o(f_o(init_o, extras[k0 ↦ post_i(x, extras_i)]), extras_o)
+//   post_is := inner post_is ++ outer is \ k0 ++ outer post_is    (maps concatenated likewise)
+//
+// The producer must be consumed by this map alone (checked via its old-world consumer count):
+// otherwise it stays materialized for the other consumers and additionally runs fused —
+// duplicating the whole reduction loop nest.
+//
+// `callee`/`arg` are new-world (already rewritten): the caller iterates this on freshly fused apps.
 const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     auto [nis_nps, meta, shapes, in_tys, comb_init, map_out, maps_all] = callee->uncurry_args<7>();
 
@@ -459,8 +446,7 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     if (nis_nat == 0) return nullptr;
     if (Sr != So) return nullptr;
 
-    auto id_out = map_out->isa_mut<Lam>();
-    if (!id_out || !id_out->is_set() || id_out->body() != id_out->var()) return nullptr;
+    if (!is_identity_map(map_out)) return nullptr;
 
     // A consumer that computes nothing (a pure re-indexed read) is read-through's job — sinking it
     // would re-wrap the producer forever (the unpack path below emits exactly such a copy on top).
@@ -478,9 +464,8 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
         auto cand = Axm::isa<tensor::map_reduce_post>(is->proj(nis_nat, k));
         if (!cand || !sole_consumer(cand) || !reads_as_produced(cand, Sis->proj(nis_nat, k))) continue;
 
-        auto m     = maps->proj(nis_nat, k);
-        auto id_in = m->isa_mut<Lam>();
-        if (id_in && id_in->is_set() && id_in->body() == id_in->var() && Sis->proj(nis_nat, k) == So) {
+        auto m = maps->proj(nis_nat, k);
+        if (is_identity_map(m) && Sis->proj(nis_nat, k) == So) {
             k0        = k;
             inner_def = cand;
         } else if (Sis->proj(nis_nat, k) != So

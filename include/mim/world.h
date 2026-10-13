@@ -305,7 +305,7 @@ public:
 
     /// Imports @p def of Driver::library into this World.
     const Def* import(const Def* def) { return importer_.import(def); }
-    //@}
+    ///@}
 
     /// @name Univ, Type, Var, Proxy, Hole
     ///@{
@@ -478,7 +478,6 @@ public:
     /// @name prod
     /// Generic constructor for tuple or sigma.
     ///@{
-    // clang-format off
     const Def* prod(bool term, Defs ops) { return term ? tuple(ops) : sigma(ops); }
     const Def* prod(bool term) { return term ? (const Def*)tuple() : (const Def*)sigma(); } ///< `()` or `[]`.
     ///@}
@@ -487,7 +486,6 @@ public:
     /// These either build a Pack or an Arr depending on the first argument.
     /// Oftentimes, the logic for Pack%s and Arr%ays can be quite similar; these methods help factoring such code.
     ///@{
-    const Def* unit(bool is_pack) { return is_pack ? (const Def*)tuple() : sigma(); }
     Seq* mut_seq(bool is_pack, const Def* type) { return is_pack ? (Seq*)insert<Pack>(type) : insert<Arr>(type); }
     const Def* seq(bool is_pack, Shape shape, const Def* body);
     const Def* seq(bool is_pack, Defs shape, const Def* body);
@@ -561,7 +559,7 @@ public:
     /// Constructs a Lit of type Idx of size @p size.
     /// @note `size = 0` means `2^64`.
     const Lit* lit_idx(nat_t size, u64 val) { return lit(type_idx(size), val); }
-    const Lit* lit_idx_unsafe(u64 val) { return lit(type_idx(top(type_nat())), val); }
+    const Lit* lit_idx_unsafe(u64 val) { return lit(type_idx(top_nat()), val); }
 
     const Lit* lit_idx(std::integral auto val) { return lit_idx(Idx::bitwidth2size(sizeof(val) * 8), val); }
 
@@ -838,11 +836,11 @@ private:
         return def;
     }
 
-#if (!defined(_MSC_VER) && defined(NDEBUG))
+#if !defined(_MSC_VER) && !defined(NDEBUG)
     struct Lock {
         Lock() { assert((guard_ = !guard_) && "you are not allowed to recursively invoke allocate"); }
         ~Lock() { guard_ = !guard_; }
-        static bool guard_;
+        static inline bool guard_ = false;
     };
 #else
     struct Lock {

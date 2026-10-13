@@ -25,8 +25,7 @@ namespace {
 /// Install tree @p libmim_path belongs to, i.e. the directory whose `<MIM_LIBDIR>/mim` holds the plugins.
 std::optional<fs::path> prefix_of(const fs::path& libmim_path) {
     for (auto dir = libmim_path.parent_path(); !dir.empty(); dir = dir.parent_path()) {
-        std::error_code ignore;
-        if (fs::is_directory(dir / MIM_LIBDIR / "mim", ignore) && !ignore) return dir;
+        if (std::error_code ec; fs::is_directory(dir / MIM_LIBDIR / "mim", ec)) return dir;
         if (dir == dir.root_path()) break;
     }
 
@@ -188,17 +187,16 @@ void Driver::load(std::string_view spec) {
 
         if (!handle) fe::throwf("cannot open plugin `{}`", spec);
         get_info = reinterpret_cast<decltype(&mim_get_plugin)>(fe::dl::get(handle.get(), "mim_get_plugin"));
-        if (!get_info) fe::throwf("plugin `{}` has no `mim_get_plugin()`", name);
     }
 
     auto plugin = get_info();
     if (version() != plugin.version) {
-        std::ostringstream oss;
-        std::print(oss, "plugin {} has version {} while MimIR has version {}", plugin.name, plugin.version, version());
+        auto msg = std::format("plugin {} has version {} while MimIR has version {}", plugin.name, plugin.version,
+                               version());
         if (flags().force_load)
-            std::cerr << "warning: " << oss.str() << '\n';
+            std::println(std::cerr, "warning: {}", msg);
         else
-            throw std::logic_error(oss.str());
+            throw std::logic_error(msg);
     }
     fe::assert_emplace(plugins_, name,
                        Loaded{std::move(handle), std::move(dir), fe::View<PluginSym>(plugin.syms, plugin.num_syms)});
@@ -220,7 +218,7 @@ void* Driver::get_fun_ptr(std::string_view plugin, const char* name) {
 
 const fe::Vector<std::string>& Driver::args(std::string_view plugin) const {
     static const fe::Vector<std::string> empty;
-    if (auto i = plugin_args_.find(plugin); i != plugin_args_.end()) return i->second;
+    if (auto args = fe::lookup(plugin_args_, plugin)) return *args;
     return empty;
 }
 

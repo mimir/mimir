@@ -30,6 +30,7 @@ const Def* normalize_Buf(const Def*, const Def* callee, const Def* arg) {
 const Def* normalize_read(const Def* type, const Def*, const Def* arg) {
     auto& world            = type->world();
     auto [mem, buf, index] = arg->projs<3>();
+    // FIXME unsound: ignores any buffer.write through this handle, including one in a callee.
     if (auto ex = buf->isa<Extract>())
         if (auto l = Axm::isa<lit>(ex->tuple())) {
             auto [cmem, v] = l->arg()->projs<2>();

@@ -24,6 +24,7 @@ const Def* normalize_contains(const Def* type, const Def*, const Def* arg) {
             return nullptr;
     }
 
+    // FIXME for n = 1, xs is the element itself; and a closed xs doesn't rule out an open x at runtime.
     if (auto tuple = xs->isa<Tuple>()) {
         for (auto op : tuple->ops())
             if (op == x) return w.lit_tt();

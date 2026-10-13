@@ -18,6 +18,7 @@ const Def* normalize_fold(const Def* type, const Def* c, const Def* arg) {
     auto [acc, vec] = arg->projs<2>();
     if constexpr (id == fold::r) std::swap(acc, vec);
 
+    // FIXME for n = 1, vec is the element itself, so a Tuple-typed E is folded component-wise.
     if (auto tuple = vec->isa<Tuple>()) {
         if constexpr (id == fold::l)
             for (auto op : tuple->ops())
@@ -79,6 +80,7 @@ const Def* normalize_scan(const Def*, const Def* c, const Def* vec) {
     auto callee = c->as<App>();
     auto p      = callee->arg();
 
+    // FIXME for n = 1, vec is the element itself, so a Tuple-typed E is scanned component-wise.
     if (auto tuple = vec->isa<Tuple>()) {
         const Def* acc = w.lit_bool(id != scan::exists);
         for (auto op : tuple->ops())
@@ -104,7 +106,7 @@ const Def* normalize_is_unique(const Def*, const Def*, const Def* vec) {
     }
 
     if (auto pack = vec->isa_imm<Pack>()) {
-        if (auto l = Lit::isa(pack->arity())) return w.lit_ff();
+        if (Lit::isa(pack->arity())) return w.lit_ff();
     }
 
     if (vec->isa<Lit>()) return w.lit_tt();

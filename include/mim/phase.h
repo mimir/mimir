@@ -12,10 +12,8 @@
 
 namespace mim {
 
-class Nest;
 class Phase;
 class PhaseMan;
-class World;
 
 using Phases = std::deque<std::unique_ptr<Phase>>;
 
@@ -61,7 +59,7 @@ public:
                 }
                 return phase;
             } else
-                fe::throwf("phase `{}` not found", axm->sym());
+                fe::throwf("no phase registered for stage `{}`; is its plugin loaded?", axm->sym());
         else
             fe::throwf("unsupported callee for a phase: `{}`", p_def);
     }
@@ -187,10 +185,7 @@ public:
     const auto& lattice() const { return lattice_; } ///< The whole map; used e.g. to diff two fixed-point runs.
 
     /// @returns the abstract value recorded for @p def, or `nullptr` if unknown.
-    const Def* lattice(const Def* def) const {
-        if (auto i = lattice_.find(def); i != lattice_.end()) return i->second;
-        return nullptr;
-    }
+    const Def* lattice(const Def* def) const { return fe::lookup(lattice_, def); }
 
     /// The representative of @p def: follows `def ↦ lattice(def)` to the end of its chain.
     ///
@@ -455,10 +450,8 @@ public:
 
 private:
     const Def* rewrite(const Def* def) final {
-        for (bool todo = true; todo;) {
-            todo = false;
-            if (auto subst = replace(def)) todo = true, def = subst;
-        }
+        while (auto subst = replace(def))
+            def = subst;
 
         return Rewriter::rewrite(def);
     }

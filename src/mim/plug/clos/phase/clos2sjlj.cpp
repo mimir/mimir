@@ -87,7 +87,7 @@ Lam* Clos2SJLJ::get_throw(const Def* dom) {
     auto& w            = new_world();
     auto [p, inserted] = dom2throw_.emplace(dom, nullptr);
     auto& tlam         = p->second;
-    if (inserted || !tlam) {
+    if (inserted) {
         tlam = w.mut_con(clos_sub_env(Sjlj_Env_Param, dom, w.sigma({jb_type(), rb_type(), tag_type()})))->set("throw");
         auto [m0, env, var]    = split(tlam->var());
         auto [jbuf, rbuf, tag] = env->projs<3>();
@@ -105,14 +105,14 @@ Lam* Clos2SJLJ::get_lpad(Lam* lam, const Def* rb) {
     auto& w            = new_world();
     auto [p, inserted] = lam2lpad_.emplace(w.tuple({lam, rb}), nullptr);
     auto& lpad         = p->second;
-    if (inserted || !lpad) {
+    if (inserted) {
         auto [_, env_type, dom] = split(lam->dom());
         lpad                    = mem::mut_con(env_type)->set("lpad");
         auto [m, env, __]       = split(lpad->var());
         auto [m1, arg_ptr]      = w.call<mem::load>(Defs{m, rb})->projs<2>();
         arg_ptr                 = w.call<core::bitcast>(w.call<mem::Ptr0>(dom), arg_ptr);
         auto [m2, args]         = w.call<mem::load>(Defs{m1, arg_ptr})->projs<2>();
-        auto full_args          = (lam->num_doms() == 3) ? rebuild(m2, env, {args}) : rebuild(m2, env, args->ops());
+        auto full_args          = (lam->num_doms() == 3) ? rebuild(m2, env, {args}) : rebuild(m2, env, args->projs());
         lpad->app(false, lam, full_args);
         ignore_.emplace(lpad);
     }

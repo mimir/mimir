@@ -314,7 +314,7 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
     if (auto var1 = d1->isa<Var>()) {
         auto var2 = d2->as<Var>();
         if (auto i = binders_.find(var1->binder()); i != binders_.end()) return i->second == var2->binder();
-        if (auto i = binders_.find(var2->binder()); i != binders_.end()) return fail<mode>(); // var2 is bound
+        if (binders_.contains(var2->binder())) return fail<mode>(); // var2 is bound
         // both var1 and var2 are free: OK, when they are the same or in Check mode
         return var1 == var2 || mode == Check;
     }
@@ -421,7 +421,7 @@ bool Checker::check(Seq* mut_seq, const Seq* imm_seq) {
 
 bool Checker::check(const UMax* umax, const Def* def) {
     for (auto op : umax->ops())
-        if (!alpha<Check>(op, def)) return fail<Check>();
+        if (!alpha_<Check>(op, def)) return fail<Check>();
     return true;
 }
 
@@ -442,9 +442,7 @@ const Def* Sigma::infer(World& w, Defs ops) {
     return w.umax<UMax::Kind>(DefVec(ops, [](const Def* op) { return op->unfold_type(); }));
 }
 
-const Def* Variant::infer(World& w, Defs ops) {
-    return w.umax<UMax::Kind>(DefVec(ops, [](const Def* op) { return op->unfold_type(); }));
-}
+const Def* Variant::infer(World& w, Defs ops) { return Sigma::infer(w, ops); }
 
 const Def* Pi::infer(const Def* dom, const Def* codom) {
     auto& w = dom->world();
@@ -492,7 +490,7 @@ const Def* Def::check() {
         }
         case MutNode::Sigma: {
             auto t = Sigma::infer(w, ops());
-            if (t == type() || Checker::alpha<Checker::Check>(t, type())) return t; // TODO HACK
+            if (Checker::alpha<Checker::Check>(t, type())) return t; // TODO HACK
             w.log().w("expected type {} for {} but keeping the declared {} due to clos-conv bugs", t, this, type());
             return type();
         }

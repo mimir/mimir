@@ -29,7 +29,7 @@ void AST::bootstrap(Sym plugin, std::ostream& h) {
     auto tab = fe::Tab::spaces();
     std::println(h, "{}#pragma once\n", tab);
     std::println(h, "{}#include <mim/axm.h>", tab);
-    std::println(h, "#include <mim/plugin.h>\n", tab);
+    std::println(h, "{}#include <mim/plugin.h>\n", tab);
     std::println(h, "{}/// @namespace mim::plug::{} @ref {}", tab, plugin, plugin);
     std::println(h, "{}namespace mim {{", tab);
     std::println(h, "{}namespace plug::{} {{\n", tab, plugin);
@@ -140,7 +140,7 @@ void AST::bootstrap_py(Sym plugin, std::ostream& h) {
     std::println(h, "class {}(IntEnum):", plugin);
     ++tab;
     std::println(h, "{}ID = 0x{:x}", tab, plugin_id);
-    std::vector<mim::ast::AnnexInfo> annexes_with_subs;
+    std::vector<const AnnexInfo*> annexes_with_subs;
 
     const auto& unordered = plugin2annexes(plugin);
     std::deque<std::pair<Sym, AnnexInfo>> infos(unordered.begin(), unordered.end());
@@ -154,25 +154,23 @@ void AST::bootstrap_py(Sym plugin, std::ostream& h) {
         if (auto& subs = annex.subs; subs.empty())
             std::println(h, "{}{} = 0x{:x}", tab, sym.tag, ax_id);
         else
-            annexes_with_subs.push_back(annex);
+            annexes_with_subs.emplace_back(&annex);
     }
     std::print(h, "\n");
 
-    if (!annexes_with_subs.empty()) {
-        for (const auto& annex : annexes_with_subs) {
-            flags_t ax_id = annex.base();
-            std::println(h, "class _{}_{}(IntEnum):", plugin, annex.sym.tag);
-            ++tab;
+    for (auto annex : annexes_with_subs) {
+        flags_t ax_id = annex->base();
+        std::println(h, "class _{}_{}(IntEnum):", plugin, annex->sym.tag);
+        ++tab;
 
-            for (const auto& aliases : annex.subs) {
-                auto id = ax_id++;
-                for (const auto alias : aliases)
-                    std::println(h, "{}{} = 0x{:x}", tab, alias, id);
-            }
-
-            --tab;
-            std::println(h, "\n{}.{} = _{}_{}\n", plugin, annex.sym.tag, plugin, annex.sym.tag);
+        for (const auto& aliases : annex->subs) {
+            auto id = ax_id++;
+            for (const auto alias : aliases)
+                std::println(h, "{}{} = 0x{:x}", tab, alias, id);
         }
+
+        --tab;
+        std::println(h, "\n{}.{} = _{}_{}\n", plugin, annex->sym.tag, plugin, annex->sym.tag);
     }
 }
 

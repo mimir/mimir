@@ -26,18 +26,13 @@ const Def* normalize_get(const Def*, const Def* callee, const Def* arg) {
     auto V        = callee->as<App>()->arg();
 
     if (auto init = Axm::isa<ord::init>(map)) {
-        if (auto tuple = init->arg()->isa<Tuple>()) {
-            for (auto kv : tuple->ops()) {
-                if (kv->proj(2, 0) == k) {
-                    auto val   = kv->proj(2, 1);
-                    auto opt_V = w.call<option::Opt>(V);
-                    return w.inj(opt_V, val);
-                }
-            }
-            if (tuple->is_closed()) {
-                auto opt_V = w.call<option::Opt>(V);
-                return w.inj(opt_V, w.tuple(Defs{}));
-            };
+        if (auto n = Lit::isa(init->decurry()->arg())) {
+            auto kvs   = init->arg();
+            auto opt_V = w.call<option::Opt>(V);
+            for (auto kv : kvs->projs(*n))
+                if (auto [key, val] = kv->projs<2>(); key == k) return w.inj(opt_V, val);
+            // FIXME a closed kvs doesn't rule out an open k matching at runtime.
+            if (kvs->is_closed()) return w.inj(opt_V, w.tuple(Defs{}));
         }
     }
 
@@ -50,12 +45,14 @@ const Def* normalize_contains(const Def*, const Def*, const Def* arg) {
     auto [c, k] = arg->projs<2>();
 
     if (auto init = Axm::isa<ord::init>(c)) {
-        if (auto tuple = init->arg()->isa<Tuple>()) {
-            for (auto kv : tuple->ops()) {
+        if (auto n = Lit::isa(init->decurry()->arg())) {
+            auto kvs = init->arg();
+            for (auto kv : kvs->projs(*n)) {
                 auto key = id == contains::map ? kv->proj(2, 0) : kv;
                 if (key == k) return w.lit_tt();
             }
-            return tuple->is_closed() ? w.lit_ff() : nullptr;
+            // FIXME a closed kvs doesn't rule out an open k matching at runtime.
+            return kvs->is_closed() ? w.lit_ff() : nullptr;
         }
 
         if (auto pack = init->arg()->isa_imm<Pack>()) w.log().w("Pack not yet implemented: {}", pack);
@@ -70,34 +67,18 @@ const Def* normalize_insert(const Def* type, const Def*, const Def* arg) {
     auto [ms, kv] = arg->projs<2>();
 
     if (auto init = Axm::isa<ord::init>(ms)) {
-        auto [K, V, n, arg] = init->uncurry_args<4>();
-        if (auto tuple = arg->isa<Tuple>()) {
-            K = K ? K : V;
-            if (auto l = Lit::isa(n)) {
-                auto new_ops = DefVec();
-                bool updated = false;
-                for (size_t i = 0, e = *l; i != e; ++i) {
-                    auto key = id == ord::insert::map ? kv->proj(2, 0) : kv;
-                    auto cur = tuple->proj(e, i);
-                    if (id == ord::insert::map) cur = cur->proj(2, 0);
-                    if (key == cur) {
-                        updated = true;
-                        new_ops.emplace_back(kv);
-                    } else {
-                        new_ops.emplace_back(tuple->proj(e, i));
-                    }
-                }
-
-                if (!updated) new_ops.emplace_back(kv);
-
-                // return w.call(id, lt, Defs(new_ops));
-                auto insert = id == ord::insert::map ? ord::init::map : ord::init::set;
-                auto new_n  = w.lit_nat(new_ops.size());
-                auto app    = w.app(w.annex(insert), K);
-                if (id == ord::insert::map) app = w.app(app, V);
-
-                return w.app(w.app(app, new_n), new_ops);
+        auto [n, kvs] = init->uncurry_args<2>();
+        if (auto l = Lit::isa(n)) {
+            auto key     = id == ord::insert::map ? kv->proj(2, 0) : kv;
+            auto new_ops = DefVec();
+            bool updated = false;
+            for (auto cur : kvs->projs(*l)) {
+                auto cur_key = id == ord::insert::map ? cur->proj(2, 0) : cur;
+                if (key == cur_key) updated = true;
+                new_ops.emplace_back(key == cur_key ? kv : cur);
             }
+            if (!updated) new_ops.emplace_back(kv);
+            return w.app(w.app(init->decurry()->callee(), w.lit_nat(new_ops.size())), new_ops);
         }
 
         if (auto pack = init->arg()->isa_imm<Pack>()) w.log().w("Pack not yet implemented: {}", pack);

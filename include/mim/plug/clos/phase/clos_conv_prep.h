@@ -18,7 +18,7 @@ private:
     bool analyze() final;
     const Def* rewrite_imm_App(const App*) final;
 
-    const Def* rewrite_arg(const App* app, const Def* old_op);
+    const Def* rewrite_arg(const App* app, const Def* old_op, size_t i, size_t n);
     const Def* rewrite_callee_op(const Def* old_op);
 
     Lam* scope(Lam* lam) { return lam2fscope_[lam]; }

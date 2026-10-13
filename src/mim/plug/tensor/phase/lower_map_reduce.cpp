@@ -48,7 +48,6 @@ const Def* LowerMapReduce::rec_broadcast(const Def* s_in, const Def* s_out, cons
 }
 
 const Def* LowerMapReduce::lower_broadcast(const App* app) {
-    auto& w  = new_world();
     auto c   = rewrite(app->callee());
     auto arg = rewrite(app->arg());
 
@@ -66,45 +65,12 @@ const Def* LowerMapReduce::lower_broadcast(const App* app) {
     // r_nat will never be 0, as we would have normalized this case away already
     if (s_in == s_out) return input;
 
-    if (*r_nat == 1) {
-        if (auto s_in_lit = Lit::isa<u64>(s_in)) {
-            assert(*s_in_lit == 1 && "input dimensions must be 1 or equal to the output dimension");
-            return w.pack(s_out, input);
-        }
-    }
-
     auto result = rec_broadcast(s_in, s_out, input, *r_nat, 0);
     log().d("broadcast result: {}", result);
     return result;
 }
 
 namespace {
-
-std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const Def* exit, Sym name) {
-    auto& w       = bound->world();
-    auto acc_ty   = acc->type();
-    auto body     = w.mut_con({/* iter */ w.type_i64(), /* acc */ acc_ty, /* return */ w.cn(acc_ty)})->set(name);
-    auto for_loop = w.call<affine::For>(body, exit, Defs{w.lit_i64(0), bound, w.lit_i64(1), acc});
-    return {body, for_loop};
-}
-
-/// Nests one counting loop per bound of @p dims inside @p cur, threading @p cur, @p exit and @p acc down to
-/// the innermost body; @returns the raw i64 loop counters.
-DefVec build_loops(World& w, Lam*& cur, const Def*& exit, const Def*& acc, Defs dims, std::string_view name) {
-    auto iters = DefVec();
-    iters.reserve(dims.size());
-    for (size_t i = 0, e = dims.size(); i != e; ++i) {
-        auto bound                  = w.call<core::bitcast>(w.type_i64(), dims[i]);
-        auto [body, for_call]       = counting_for(bound, acc, exit, w.sym(std::format("{}_{}", name, i)));
-        auto [iter, new_acc, yield] = body->vars<3>();
-        exit                        = yield;
-        acc                         = new_acc;
-        iters.emplace_back(iter);
-        cur->set(true, for_call);
-        cur = body;
-    }
-    return iters;
-}
 
 /// `select(cond, t, f)` as `(f, t)#cond` (cf. core.select); `cond: Bool`.
 const Def* select(World& w, const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); }
@@ -169,7 +135,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
     // Builds `affine.map @(m, n) @(sin, sout) f idxs mem` and returns the result coordinates (dropping the returned
     // mem). The emitted `affine.map` is lowered to core arithmetic by the subsequent affine.lower_index. We
     // invent a fresh `⊥ : mem.M 0` for the mem operand here; real mem threading is wired up later by `add_mem`.
-    auto mem0       = w.app(w.annex<mem::M>(), w.lit_nat(0));
+    auto mem0       = w.call<mem::M>(0);
     auto affine_map = [&](const Def* f, const Def* m, const Def* n, const Def* sin, const Def* sout, const Def* idxs) {
         auto a = w.app(w.annex<affine::map>(), w.tuple({m, n}));
         a      = w.app(a, w.tuple({sin, sout}));
@@ -191,7 +157,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         // Outer (parallel) loops over the leading Ro bounds of `Sr`, collecting the output iteration indices.
         const Def* acc   = w.bot(cont->type()->as<Pi>()->dom());
         auto current_mut = fun;
-        auto raw_out     = build_loops(w, current_mut, cont, acc, Defs(sr).subspan(0, ro), "forOut");
+        auto raw_out     = affine::counting_nest(current_mut, cont, acc, Defs(sr).subspan(0, ro), "forOut");
         DefVec out_iters(ro, [&](size_t i) { return w.call(core::conv::u, sr[i], raw_out[i]); });
         auto wb_matrix = acc;
 
@@ -221,7 +187,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         // indices.
         acc              = init;
         cont             = write_back;
-        auto raw_red     = build_loops(w, current_mut, cont, acc, Defs(sr).subspan(ro, rr), "forIn");
+        auto raw_red     = affine::counting_nest(current_mut, cont, acc, Defs(sr).subspan(ro, rr), "forIn");
         auto element_acc = acc;
 
         // The full loop iteration vector `(o…, r…)`; its moduli are exactly `Sr`.
@@ -262,7 +228,7 @@ const Def* LowerMapReduce::build_pointwise(const Def* inputs,
     const Def* acc   = w.bot(cont->type()->as<Pi>()->dom());
     auto current_mut = fun;
     auto so          = So->projs(ro);
-    auto out_iters   = build_loops(w, current_mut, cont, acc, so, "forOut"); // raw i64 loop counters
+    auto out_iters   = affine::counting_nest(current_mut, cont, acc, so, "forOut"); // raw i64 loop counters
     auto wb_matrix   = acc;
 
     // Write the computed element at the (identity) output coordinates; convert the i64 counters to `Idx (So#k)`.
@@ -294,7 +260,7 @@ const Def* LowerMapReduce::lower_generate(const App* app) {
         return w.app(body, w.tuple(zeros));
     }
 
-    auto unit    = w.tuple(Defs{});
+    auto unit    = w.tuple();
     auto compute = [&](Defs out_iters, const Def*) { return w.call(body, out_iters); };
     return build_pointwise(unit, type, s_out, rn, compute);
 }
@@ -473,7 +439,7 @@ const Def* LowerMapReduce::lower_scatter(const App* app) {
     auto acc                     = input;
     auto current                 = fun;
     auto dims                    = s_idx->projs(rn);
-    auto visit_indices           = build_loops(w, current, cont, acc, dims, "scatter");
+    auto visit_indices           = affine::counting_nest(current, cont, acc, dims, "scatter");
 
     auto step = w.app(w.annex<tensor::scatter_step_impl>(), {T, r});
     auto next = w.call(step, Defs{s_src, s_idx, s_updates}, dim, visit_indices, Defs{acc, index, updates});

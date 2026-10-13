@@ -95,7 +95,7 @@ inline const Def* strip_mem(const Def* def) {
 }
 ///@}
 
-/// @name mem.lea
+/// @name mem.Ptr
 ///@{
 inline const Def* pointee(const Def* ptr) {
     auto [pointee, _] = Axm::as<Ptr>(ptr->type())->args<2>();
@@ -118,6 +118,15 @@ inline const Def* op_lea_unsafe(const Def* ptr, const Def* i) {
 }
 
 inline const Def* op_lea_unsafe(const Def* ptr, u64 i) { return op_lea_unsafe(ptr, ptr->world().lit_i64(i)); }
+
+/// Successively offsets @p ptr by each component of the index @p tuple, peeling one array dimension per `mem.lea`.
+inline const Def* op_lea_tuple(const Def* ptr, const Def* tuple) {
+    auto n       = tuple->num_projs();
+    auto element = ptr;
+    for (size_t i = 0; i != n; ++i)
+        element = op_lea(element, tuple->proj(n, i));
+    return element;
+}
 ///@}
 
 /// @name mem.alloc

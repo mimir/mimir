@@ -112,7 +112,7 @@ public:
     class Paths {
     public:
         void add(fs::path path) {
-            if (fs::exists(path) && fs::is_directory(path)) paths_.insert(insert_, std::move(path));
+            if (std::error_code ec; fs::is_directory(path, ec)) paths_.insert(insert_, std::move(path));
         }
 
         /// Later Paths::add calls insert in front of everything added so far.
@@ -182,7 +182,7 @@ public:
     /// Finds and loads a shared object file that implements the MimIR Plugin @p name.
     /// @p name may be a bare name (`bar`), a path (`foo/bar`), or a path to the shared object itself.
     /// Its directory part - if any - is prepended to every Driver::plugin_paths() entry,
-    /// where `libmim_<bar>.so` (Linux, Mac) / `mim_<bar>.dll` (Win) is searched for.
+    /// where `libmim_<bar>.so` (`.dll` on Windows) is searched for.
     ///@{
     void load(std::string_view name);
     /// Makes a Plugin linked into this binary available to Driver::load under @p name; see `cmake/Mim.cmake`.

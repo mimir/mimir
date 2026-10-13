@@ -284,12 +284,13 @@ struct Annex {
     template<class Id> static constexpr flags_t Base = flags_t(-1); ///< @see Axm::base.
     template<class Id> static consteval size_t  num () { return Num <Id>; }
     template<class Id> static consteval flags_t base() { return Base<Id>; }
-    // clang-format of
+    // clang-format on
     ///@}
 };
 
 } // namespace mim
 
 #ifndef DOXYGEN
-template<> struct std::formatter<mim::Version> : fe::ostream_formatter {};
+template<>
+struct std::formatter<mim::Version> : fe::ostream_formatter {};
 #endif

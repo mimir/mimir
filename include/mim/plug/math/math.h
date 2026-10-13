@@ -128,11 +128,12 @@ constexpr bool is_commutative(plug::math::extrema ) { return true; }
 constexpr bool is_commutative(plug::math::arith id) { return id == plug::math::arith::add || id == plug::math::arith::mul; }
 constexpr bool is_commutative(plug::math::cmp   id) { return id == plug::math::cmp  ::e   || id == plug::math::cmp  ::ne ; }
 constexpr bool is_associative(plug::math::arith id) { return is_commutative(id); }
-// clang-format off
+// clang-format on
 ///@}
 
 } // namespace mim
 
 #ifndef DOXYGEN
-template<> struct fe::is_bit_enum<mim::plug::math::Mode> : std::true_type {};
+template<>
+struct fe::is_bit_enum<mim::plug::math::Mode> : std::true_type {};
 #endif

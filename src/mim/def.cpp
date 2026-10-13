@@ -155,8 +155,7 @@ bool Def::is_immutabilizable() {
     auto v = has_var();
     for (auto op : deps()) {
         if (v && op->has_free_var(v)) return false;
-        for (auto mut : op->local_muts())
-            if (mut == this) return false; // recursion
+        if (op->local_muts().contains(this)) return false; // recursion
     }
     return true;
 }
@@ -574,8 +573,10 @@ bool Def::greater(const Def* a, const Def* b) { return cmp_<Cmp::G>(a, b); }
 const Def* Def::immutabilize() {
     auto& w = world();
     switch (mut_node()) {
-        case MutNode::Pi:
-            return is_immutabilizable() ? w.pi(as<Pi>()->dom(), as<Pi>()->codom(), as<Pi>()->is_implicit()) : nullptr;
+        case MutNode::Pi: {
+            auto pi = as<Pi>();
+            return is_immutabilizable() ? w.pi(pi->dom(), pi->codom(), pi->is_implicit()) : nullptr;
+        }
         case MutNode::Sigma:   return is_immutabilizable() ? w.sigma(ops()) : nullptr;
         case MutNode::Variant: return is_immutabilizable() ? w.variant(ops()) : nullptr;
         case MutNode::Rule:    return nullptr; // TODO should we ever immutabilize Rules?
@@ -660,8 +661,7 @@ const Def* Def::proj(nat_t a, nat_t i) const {
     if (auto seq = isa<Seq>()) {
         auto& w = world();
         if (seq->shape().is_fused()) return w.peel(seq, w.lit_idx(a, i)); // one axis off a fused shape yields a sub-Seq
-        if (seq->has_var()) return seq->reduce(w.lit_idx(a, i));
-        return seq->body();
+        return seq->reduce(w.lit_idx(a, i));
     }
 
     if (isa<Prod>()) return op(i);
@@ -681,8 +681,7 @@ const Def* Idx::isa(const Def* def) {
 }
 
 std::optional<nat_t> Idx::isa_lit(const Def* def) {
-    if (auto size = Idx::isa(def))
-        if (auto l = Lit::isa(size)) return l;
+    if (auto size = Idx::isa(def)) return Lit::isa(size);
     return {};
 }
 

@@ -43,20 +43,9 @@ std::string state_to_name(const DFANode* state) { return "state_" + std::to_stri
 DFAMap<Ranges> transitions_to_ranges(World& w, const DFANode* state) {
     DFAMap<Ranges> state2ranges;
     state->for_transitions([&](std::uint16_t transition, const DFANode* next_state) {
-        if (!state2ranges.contains(next_state))
-            state2ranges.try_emplace(next_state, Ranges{
-                                                     {transition, transition}
-            });
-        else
-            state2ranges[next_state].emplace_back(transition, transition);
+        state2ranges[next_state].emplace_back(transition, transition);
     });
-    Range any_range{0, 255};
     for (auto& [state, ranges] : state2ranges) {
-        if (std::ranges::contains(ranges, any_range)) {
-            ranges = {any_range};
-            continue;
-        }
-
         std::sort(ranges.begin(), ranges.end(), RangeCompare{});
         ranges = merge_ranges(ranges, [&w](std::string_view msg) { w.log().d("{}", msg); });
     }
@@ -80,12 +69,11 @@ DFAMap<const Def*> create_check_match_transitions_from(const Def* c, const DFANo
     auto state2ranges = transitions_to_ranges(w, state);
 
     for (auto& [state, ranges] : state2ranges) {
-        for (auto& [lo, hi] : ranges)
-            if (!state2check.contains(state))
-                state2check.try_emplace(state, match_range(c, lo, hi));
-            else
-                state2check[state]
-                    = w.call(core::bit2::or_, w.lit_nat(2), w.tuple({state2check[state], match_range(c, lo, hi)}));
+        for (auto& [lo, hi] : ranges) {
+            auto match = match_range(c, lo, hi);
+            if (auto [i, ins] = state2check.try_emplace(state, match); !ins)
+                i->second = w.call(core::bit2::or_, w.lit_nat(2), w.tuple({i->second, match}));
+        }
     }
     return state2check;
 }
@@ -154,7 +142,7 @@ extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
         lam->app(false, w.select(is_end, exiting(state), not_end), {mem2, i});
 
         auto transitions = create_check_match_transitions_from(c, state);
-        auto next_check  = exiting(state); // if we want to check full string only, use error instead of exiting(state)c
+        auto next_check  = exiting(state); // if we want to check full string only, use error instead of exiting(state)
         for (auto [next_state, check] : transitions) {
             auto next_lam = state2matcher[next_state];
             auto checker  = mem::mut_con(w.type_idx(n));

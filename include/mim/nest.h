@@ -155,8 +155,8 @@ public:
         const auto& SCCs() { return sccs().SCCs_; }
         const auto& topo() const { return sccs().topo_; } ///< Topological sorting of all SCCs.
         bool is_recursive() const { return sccs().recursive_; }
-        bool is_mutually_recursive() const { return is_recursive() && inest_ && inest_->SCCs_[this]->size() > 1; }
-        bool is_directly_recursive() const { return is_recursive() && (!inest_ || inest_->SCCs_[this]->size() == 1); }
+        bool is_mutually_recursive() const { return is_recursive() && !is_root() && scc().size() > 1; }
+        bool is_directly_recursive() const { return is_recursive() && (is_root() || scc().size() == 1); }
         /// The SCC among its siblings this Node belongs to; the Nest::root() has none.
         const SCC& scc() const {
             assert(!is_root());
@@ -182,7 +182,7 @@ public:
         /// SCCs
         using Stack = std::stack<Node*>;
         void calc_SCCs();
-        uint32_t tarjan(uint32_t, Node*, Stack&);
+        uint32_t tarjan(uint32_t, Stack&);
 
         /// Dominance
         const Node* calc_dominance() const;

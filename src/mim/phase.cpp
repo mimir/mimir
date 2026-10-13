@@ -197,7 +197,7 @@ void PhaseMan::apply(Phase& phase) {
     auto& man = static_cast<PhaseMan&>(phase);
     Phases new_phases;
     for (auto& old_phase : man.phases())
-        new_phases.emplace_back(std::unique_ptr<Phase>(static_cast<Phase*>(old_phase->recreate().release())));
+        new_phases.emplace_back(old_phase->recreate());
     apply(man.fixed_point(), std::move(new_phases));
 }
 
@@ -224,10 +224,7 @@ void PhaseMan::start() {
                 continue;
             }
 
-            if (ran.test(i)) { // re-runs need a fresh instance
-                auto new_phase = std::unique_ptr<Phase>(static_cast<Phase*>(phase->recreate().release()));
-                swap(new_phase, phase);
-            }
+            if (ran.test(i)) phase = phase->recreate(); // re-runs need a fresh instance
 
             phase->run();
             ran.set(i);

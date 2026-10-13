@@ -16,15 +16,6 @@ namespace mim::plug::btensor::phase {
 
 namespace {
 
-/// Builds a counting `affine.For` loop body carrying `acc` (a `{mem, …}` tuple).
-std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const Def* exit, Sym name) {
-    auto& w       = bound->world();
-    auto acc_ty   = acc->type();
-    auto body     = w.mut_con({/* iter */ w.type_i64(), /* acc */ acc_ty, /* return */ w.cn(acc_ty)})->set(name);
-    auto for_loop = w.call<affine::For>(body, exit, Defs{w.lit_i64(0), bound, w.lit_i64(1), acc});
-    return {body, for_loop};
-}
-
 /// Pointwise scaffold shared by `pad`/`concat`: a `[mem, ins] → [mem, Buf]` fun (spliced via
 /// `cps.cps2ds`) that allocates the output buffer, loops over `s_out` carrying `{mem, buf}`, and writes
 /// `compute`'s elem at the (identity) output coordinates.
@@ -44,23 +35,11 @@ const Def* build_pointwise(World& w,
     auto [fun_mem, ins] = fun->var(2, 0)->projs<2>();
     auto cont           = fun->var(2, 1);
 
-    auto [obr, obs, obT]  = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
-    auto [a_mem, out_buf] = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
-    const Def* acc        = w.tuple({a_mem, out_buf});
-    auto current_mut      = fun;
-
-    DefVec iters; // raw i64 loop counters
-    iters.reserve(rn);
-    for (u64 d = 0; d < rn; ++d) {
-        auto bound                  = w.call<core::bitcast>(w.type_i64(), s_out->proj(rn, d));
-        auto [body, for_call]       = counting_for(bound, acc, cont, w.sym(name + "_" + std::to_string(d)));
-        auto [iter, new_acc, yield] = body->vars<3>();
-        cont                        = yield;
-        iters.push_back(iter);
-        acc = new_acc;
-        current_mut->set(true, for_call);
-        current_mut = body;
-    }
+    auto [obr, obs, obT]      = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
+    auto [a_mem, out_buf]     = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
+    const Def* acc            = w.tuple({a_mem, out_buf});
+    auto current_mut          = fun;
+    auto iters                = affine::counting_nest(current_mut, cont, acc, s_out->projs(rn), name);
     auto [loop_mem, loop_buf] = acc->projs<2>();
 
     std::pair<const Def*, const Def*> el = compute(iters, ins, loop_mem);
@@ -73,6 +52,14 @@ const Def* build_pointwise(World& w,
         = buffer::op_write(obr, obs, obT, el_mem, loop_buf, *Shape(w, wcoords).fold(s_out), elem)->projs<2>();
     current_mut->app(true, cont, w.tuple({wr_mem, loop_buf}));
     return call;
+}
+
+/// `select(cond, t, f)` as `(f, t)#cond` (cf. core.select); `cond: Bool`.
+const Def* select(World& w, const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); }
+
+/// Clamps the i64 @p x into `[0, hi]`.
+const Def* clamp(World& w, const Def* x, const Def* hi) {
+    return w.call(core::extrema::smax, w.tuple({w.lit_i64(0), w.call(core::extrema::smin, w.tuple({x, hi}))}));
 }
 
 } // namespace
@@ -267,7 +254,7 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
         auto after_post            = mem::mut_con(Tp)->set("afterPost");
         auto [post_mem, elem_post] = after_post->vars<2>();
         auto stored = buffer::op_write(obr, obs, obT, post_mem, wu, *Shape(write_coords).fold(So), elem_post);
-        after_post->app(true, wk, w.tuple({stored->proj(2, 0), stored->proj(2, 1)}));
+        after_post->app(true, wk, stored);
         apply_cps(wb, post, {pcur, wv, w.tuple(post_elems)}, after_post);
     }
 
@@ -285,7 +272,12 @@ const Def* LowerMapReduce::lower_broadcast(const App* app) {
     auto [op_mem, input] = rewrite(app->arg())->projs<2>();
     auto result_ty       = rewrite(app->type()); // [mem.M 0, buffer.Buf (ro, so, T)]
 
-    auto r_nat = s_out->num_projs();
+    auto r_l = Lit::isa(s_out->arity());
+    if (!r_l) {
+        log().w("rank of {} is not known at lowering time", app);
+        return RWPhase::rewrite_imm_App(app);
+    }
+    auto r_nat = *r_l;
 
     auto mem_ty            = w.call<mem::M>(0);
     auto fun               = w.mut_fun(w.sigma({mem_ty, input->type()}), result_ty)->set("broadcast");
@@ -299,19 +291,8 @@ const Def* LowerMapReduce::lower_broadcast(const App* app) {
     auto [a_mem, out_buf] = buffer::op_alloc(out_r, out_s, out_T, fun_mem)->projs<2>();
     const Def* acc        = w.tuple({a_mem, out_buf});
     auto current_mut      = fun;
-    DefVec out_iters;
-    out_iters.reserve(r_nat);
-    for (size_t i = 0; i < r_nat; ++i) {
-        auto dim                    = s_out->proj(r_nat, i);
-        auto bound                  = w.call<core::bitcast>(w.type_i64(), dim);
-        auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("bcast_" + std::to_string(i)));
-        auto [iter, new_acc, yield] = body->vars<3>();
-        cont                        = yield;
-        out_iters.push_back(w.call(core::conv::u, dim, iter));
-        acc = new_acc;
-        current_mut->set(true, for_call);
-        current_mut = body;
-    }
+    auto raw              = affine::counting_nest(current_mut, cont, acc, s_out->projs(r_nat), "bcast");
+    DefVec out_iters(r_nat, [&](size_t i) { return w.call(core::conv::u, s_out->proj(r_nat, i), raw[i]); });
     auto [loop_mem, loop_buf] = acc->projs<2>();
 
     // Non-size-1 input dims mirror the matching output index; size-1 dims are dropped from each buffer index.
@@ -346,9 +327,6 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
     auto mode_nat = *mode_l;
     auto i64      = w.type_i64();
 
-    // select(cond, t, f) == `(f, t)#cond` (cf. core.select); cond : Bool.
-    auto sel = [&](const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); };
-
     auto compute = [&](const DefVec& iters, const Def* ins, const Def* mem) -> std::pair<const Def*, const Def*> {
         auto [in_buf, fill]  = ins->projs<2>();
         auto [ibr, ibs, ibT] = Axm::isa<buffer::Buf>(in_buf->type())->args<3>();
@@ -362,11 +340,10 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
             if (mode_nat == 0) { // constant: a single unsigned `<` covers both bounds (underflow wraps high)
                 auto v_d = w.call(core::icmp::ul, w.tuple({in_d, sin_d}));
                 valid.push_back(v_d);
-                idx_i64 = sel(v_d, in_d, w.lit_i64(0));
+                idx_i64 = select(w, v_d, in_d, w.lit_i64(0));
             } else { // replicate: clamp the read to the nearest edge [0, s_in#d − 1]
                 auto sin_m1 = w.call(core::wrap::sub, core::Mode::none, Defs{sin_d, w.lit_i64(1)});
-                idx_i64     = w.call(core::extrema::smax,
-                                     w.tuple({w.lit_i64(0), w.call(core::extrema::smin, w.tuple({in_d, sin_m1}))}));
+                idx_i64     = clamp(w, in_d, sin_m1);
             }
             clamped[d] = w.call(core::conv::u, s_in->proj(rn, d), idx_i64);
         }
@@ -375,7 +352,7 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
         auto all_valid = valid.empty() ? w.lit_tt() : valid[0];
         for (u64 d = 1; d < valid.size(); ++d)
             all_valid = w.call(core::bit2::and_, w.lit_nat(2), w.tuple({all_valid, valid[d]}));
-        return {rd_mem, sel(all_valid, elem, fill)}; // constant: fill out-of-region cells with `val`
+        return {rd_mem, select(w, all_valid, elem, fill)}; // constant: fill out-of-region cells with `val`
     };
 
     return build_pointwise(w, result_ty, op_mem, w.tuple({input, val}), s_out, rn, "pad", compute);
@@ -401,7 +378,7 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
     }
     auto nisn = *nis_l, rn = *r_l, axn = *ax_l;
 
-    // Prefix offsets along `ax`: off#i = Σ_{j<i} Sis#i#ax (literal extents required).
+    // Prefix offsets along `ax`: off#i = Σ_{j<i} Sis#j#ax (literal extents required).
     DefVec off(nisn);
     fe::Vector<u64> ext(nisn);
     u64 acc_off = 0;
@@ -416,8 +393,6 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
         acc_off += *ei;
     }
 
-    auto sel = [&](const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); };
-
     auto compute = [&](const DefVec& iters, const Def* ins, const Def* mem) -> std::pair<const Def*, const Def*> {
         auto o_ax      = iters[axn];
         const Def* cur = mem;
@@ -428,11 +403,10 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
             auto Sis_i           = Sis->proj(nisn, i);
             auto e_i_m1          = w.lit_i64(ext[i] - 1);
             auto loc             = w.call(core::wrap::sub, core::Mode::none, Defs{o_ax, off[i]});
-            auto clamp           = w.call(core::extrema::smax,
-                                          w.tuple({w.lit_i64(0), w.call(core::extrema::smin, w.tuple({loc, e_i_m1}))}));
+            auto clamp_ax        = clamp(w, loc, e_i_m1);
             DefVec coords(rn);
             for (u64 d = 0; d < rn; ++d) {
-                auto idx_i64 = (d == axn) ? clamp : iters[d];
+                auto idx_i64 = (d == axn) ? clamp_ax : iters[d];
                 coords[d]    = w.call(core::conv::u, Sis_i->proj(rn, d), idx_i64);
             }
             auto coords_folded    = *Shape(w, coords).fold(Sis_i);
@@ -444,7 +418,7 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
         auto result = read_i(0);
         for (u64 i = 1; i < nisn; ++i) {
             auto cond = w.call(core::icmp::uge, w.tuple({o_ax, off[i]}));
-            result    = sel(cond, read_i(i), result);
+            result    = select(w, cond, read_i(i), result);
         }
         return {cur, result};
     };
@@ -520,23 +494,12 @@ const Def* LowerMapReduce::lower_scatter(const App* app) {
     auto [fun_mem, in_buf, idx_buf, update_buf] = fun->var(2, 0)->projs<4>();
     auto cont                                   = fun->var(2, 1);
 
-    auto [obr, obs, obT]  = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
-    auto [a_mem, out_buf] = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
-    auto copy_mem         = buffer::op_copy(obr, obs, obT, a_mem, out_buf, in_buf);
-    const Def* acc        = w.tuple({copy_mem, out_buf});
-    auto current          = fun;
-    DefVec iters;
-    iters.reserve(rn);
-    for (u64 d = 0; d < rn; ++d) {
-        auto bound                  = w.call<core::bitcast>(w.type_i64(), s_idx->proj(rn, d));
-        auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("scatter_" + std::to_string(d)));
-        auto [iter, new_acc, yield] = body->vars<3>();
-        cont                        = yield;
-        acc                         = new_acc;
-        iters.push_back(iter);
-        current->set(true, for_call);
-        current = body;
-    }
+    auto [obr, obs, obT]      = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
+    auto [a_mem, out_buf]     = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
+    auto copy_mem             = buffer::op_copy(obr, obs, obT, a_mem, out_buf, in_buf);
+    const Def* acc            = w.tuple({copy_mem, out_buf});
+    auto current              = fun;
+    auto iters                = affine::counting_nest(current, cont, acc, s_idx->projs(rn), "scatter");
     auto [loop_mem, loop_buf] = acc->projs<2>();
     auto [xbr, xbs, xbT]      = Axm::isa<buffer::Buf>(idx_buf->type())->args<3>();
     auto [ubr, ubs, ubT]      = Axm::isa<buffer::Buf>(update_buf->type())->args<3>();

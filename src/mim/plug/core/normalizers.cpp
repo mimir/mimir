@@ -9,11 +9,7 @@ namespace mim::plug::core {
 
 namespace {
 
-constexpr nat_t idx_shift_width(u64 size) {
-    if (size == 0) return 64;
-    auto width = Idx::size2bitwidth(size);
-    return width == 0 ? 1 : width;
-}
+constexpr nat_t idx_shift_width(u64 size) { return std::max(1_n, Idx::size2bitwidth(size)); }
 
 constexpr std::optional<unsigned> idx_shift_amount(u64 size, u64 b) {
     auto width = idx_shift_width(size);
@@ -38,7 +34,7 @@ constexpr s64 idx_neg(u64 abs) {
     return -static_cast<s64>(abs);
 }
 
-constexpr u64 idx_pow2(unsigned k) { return k == 0 ? 1_u64 : Idx::bitwidth2size(static_cast<nat_t>(k)); }
+constexpr u64 idx_pow2(unsigned k) { return 1_u64 << k; }
 
 constexpr bool idx_sign(u64 size, u64 x) {
     // Pre: x is already in range.
@@ -88,13 +84,7 @@ constexpr bool idx_mul_nuw(u64 size, u64 a, u64 b) {
 
 constexpr u64 idx_add(u64 size, u64 a, u64 b) {
     if (size == 0) return a + b;
-    return (a + b) % size;
-}
-
-constexpr u64 idx_mul_pow2(u64 size, u64 a, unsigned k) {
-    while (k--)
-        a = idx_add(size, a, a);
-    return a;
+    return a >= size - b ? a - (size - b) : a + b;
 }
 
 constexpr u64 idx_sub(u64 size, u64 a, u64 b) {
@@ -242,7 +232,7 @@ constexpr std::optional<u64> idx_shl(u64 size, u64 a, u64 b, bool nsw, bool nuw)
     if (nuw && idx_shl_nuw(size, a, *k)) return {};
     if (nsw && idx_shl_nsw(size, a, *k)) return {};
 
-    return idx_mul_pow2(size, a, *k);
+    return idx_mul(size, a, idx_pow2(*k));
 }
 
 constexpr std::optional<u64> idx_lshr(u64 size, u64 a, u64 b) {
@@ -370,9 +360,10 @@ const Def* fold(World& world, const Def* type, const Def*& a, const Def*& b, con
 
             bool nsw = false, nuw = false;
             if constexpr (std::is_same_v<Id, wrap>) {
-                auto m = mode ? static_cast<Mode>(Lit::as(mode)) : Mode::none;
-                nsw    = fe::has_flag(m, Mode::nsw);
-                nuw    = fe::has_flag(m, Mode::nuw);
+                auto lm = Lit::isa(mode);
+                if (!lm) return nullptr;
+                nsw = fe::has_flag(static_cast<Mode>(*lm), Mode::nsw);
+                nuw = fe::has_flag(static_cast<Mode>(*lm), Mode::nuw);
             }
 
             if (size == 1) {
@@ -406,9 +397,7 @@ const Def* fold(World& world, const Def* type, const Def*& a) {
             if (x >= 0) return world.lit(type, static_cast<u64>(x));
 
             auto y = idx_signed_abs(x);
-            if ((size == 0 && x == std::numeric_limits<s64>::min())
-                || (size % 2_u64 == 0 && y == idx_signed_min_abs(size)))
-                return world.lit(type, *la);
+            if (size % 2_u64 == 0 && y == idx_signed_min_abs(size)) return world.lit(type, *la);
 
             return world.lit(type, y);
         } else {
@@ -745,7 +734,7 @@ const Def* normalize_idx(const Def* type, const Def* c, const Def* arg) {
     auto callee = c->as<App>();
     if (auto i = Lit::isa(arg)) {
         if (auto s = Lit::isa(Idx::isa(type))) {
-            if (*i < *s) return world.lit_idx(*s, *i);
+            if (*s == 0 || *i < *s) return world.lit_idx(*s, *i);
             if (auto m = Lit::isa(callee->decurry()->arg())) return *m ? world.bot(type) : world.lit_idx_mod(*s, *i);
         }
     }
@@ -766,26 +755,16 @@ const Def* normalize_shr(const Def* type, const Def* c, const Def* arg) {
     auto [a, b] = arg->projs<2>();
     auto s      = Idx::isa(a->type());
     auto ls     = Lit::isa(s);
-    auto width  = ls ? std::optional<nat_t>(idx_shift_width(*ls)) : std::optional<nat_t>();
+    auto width  = ls.transform(idx_shift_width);
 
     if (auto result = fold<shr, id>(world, type, a, b)) return result;
 
-    if (auto la = Lit::isa(a); la && *la == 0) {
-        switch (id) {
-            case shr::a: return a;
-            case shr::l: return a;
-        }
-    }
+    if (auto la = Lit::isa(a); la && *la == 0) return a;
 
     if (auto lb = Lit::isa(b)) {
         if (width && *lb >= *width) return world.bot(type);
 
-        if (*lb == 0) {
-            switch (id) {
-                case shr::a: return a;
-                case shr::l: return a;
-            }
-        }
+        if (*lb == 0) return a;
     }
 
     return world.raw_app(type, callee, {a, b});
@@ -826,21 +805,23 @@ const Def* normalize_wrap(const Def* type, const Def* c, const Def* arg) {
         if (*lb == 0) {
             switch (id) {
                 case wrap::sub: return a;    // a  - 0 -> a
-                case wrap::shl: return a;    // a >> 0 -> a
+                case wrap::shl: return a;    // a << 0 -> a
                 default: std::unreachable();
                 // add, mul are commutative, the literal has been normalized to the left
             }
         }
 
         if (auto lm = Lit::isa(mode); lm && ls && *lm == 0 && id == wrap::sub)
-            return world.call(wrap::add, mode, Defs{a, world.lit_idx_mod(*ls, ~*lb + 1_u64)}); // a - lb -> a + (~lb + 1)
+            return world.call(wrap::add, mode, Defs{a, world.lit_idx(*ls, idx_sub(*ls, 0, *lb))}); // a - lb -> a + (0 - lb)
         else if (id == wrap::shl && width && *lb >= *width)
             return world.bot(type);
     }
 
     if (a == b) {
         switch (id) {
-            case wrap::add: return world.call(wrap::mul, mode, Defs{world.lit(type, 2), a}); // a + a -> 2 * a
+            case wrap::add:
+                if (ls && (*ls == 0 || *ls > 2)) return world.call(wrap::mul, mode, Defs{world.lit(type, 2), a}); // a + a -> 2 * a
+                break;
             case wrap::sub: return world.lit(type, 0);                                       // a - a -> 0
             case wrap::mul: break;
             case wrap::shl: break;
@@ -882,8 +863,11 @@ const Def* normalize_div(const Def* full_type, const Def*, const Def* arg) {
 
     if (a == b) {
         switch (id) {
-            case div::sdiv: return make_res(world.lit(type, 1)); // a / a -> 1
-            case div::udiv: return make_res(world.lit(type, 1)); // a / a -> 1
+            case div::sdiv:
+            case div::udiv:
+                if (auto ls = Lit::isa(Idx::isa(type)); ls && *ls != 1)
+                    return make_res(world.lit(type, 1)); // a / a -> 1
+                break;
             case div::srem: return make_res(world.lit(type, 0)); // a % a -> 0
             case div::urem: return make_res(world.lit(type, 0)); // a % a -> 0
         }
@@ -923,8 +907,8 @@ const Def* normalize_conv(const Def* dst_t, const Def*, const Def* x) {
         if (auto c1 = Axm::isa(id, x)) {
             auto x1 = c1->arg();
             if (auto ls1 = Lit::isa(x1->type()->as<App>()->arg()))
-                if (*ls > *ls1 || *ls == 0)     // the intermediate conv is widening
-                    if (*ld == *ls1) return x1; // conv(conv(x)) -> x
+                if (*ls == 0 || (*ls1 != 0 && *ls > *ls1)) // the intermediate conv is widening
+                    if (*ld == *ls1) return x1;            // conv(conv(x)) -> x
         }
 
     return {};
@@ -955,7 +939,7 @@ const Def* normalize_bitcast(const Def* dst_t, const Def*, const Def* src) {
 template<trait id>
 const Def* normalize_trait(const Def*, const Def*, const Def* type) {
     auto& world = type->world();
-    if (auto ptr = Axm::isa<mem::Ptr>(type)) {
+    if (Axm::isa<mem::Ptr>(type)) {
         return world.lit_nat(8);
     } else if (type->isa<Pi>()) {
         return world.lit_nat(8); // Gets lowered to function ptr

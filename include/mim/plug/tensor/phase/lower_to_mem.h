@@ -68,6 +68,10 @@ private:
     /// The result is *not* a buffer if @p old's type was not recorded as a tensor type.
     const Def* to_buffer(const Def* val, const Def* old);
 
+    /// LowerToMem::materialize of @p old_arg as a buffer.
+    /// A non-buffer value is wrapped in a `buffer.lit` of rank @p r and shape @p shape.
+    const Def* make_buffer(const Def* old_arg, const Def* r, const Def* shape);
+
     /// LowerToMem::to_buffer on each element of an `«n; …»` operand list, re-tupled so the tuple type is
     /// re-inferred from the converted elements; `nullptr` if one element is not a recorded tensor type.
     const Def* buffer_list(const Def* list, const Def* old_list, const Def* n);

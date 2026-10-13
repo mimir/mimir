@@ -6,7 +6,7 @@
 ///
 /// This plugin provides *reverse-mode automatic differentiation*: `autodiff.ad f` yields the augmented
 /// function `f' = λ args. (f args, f*)` that returns the result together with its pullback.
-/// The actual differentiation is performed by the mim::plug::autodiff::Eval phase.
+/// The actual differentiation is performed by the mim::plug::autodiff::phase::Eval phase.
 ///
 /// ## Dependencies
 ///
@@ -123,7 +123,7 @@ axm eval: compile.Phase;
 ///
 /// #### autodiff.diff
 ///
-/// - The derivative of `core.icmp.xYgLE (eq)`.
+/// - The derivative of `core.icmp.xYgLE` (`sle`).
 ///   The comparison pullback exists formally but is not used.
 /// - The derivative of `core.wrap.add`: `s ↦ (s, s)`
 /// - The derivative of `core.wrap.mul`: `s ↦ (s*b, s*a)`

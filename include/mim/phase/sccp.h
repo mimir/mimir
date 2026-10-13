@@ -15,6 +15,8 @@ namespace mim {
 ///  |
 ///  ⊥
 /// ```
+/// @pre EtaConv ran beforehand, so no rewritable Lam escapes as a value.
+/// Otherwise, the vars of such unknown functions would have to be pinned to ⊤.
 class SCCP : public RWPhase {
 private:
     class Analysis : public mim::Analysis {

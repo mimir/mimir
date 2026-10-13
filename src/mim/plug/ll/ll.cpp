@@ -9,8 +9,6 @@
 
 #include <mim/plug/core/core.h>
 
-#include "mim/plug/ll/ll.h"
-
 namespace mim::plug::ll {
 
 using namespace std::string_literals;
@@ -51,6 +49,75 @@ public:
  * libmim_nvptx does not recompile them; nvptx reaches them via the
  * `extern "C"` shims below, looked up with GET_FUN_PTR (see ll.h).
  */
+
+static std::string fmath_flags(math::Mode mode) {
+    if (mode == math::Mode::fast) return " fast";
+    std::string flags;
+    // clang-format off
+    if (fe::has_flag(mode, math::Mode::nnan    )) flags += " nnan";
+    if (fe::has_flag(mode, math::Mode::ninf    )) flags += " ninf";
+    if (fe::has_flag(mode, math::Mode::nsz     )) flags += " nsz";
+    if (fe::has_flag(mode, math::Mode::arcp    )) flags += " arcp";
+    if (fe::has_flag(mode, math::Mode::contract)) flags += " contract";
+    if (fe::has_flag(mode, math::Mode::afn     )) flags += " afn";
+    if (fe::has_flag(mode, math::Mode::reassoc )) flags += " reassoc";
+    // clang-format on
+    return flags;
+}
+
+static const char* ncmp_pred(core::ncmp id) {
+    switch (id) {
+            // clang-format off
+        case core::ncmp::e:  return "eq";
+        case core::ncmp::ne: return "ne";
+        case core::ncmp::g:  return "ugt";
+        case core::ncmp::ge: return "uge";
+        case core::ncmp::l:  return "ult";
+        case core::ncmp::le: return "ule";
+        // clang-format on
+        default: return nullptr;
+    }
+}
+
+static const char* icmp_pred(core::icmp id) {
+    switch (id) {
+            // clang-format off
+        case core::icmp::e:   return "eq";
+        case core::icmp::ne:  return "ne";
+        case core::icmp::sg:  return "sgt";
+        case core::icmp::sge: return "sge";
+        case core::icmp::sl:  return "slt";
+        case core::icmp::sle: return "sle";
+        case core::icmp::ug:  return "ugt";
+        case core::icmp::uge: return "uge";
+        case core::icmp::ul:  return "ult";
+        case core::icmp::ule: return "ule";
+        // clang-format on
+        default: return nullptr;
+    }
+}
+
+static const char* fcmp_pred(math::cmp id) {
+    switch (id) {
+            // clang-format off
+        case math::cmp::  e: return "oeq";
+        case math::cmp::  l: return "olt";
+        case math::cmp:: le: return "ole";
+        case math::cmp::  g: return "ogt";
+        case math::cmp:: ge: return "oge";
+        case math::cmp:: ne: return "one";
+        case math::cmp::  o: return "ord";
+        case math::cmp::  u: return "uno";
+        case math::cmp:: ue: return "ueq";
+        case math::cmp:: ul: return "ult";
+        case math::cmp::ule: return "ule";
+        case math::cmp:: ug: return "ugt";
+        case math::cmp::uge: return "uge";
+        case math::cmp::une: return "une";
+        // clang-format on
+        default: return nullptr;
+    }
+}
 
 std::string Emitter::convert_impl(const Def* type, bool simd) {
     if (auto i = types_.find(type); i != types_.end()) return i->second;
@@ -234,7 +301,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
                     prev = "undef";
                     type = convert(world().sigma(types));
                     for (size_t i = 0, n = values.size(); i != n; ++i) {
-                        if (auto mem = Axm::isa<mem::M>(types[i])) continue;
+                        if (Axm::isa<mem::M>(types[i])) continue;
                         auto v_elem = values[i];
                         auto t_elem = convert(types[i]);
                         auto namei  = id(lam, true) + ".ret_val." + std::to_string(i);
@@ -273,8 +340,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
         if (auto common_src = find_common_simd_src(app)) {
             auto v_src      = emit(common_src);
             auto callee_var = callee->var();
-            if (simd_phi_.find(callee) == simd_phi_.end()) simd_phi_[callee] = callee_var;
-            auto key = simd_phi_[callee];
+            auto key        = simd_phi_.try_emplace(callee, callee_var).first->second;
             emit_phi(callee, key, v_src, lam);
             for (auto var : callee->vars())
                 locals_[var] = id(key);
@@ -387,7 +453,7 @@ std::string Emitter::emit_tuple(BB& bb, const std::string& name, const Def* tupl
             // TODO: check dst vs src
             auto namei = name + "." + std::to_string(dst);
             if (t.front() == '<') // not using is_simd to respect the pointer context (Pointer Pointee case)
-                prev = bb.assign(namei, "insertelement {} {}, {} {}, {} {}", t, prev, elem_t, elem, elem_t, dst);
+                prev = bb.assign(namei, "insertelement {} {}, {} {}, i32 {}", t, prev, elem_t, elem, dst);
             else
                 prev = bb.assign(namei, "insertvalue {} {}, {} {}, {}", t, prev, elem_t, elem, dst);
             dst++;
@@ -563,19 +629,9 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         }
     } else if (auto ncmp = Axm::isa<core::ncmp>(def)) {
         auto [a, b] = ncmp->args<2>([this](auto def) { return emit(def); });
-        op          = "icmp ";
-
-        switch (ncmp.id()) {
-                // clang-format off
-            case core::ncmp::e:  op += "eq" ; break;
-            case core::ncmp::ne: op += "ne" ; break;
-            case core::ncmp::g:  op += "ugt"; break;
-            case core::ncmp::ge: op += "uge"; break;
-            case core::ncmp::l:  op += "ult"; break;
-            case core::ncmp::le: op += "ule"; break;
-            // clang-format on
-            default: def->blame(MIM_LL_BE "unhandled `core.ncmp` id").bail();
-        }
+        auto pred   = ncmp_pred(ncmp.id());
+        if (!pred) def->blame(MIM_LL_BE "unhandled `core.ncmp` id").bail();
+        op = "icmp "s + pred;
 
         return bb.assign(name, "{} i64 {}, {}", op, a, b);
     } else if (auto idx = Axm::isa<core::idx>(def)) {
@@ -603,8 +659,8 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
             case core::bit2::nand: return neg(bb.assign(name, "and {} {}, {}", t, a, b));
             case core::bit2:: nor: return neg(bb.assign(name, "or  {} {}, {}", t, a, b));
             case core::bit2::nxor: return neg(bb.assign(name, "xor {} {}, {}", t, a, b));
-            case core::bit2:: iff: return bb.assign(name, "and {} {}, {}", t, neg(a), b);
-            case core::bit2::niff: return bb.assign(name, "or  {} {}, {}", t, neg(a), b);
+            case core::bit2:: iff: return bb.assign(name, "or  {} {}, {}", t, neg(a), b);
+            case core::bit2::niff: return bb.assign(name, "and {} {}, {}", t, a, neg(b));
             // clang-format on
             default: def->blame(MIM_LL_BE "unhandled `core.bit2` id").bail();
         }
@@ -654,23 +710,9 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
     } else if (auto icmp = Axm::isa<core::icmp>(def)) {
         auto [a, b] = icmp->args<2>([this](auto def) { return emit(def); });
         auto t      = convert(icmp->arg(2, 0)->type());
-        op          = "icmp ";
-
-        switch (icmp.id()) {
-                // clang-format off
-            case core::icmp::e:   op += "eq" ; break;
-            case core::icmp::ne:  op += "ne" ; break;
-            case core::icmp::sg:  op += "sgt"; break;
-            case core::icmp::sge: op += "sge"; break;
-            case core::icmp::sl:  op += "slt"; break;
-            case core::icmp::sle: op += "sle"; break;
-            case core::icmp::ug:  op += "ugt"; break;
-            case core::icmp::uge: op += "uge"; break;
-            case core::icmp::ul:  op += "ult"; break;
-            case core::icmp::ule: op += "ule"; break;
-            // clang-format on
-            default: def->blame(MIM_LL_BE "unhandled `core.icmp` id").bail();
-        }
+        auto pred   = icmp_pred(icmp.id());
+        if (!pred) def->blame(MIM_LL_BE "unhandled `core.icmp` id").bail();
+        op = "icmp "s + pred;
 
         return bb.assign(name, "{} {} {}, {}", op, t, a, b);
     } else if (auto extr = Axm::isa<core::extrema>(def)) {
@@ -689,7 +731,8 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         declare("{} @{}({}, {})", t, f, t, t);
         return bb.assign(name, "tail call {} @{}({} {}, {} {})", t, f, t, a, t, b);
     } else if (auto abs = Axm::isa<core::abs>(def)) {
-        auto [m, x]   = abs->args<2>();
+        auto [m, x] = abs->args<2>();
+        emit_unsafe(m);
         auto t        = convert(x->type());
         auto a        = emit(x);
         std::string f = "llvm.abs." + t;
@@ -763,8 +806,9 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
         auto address_space = malloc->decurry()->arg(2, 1);
         declare("i8* @malloc(i64)");
 
-        emit_unsafe(malloc->arg(2, 0));
-        auto size           = emit(malloc->arg(2, 1));
+        auto [m, n] = malloc->args<2>();
+        emit_unsafe(m);
+        auto size           = emit(n);
         auto ptr_t          = convert(Axm::expect<mem::Ptr>(def->proj(2, 1)->type(), "a `mem.Ptr`"));
         auto i8ptr          = bb.assign(name + "i8", "call i8* @malloc(i64 {})", size);
         std::string i8ptr_t = "i8*";
@@ -776,9 +820,10 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
     } else if (auto free = Axm::isa<mem::free>(def)) {
         auto address_space = free->decurry()->arg(2, 1);
         declare("void @free(i8*)");
-        emit_unsafe(free->arg(2, 0));
-        auto ptr   = emit(free->arg(2, 1));
-        auto ptr_t = convert(Axm::expect<mem::Ptr>(free->arg(2, 1)->type(), "a `mem.Ptr`"));
+        auto [m, p] = free->args<2>();
+        emit_unsafe(m);
+        auto ptr   = emit(p);
+        auto ptr_t = convert(Axm::expect<mem::Ptr>(p->type(), "a `mem.Ptr`"));
 
         auto i8ptr = bb.assign(name + "i8", "bitcast {} {} to i8 addrspace({})*", ptr_t, ptr, address_space);
         if (Lit::expect(address_space, "an address space") != 0)
@@ -786,17 +831,19 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
         bb.tail("call void @free(i8* {})", i8ptr);
         return std::string();
     } else if (auto load = Axm::isa<mem::load>(def)) {
-        emit_unsafe(load->arg(2, 0));
-        auto v_ptr     = emit(load->arg(2, 1));
-        auto t_ptr     = convert(load->arg(2, 1)->type());
-        auto t_pointee = convert(Axm::expect<mem::Ptr>(load->arg(2, 1)->type(), "a `mem.Ptr`")->arg(2, 0), false);
+        auto [m, ptr] = load->args<2>();
+        emit_unsafe(m);
+        auto v_ptr     = emit(ptr);
+        auto t_ptr     = convert(ptr->type());
+        auto t_pointee = convert(Axm::expect<mem::Ptr>(ptr->type(), "a `mem.Ptr`")->arg(2, 0), false);
         return bb.assign(name, "load {}, {} {}", t_pointee, t_ptr, v_ptr);
     } else if (auto store = Axm::isa<mem::store>(def)) {
-        emit_unsafe(store->arg(3, 0));
-        auto v_ptr = emit(store->arg(3, 1));
-        auto v_val = emit(store->arg(3, 2));
-        auto t_ptr = convert(store->arg(3, 1)->type());
-        auto t_val = convert(store->arg(3, 2)->type(), false);
+        auto [m, ptr, val] = store->args<3>();
+        emit_unsafe(m);
+        auto v_ptr = emit(ptr);
+        auto v_val = emit(val);
+        auto t_ptr = convert(ptr->type());
+        auto t_val = convert(val->type(), false);
         std::print(bb.body().emplace_back(), "store {} {}, {} {}", t_val, v_val, t_ptr, v_ptr);
         return std::string();
     } else if (auto q = Axm::isa<clos::alloc_jmpbuf>(def)) {
@@ -835,19 +882,7 @@ std::optional<std::string> Emitter::emit_math(BB& bb, const std::string& name, c
             case math::arith::rem: op = "frem"; break;
         }
 
-        if (lmode == math::Mode::fast)
-            op += " fast";
-        else {
-            // clang-format off
-            if (fe::has_flag(lmode, math::Mode::nnan    )) op += " nnan";
-            if (fe::has_flag(lmode, math::Mode::ninf    )) op += " ninf";
-            if (fe::has_flag(lmode, math::Mode::nsz     )) op += " nsz";
-            if (fe::has_flag(lmode, math::Mode::arcp    )) op += " arcp";
-            if (fe::has_flag(lmode, math::Mode::contract)) op += " contract";
-            if (fe::has_flag(lmode, math::Mode::afn     )) op += " afn";
-            if (fe::has_flag(lmode, math::Mode::reassoc )) op += " reassoc";
-            // clang-format on
-        }
+        op += fmath_flags(lmode);
 
         return bb.assign(name, "{} {} {}, {}", op, t, a, b);
     } else if (auto tri = Axm::isa<math::tri>(def)) {
@@ -935,27 +970,9 @@ std::optional<std::string> Emitter::emit_math(BB& bb, const std::string& name, c
     } else if (auto cmp = Axm::isa<math::cmp>(def)) {
         auto [a, b] = cmp->args<2>([this](auto def) { return emit(def); });
         auto t      = convert(cmp->arg(2, 0)->type());
-        op          = "fcmp ";
-
-        switch (cmp.id()) {
-                // clang-format off
-            case math::cmp::  e: op += "oeq"; break;
-            case math::cmp::  l: op += "olt"; break;
-            case math::cmp:: le: op += "ole"; break;
-            case math::cmp::  g: op += "ogt"; break;
-            case math::cmp:: ge: op += "oge"; break;
-            case math::cmp:: ne: op += "one"; break;
-            case math::cmp::  o: op += "ord"; break;
-            case math::cmp::  u: op += "uno"; break;
-            case math::cmp:: ue: op += "ueq"; break;
-            case math::cmp:: ul: op += "ult"; break;
-            case math::cmp::ule: op += "ule"; break;
-            case math::cmp:: ug: op += "ugt"; break;
-            case math::cmp::uge: op += "uge"; break;
-            case math::cmp::une: op += "une"; break;
-            // clang-format on
-            default: def->blame(MIM_LL_BE "unhandled `math.cmp` id").bail();
-        }
+        auto pred   = fcmp_pred(cmp.id());
+        if (!pred) def->blame(MIM_LL_BE "unhandled `math.cmp` id").bail();
+        op = "fcmp "s + pred;
 
         return bb.assign(name, "{} {} {}, {}", op, t, a, b);
     } else if (auto is_finite = Axm::isa<math::is_finite>(def)) {
@@ -1027,23 +1044,33 @@ std::optional<std::string> Emitter::emit_vec(BB& bb, const std::string& name, co
         auto t_out  = convert(def->type()); // <n x T>
 
         std::string op;
-        std::string prev;
 
         if (auto nat_op = Axm::isa<core::nat, 1>(f)) {
             switch (nat_op.id()) {
                 case core::nat::add: op = "add nuw nsw"; break;
                 case core::nat::sub: {
                     // nat subtraction saturates at 0: cap per-lane when v2 > v1
-                    auto v1     = emit(inputs->proj(nat_ni, 0));
-                    auto v2     = emit(inputs->proj(nat_ni, 1));
-                    auto ugt    = bb.assign(name + ".ugt", "icmp ugt {} {}, {}", t_in, v2, v1);
-                    auto raw    = bb.assign(name + ".raw", "sub {} {}, {}", t_in, v1, v2);
-                    return prev = bb.assign(name, "select <{} x i1> {}, {} zeroinitializer, {} {}", nat_n, ugt, t_out,
-                                            t_out, raw);
+                    auto v1  = emit(inputs->proj(nat_ni, 0));
+                    auto v2  = emit(inputs->proj(nat_ni, 1));
+                    auto ugt = bb.assign(name + ".ugt", "icmp ugt {} {}, {}", t_in, v2, v1);
+                    auto raw = bb.assign(name + ".raw", "sub {} {}, {}", t_in, v1, v2);
+                    return bb.assign(name, "select <{} x i1> {}, {} zeroinitializer, {} {}", nat_n, ugt, t_out, t_out,
+                                     raw);
                 }
                 case core::nat::mul: op = "mul nuw nsw"; break;
-                case core::nat::div: op = "udiv"; break;
-                case core::nat::rem: op = "urem"; break;
+                case core::nat::div:
+                case core::nat::rem: {
+                    // Same zero-divisor semantics as the scalar case: `a / 0 = 0` and `a % 0 = a`.
+                    auto v1   = emit(inputs->proj(nat_ni, 0));
+                    auto v2   = emit(inputs->proj(nat_ni, 1));
+                    auto bz   = bb.assign(name + ".bz", "icmp eq {} {}, zeroinitializer", t_in, v2);
+                    auto bz1  = bb.assign(name + ".bz1", "zext <{} x i1> {} to {}", nat_n, bz, t_in);
+                    auto bsaf = bb.assign(name + ".bsafe", "or {} {}, {}", t_in, v2, bz1);
+                    auto div  = nat_op.id() == core::nat::div;
+                    auto r    = bb.assign(name + ".r", "{} {} {}, {}", div ? "udiv" : "urem", t_in, v1, bsaf);
+                    return bb.assign(name, "select <{} x i1> {}, {} {}, {} {}", nat_n, bz, t_out,
+                                     div ? std::string("zeroinitializer") : v1, t_out, r);
+                }
             }
         } else if (auto arith_op = Axm::isa<math::arith, 1>(f)) {
             auto lmode = static_cast<math::Mode>(
@@ -1055,71 +1082,26 @@ std::optional<std::string> Emitter::emit_vec(BB& bb, const std::string& name, co
                 case math::arith::div: op = "fdiv"; break;
                 case math::arith::rem: op = "frem"; break;
             }
-
-            if (lmode == math::Mode::fast)
-                op += " fast";
-            else {
-                if (fe::has_flag(lmode, math::Mode::nnan)) op += " nnan";
-                if (fe::has_flag(lmode, math::Mode::ninf)) op += " ninf";
-                if (fe::has_flag(lmode, math::Mode::nsz)) op += " nsz";
-                if (fe::has_flag(lmode, math::Mode::arcp)) op += " arcp";
-                if (fe::has_flag(lmode, math::Mode::contract)) op += " contract";
-                if (fe::has_flag(lmode, math::Mode::afn)) op += " afn";
-                if (fe::has_flag(lmode, math::Mode::reassoc)) op += " reassoc";
-            }
+            op += fmath_flags(lmode);
         } else if (auto ncmp_op = Axm::isa<core::ncmp, 1>(f)) {
-            op = "icmp ";
-            switch (ncmp_op.id()) {
-                case core::ncmp::e: op += "eq"; break;
-                case core::ncmp::ne: op += "ne"; break;
-                case core::ncmp::g: op += "ugt"; break;
-                case core::ncmp::ge: op += "uge"; break;
-                case core::ncmp::l: op += "ult"; break;
-                case core::ncmp::le: op += "ule"; break;
-                default: def->blame(MIM_LL_BE "unhandled zipped `core.ncmp` id").bail();
-            }
+            auto pred = ncmp_pred(ncmp_op.id());
+            if (!pred) def->blame(MIM_LL_BE "unhandled zipped `core.ncmp` id").bail();
+            op = "icmp "s + pred;
         } else if (auto icmp_op = Axm::isa<core::icmp, 1>(f)) {
-            op = "icmp ";
-            switch (icmp_op.id()) {
-                case core::icmp::e: op += "eq"; break;
-                case core::icmp::ne: op += "ne"; break;
-                case core::icmp::sg: op += "sgt"; break;
-                case core::icmp::sge: op += "sge"; break;
-                case core::icmp::sl: op += "slt"; break;
-                case core::icmp::sle: op += "sle"; break;
-                case core::icmp::ug: op += "ugt"; break;
-                case core::icmp::uge: op += "uge"; break;
-                case core::icmp::ul: op += "ult"; break;
-                case core::icmp::ule: op += "ule"; break;
-                default: def->blame(MIM_LL_BE "unhandled zipped `core.icmp` id").bail();
-            }
+            auto pred = icmp_pred(icmp_op.id());
+            if (!pred) def->blame(MIM_LL_BE "unhandled zipped `core.icmp` id").bail();
+            op = "icmp "s + pred;
         } else if (auto mcmp_op = Axm::isa<math::cmp, 1>(f)) {
-            op = "fcmp ";
-            switch (mcmp_op.id()) {
-                case math::cmp::e: op += "oeq"; break;
-                case math::cmp::l: op += "olt"; break;
-                case math::cmp::le: op += "ole"; break;
-                case math::cmp::g: op += "ogt"; break;
-                case math::cmp::ge: op += "oge"; break;
-                case math::cmp::ne: op += "one"; break;
-                case math::cmp::o: op += "ord"; break;
-                case math::cmp::u: op += "uno"; break;
-                case math::cmp::ue: op += "ueq"; break;
-                case math::cmp::ul: op += "ult"; break;
-                case math::cmp::ule: op += "ule"; break;
-                case math::cmp::ug: op += "ugt"; break;
-                case math::cmp::uge: op += "uge"; break;
-                case math::cmp::une: op += "une"; break;
-                default: def->blame(MIM_LL_BE "unhandled zipped `math.cmp` id").bail();
-            }
+            auto pred = fcmp_pred(mcmp_op.id());
+            if (!pred) def->blame(MIM_LL_BE "unhandled zipped `math.cmp` id").bail();
+            op = "fcmp "s + pred;
         } else {
             f->blame(MIM_LL_BE "unhandled `vec.zip` operation").bail();
         }
 
         auto v1 = emit(inputs->proj(nat_ni, 0));
         auto v2 = emit(inputs->proj(nat_ni, 1));
-        prev    = bb.assign(name, "{} {} {}, {}", op, t_in, v1, v2);
-        return prev;
+        return bb.assign(name, "{} {} {}, {}", op, t_in, v1, v2);
     }
     return std::nullopt;
 }

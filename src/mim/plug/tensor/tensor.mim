@@ -285,9 +285,6 @@ lam pad_shape {r: Nat} (lo s_in hi: «r; Nat»): «r; Nat» =
 ///   clamped to `[0, s_in#d − 1]` per axis); `value` is ignored.
 ///
 /// The output shape is deduced from `lo`, `s_in` and `hi` (see `pad_shape`), so it is not passed explicitly.
-
-// `(lo, s_in, hi) ↦ ‹d; lo#d + s_in#d + hi#d›`: the padded shape.
-
 axm pad: {T: *, r: Nat}
        → [s_in: «r; Nat»]
        → [mode: Nat, lo hi: «r; Nat»]

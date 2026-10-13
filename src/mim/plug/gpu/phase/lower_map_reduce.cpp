@@ -30,15 +30,6 @@ bool contains_gpu_init(const Def* def, DefSet& seen) {
     return false;
 }
 
-/// Mirrors `btensor::phase::LowerMapReduce`'s helper of the same name: a counting `affine.For` loop body
-std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const Def* exit, Sym name) {
-    auto& w       = bound->world();
-    auto acc_ty   = acc->type();
-    auto body     = w.mut_con({/* iter */ w.type_i64(), /* acc */ acc_ty, /* return */ w.cn(acc_ty)})->set(name);
-    auto for_loop = w.call<affine::For>(body, exit, Defs{w.lit_i64(0), bound, w.lit_i64(1), acc});
-    return {body, for_loop};
-}
-
 /// Mirrors `btensor::phase::LowerMapReduce`'s `affine_map` lambda
 std::pair<const Def*, const Def*>
 affine_map(const Def* f, const Def* m, const Def* n, const Def* sin, const Def* sout, const Def* idxs, const Def* mem) {
@@ -49,15 +40,6 @@ affine_map(const Def* f, const Def* m, const Def* n, const Def* sin, const Def* 
     a       = w.app(a, idxs);
     a       = w.app(a, mem->type()->as<App>()->arg());
     return w.app(a, mem)->projs<2>();
-}
-
-/// Chained `mem.lea` over a coordinate tuple.
-const Def* op_lea_tuple(const Def* ptr, const Def* tuple) {
-    auto n       = tuple->num_projs();
-    auto element = ptr;
-    for (size_t i = 0; i != n; ++i)
-        element = mem::op_lea(element, tuple->proj(n, i));
-    return element;
 }
 
 /// Scalarize may flatten an escaped `comb`/`post` from `Cn [[mem, T, ins], Cn ret]` to `Cn [mem, T, ins, Cn ret]`.
@@ -146,11 +128,8 @@ Inputs alloc_copy_inputs(World& w, const Def* m0, const Def* m1, Defs ris, Defs 
     return {m0, m1, dptrs};
 }
 
-std::pair<const Def*, const Def*> alloc_output(World& w, const Def* m1, const Def* elem_ty, const Def* So, nat_t ro) {
-    auto arr_ty = elem_ty;
-    for (auto d = ro; d-- != 0;)
-        arr_ty = w.arr(So->proj(ro, d), arr_ty);
-    return w.app(w.app(w.annex<gpu::alloc>(gpu::alloc::block), arr_ty), m1)->projs<2>();
+std::pair<const Def*, const Def*> alloc_output(World& w, const Def* m1, const Def* elem_ty, const Def* So) {
+    return w.app(w.app(w.annex<gpu::alloc>(gpu::alloc::block), w.arr(So, elem_ty)), m1)->projs<2>();
 }
 
 struct Grid {
@@ -248,7 +227,7 @@ Lam* build_kernel(World& w,
             = affine_map(post_ins.accs[j], post_ins.rs[j], Ro, So, post_ins.ss[j], write_coords, pcur);
         pcur = pc_mem;
         auto [rd_mem, rd_val]
-            = w.call<mem::load>(Defs{pcur, op_lea_tuple(k_post_dptrs[j], *Shape(pcoords).fold(post_ins.ss[j]))})
+            = w.call<mem::load>(Defs{pcur, mem::op_lea_tuple(k_post_dptrs[j], *Shape(pcoords).fold(post_ins.ss[j]))})
                   ->projs<2>();
         pcur          = rd_mem;
         post_elems[j] = rd_val;
@@ -257,26 +236,16 @@ Lam* build_kernel(World& w,
     auto after_post            = w.mut_con(Defs{global_ty, Tp})->set("afterPost");
     auto [post_mem, elem_post] = after_post->vars<2>();
     auto final_mem
-        = w.call<mem::store>(Defs{post_mem, op_lea_tuple(k_out_dptr, *Shape(write_coords).fold(So)), elem_post});
+        = w.call<mem::store>(Defs{post_mem, mem::op_lea_tuple(k_out_dptr, *Shape(write_coords).fold(So)), elem_post});
     after_post->app(true, k_ret, Defs{final_mem, k_shared, k_const, k_local});
     apply_cps(w, write_back, global_post, {pcur, acc_final, w.tuple(post_elems)}, after_post);
 
     const Def* acc   = w.tuple({k_global, init});
     const Def* cont  = write_back;
     Lam* current_mut = body;
-    DefVec red_iters;
-    red_iters.reserve(rr);
-    for (size_t j = 0; j != rr; ++j) {
-        auto dim                    = Sr->proj(nloops_nat, ro + j);
-        auto bound                  = w.call<core::bitcast>(w.type_i64(), dim);
-        auto [rbody, for_call]      = counting_for(bound, acc, cont, w.sym("forRed_" + std::to_string(j)));
-        auto [iter, new_acc, yield] = rbody->vars<3>();
-        cont                        = yield;
-        red_iters.push_back(w.call(core::conv::u, dim, iter));
-        acc = new_acc;
-        current_mut->set(true, for_call);
-        current_mut = rbody;
-    }
+    auto sr          = Sr->projs(nloops_nat);
+    auto raw         = affine::counting_nest(current_mut, cont, acc, Defs(sr).subspan(ro, rr), "forRed");
+    DefVec red_iters(rr, [&](size_t j) { return w.call(core::conv::u, sr[ro + j], raw[j]); });
     auto [red_mem, elem_acc] = acc->projs<2>();
 
     auto [body_mem, body_coords] = unflatten_index(w, flat, out_dims, red_mem);
@@ -290,7 +259,7 @@ Lam* build_kernel(World& w,
         auto [mc_mem, coords] = affine_map(ins.accs[i], ins.rs[i], n, Sr, ins.ss[i], iters, cur);
         cur                   = mc_mem;
         auto [rd_mem, rd_val]
-            = w.call<mem::load>(Defs{cur, op_lea_tuple(k_dptrs[i], *Shape(coords).fold(ins.ss[i]))})->projs<2>();
+            = w.call<mem::load>(Defs{cur, mem::op_lea_tuple(k_dptrs[i], *Shape(coords).fold(ins.ss[i]))})->projs<2>();
         cur            = rd_mem;
         input_elems[i] = rd_val;
     }
@@ -415,7 +384,7 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     auto post_inputs
         = alloc_copy_inputs(w, inputs.mem, inputs.global, post_desc.rs, post_desc.ss, post_desc.ts, new_post_ins);
 
-    auto [out_global, out_dptr] = alloc_output(w, post_inputs.global, Tp, So, ro);
+    auto [out_global, out_dptr] = alloc_output(w, post_inputs.global, Tp, So);
 
     auto global_comb = rebuild_lam_global_mem(comb_lam, To, w.sym("combGlobal"));
     auto global_post = rebuild_lam_global_mem(post_lam, Tp, w.sym("postGlobal"));
@@ -427,22 +396,16 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
                                Mapped{post_desc.rs, post_desc.ss, post_inputs.dptrs, post_desc.accs}, global_post, Tp,
                                out_dptr, grid);
 
-    DefVec kernel_arg_tys(nis_n + nps_n + 1);
-    for (nat_t i = 0; i != nis_n; ++i)
-        kernel_arg_tys[i] = inputs.dptrs[i]->type();
-    for (nat_t j = 0; j != nps_n; ++j)
-        kernel_arg_tys[nis_n + j] = post_inputs.dptrs[j]->type();
-    kernel_arg_tys[nis_n + nps_n] = out_dptr->type();
+    DefVec kernel_args = inputs.dptrs;
+    kernel_args.insert(kernel_args.end(), post_inputs.dptrs.begin(), post_inputs.dptrs.end());
+    kernel_args.push_back(out_dptr);
+    DefVec kernel_arg_tys(kernel_args.size(), [&](size_t i) { return kernel_args[i]->type(); });
 
     auto launch = w.app(w.annex<gpu::launch>(), Defs{w.lit_nat(nis_n + nps_n + 1), w.tuple(kernel_arg_tys)});
     launch      = w.app(launch, Defs{w.lit_nat(grid.n_groups), w.lit_nat(grid.n_items), w.annex<gpu::default_stream>(),
                                 w.lit_ff(), w.tuple()});
     launch      = w.app(launch, kernel);
-
-    DefVec kernel_args = inputs.dptrs;
-    kernel_args.insert(kernel_args.end(), post_inputs.dptrs.begin(), post_inputs.dptrs.end());
-    kernel_args.push_back(out_dptr);
-    launch = w.app(launch, kernel_args);
+    launch      = w.app(launch, kernel_args);
 
     auto after_launch = build_teardown(w, Ro, So, Tp, inputs.dptrs, post_inputs.dptrs, out_dptr, cont);
     auto launch_call  = w.app(launch, Defs{w.tuple({post_inputs.mem, out_global, h_const}), after_launch});

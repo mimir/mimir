@@ -37,8 +37,8 @@ static bool is_polymorphic_arg(const App* app) {
 
 bool Scalarize::Analysis::kept(const Pi* pi, size_t dom) const {
     if (is_top(pi)) return true; // whole Pi pinned
-    auto i = keeps_.find(pi);
-    return i != keeps_.end() && i->second.test(dom);
+    auto mask = fe::lookup(keeps_, pi);
+    return mask && mask->test(dom);
 }
 
 void Scalarize::Analysis::keep(const Pi* pi, size_t dom) {

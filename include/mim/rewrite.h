@@ -59,7 +59,7 @@ public:
     /// @returns `nullptr` if nothing was found.
     virtual const Def* lookup(const Def* old_def) {
         for (const auto& old2new : old2news_ | std::views::reverse)
-            if (auto i = old2new.find(old_def); i != old2new.end()) return i->second;
+            if (auto new_def = fe::lookup(old2new, old_def)) return new_def;
         return nullptr;
     }
     ///@}
@@ -173,11 +173,7 @@ public:
         : Rewriter(world) {}
     ///@}
 
-    /// @name Stack of Maps
-    ///@{
-    const Def* map(const Def* old_def, const Def* new_def) final;
     const Def* lookup(const Def* old_def) final;
-    ///@}
 
     /// @name rewrite
     ///@{
@@ -189,13 +185,6 @@ public:
     friend void swap(Zonker& z1, Zonker& z2) noexcept {
         using std::swap;
         swap(static_cast<Rewriter&>(z1), static_cast<Rewriter&>(z2));
-    }
-
-private:
-    const Def* get(const Def* old_def) {
-        auto& old2new = old2news_.back();
-        if (auto i = old2new.find(old_def); i != old2new.end()) return i->second;
-        return nullptr;
     }
 };
 

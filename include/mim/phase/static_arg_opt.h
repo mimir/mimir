@@ -33,7 +33,7 @@ private:
     DefSet analyzed_;
     LamMap<fe::Vector<fe::Bitset>> lam2sites_;
     LamMap<Sieve> lam2sieve_;
-    LamMap<std::pair<Lam*, Lam*>> old2wrap_loop_;
+    Lam2Lam old2loop_;
 };
 
 } // namespace mim

@@ -16,6 +16,25 @@ namespace {
 /// As World::lit_idx_mod but at token level: a @p mod of `0` means 2^64 and wraps nothing.
 Tok idx_tok(Loc loc, u64 mod, u64 val) { return {loc, mod, mod == 0 ? val : val % mod}; }
 
+std::optional<char> unescape(char32_t c) {
+    // clang-format off
+    switch (c) {
+        case '\'': return '\'';
+        case '\\': return '\\';
+        case  '"': return '"';
+        case  '0': return '\0';
+        case  'a': return '\a';
+        case  'b': return '\b';
+        case  'f': return '\f';
+        case  'n': return '\n';
+        case  'r': return '\r';
+        case  't': return '\t';
+        case  'v': return '\v';
+        default:   return {};
+    }
+    // clang-format on
+}
+
 bool is_id_head(char32_t c) { return c == '_' || utf8::isalpha(c); }
 bool is_id_tail(char32_t c) { return c == '_' || utf8::isalnum(c); }
 
@@ -247,6 +266,10 @@ Tok Lexer::lex_lit() {
         auto i     = loc_.end.off;
         lex_digits();
         auto width = to_u64(buf_.substr(i, loc_.end.off - i), 10);
+        if (width == 0 || width > 64) {
+            error().e(loc_, "bit width of an Idx literal must be within 1 and 64");
+            width = 64;
+        }
         return Tok{loc_, Idx::bitwidth2size(width), val};
     }
 
@@ -311,24 +334,13 @@ bool Lexer::lex_exp(int base /*= 10*/) {
 
 char8_t Lexer::lex_char() {
     if (accept('\\')) {
-        // clang-format off
-        switch (auto c = ahead()) {
-            case '\'': next(); return '\'';
-            case '\\': next(); return '\\';
-            case  '"': next(); return '\"';
-            case  '0': next(); return '\0';
-            case  'a': next(); return '\a';
-            case  'b': next(); return '\b';
-            case  'f': next(); return '\f';
-            case  'n': next(); return '\n';
-            case  'r': next(); return '\r';
-            case  't': next(); return '\t';
-            case  'v': next(); return '\v';
-            default:
-                if (c != utf8::EoF) error().e(loc_.anew_end(), "invalid escape character `\\{}`", (char)c);
-                return '\0';
+        auto c = ahead();
+        if (auto u = unescape(c)) return next(), *u;
+        if (c != utf8::EoF) {
+            error().e(loc_.anew_end(), "invalid escape character `\\{}`", utf8::Char32(c));
+            next();
         }
-        // clang-format on
+        return '\0';
     }
 
     auto c = next();
@@ -371,23 +383,11 @@ std::string Lexer::unquote(std::string_view body, uint32_t begin) {
     for (size_t i = 0, e = body.size(); i != e; ++i) {
         auto c = body[i];
         if (c == '\\' && i + 1 != e) {
-            // clang-format off
-            switch (body[++i]) {
-                case '\'': res += '\''; break;
-                case '\\': res += '\\'; break;
-                case  '"': res += '\"'; break;
-                case  '0': res += '\0'; break;
-                case  'a': res += '\a'; break;
-                case  'b': res += '\b'; break;
-                case  'f': res += '\f'; break;
-                case  'n': res += '\n'; break;
-                case  'r': res += '\r'; break;
-                case  't': res += '\t'; break;
-                case  'v': res += '\v'; break;
-                // clang-format on
-                default:
-                    auto loc = Loc(src_, Pos(begin + u32(i) - 1), Pos(begin + u32(i) + 1));
-                    error().e(loc, "invalid escape character `\\{}`", body[i]);
+            if (auto u = unescape(body[++i])) {
+                res += *u;
+            } else {
+                auto loc = Loc(src_, Pos(begin + u32(i) - 1), Pos(begin + u32(i) + 1));
+                error().e(loc, "invalid escape character `\\{}`", body[i]);
             }
         } else {
             res += c;
