@@ -104,7 +104,7 @@ private:
         DefSet first_;
 
         // global (kept between iterations)
-        std::set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
+        DefSet slots_; // actually slot ptrs
         VarMap<const App*> var2slot_;                   // slot continuation Var ↦ its slot
         VarMap<Vars> slot2stored_;                      // free Var%s of the values stored behind a slot
         LamMap<Vars> lam2live_;                         // slot Var%s a Lam may access; only grows
