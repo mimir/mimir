@@ -1,0 +1,8 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+let x: Bool = 5;
+extern lam f (): Nat = x;
+// CHECK: {{.*}}let_type_annotation.mim:3:5-3:11: error: value bound to `x` is not assinable to its annotated type
+// CHECK-NEXT: 3 | let x: Bool = 5;
+// CHECK-NEXT:   |     ^^^^^^^
+// CHECK-NEXT:   = note: expected `Bool`, got `Nat`
