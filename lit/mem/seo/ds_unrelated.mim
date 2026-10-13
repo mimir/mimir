@@ -19,3 +19,4 @@ extern fun test(m: mem.M 0, a: Nat): [mem.M 0, Nat] =
 
 // CHECK-NOT: mem.slot
 // CHECK-NOT: mem.load
+// CHECK: return_1 (m, {{.*}})

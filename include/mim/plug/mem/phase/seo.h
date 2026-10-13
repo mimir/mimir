@@ -102,7 +102,8 @@ private:
         LamMap<Def2Def> lam2sloxy2val_;
         DefSet visited_;
         DefSet first_;
-        Def2Def sloxy2slot_;                            // global (kept between iterations)
+
+        // global (kept between iterations)
         std::set<const Def*, GIDLt<const Def*>> slots_; // actually slot ptrs
         VarMap<const App*> var2slot_;                   // slot continuation Var ↦ its slot
         VarMap<Vars> slot2stored_;                      // free Var%s of the values stored behind a slot
@@ -139,8 +140,6 @@ private:
 
     bool analyze() final;
 
-    /// Was the SSA construction able to eliminate this sloxy?
-    const Def* isa_optimized_sloxy(const Def*) const;
     /// Does @p old_ptr point (via literal mem.lea%s) into a promoted slot? Then yields its sloxy.
     const Def* isa_promoted(const Def* old_ptr) const;
     /// The (memoized) new signature of @p old_lam.
