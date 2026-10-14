@@ -93,7 +93,7 @@ jobs:
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v2.0.9
         with:
-          version: "21.1.8"
+          version: "22.1.8"
 
       - name: Build
         shell: cmd

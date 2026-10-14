@@ -49,26 +49,19 @@ Lam* rebuild_lam_global_mem(Lam* lam, const Def* Tout, Sym name) {
     return new_lam;
 }
 
-Vector<nat_t> row_major_strides(const Vector<nat_t>& dims) {
-    Vector<nat_t> strides(dims.size());
-    nat_t acc = 1;
-    for (auto i = dims.size(); i-- != 0;) {
-        strides[i] = acc;
-        acc *= dims[i];
-    }
-    return strides;
-}
-
+/// The row-major coordinates of @p flat - an `I64`, i.e. an `Idx 0` - via `affine.delinearize`.
 std::pair<const Def*, DefVec> unflatten_index(World& w, const Def* flat, const Vector<nat_t>& dims, const Def* mem) {
-    auto strides = row_major_strides(dims);
-    DefVec coords(dims.size());
-    for (size_t d = 0; d != dims.size(); ++d) {
-        auto [m1, q] = w.call(core::div::udiv, Defs{mem, w.tuple({flat, w.lit_i64(strides[d])})})->projs<2>();
-        auto [m2, r] = w.call(core::div::urem, Defs{m1, w.tuple({q, w.lit_i64(dims[d])})})->projs<2>();
-        mem          = m2;
-        coords[d]    = w.call(core::conv::u, w.lit_nat(dims[d]), r);
-    }
-    return {mem, coords};
+    auto m = dims.size();
+    if (m == 0) return {mem, {}};
+
+    auto s_out = w.tuple(DefVec(m, [&](size_t d) { return w.lit_nat(dims[d]); }));
+    auto index = w.annex<affine::Index>();
+    auto f     = w.mut_lam(index, w.arr(m, index))->set("unflatten");
+    f->set(true, w.app(w.app(w.annex<affine::delinearize>(), w.lit_nat(m)), {f->var(), s_out}));
+
+    auto [mem2, coords]
+        = btensor::op_affine_map(f, w.lit_nat(m), w.lit_nat_1(), w.lit_nat_0(), s_out, flat, mem)->projs<2>();
+    return {mem2, coords->projs(m)};
 }
 
 struct InputDesc {
