@@ -56,6 +56,12 @@ inline const Def* op_copy(const Def* mem, const Def* dst, const Def* src) {
     return op_copy(r, s, T, mem, dst, src);
 }
 
+/// `buffer.free (r, s, T) (mem, buf)` ↦ `mem.M 0`.
+inline const Def* op_free(const Def* r, const Def* s, const Def* T, const Def* mem, const Def* buf) {
+    auto& w = mem->world();
+    return w.app(w.app(w.annex<free>(), {r, s, T}), {mem, buf});
+}
+
 /// `buffer.init (r, s, T) (mem, val)` ↦ `[mem.M 0, buffer.Buf (r, s, T)]` (initialised with the array value `val`).
 inline const Def* op_init(const Def* r, const Def* s, const Def* T, const Def* mem, const Def* val) {
     auto& w = mem->world();

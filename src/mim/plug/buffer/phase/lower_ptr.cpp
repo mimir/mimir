@@ -50,6 +50,9 @@ const Def* LowerPtr::rewrite_imm_App(const App* app) {
         // Whole-buffer copy: load the entire array out of `src` and store it into `dst`.
         auto [mem2, val] = w.call<mem::load>(Defs{mem, src})->projs<2>();
         return w.call<mem::store>(Defs{mem2, dst, val});
+    } else if (auto free_ax = Axm::isa<buffer::free>(app)) {
+        auto [mem, buf] = free_ax->args<2>([this](const Def* d) { return rewrite(d); });
+        return w.call<mem::free>(Defs{mem, buf});
     } else if (auto init_ax = Axm::isa<buffer::init>(app)) {
         auto [mem, val]  = init_ax->args<2>();
         auto [r, s, T]   = init_ax->callee()->as<App>()->args<3>();

@@ -76,10 +76,16 @@ axm shape: [r: Nat, s: «r; Nat», T: *] as rsT → [Buf rsT, i: Idx r] → Nat,
 axm copy: [r: Nat, s: «r; Nat», T: *] as rsT
         → [mem.M 0, dst src: Buf rsT] → mem.M 0;
 ///
+/// ### free
+///
+/// Releases the buffer; the handle must not be used afterwards.
+///
+axm free: [r: Nat, s: «r; Nat», T: *] as rsT → [mem.M 0, Buf rsT] → mem.M 0;
+///
 /// ## Phases
 ///
 /// ### lower_ptr
 ///
-/// Lowers `Buf` / `alloc` / `read` / `write` to `mem.Ptr` + `mem.lea` / `mem.load` / `mem.store`.
+/// Lowers `Buf` / `alloc` / `read` / `write` / `free` to `mem.Ptr` + `mem.lea` / `mem.load` / `mem.store` / `mem.free`.
 ///
 axm lower_ptr: compile.Phase;
