@@ -1,0 +1,7 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+let (a b: Nat) = (tt, 2);
+// CHECK: {{.*}}grp_ptrn_check.mim:3:6-3:13: error: value bound to `a` is not assignable to its annotated type
+// CHECK-NEXT: 3 | let (a b: Nat) = (tt, 2);
+// CHECK-NEXT:   |      ^^^^^^^^
+// CHECK-NEXT:   = note: expected `Nat`, got `Bool`

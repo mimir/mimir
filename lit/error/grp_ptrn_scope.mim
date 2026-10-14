@@ -1,0 +1,4 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+let T = [a b: Idx a];
+// CHECK: {{.*}}grp_ptrn_scope.mim:3:19: error: identifier `a` not found
