@@ -442,6 +442,19 @@ axm conv: [R: Ring]
         → [input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»]
         → «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T»;
 ///
+/// ### conv_grouped
+///
+/// `conv` with the channels split into `groups` independent convolutions: output channel `co` only reads the
+/// `ci = cin / groups` input channels of its group `co / (cout / groups)`.
+///
+/// - Layout: as for `conv`, but `weight: «Cout, Cin / groups, KH, KW; R#T»`.
+/// - `groups` must divide both `cin` and `cout`.
+axm conv_grouped: [R: Ring]
+                → {n cin cout h w ci kh kw: Nat}
+                → [groups: Nat, stride dilation padding: «2; Nat»]
+                → [input: «n, cin, h, w; R#T», weight: «cout, ci, kh, kw; R#T»]
+                → «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T»;
+///
 /// ### dot_general_shape
 ///
 /// The result shape: the batching extents, then the left operand's free extents, then the right
@@ -1270,6 +1283,51 @@ priv anx lam conv_impl (R: Ring) {n cin cout h w kh kw: Nat}
             (conv2d_in_map (stride, dilation), proj_map @(7, 4) (1, 4, 5, 6))
             (padded, weight));
     // `sched#3_9` is the scheduled Tileable's (possibly packed) output shape `So`.
+    reshape (sched#3_9) s_out (materialize sched);
+///
+/// ### conv_grouped_in_map
+///
+/// The loop vector is `o = (b, co, oh, ow, ci, kh, kw)` with `b = n·groups + g`: group `g` reads input channel `g·ci + ci`.
+lam conv_grouped_in_map (groups ci: Nat, stride dilation: «2; Nat») (o: «7; affine.Index»): «4; affine.Index» =
+    let (_, _, ih, iw) = conv2d_in_map (stride, dilation) o;
+    (affine.semiop.floordiv (o#0_7, groups),
+     affine.op.add (affine.semiop.mul (affine.semiop.rem (o#0_7, groups), ci), o#4_7),
+     ih, iw);
+///
+/// ### conv_grouped_w_map
+///
+/// The weight read of `conv_grouped_in_map`'s loop vector: group `g` owns the weight rows `g·co + co`.
+lam conv_grouped_w_map (groups co: Nat) (o: «7; affine.Index»): «4; affine.Index» =
+    (affine.op.add (affine.semiop.mul (affine.semiop.rem (o#0_7, groups), co), o#1_7), o#4_7, o#5_7, o#6_7);
+///
+/// ### conv_grouped_impl
+///
+/// Each (batch, group) pair is an independent dense convolution, so folding the group into the batch dim lets the
+/// group-free `conv_schedule` apply unchanged: the group arithmetic stays in the outermost loop.
+/// The materialized `«n·groups, cout / groups, oh, ow»` is the row-major layout of the NCHW output.
+
+priv anx lam conv_grouped_impl (R: Ring) {n cin cout h w ci kh kw: Nat}
+                              (groups: Nat, stride dilation padding: «2; Nat»)
+                              (input: «n, cin, h, w; R#T», weight: «cout, ci, kh, kw; R#T»)
+                            : «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T» =
+    let ci_g     = refly.check (ci * groups == cin, ci, "conv_grouped: weight must hold cin / groups input channels");
+    let co       = check_div (cout, groups) / groups;
+    let s_in     = (n, cin, h, w);
+    let pad_lohi = (0, 0, padding#0_2, padding#1_2);
+    let padded   = pad s_in (0, pad_lohi, pad_lohi) (input, R#_0);
+    let s_padded = shape 4 padded;
+    let s_out    = conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding);
+    let oh       = s_out#2_4;
+    let ow       = s_out#3_4;
+    let b        = n * groups;
+    let sched = conv_schedule (stride, dilation) (
+        mr_tileable @2 @(4, 3)
+            ((b, co, oh, ow), (0, 1, 2, 3), (b, co, oh, ow, ci, kh, kw))
+            @((R#T, R#T), (4, 4), (s_padded, (cout, ci, kh, kw)))
+            (conv_fun R, R#_0, id @(R#T))
+            (proj_map @(7, 4) (0, 1, 2, 3))
+            (conv_grouped_in_map (groups, ci_g, stride, dilation), conv_grouped_w_map (groups, co))
+            (padded, weight));
     reshape (sched#3_9) s_out (materialize sched);
 ///
 /// ### dot_general_fun

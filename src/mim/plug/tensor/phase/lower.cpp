@@ -100,6 +100,7 @@ const Def* Lower::rewrite_imm_App(const App* app) {
     if (Axm::isa<tensor::slice>(app)) return lower_via_impl(app, impl<tensor::slice_impl>());
     if (Axm::isa<tensor::flip>(app)) return lower_via_impl(app, impl<tensor::flip_impl>());
     if (Axm::isa<tensor::conv>(app)) return lower_via_impl(app, impl<tensor::conv_impl>());
+    if (Axm::isa<tensor::conv_grouped>(app)) return lower_via_impl(app, impl<tensor::conv_grouped_impl>());
     if (Axm::isa<tensor::pool>(app)) return lower_via_impl(app, impl<tensor::pool_impl>());
 
     // The dot family's `_impl`s take a leading `fastest_2` with no axiom counterpart — the
