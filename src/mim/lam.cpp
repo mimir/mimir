@@ -24,6 +24,12 @@ Pi* Pi::set_dom(Defs doms) { return Def::set(0, world().sigma(doms))->as<Pi>(); 
  * Lam
  */
 
+Lam* Lam::forwardee() const {
+    if (auto app = body()->isa<App>())
+        if (auto callee = app->callee()->isa_mut<Lam>(); callee && callee->is_set()) return callee;
+    return nullptr;
+}
+
 Lam* Lam::set_filter(Filter filter) { return Def::set(0, world().filter(filter))->as<Lam>(); }
 Lam* Lam::set(Filter filter, const Def* body) { return Def::set({world().filter(filter), body})->as<Lam>(); }
 Lam* Lam::app(Filter f, const Def* callee, const Def* arg) {
@@ -37,8 +43,6 @@ Lam* Lam::branch(Filter filter, const Def* cond, const Def* t, const Def* f, con
 
 Defs Lam::reduce(Defs args) const { return Def::reduce(world().tuple(args)); }
 
-// TODO maybe we can eta-reduce immutable Lams in some edge casess like: lm _: [] = f ();
-
 const Def* Lam::isa_ret_arg(const Def* d) {
     auto lam = d->isa_mut<Lam>();
     if (!lam || !lam->is_set()) return nullptr;
@@ -46,13 +50,23 @@ const Def* Lam::isa_ret_arg(const Def* d) {
     return app && app->callee() == lam->ret_var() ? app->arg() : nullptr;
 }
 
-const Def* Lam::eta_reduce() const {
-    if (!is_set()) return nullptr;
-    if (auto var = has_var()) {
-        if (auto app = body()->isa<App>())
-            if (app->arg() == var && !app->callee()->has_free_var(var)) return app->callee();
-    }
-    return nullptr;
+static const Def* eta_step(const Def* def) {
+    if (auto lam = def->isa<Lam>(); lam && lam->is_set())
+        if (auto app = lam->body()->isa<App>()) {
+            auto var = lam->has_var();
+            if (var && app->callee()->has_free_var(var)) return def;
+            // The sole inhabitant of a singleton dom is η-equal to the Var.
+            if (app->arg() == var || app->arg() == lam->world().inhabitant(lam->dom())) return app->callee();
+        }
+    return def;
+}
+
+const Def* Lam::eta_reduce(const Def* def) {
+    // Floyd: the chain's end is a fixpoint of eta_step, i.e. a cycle of length 1.
+    auto slow = eta_step(def), fast = eta_step(slow);
+    for (; slow != fast; slow = eta_step(slow), fast = eta_step(eta_step(fast))) {}
+    for (slow = def; slow != fast; slow = eta_step(slow), fast = eta_step(fast)) {}
+    return fast == def ? nullptr : fast;
 }
 
 Lam* Lam::eta_expand(Filter filter, const Def* f) {

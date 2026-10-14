@@ -253,10 +253,6 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
 
         if (mut1 && mut2 && mut1 == mut2) return true;
 
-        // Globals are HACKs and require additionaly HACKs:
-        // Unless they are pointer equal (above) always consider them unequal.
-        if (d1->isa<Global>() || d2->isa<Global>()) return false;
-
         if (auto [i, ins] = bind(mut1, d2); !ins) return i->second == d2;
         if (auto [i, ins] = bind(mut2, d1); !ins) return i->second == d1;
 
@@ -524,7 +520,6 @@ const Def* Def::check() {
         // A Lam's ops are checked one by one in Def::check(size_t, const Def*).
         case MutNode::Lam:
         case MutNode::Pack:
-        case MutNode::Global:
         case MutNode::Hole: return type();
     }
     std::unreachable();

@@ -72,10 +72,13 @@ jobs:
           set CXX=cl.exe
           python -c "import sys; print(sys.executable)" > tmpPath
           set /p PYTHON_EXE= < tmpPath
+          rem Setup ccache only warns when choco's feed is down, so build without a launcher then.
+          set LAUNCHER=
+          where ccache >nul 2>&1 && set LAUNCHER=ccache
           cmake -B build -G Ninja                         ^
                 -DCMAKE_BUILD_TYPE=${{matrix.build-type}} ^
-                -DCMAKE_C_COMPILER_LAUNCHER=ccache        ^
-                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache      ^
+                -DCMAKE_C_COMPILER_LAUNCHER=%LAUNCHER%    ^
+                -DCMAKE_CXX_COMPILER_LAUNCHER=%LAUNCHER%  ^
                 -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=${{matrix.build-type == 'Debug' && 'Embedded' || ''}} ^
                 -DBUILD_TESTING=ON                        ^
                 -DMIM_BUILD_EXAMPLES=ON                   ^

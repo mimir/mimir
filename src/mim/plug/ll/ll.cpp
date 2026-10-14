@@ -48,7 +48,7 @@ public:
 /*
  * Heavy, target-independent emitter methods.
  * These live here (compiled once into libmim_ll) instead of the header so that
- * libmim_ll_nvptx does not recompile them; ll_nvptx reaches them via the
+ * libmim_nvptx does not recompile them; nvptx reaches them via the
  * `extern "C"` shims below, looked up with GET_FUN_PTR (see ll.h).
  */
 
@@ -259,7 +259,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
         for (size_t i = 0; i != n; ++i)
             bbs[i] = emit(dispatch.target(i));
 
-        if (auto branch = Branch(app)) return bb.tail("br i1 {}, label {}, label {}", v_index, bbs[1], bbs[0]);
+        if (n == 2) return bb.tail("br i1 {}, label {}, label {}", v_index, bbs[1], bbs[0]);
 
         auto t_index = convert(dispatch.index()->type());
         bb.tail("switch {} {}, label {} [ ", t_index, v_index, bbs[0]);
@@ -527,11 +527,6 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
                    t_tup, t_tup, name, t_i, v_i);
         std::print(bb.body().emplace_back(), "store {} {}, {}* {}.gep", t_val, v_val, t_val, name);
         return bb.assign(name, "load {}, {}* {}.alloca", t_tup, t_tup, name);
-    } else if (auto global = def->isa<Global>()) {
-        auto v_init                = emit(global->init());
-        auto [pointee, addr_space] = Axm::expect<mem::Ptr>(global->type(), "a `mem.Ptr`")->args<2>();
-        std::println(vars_decls_, "{} = global {} {}", name, convert(pointee), v_init);
-        return globals_[global] = name;
     }
     return std::nullopt;
 }

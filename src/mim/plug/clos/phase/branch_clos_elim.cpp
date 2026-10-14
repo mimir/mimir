@@ -8,15 +8,15 @@ namespace {
 
 std::tuple<fe::Vector<ClosLit>, const Def*> isa_branch(const Def* callee) {
     if (auto closure_proj = callee->isa<Extract>()) {
-        auto inner_proj = closure_proj->tuple()->isa<Extract>();
-        if (inner_proj && inner_proj->tuple()->isa<Tuple>() && isa_clos_type(inner_proj->type())) {
+        auto sw = Switch(closure_proj->tuple());
+        if (sw && sw.tuple()->isa<Tuple>() && isa_clos_type(sw.extract()->type())) {
             auto branches = fe::Vector<ClosLit>();
-            for (auto op : inner_proj->tuple()->ops())
-                if (auto c = isa_clos_lit(op))
+            for (size_t i = 0, n = sw.num_targets(); i != n; ++i)
+                if (auto c = isa_clos_lit(sw.target(i)))
                     branches.emplace_back(c);
                 else
                     return {};
-            return {branches, inner_proj->index()};
+            return {branches, sw.index()};
         }
     }
     return {};
@@ -25,7 +25,7 @@ std::tuple<fe::Vector<ClosLit>, const Def*> isa_branch(const Def* callee) {
 } // namespace
 
 const Def* BranchClosElim::rewrite_imm_App(const App* app) {
-    if (is_bootstrapping() || !Pi::isa_cn(app->callee_type())) return RWPhase::rewrite_imm_App(app);
+    if (!Pi::isa_cn(app->callee_type())) return RWPhase::rewrite_imm_App(app);
 
     auto& w = new_world();
     if (auto [branches, index] = isa_branch(app->callee()); index) {

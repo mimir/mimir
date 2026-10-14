@@ -117,10 +117,8 @@ axm eval: compile.Phase;
 /// The derivative of the axiom `plugin.tag.sub` is the annex `autodiff.diff.plugin_tag_sub`, i.e. the axiom's name
 /// with all `.`s replaced by `_`s;
 /// this is how mim::plug::autodiff::phase::Eval looks a derivative up.
-/// Being annexes, they are roots of the World and hence survive until mim::plug::autodiff::phase::Eval has consumed
-/// them.
-/// But - unlike externals - they are invisible to the backends and a `compile.unload "autodiff"` nukes them along
-/// with all the other annexes of this plugin.
+/// Being annexes, they live in the mim::Driver::library and are imported when mim::plug::autodiff::phase::Eval looks them up.
+/// But - unlike externals - they are invisible to the backends.
 ///
 ///
 /// #### autodiff.diff

@@ -1,22 +1,21 @@
 #include "mim/plug/gpu/phase/split_off_kernels.h"
 
-#include <mim/driver.h>
-
 namespace mim::plug::gpu::phase {
 
 void SplitOffKernels::start() {
     analyze();
+    if (kernels_.empty()) return;
 
-    for (const auto& [f, entry] : old_world().annexes())
-        rewrite_annex(f, entry.sym, entry.def);
-
+    auto device = RWPhase(old_world(), "split_off_kernels_device");
+    // A kernel's name becomes its external symbol, so gid-suffix it: two kernels may share a name.
     for (auto kernel : kernels_)
-        rewrite(kernel);
+        device.rewrite(kernel)->as_mut<Lam>()->set<true>(kernel->unique_name())->externalize();
+
+    RWPhase::start();
+    swap(new_world(), device.new_world());
 }
 
 bool SplitOffKernels::analyze() {
-    for (auto def : old_world().annexes().defs())
-        analyze(def);
     for (auto def : old_world().externals().muts())
         analyze(def);
 
@@ -36,16 +35,9 @@ void SplitOffKernels::analyze(const Def* def) {
 }
 
 const Def* SplitOffKernels::rewrite_mut_Lam(Lam* old_lam) {
-    auto new_def = RWPhase::rewrite_mut_Lam(old_lam);
-
-    if (kernels_.contains(old_lam)) {
-        // A kernel's name becomes its external symbol, so gid-suffix it: two kernels may share a name.
-        old_lam->set<true>(old_lam->unique_name());
-        new_def->as_mut<Lam>()->set<true>(old_lam->sym())->externalize();
-        old_lam->unset();
-    }
-
-    return new_def;
+    if (kernels_.contains(old_lam))
+        return map(old_lam, new_world().mut_lam(rewrite(old_lam->type())->as<Pi>())->set<true>(old_lam->unique_name()));
+    return RWPhase::rewrite_mut_Lam(old_lam);
 }
 
 } // namespace mim::plug::gpu::phase

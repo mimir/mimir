@@ -138,6 +138,13 @@ std::string Driver::plugin_name(std::string_view name) {
     return stem;
 }
 
+void Driver::move_to_library(World& world) {
+    library_ = world.inherit();
+    swap(world, *library_);
+    for (auto mut : library_->externals().muts())
+        world.import(mut)->as_mut()->externalize();
+}
+
 void Driver::add_static_plugin(const char* name, Plugin (*get_plugin)()) { static_plugins()[name] = get_plugin; }
 
 void Driver::load(std::string_view spec) {

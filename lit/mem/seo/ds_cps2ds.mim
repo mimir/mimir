@@ -1,0 +1,22 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// A CPS `inc` called in direct style via cps.cps2ds stores to the captured slot.
+
+plugin core;
+plugin cps;
+plugin mem;
+
+use core.ops.n;
+
+extern fun test(m: mem.M 0): [mem.M 0, Nat] =
+    ret (m, p) = mem.slot (Nat, 0) $ m;
+    fun inc (m: mem.M 0): mem.M 0 =
+        let (m, x) = mem.load (m, p);
+        return (mem.store (m, p, x + 1));
+    let m      = mem.store (m, p, 1);
+    let m      = cps.cps2ds inc m;
+    let m      = cps.cps2ds inc m;
+    let (m, x) = mem.load (m, p);
+    return (m, x);
+
+// CHECK: return ({{.*}}, 3)

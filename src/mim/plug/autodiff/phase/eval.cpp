@@ -68,8 +68,6 @@ const Def* Eval::derive(const Def* def) {
 }
 
 const Def* Eval::rewrite_imm_App(const App* app) {
-    if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
-
     if (auto ad_app = Axm::isa<ad>(app); ad_app) {
         // callee = autodiff T
         // arg = function of type T

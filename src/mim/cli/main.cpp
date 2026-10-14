@@ -120,7 +120,7 @@ int compile(Driver& driver, Opts& opts) {
         file->compile(ast);
         std::exception_ptr opt_error;
         if (opts.no_opt)
-            Cleanup(world).run(); // resolves the Hole%s elaboration solved, as optimize would first
+            driver.move_to_library(world);
         else
             try {
                 optimize(world);
@@ -207,7 +207,6 @@ int main(int argc, char** argv) {
             .opt(opts.outs[NestDot].name() , "file"      , ""  , "--output-nest"         , "Emits the program's nesting tree using Graphviz' DOT language.")
             .opt(opts.outs[PY].name()      , "file"      , ""  , "--output-py"           , "Emits a Python enum to be used to interface with a plugin in Python.")
             .grp("DOT Output")
-            .opt(opts.dot.all_annexes      , ""          , ""  , "--dot-all-annexes"     , "Emits all annexes in DOT output - even unused ones.")
             .opt(opts.dot.dark             , ""          , ""  , "--dot-dark"            , "Drops the white background of the DOT output and lightens its edges, so that it embeds into a dark backdrop.")
             .opt(opts.dot.default_filter   , ""          , ""  , "--dot-default-filter"  , "Always shows a lambda's filter in DOT output - even if it is the default one (`ff` for continuations, `tt` for direct-style functions).")
             .opt(opts.dot.follow_types     , ""          , ""  , "--dot-follow-types"    , "Follows type dependencies in DOT output.")
@@ -231,8 +230,9 @@ int main(int argc, char** argv) {
             .grp("Optimization")
             .opt(flags.aggressive_lam_spec , ""          , ""  , "--aggr-lam-spec"       , "Overrides LamSpec behavior to follow recursive calls.")
             .opt(flags.max_fp_iters        , "num"       , ""  , "--max-fp-iters"        , "Maximum number of fixed-point iterations before a phase errors out; guards against non-monotone analyses.")
+            .opt(flags.pe_fuel             , "num"       , ""  , "--pe-fuel"             , "Maximum nesting depth of partial evaluations before erroring out; guards against non-terminating specialization.")
             .opt(opts.no_opt               , ""          , ""  , "--no-opt"              , "Elaborates the input but skips the optimization pipeline, so no backend runs; `--output-*` still works.")
-            .opt(flags.scalarize_threshold , "threshold" , ""  , "--scalarize-threshold" , "MimIR will not scalarize tuples/packs/sigmas/arrays with a number of elements greater than or equal this threshold.")
+            .opt(flags.scalarize_threshold , "threshold" , ""  , "--scalarize-threshold" , "MimIR will not scalarize packs/arrays with a number of elements greater than or equal this threshold.")
 #ifdef MIM_ENABLE_CHECKS
             .grp("Developer Options")
             .opt(breakpoints               , "gid"       , "-b", "--break"               , "Triggers a breakpoint when a node with this global id is created.")

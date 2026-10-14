@@ -29,7 +29,6 @@
     X(Lit,    Judge::Intro) /* keep this first - causes Lit to appear left in Def::less/Def::greater*/             \
     X(Axm,    Judge::Intro)                                                                                        \
     X(Var,    Judge::Intro)                                                                                        \
-    X(Global, Judge::Intro)                                                                                        \
     X(Proxy,  Judge::Intro)                                                                                        \
     X(Hole,   Judge::Hole )                                                                                        \
     X(Type,   Judge::Meta ) X(Univ,  Judge::Meta ) X(UMax,    Judge::Meta) X(UInc,   (Judge::Meta               )) \
@@ -64,7 +63,6 @@
     X(Nom)    X(Name)  X(Struc)
 
 #define MIM_MUT_NODE(X)                                                                                            \
-    X(Global)                                                                                                      \
     X(Hole)                                                                                                        \
     X(Pi)    X(Lam)                                                                                                \
     X(Sigma)                                                                                                       \
@@ -237,7 +235,7 @@ template<class F> concept MutPred   = std::predicate<F, Def*>;
 /// CRTP-based mixin to declare setters for Def::loc \& Def::name using a *covariant* return type.
 /// Forwards every argument list the Def::set%ters accept and hands back a @p P instead of a Def.
 /// @note Setters::Fwd keeps this variadic out of the overload set of the `set` members subclasses declare
-/// themselves (Global::set, Pi::set, ...) - none of those is a template on @p Ow, so they keep winning.
+/// themselves (Pi::set, Sigma::set, ...) - none of those is a template on @p Ow, so they keep winning.
 template<class P, class D = Def>
 class // D is only needed to make the resolution `D::template set` lazy
 #ifdef _MSC_VER
@@ -262,11 +260,10 @@ public:
 };
 
 /// Options for Def::dot, World::dot, and Nest::dot.
-/// @note Def::dot and World::dot honor DotConfig::max; World::dot also honors DotConfig::all_annexes.
+/// @note Def::dot and World::dot honor DotConfig::max.
 /// Nest::dot only honors DotConfig::dark.
 struct DotConfig {
     int max             = std::numeric_limits<int>::max(); ///< Maximum recursion depth.
-    bool all_annexes    = false;                           ///< Include all annexes - even if unused (World::dot only).
     bool follow_types   = false;                           ///< Follow Def::type() dependencies.
     bool inline_consts  = false; ///< Wire up literals, axioms, etc. with normal edges instead of detaching them.
     bool default_filter = false; ///< Show Lam::filter() even if it has its default value.
@@ -478,7 +475,7 @@ public:
 
     /// Yields Def::arity(), if it is a Lit, or `1` otherwise.
     nat_t num_projs() const;
-    nat_t num_tprojs() const; ///< As above but yields 1, if Flags::scalarize_threshold is exceeded.
+    nat_t num_tprojs() const; ///< As above but yields 1, if an Arr/Pack exceeds Flags::scalarize_threshold.
 
     /// Similar to World::extract while assuming an arity of @p a, but also works on Sigma%s and Arr%ays.
     const Def* proj(nat_t a, nat_t i) const;
@@ -583,6 +580,9 @@ public:
     /// Does @p this nest @p def?
     /// Also strict: a @p def that only uses @p this%'s own Var sits at @p this%'s level and is *not* nested.
     bool nests(const Def* def);
+    /// Is every free Var of @p this bound by @p mut or by a mutable that nests @p mut?
+    /// I.e., may @p mut use @p this?
+    bool in_scope(Def* mut) const;
     ///@}
 
     /// @name free_vars predicates
@@ -1104,23 +1104,33 @@ private:
 };
 
 /// Used as intermediate value during optimizatinos such as Analysis.
-/// @note Def::ops() are hashed as normal but they do **not** contribute to Def::local_vars(), nor Def::local_muts() and
-/// hence not to Def::free_vars(). This is by design as those ops typically are some meta information to memoize certain
-/// things that do not carry semantic information per se.
+/// @note Def::ops() are hashed as normal, but they only contribute to Def::local_vars() / Def::local_muts() -
+/// and hence to Def::free_vars() - if tracks_vars() / tracks_muts() is set.
+/// Ops are typically meta information to memoize certain things that do not carry semantic information per se.
 class Proxy : public Def, public Setters<Proxy> {
+public:
+    static constexpr flags_t Vars_Bit = flags_t(1) << 63;
+    static constexpr flags_t Muts_Bit = flags_t(1) << 62;
+
 private:
-    Proxy(const Def* type, flags_t tag, Defs ops)
-        : Def(Node, type, ops, tag) {}
+    Proxy(const Def* type, flags_t flags, Defs ops)
+        : Def(Node, type, ops, flags) {}
+
+    static constexpr flags_t mk_flags(u32 tag, bool vars, bool muts) {
+        return flags_t(tag) | (vars ? Vars_Bit : 0) | (muts ? Muts_Bit : 0);
+    }
 
 public:
     using Setters<Proxy>::set;
 
     /// @name Getters
     ///@{
-    flags_t tag() const { return flags_; }
+    u32 tag() const { return u32(flags_); }
+    bool tracks_vars() const { return flags_ & Vars_Bit; }
+    bool tracks_muts() const { return flags_ & Muts_Bit; }
     ///@}
 
-    template<flags_t Tag>
+    template<u32 Tag>
     static const Proxy* isa(const Def* def) {
         if (auto proxy = def->isa<Proxy>(); proxy && proxy->tag() == Tag) return proxy;
         return nullptr;
@@ -1128,41 +1138,6 @@ public:
 
     static constexpr auto Node      = mim::Node::Proxy;
     static constexpr size_t Num_Ops = std::dynamic_extent;
-
-private:
-    friend class World;
-};
-
-/// @deprecated A global variable in the data segment.
-/// A Global may be mutable or immutable.
-/// @deprecated Will be removed.
-class Global : public Def, public Setters<Global> {
-private:
-    Global(const Def* type, bool is_mutable)
-        : Def(Node, type, 1, is_mutable) {}
-
-public:
-    using Setters<Global>::set;
-
-    /// @name ops
-    ///@{
-    const Def* init() const { return op(0); }
-    void set(const Def* init) { Def::set(0, init); }
-    ///@}
-
-    /// @name type
-    ///@{
-    const App* type() const;
-    const Def* alloced_type() const;
-    ///@}
-
-    /// @name Getters
-    ///@{
-    bool is_mutable() const { return flags(); }
-    ///@}
-
-    static constexpr auto Node      = mim::Node::Global;
-    static constexpr size_t Num_Ops = 1;
 
 private:
     friend class World;

@@ -1,0 +1,51 @@
+// variant of click.mim
+// RUN: rm -rf %t && mkdir -p %t && cd %t && %mim -p opt %s -p ll && %FileCheck %s < %{s:stem}.ll
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun dont_know[]: Bool;
+extern fun read[]: Nat;
+
+extern fun foo(m: mem.M 0, x: Nat): [mem.M 0, Nat] =
+    ret (m, ptr) = mem.slot ([Nat, Nat, Nat], 0) $ m;
+    let px = mem.lea (ptr, 0_3);
+    let py = mem.lea (ptr, 1_3);
+    let pz = mem.lea (ptr, 2_3);
+    let m  = mem.store (m, px, 1);
+    ret z = read $ ();
+    let m  = mem.store (m, pz, z);
+    let m  = mem.store (m, py, z);
+    head (m) where
+        con head(m: mem.M 0) =
+            ret cond = dont_know $ ();
+            (exit, body)#cond m where
+                con body(m: mem.M 0) =
+                    let (m, y) = mem.load (m, py);
+                    let (m, z) = mem.load (m, pz);
+                    (f1, t1)#(y != z) m
+                    where
+                        con f1(m: mem.M 0) = n1 m;
+                        con t1(m: mem.M 0) =
+                            let m = mem.store (m, px, 2);
+                            n1 m;
+                        con n1(m: mem.M 0) =
+                            let (m, x) = mem.load (m, px);
+                            let x     = 2 - x;
+                            (f2, t2)#(x != 1) m
+                            where
+                                con f2(m: mem.M 0) = n2 m;
+                                con t2(m: mem.M 0) =
+                                    let m = mem.store (m, py, 2);
+                                    n2 m;
+                                con n2(m: mem.M 0) = head m;
+                            end;
+                    end;
+                con exit(m: mem.M 0) =
+                    let (m, x) = mem.load (m, px);
+                    return (m, x);
+            end
+    end;
+
+// CHECK: ret i64 1

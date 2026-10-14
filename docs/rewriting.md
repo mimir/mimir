@@ -67,8 +67,8 @@ If a rewrite replaces an external mutable with a fresh one, preserve the root ex
 
 A rewrite that changes a mutable's *number* of ops - dropping components of a [`Sigma`](@ref mim::Sigma), say - cannot use the plain [`rewrite_stub`](@ref mim::Rewriter::rewrite_stub): that one rewrites `old->op(i)` into `new->op(i)` for every `i`.
 The overload [`rewrite_stub(old, new, new2old)`](@ref mim::Rewriter::rewrite_stub) spells out the op indices instead: `new->op(i)` is rewritten from `old->op(new2old[i])`.
-Everything else stays the same - mapping the stub before descending into it, entering its scope, and immutabilizing the result in hindsight.
-If you fill a stub entirely by hand, [`seal_stub`](@ref mim::Rewriter::seal_stub) is that last step on its own.
+Everything else stays the same - mapping the stub before descending into it, entering its scope, and immutabilizing the result in hindsight unless something already captured the stub recursively.
+If you fill a stub entirely by hand, [`seal`](@ref mim::Rewriter::seal) is that last step on its own.
 
 [`Sieve`](@ref mim::Sieve) computes such an index list from a predicate over the old components:
 

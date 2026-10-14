@@ -1,0 +1,22 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// A direct-style call that cannot reach the slot does not prevent its promotion.
+
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+lam twice (m: mem.M 0, y: Nat): [mem.M 0, Nat] = (m, y + y);
+
+extern fun test(m: mem.M 0, a: Nat): [mem.M 0, Nat] =
+    ret (m, p) = mem.slot (Nat, 0) $ m;
+    let m      = mem.store (m, p, a);
+    let (m, y) = twice (m, 1);
+    let (m, z) = twice (m, 2);
+    let (m, x) = mem.load (m, p);
+    return (m, x + y + z);
+
+// CHECK-NOT: mem.slot
+// CHECK-NOT: mem.load
+// CHECK: return_1 (m, {{.*}})

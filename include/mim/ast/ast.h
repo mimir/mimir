@@ -333,6 +333,7 @@ public:
 
     void bind(Scopes&, bool rebind, bool quiet) const override;
     const Def* emit_value(Emitter&, const Def*) const override;
+    const Def* emit_value_without_type_check(Emitter&, const Def*) const;
     const Def* emit_type(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 

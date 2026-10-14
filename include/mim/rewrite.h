@@ -110,8 +110,9 @@ protected:
     [[nodiscard]] auto enter(Def* new_mut) { return fe::Restore(curr_mut_, new_mut); }
 
     /// The tail of rewrite_stub: immutabilizes @p new_mut in hindsight, as rewriting may have made it vacuous.
+    /// A stub that already has users stays mutable, as the users captured it during its own rewrite.
     /// Only needed if you fill a stub yourself instead of going through rewrite_stub.
-    const Def* seal_stub(Def* old_mut, Def* new_mut);
+    const Def* seal(Def* old_mut, Def* new_mut);
 };
 
 /// Extends Rewriter for variable substitution.
@@ -195,6 +196,21 @@ private:
         auto& old2new = old2news_.back();
         if (auto i = old2new.find(old_def); i != old2new.end()) return i->second;
         return nullptr;
+    }
+};
+
+/// Imports from Driver::library: an annex therein is looked up via World::annex, so it is imported only once.
+class Importer : public Rewriter {
+public:
+    Importer(World& world)
+        : Rewriter(world) {}
+
+    const Def* import(const Def* root) { return Rewriter::rewrite(root); }
+    const Def* rewrite(const Def*) final;
+
+    friend void swap(Importer& i1, Importer& i2) noexcept {
+        using std::swap;
+        swap(static_cast<Rewriter&>(i1), static_cast<Rewriter&>(i2));
     }
 };
 

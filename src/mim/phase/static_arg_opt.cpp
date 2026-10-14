@@ -3,7 +3,7 @@
 namespace mim {
 
 bool StaticArgOpt::analyze() {
-    for (auto def : old_world().roots())
+    for (auto def : old_world().externals().muts())
         analyze(def);
     return false; // no fixed-point necessary
 }
@@ -65,37 +65,34 @@ Sieve StaticArgOpt::sieve(Lam* lam) {
 }
 
 const Def* StaticArgOpt::rewrite_mut_Lam(Lam* old_lam) {
-    if (!is_bootstrapping()) {
-        if (auto sieve = this->sieve(old_lam); !sieve.all()) {
-            auto& w        = new_world();
-            auto n         = old_lam->num_tdoms();
-            auto loop_doms = rewrite(sieve.gather(old_lam->tdoms()));
+    auto sieve = this->sieve(old_lam);
+    if (sieve.all()) return RWPhase::rewrite_mut_Lam(old_lam);
 
-            auto wrap = w.mut_lam(rewrite(old_lam->type())->as<Pi>())->set(old_lam->dbg_key());
-            auto loop = w.mut_lam(loop_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
-            loop->debug_suffix("_loop");
-            log().d("{} → wrap {}, loop {}", old_lam, wrap, loop);
-            old2wrap_loop_[old_lam] = {wrap, loop};
+    auto& w        = new_world();
+    auto n         = old_lam->num_tdoms();
+    auto loop_doms = rewrite(sieve.gather(old_lam->tdoms()));
 
-            // The body lives in loop; the static vars stay wrap's and are free in loop.
-            auto vars = DefVec(n, [&](size_t d) {
-                auto j = sieve[d];
-                return j == Sieve::Gone ? wrap->tvar(d) : loop->var(sieve.num_new(), j);
-            });
+    auto wrap = w.mut_lam(rewrite(old_lam->type())->as<Pi>())->set(old_lam->dbg_key());
+    auto loop = w.mut_lam(loop_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
+    loop->debug_suffix("_loop");
+    log().d("{} → wrap {}, loop {}", old_lam, wrap, loop);
+    old2wrap_loop_[old_lam] = {wrap, loop};
 
-            map(old_lam, wrap);
-            map(old_lam->var(), vars);
-            loop->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
-            wrap->app(false, loop, sieve.gather(wrap->tvars()));
-            return wrap;
-        }
-    }
+    // The body lives in loop; the static vars stay wrap's and are free in loop.
+    auto vars = DefVec(n, [&](size_t d) {
+        auto j = sieve[d];
+        return j == Sieve::Gone ? wrap->tvar(d) : loop->var(sieve.num_new(), j);
+    });
 
-    return RWPhase::rewrite_mut_Lam(old_lam);
+    map(old_lam, wrap);
+    map(old_lam->var(), vars);
+    loop->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
+    wrap->app(false, loop, sieve.gather(wrap->tvars()));
+    return wrap;
 }
 
 const Def* StaticArgOpt::rewrite_imm_App(const App* old_app) {
-    if (auto old_lam = old_app->callee()->isa_mut<Lam>(); old_lam && !is_bootstrapping()) {
+    if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
         if (auto sieve = this->sieve(old_lam); !sieve.all()) {
             rewrite(old_lam); // make sure wrap/loop exist
             if (auto i = old2wrap_loop_.find(old_lam); i != old2wrap_loop_.end()) {

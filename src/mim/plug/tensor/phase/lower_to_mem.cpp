@@ -311,32 +311,27 @@ const Def* LowerToMem::fresh_mem() {
     return k->var();
 }
 
-void LowerToMem::wrap_fresh_mem(Lam* new_lam) {
-    auto& w     = new_world();
-    auto filter = new_lam->filter();
-    auto body   = new_lam->body();
-    new_lam->unset();
+const Def* LowerToMem::wrap_fresh_mem(const Def* body) {
+    auto& w = new_world();
     // The last-minted continuation carries the original body; the lam ends up requesting the first memory.
     for (auto k : pending_ | std::views::reverse) {
         k->set(true, body); // filter `tt`: k vanishes as soon as AddMem substitutes the real memory
         body = w.app(w.annex<mem::fresh>(), w.tuple({w.lit_nat_0(), k}));
     }
-    new_lam->set(filter, body);
+    return body;
 }
 
 const Def* LowerToMem::rewrite(const Def* old_def) {
     // An op lowering that consumes a fresh memory references its receiving continuation's var (see
     // fresh_mem). The global memo would share such a lowering with every other function that mentions the
     // same (closed) old op - where that var would dangle - so these ops are memoized per enclosing lam.
-    if (!is_bootstrapping()) {
-        auto app = old_def->isa<App>();
-        auto ins = old_def->isa<Insert>(); // allocates the copy it writes into
-        if ((app && wants_fresh_mem(app)) || (ins && tensor_ty_.contains(ins->tuple()->type()))) {
-            if (auto i = fresh_memo_.find(old_def); i != fresh_memo_.end()) return i->second;
-            auto new_def = app ? rewrite_imm_App(app) : rewrite_imm_Insert(ins);
-            fresh_memo_.emplace(old_def, new_def);
-            return new_def;
-        }
+    auto app = old_def->isa<App>();
+    auto ins = old_def->isa<Insert>(); // allocates the copy it writes into
+    if ((app && wants_fresh_mem(app)) || (ins && tensor_ty_.contains(ins->tuple()->type()))) {
+        if (auto i = fresh_memo_.find(old_def); i != fresh_memo_.end()) return i->second;
+        auto new_def = app ? rewrite_imm_App(app) : rewrite_imm_Insert(ins);
+        fresh_memo_.emplace(old_def, new_def);
+        return new_def;
     }
     return RWPhase::rewrite(old_def);
 }
@@ -369,32 +364,27 @@ const Def* LowerToMem::conv_boundary(const Def* t) {
 }
 
 const Def* LowerToMem::rewrite_mut_Lam(Lam* lam) {
-    if (is_bootstrapping()) return RWPhase::rewrite_mut_Lam(lam);
-
     // Scope the fresh-memory bookkeeping: ops lowered while this body is rewritten mint their receiving
     // continuations into pending_, which are chained in front of the finished body. Nested lams anchor
     // their own requests (and their own per-lam op memo).
     auto _       = fe::Restore(pending_, {});
     auto __      = fe::Restore(fresh_memo_, {});
-    auto new_def = conv_mut_Lam(lam);
-    if (!pending_.empty()) wrap_fresh_mem(new_def->as_mut<Lam>());
-    return new_def;
+    auto new_lam = new_world().mut_lam(conv_type(lam));
+    map(lam, new_lam);
+    if (!lam->is_set()) return new_lam;
+
+    auto ___    = enter(lam);
+    auto filter = rewrite(lam->filter());
+    auto body   = wrap_fresh_mem(rewrite(lam->body()));
+    new_lam->set(filter, body);
+    return seal(lam, new_lam);
 }
 
-const Def* LowerToMem::conv_mut_Lam(Lam* lam) {
-    // Rebuilds `lam` as a continuation over the converted domain `dom`.
-    auto rebuild = [&](const Def* dom) {
-        auto new_lam = new_world().mut_con(dom)->set(lam->dbg_key());
-        map(lam, new_lam);
-        if (lam->num_vars() != 0) map(lam->var(), new_lam->var());
-        new_lam->set(rewrite(lam->filter()), rewrite(lam->body()));
-        return new_lam;
-    };
-
+const Pi* LowerToMem::conv_type(Lam* lam) {
+    auto& w = new_world();
     // A bufferized function: convert tensor-typed parameters to `buffer.Buf`, including inside grouped
     // sigma parameters and continuation domains. No memory is introduced here — AddMem does that.
     if (is_tensor_fn(lam)) {
-        auto& w  = new_world();
         auto dom = lam->type()->dom();
         auto n   = dom->num_projs();
         DefVec doms(n, [&](size_t i) -> const Def* {
@@ -402,21 +392,19 @@ const Def* LowerToMem::conv_mut_Lam(Lam* lam) {
             if (auto pi = Pi::isa_cn(d)) return w.cn(conv_boundary(pi->dom()));
             return conv_boundary(d);
         });
-        return rebuild(w.sigma(doms));
+        return w.cn(w.sigma(doms));
     }
 
     // A local continuation carrying tensor types (a return continuation of a bufferized call, a join point,
     // an error continuation): convert its domain the same way. This is context-independent, so the order in
     // which references reach it does not matter.
     if (!lam->is_external() && lam->is_set() && !op_args_.contains(lam))
-        if (auto pi = Pi::isa_cn(lam->type()); pi && mentions_tensor(pi->dom()))
-            return rebuild(conv_boundary(pi->dom()));
+        if (auto pi = Pi::isa_cn(lam->type()); pi && mentions_tensor(pi->dom())) return w.cn(conv_boundary(pi->dom()));
 
-    return RWPhase::rewrite_mut_Lam(lam);
+    return rewrite(lam->type())->as<Pi>();
 }
 
 const Def* LowerToMem::rewrite_imm_App(const App* app) {
-    if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
     if (Axm::isa<tensor::buf>(app)) return rewrite(app->arg()); // consumed: the buffer *is* the tensor now
     // A `tensor.if_static` still stuck at lowering time guards a runtime value: residualize to
     // its dynamic branch.
@@ -531,7 +519,7 @@ std::pair<const Def*, const Def*> LowerToMem::peel_tensor(const Def* d) {
 
 const Def* LowerToMem::rewrite_imm_Extract(const Extract* extract) {
     // A partial read yields a sub-tensor, which has no buffer of its own; `collect_tensor_types` rejects it.
-    if (is_bootstrapping() || extract->type()->isa<Arr>()) return RWPhase::rewrite_imm_Extract(extract);
+    if (extract->type()->isa<Arr>()) return RWPhase::rewrite_imm_Extract(extract);
 
     auto [old_arr, index] = peel_tensor(extract);
     if (!old_arr) return RWPhase::rewrite_imm_Extract(extract);
@@ -548,7 +536,7 @@ const Def* LowerToMem::rewrite_imm_Extract(const Extract* extract) {
 }
 
 const Def* LowerToMem::rewrite_imm_Insert(const Insert* insert) {
-    if (is_bootstrapping() || !tensor_ty_.contains(insert->tuple()->type())) return RWPhase::rewrite_imm_Insert(insert);
+    if (!tensor_ty_.contains(insert->tuple()->type())) return RWPhase::rewrite_imm_Insert(insert);
 
     auto arr = rewrite(insert->tuple()); // cf. rewrite_imm_Extract: no materialization here
     auto buf = Axm::isa<buffer::Buf>(arr->type());

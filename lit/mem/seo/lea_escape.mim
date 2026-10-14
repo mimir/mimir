@@ -1,0 +1,18 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// An escaping field address keeps the slot.
+
+plugin core;
+plugin mem;
+
+extern fun use_address[m: mem.M 0, mem.Ptr0 Nat]: [mem.M 0];
+
+extern fun test(m: mem.M 0, a: Nat): [mem.M 0, Nat] =
+    ret (m, p) = mem.slot ([Nat, Nat], 0) $ m;
+    let m      = mem.store (m, mem.lea (p, 1_2), a);
+    ret m      = use_address $ (m, mem.lea (p, 1_2));
+    let (m, x) = mem.load (m, mem.lea (p, 1_2));
+    return (m, x);
+
+// CHECK: use_address
+// CHECK: mem.mslot

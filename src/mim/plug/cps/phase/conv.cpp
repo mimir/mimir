@@ -18,13 +18,13 @@ const Def* Conv::map(const Def* old_def, const Def* new_def) {
 }
 
 const Def* Conv::rewrite_mut_Lam(Lam* old_lam) {
-    if (!is_bootstrapping() && convertible(old_lam)) return convert(old_lam);
+    if (convertible(old_lam)) return convert(old_lam);
 
     auto new_lam = new_world().mut_lam(rewrite(old_lam->type())->as<Pi>());
     map(old_lam, new_lam);
     if (!old_lam->is_set()) return new_lam;
 
-    auto scope      = Scope(*this, !is_bootstrapping() && Lam::isa_cn(old_lam));
+    auto scope      = Scope(*this, Lam::isa_cn(old_lam));
     auto new_filter = rewrite(old_lam->filter());
     auto new_body   = wire(scope.base(), rewrite(old_lam->body()));
     return new_lam->set(new_filter, new_body);

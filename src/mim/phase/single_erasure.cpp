@@ -116,8 +116,6 @@ const Def* SingleErasure::rewrite_imm_Sigma(const Sigma* sigma) {
 }
 
 const Def* SingleErasure::rewrite_mut_Sigma(Sigma* old_sigma) {
-    if (old_sigma->is_immutabilizable()) return rewrite_imm_Sigma(old_sigma);
-
     auto keep = sieve(old_sigma);
     if (keep.all()) return RWPhase::rewrite_mut_Sigma(old_sigma);
 

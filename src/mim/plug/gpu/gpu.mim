@@ -42,7 +42,8 @@ anx lam LocalPtr(T: *): *  = mem.Ptr (T, addr_space_local);
 ///
 /// ### Stream Types
 ///
-axm Stream: *;
+/// An opaque handle - a pointer on every GPU runtime.
+anx let Stream = mem.Ptr0 I8;
 axm default_stream: Stream;
 ///
 /// ## Operations
@@ -52,7 +53,7 @@ axm default_stream: Stream;
 /// #### init
 ///
 /// Initializes the GPU runtime.
-// TODO: consider allowing multiple contexts and configuration of device number or context flags
+/// @todo Consider allowing multiple contexts and configuration of device number or context flags.
 axm init: mem.M 0 → [mem.M 0, GlobalM, ConstM];
 ///
 /// #### deinit

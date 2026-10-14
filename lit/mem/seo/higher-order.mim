@@ -40,4 +40,4 @@ extern fun f (m: mem.M 0, x: Nat): [mem.M 0, Nat] =
             end
     end;
 
-// CHECK: ret i64 529
+// CHECK: add nsw nuw i64 2116,

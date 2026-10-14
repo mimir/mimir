@@ -3,7 +3,11 @@
 plugin tuple;
 plugin refly;
 
-con f (i: Idx 4, t: «4, 4, 4; Nat», r: Cn [«4, 4; Nat»]) = r t#i;
+extern fun tick []: [];
+
+con f (i: Idx 4, t: «4, 4, 4; Nat», r: Cn [«4, 4; Nat»]) =
+    ret () = tick $ ();
+    r t#i;
 
 extern con main(i: (Idx 2), r: Cn [«4, 4; Nat»]) = (f (2:(Idx 4), ‹4, 4, 4; 20›, r), f (3:(Idx 4), ‹4, 4, 4; 19›, r))#i;
 

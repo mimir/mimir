@@ -216,9 +216,19 @@ static bool is_wildcard(const Ptrn* ptrn) {
 const Def* ErrorPtrn::emit_value(Emitter&, const Def* def) const { return def; }
 
 const Def* IdPtrn::emit_value(Emitter& e, const Def* def) const {
-    emit_type(e);
-    return def_ = def->set(dbg());
+    if (!type()) return def_ = def->set(dbg());
+
+    auto id_ty = emit_type(e);
+
+    if (auto res = Checker::assignable(id_ty, def)) return def_ = res->set(dbg());
+
+    e.error()
+        .e(loc(), "value bound to `{}` is not assinable to its annotated type", dbg().sym())
+        .n("expected `{}`, got `{}`", id_ty, type_of(def))
+        .bail();
 }
+
+const Def* IdPtrn::emit_value_without_type_check(Emitter& e, const Def* def) const { return def_ = def->set(dbg()); }
 
 const Def* GrpPtrn::emit_value(Emitter&, const Def* def) const { return def_ = def->set(dbg()); }
 
@@ -795,7 +805,7 @@ const Def* SeqExpr::emit_(Emitter& e) const {
         auto p = e.world().mut_pack(a);
         p->set_shape(s);
         auto var = p->var();
-        arity()->emit_value(e, var);
+        arity()->emit_value_without_type_check(e, var);
         auto b = body()->emit(e);
         p->set_body(b);
         auto arr_b = b->type();
@@ -806,7 +816,7 @@ const Def* SeqExpr::emit_(Emitter& e) const {
         return e.world().fuse(p);
     } else {
         auto var = a->var();
-        arity()->emit_value(e, var);
+        arity()->emit_value_without_type_check(e, var);
         a->set_body(body()->emit(e));
         return e.world().fuse(a);
     }
@@ -945,7 +955,7 @@ Lam* LamDecl::Dom::emit_value(Emitter& e) const {
     if (ret()) {
         auto var = lam_->var();
         ptrn()->emit_proj(e, var, 2, 0);
-        ret()->emit_proj(e, var, 2, 1);
+        ret()->emit_value_without_type_check(e, var->proj(2, 1));
     } else {
         emit_var(e, ptrn(), lam_);
     }

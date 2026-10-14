@@ -24,7 +24,7 @@ A phase provides:
 @note A phase requests another round by calling [`invalidate()`](@ref mim::Phase::invalidate).
 
 - [`PhaseMan`](@ref mim::PhaseMan) uses this to drive fixed-point pipelines.
-- [`RWBase`](@ref mim::RWBase) uses this to drive its optional pre-analysis to a fixed point.
+- [`RWPhase`](@ref mim::RWPhase) uses this to drive its optional pre-analysis to a fixed point.
 
 ### Typical Shape
 
@@ -68,13 +68,8 @@ As a result, existing IR machinery applies automatically, including:
 
 So if your abstract domain fits naturally into MimIR, you can often encode it directly as [`Def`s](@ref mim::Def) and store it in the analysis lattice.
 
-An [`Analysis`](@ref mim::Analysis) visits:
-
-1. all registered annex roots, then
-2. all external mutables.
-
-During the first part, [`mim::Analysis::is_bootstrapping()`](@ref mim::Analysis::is_bootstrapping) is `true`.
-During the second part, it is `false`.
+An [`Analysis`](@ref mim::Analysis) visits everything reachable from the external mutables.
+Axioms and mutable annexes other than `Lam`s are opaque; see [Annexes](@ref phases_annexes).
 
 Typical usage:
 
@@ -138,14 +133,14 @@ This schedules the callee (or does nothing if it is already scheduled), so its b
 
 ### Sparse Fixed-Point Iteration
 
-A **full** round traverses the whole [`World`](@ref mim::World): [`start()`](@ref mim::Analysis) first runs [`prepare()`](@ref mim::Analysis::prepare), then rewrites all annex roots, drains the worklist, does the same for the external mutables, and finally runs [`finalize()`](@ref mim::Analysis::finalize).
+A **full** round traverses the whole [`World`](@ref mim::World): [`start()`](@ref mim::Analysis) first runs [`prepare()`](@ref mim::Analysis::prepare), then rewrites all external mutables, drains the worklist, and finally runs [`finalize()`](@ref mim::Analysis::finalize).
 Whenever [`lattice(concr, abstr)`](@ref mim::Analysis::lattice) changes an entry it [`invalidate`s](@ref mim::Phase::invalidate), requesting another round, and records [`curr_mut()`](@ref mim::Rewriter::curr_mut) as _dirty_.
 
 The first round, and each certification round described below, is full.
 A follow-up round is **sparse**: it re-drains only dirty mutables — plus everything reachable from them — instead of walking the whole World.
 At the start of a sparse round the accumulated lattice is replayed into the rewriter map, so a dirty mutable's body sees the substitutions its (non-revisited) producers installed in earlier rounds.
 An analysis can [`taint()`](@ref mim::Analysis::taint) additional mutables when a change must re-visit more than the writer — e.g. SEO taints all call sites of a `Lam` whose abstract vars changed, which keeps its per-round join restart sound.
-A change that cannot be attributed to any mutable (during the annex walk or [`finalize()`](@ref mim::Analysis::finalize)) forces the next round to be full.
+A change that cannot be attributed to any mutable (e.g. in [`finalize()`](@ref mim::Analysis::finalize)) forces the next round to be full.
 
 Since dirt tracks _writers_ — not readers — a sparse round may miss affected mutables.
 Hence, once sparse rounds quiesce, one final **full** round certifies the fixed point; if it discovers new facts, iteration continues sparsely from its dirt.
@@ -157,77 +152,11 @@ Use [`make_dense()`](@ref mim::Analysis::make_dense) to force whole-World rounds
 If an analysis participates in a fixed-point loop, it should be ready to run multiple times.
 The base [`reset()`](@ref mim::Analysis::reset) clears the rewriter map (and hence the per-round _"already scheduled"_ markers) and the worklist, and resets [`Phase::todo()`](@ref mim::Phase::todo) for the next round, but **preserves** [`lattice()`](@ref mim::Analysis::lattice) so that abstract values accumulated in earlier iterations remain available — this is what makes fixed-point convergence possible.
 
-## RWBase {#phases_rwbase}
-
-[`RWBase`](@ref mim::RWBase) is the common base of the two rewriting phases:
-[`RWPhase`](@ref mim::RWPhase) rebuilds the world into a new one, [`InplaceRWPhase`](@ref mim::InplaceRWPhase) stays in the current one.
-Both are a [`Phase`](@ref mim::Phase) _and_ a [`Rewriter`](@ref mim::Rewriter) and share the skeleton described here.
-
-You never derive from [`RWBase`](@ref mim::RWBase) directly — pick one of the two.
-
-### Execution Model
-
-1. optionally perform a fixed-point analysis with [`analyze()`](@ref mim::RWBase::analyze),
-2. rewrite the world roots:
-   1. the annexes — if [`rewrite_annexes()`](@ref mim::RWBase::rewrite_annexes) says so,
-   2. the external mutables;
-3. run [`finalize()`](@ref mim::RWBase::finalize);
-4. an [`RWPhase`](@ref mim::RWPhase) additionally swaps the **old** and the **new** world.
-
-### Optional Pre-Analysis
-
-An [`RWBase`](@ref mim::RWBase) may be given an associated [`Analysis`](@ref mim::Analysis).
-If so, [`analyze()`](@ref mim::RWBase::analyze) runs that analysis to a fixed point before rewriting begins.
-
-This is a common pattern:
-
-- the analysis computes facts on the world the phase reads from,
-- those facts are stored in [`Analysis::lattice()`](@ref mim::Analysis::lattice) and/or auxiliary side tables,
-- the rewrite queries them through [`RWBase::lattice()`](@ref mim::RWBase::lattice).
-
-If no analysis is needed, [`analyze()`](@ref mim::RWBase::analyze) can simply return `false`.
-
-### Analysis Results
-
-Once [`analyze()`](@ref mim::RWBase::analyze) has run, the rewrite can query the analysis result through [`RWBase::lattice()`](@ref mim::RWBase::lattice).
-
-[`RWBase::lattice()`](@ref mim::RWBase::lattice) provides access to the analysis lattice for the [`Def`s](@ref mim::Def) that the analysis visited — the **old** ones in the case of an [`RWPhase`](@ref mim::RWPhase).
-It returns the abstract value computed by the associated [`Analysis`](@ref mim::Analysis), or `nullptr` if no value is available.
-
-This is the standard way to communicate fixed-point analysis results into the subsequent rewrite.
-
-### Bootstrapping
-
-Like [`Analysis`](@ref mim::Analysis), an [`RWBase`](@ref mim::RWBase) processes annex roots before externals.
-
-While annexes are being rewritten, [`mim::RWBase::is_bootstrapping()`](@ref mim::RWBase::is_bootstrapping) is `true`.
-
-This matters because annexes may depend on one another.
-During bootstrapping, a rewrite that refers to another annex may need to defer or skip that work because the referenced annex might not yet exist in the new world.
-
-### Roots
-
-[`rewrite_annexes()`](@ref mim::RWBase::rewrite_annexes) decides whether the annex roots are walked at all.
-An [`RWPhase`](@ref mim::RWPhase) _has_ to walk them in order to populate the new world's annex table, so it returns `true`;
-an [`InplaceRWPhase`](@ref mim::InplaceRWPhase) finds that table already correct and defaults to `false`.
-
-[`rewrite_root()`](@ref mim::RWBase::rewrite_root) is the hook for rewrites that must exempt roots.
-An annex or an external is the program's interface to the outside, so a phase that reshapes definitions usually has to leave the roots themselves alone;
-[`EtaConv`](@ref mim::EtaConv) uses it so that an annex or external keeps its η-shape.
-
-### Deferred Rewrites
-
-A rewrite hook may not be able to finish its work immediately.
-For example, a closure-converting phase must create a function stub eagerly so callers can refer to it, but can rewrite its body only after completing the enclosing scope.
-Push such work onto your own worklist and drain it in [`finalize()`](@ref mim::RWBase::finalize), which runs after all roots have been walked but — for an [`RWPhase`](@ref mim::RWPhase) — still before the two worlds are swapped
-(see [`clos::phase::ClosConv`](@ref mim::plug::clos::phase::ClosConv)).
-
 ## RWPhase {#phases_rwphase}
 
 [`RWPhase`](@ref mim::RWPhase) is the base class for phases that **rebuild the current world into a new one**, thereby removing garbage.
 This is the standard base class for optimization phases that structurally transform IR.
-
-Here the [`RWBase`](@ref mim::RWBase)'s two worlds differ:
+It is both a [`Phase`](@ref mim::Phase) _and_ a [`Rewriter`](@ref mim::Rewriter):
 
 - [`Phase::world`](@ref mim::Phase::world) is the **old** world,
 - [`Rewriter::world`](@ref mim::Rewriter::world) is the **new** world.
@@ -238,7 +167,59 @@ Use:
 - [`old_world()`](@ref mim::RWPhase::old_world) to inspect existing IR,
 - [`new_world()`](@ref mim::RWPhase::new_world) to build rewritten IR.
 
+### Execution Model
+
+1. optionally perform a fixed-point analysis with [`analyze()`](@ref mim::RWPhase::analyze),
+2. rewrite the external mutables of the old world;
+3. run [`finalize()`](@ref mim::RWPhase::finalize);
+4. swap the **old** and the **new** world.
+
 After the final swap, the rewritten world becomes the current one.
+
+### Optional Pre-Analysis
+
+An [`RWPhase`](@ref mim::RWPhase) may be given an associated [`Analysis`](@ref mim::Analysis).
+If so, [`analyze()`](@ref mim::RWPhase::analyze) runs that analysis to a fixed point before rewriting begins.
+
+This is a common pattern:
+
+- the analysis computes facts on the old world,
+- those facts are stored in [`Analysis::lattice()`](@ref mim::Analysis::lattice) and/or auxiliary side tables,
+- the rewrite queries them through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
+
+If no analysis is needed, [`analyze()`](@ref mim::RWPhase::analyze) can simply return `false`.
+
+### Analysis Results
+
+Once [`analyze()`](@ref mim::RWPhase::analyze) has run, the rewrite can query the analysis result through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
+
+[`RWPhase::lattice()`](@ref mim::RWPhase::lattice) provides access to the analysis lattice for **old-world** [`Def`s](@ref mim::Def).
+It returns the abstract value computed by the associated [`Analysis`](@ref mim::Analysis), or `nullptr` if no value is available.
+
+This is the standard way to communicate fixed-point analysis results into the subsequent rewrite.
+
+### Annexes {#phases_annexes}
+
+[`optimize()`](@ref mim::optimize) moves all annexes into the [`Driver::library()`](@ref mim::Driver::library); a [`World`](@ref mim::World) imports an annex on first use.
+An [`RWPhase`](@ref mim::RWPhase) does not rewrite an axiom or a mutable annex but resolves it to the annex with the same flags in the new world, which imports it unchanged on demand.
+So a phase never alters such an annex - its shape is what normalizers and backends rely on.
+An immutable annex is just its value and is rewritten like any other immutable.
+
+The exception is an annex `Lam`: it is code, so it passes through the phase like the rest of the program - as an ordinary `Lam`.
+A phase that wants to process a `Lam` it fetches itself - e.g. a `priv` `*_impl` it instantiates - builds the instance in [`old_world()`](@ref mim::RWPhase::old_world) and rewrites it (see [`tensor::phase::Lower`](@ref mim::plug::tensor::phase::Lower)).
+
+### Externals
+
+[`rewrite_external()`](@ref mim::RWPhase::rewrite_external) is the hook for rewrites that must exempt the externals.
+An external is the program's interface to the outside, so a phase that reshapes definitions usually has to leave the externals themselves alone;
+[`EtaConv`](@ref mim::EtaConv) uses it so that an external keeps its η-shape.
+
+### Deferred Rewrites
+
+A rewrite hook may not be able to finish its work immediately.
+For example, a closure-converting phase must create a function stub eagerly so callers can refer to it, but can rewrite its body only after completing the enclosing scope.
+Push such work onto your own worklist and drain it in [`finalize()`](@ref mim::RWPhase::finalize), which runs after all roots have been walked but still before the two worlds are swapped
+(see [`clos::phase::ClosConv`](@ref mim::plug::clos::phase::ClosConv)).
 
 ### Cleanup
 
@@ -272,66 +253,6 @@ Run it with:
 
 ```cpp
 mim::Phase::run<MyRWPhase>(world);
-```
-
-## InplaceRWPhase {#phases_inplace_rw_phase}
-
-[`InplaceRWPhase`](@ref mim::InplaceRWPhase) rewrites the **current** world _in place_ instead of rebuilding it into a fresh one.
-
-A mutable keeps its identity: its [`ops()`](@ref mim::Def::ops) are reset with [`Def::set`](@ref mim::Def::set) only when rewriting changes them.
-So hash-consing makes every unaffected [`Def`](@ref mim::Def) free instead of a per-run rebuild tax.
-A mutable whose _type_ changes is the one exception — identity is tied to the type — and falls back to an [`RWPhase`](@ref mim::RWPhase)-style stub rebuild in this same world.
-This matters most for the annex graph: it is proportional to the loaded plugins — not to the program — and a _local_ rewrite never touches it, yet an [`RWPhase`](@ref mim::RWPhase) re-creates all of it on **every** run.
-
-Unlike an [`RWPhase`](@ref mim::RWPhase), the [`RWBase`](@ref mim::RWBase)'s two worlds are the _same_ one here, so plain `world()` is what you want.
-
-### Restrictions
-
-An [`InplaceRWPhase`](@ref mim::InplaceRWPhase)
-
-- cannot immutabilize a mutable that the rewrite made vacuous (unless it takes the type-change fallback),
-- must not hand out a fresh identity for something that already is in its target shape — since [`Phase::todo()`](@ref mim::Phase::todo) is exact, that would never converge, and
-- leaves what it replaced behind as garbage until the next [`Cleanup`](@ref mim::Cleanup).
-
-Use an [`RWPhase`](@ref mim::RWPhase) for anything else.
-
-### Pruning
-
-Since nothing is rebuilt, an [`InplaceRWPhase`](@ref mim::InplaceRWPhase) only pays for the nodes it actually looks at.
-So prune whatever provably cannot change with a cheap **O(1)** test at the top of your [`rewrite()`](@ref mim::Rewriter::rewrite);
-this is what turns the traversal from _"hash-cons every node"_ into _"touch only what matters"_.
-
-[`Def::is_ground`](@ref mim::Def::is_ground) is the ready-made test for phases that only rewrite mutables and/or substitute [`Var`s](@ref mim::Var): a subtree with neither [`local_muts()`](@ref mim::Def::local_muts) nor [`local_vars()`](@ref mim::Def::local_vars) contains neither.
-Both [`BetaRed`](@ref mim::BetaRed) and [`EtaConv`](@ref mim::EtaConv) use it.
-
-@warning Testing only [`local_muts()`](@ref mim::Def::local_muts) is **not** enough: a substitution installed via [`Rewriter::map()`](@ref mim::Rewriter::map) would silently be dropped in a mut-free subtree that still mentions the substituted [`Var`](@ref mim::Var).
-
-### Roots
-
-By default, an [`InplaceRWPhase`](@ref mim::InplaceRWPhase) walks only the **external** roots: whatever the program actually uses is reached through the externals anyway.
-Override [`rewrite_annexes()`](@ref mim::RWBase::rewrite_annexes) with `true` if your rewrite must also see _unused_ annexes.
-
-### Fixed Points
-
-Since a change is only ever committed if it really is one, [`Phase::todo()`](@ref mim::Phase::todo) is exact: a quiet run costs a pruned traversal and nothing else.
-This is what makes an [`InplaceRWPhase`](@ref mim::InplaceRWPhase) cheap to re-run inside a [`PhaseMan`](@ref mim::PhaseMan) fixed-point loop.
-
-### Typical Shape
-
-```cpp
-class MyInplaceRWPhase : public mim::InplaceRWPhase {
-public:
-    MyInplaceRWPhase(World& world)
-        : InplaceRWPhase(world, "my_inplace_phase") {}
-
-private:
-    const Def* rewrite(const Def* def) final { return def->is_ground() ? def : Rewriter::rewrite(def); }
-
-    const Def* rewrite_imm_App(const App* app) final {
-        // customize rewriting here
-        return Rewriter::rewrite_imm_App(app);
-    }
-};
 ```
 
 ## PhaseMan {#phases_phase_man}
@@ -452,12 +373,50 @@ This is a textbook use of [`Analysis`](@ref mim::Analysis):
 - store them in [`Analysis::lattice()`](@ref mim::Analysis::lattice),
 - iterate to a fixed point.
 
+### Transformation
+
+\include "mim/phase/sccp_transform.cpp"
+
+Once the lattice is stable, the outer SCCP phase starts rewriting.
+During rewriting, it can query abstract values for old-world definitions through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
+
+When it sees an application of a lambda whose parameters have propagated values, it rebuilds a specialized lambda:
+
+- parameters with known propagated expressions are removed,
+- remaining parameters are kept,
+- the lambda body is rewritten with the propagated values substituted,
+- the call site is rebuilt with only the remaining arguments.
+
+Which parameters survive is stated once as a [`Sieve`](@ref mim::Sieve) over the old [`Var`s](@ref mim::Var), and all three rebuilds read it back:
+[`gather`](@ref mim::Sieve::gather) picks the surviving domains and arguments, while [`operator[]`](@ref mim::Sieve::operator[]) maps each old parameter either to its new [`Var`](@ref mim::Var) or - on [`Gone`](@ref mim::Sieve::Gone) - to its propagated value.
+
+So SCCP follows the standard [`RWPhase`](@ref mim::RWPhase) pattern:
+
+1. analyze the old world,
+2. rewrite into a new world using the computed facts,
+3. swap worlds.
+
+### Discussion
+
+Separating SCCP into analysis and rewrite keeps both parts simple:
+
+- the analysis never mutates or partially rewrites the program,
+- the rewrite does not need to discover facts on the fly,
+- fixed-point logic stays in the analysis stage where it belongs,
+- the handoff from analysis to rewrite is explicit through [`Analysis::lattice()`](@ref mim::Analysis::lattice) and [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
+
+This separation is the main design pattern to follow for nontrivial optimizations.
+
+@note
+The complete SCCP example is roughly 130 lines of C++ source code.
+Most of the usual compiler boilerplate is absorbed by the existing [`Analysis`](@ref mim::Analysis), [`RWPhase`](@ref mim::RWPhase), and [`Rewriter`](@ref mim::Rewriter) infrastructure, so the implementation can focus on the optimization itself.
+
 ### SSA without Dominance {#ssa-without-dominance}
 
-The very first line of `propagate()` is a guard that has no counterpart in the lattice algebra:
+The very first line of `propagate()` is a guard that has no counterpart in the lattice algebra; a [second one](#sccp-bot-site) guards the ⊥ case of the join:
 
 ```cpp
-if (lam_of(var)->nests(def)) return pin(var);
+if (lam_of(var)->nests(def)) return pin(var), var;
 ```
 
 It is the MimIR analogue of the _dominance_ side condition that a classical SSA-based SCCP has to enforce, so it is worth spelling out what it replaces.
@@ -498,21 +457,49 @@ Its role — deciding whether a candidate value is _available_ at the point wher
 
 Now the guard reads directly:
 
-- `var` is a parameter of `L = lam_of(var)`; its call sites live _outside_ `L`.
-- If `L->nests(def)`, the joined value refers to binders that only come into existence _within_ `L`'s own body.
-  Such a value simply does not exist at `L`'s call sites, so propagating it into `var` — and thus substituting it at `var`'s uses — would hoist a computation out of the region where its operands are defined.
+- `var` is a parameter of `L = lam_of(var)`, and the joined value replaces `var` throughout `L`'s body.
+- If `L->nests(def)`, the joined value refers to binders that only come into existence _within_ `L`'s own body, so only a call site inside `L` — a recursive jump — can pass it.
+  Substituting it for `var` would use those binders before they exist: on entry to `L`, nothing below `L` has been bound yet.
   This is the exact situation dominance forbids, so the analysis pins `var` to ⊤ ([`pin`](@ref mim::Analysis::pin)) instead.
-- If `L` does _not_ nest `def`, the value is in scope at every call site — the analogue of _"the definition dominates all uses"_ — and propagation is sound.
+- A call site _outside_ `L` cannot pass such a value: it passes ⊥, which the [⊥-site check](#sccp-bot-site) handles, or a different value, which joins to ⊤ anyway.
+  But when `L` is only entered through an escaping value, its recursive call sites are the only known ones, and this guard is all that stands in the way.
 
-In other words, where classical SCCP walks a dominator tree to certify availability, MimIR asks a single scope question: _is this value visible at the binder it would replace?_
-[`Def::nests`](@ref mim::Def::nests) is that availability oracle, and it falls straight out of the free-variable structure that MimIR maintains anyway — no auxiliary dominance computation required.
+In other words, where classical SCCP walks a dominator tree to certify availability, MimIR asks scope questions: _is this value visible at the binder it would replace, and at every caller?_
+[`Def::nests`](@ref mim::Def::nests) and [`Def::in_scope`](@ref mim::Def::in_scope) are those availability oracles, and they fall straight out of the free-variable structure that MimIR maintains anyway — no auxiliary dominance computation required.
+
+#### ⊥-sites {#sccp-bot-site}
+
+`L->nests(def)` only rules out values from _below_ `L`.
+A value from a _sibling_ scope passes it, and the join alone never notices when that is wrong:
+
+```mim
+(init, early)#c () where
+    con early () = exit ⊥:Nat;
+    con init () =
+        ret y = get $ ();
+        exit y;
+    con exit (v: Nat) = ...;
+end;
+```
+
+`y` is bound by `init`'s continuation, which does not nest `exit`, so `exit` happily joins `v ↦ y`.
+`early` passes ⊥, and `y ⊔ ⊥ = y` — but ⊥ is a contribution that says nothing, not a promise to be compatible with whatever the other sites send.
+Once `y` replaces `v`, `exit`'s body mentions `y`, so `exit` now _lives inside_ `init`'s continuation — and `early`, outside of it, can no longer jump there.
+
+So `propagate()` checks a ⊥-site, too: the joined value must be in scope at the calling mutable,
+i.e. [`cur->in_scope(caller)`](@ref mim::Def::in_scope) — every free Var of `cur` is bound by `caller` itself or by a mutable that [nests](@ref mim::Def::nests) `caller`.
+Otherwise `var` is pinned to ⊤.
+In dominance terms: the definition must dominate _every_ predecessor edge, including the ones that carry no information.
+
+The check needs no ordering: if the ⊥-site happens to be visited before `cur` arrives, the lattice change triggers another round, and the [full round](#phases_analysis) that certifies the fixed point revisits the ⊥-site with the final `cur`.
+`mem.seo` performs the very same ⊥-site check; there, it also catches a φ of an unrelated loop header flowing into a block that a ⊥-site jumps to as well.
 
 #### Why this is hard elsewhere
 
 The availability obligation is cheap to _state_ but awkward to _discharge_ in most IRs, and this is where MimIR's structural answer stands out.
 
 - **CFG + SSA** answers it with the dominator tree, as sketched above.
-  This works, but only because the CFG has already fixed _where_ every value lives; the whole machinery presupposes a schedule.
+  This works, but only because the CFG has already fixed _where_ every value lives; the whole machinery presupposes a schedule - which may overapproximate actual data dependencies.
 - **Sea-of-nodes** deliberately refuses that commitment: data nodes float, and only control, φ, and memory nodes are pinned.
   That freedom is the entire point — it is what lets the optimizer move computations around without fighting a premature schedule.
   But it makes availability ill-posed: a floating expression has no location, so _"is it available here?"_ is not even a well-formed question until the node is anchored.
@@ -565,44 +552,6 @@ The contrast with a scoped compiler is sharp.
 MLton runs contification _after_ closure conversion, and Fluet & Weeks describe their own loop example as moving `loop` back inside `sum` after closure conversion took it out — a dominator analysis reconstructing a nesting that an earlier phase destroyed.
 A scopeless IR never loses that nesting, so there is no hoisting-versus-contification phase ordering to get right and no oracle to consult.
 
-### Transformation
-
-\include "mim/phase/sccp_transform.cpp"
-
-Once the lattice is stable, the outer SCCP phase starts rewriting.
-During rewriting, it can query abstract values for old-world definitions through [`RWBase::lattice()`](@ref mim::RWBase::lattice).
-
-When it sees an application of a lambda whose parameters have propagated values, it rebuilds a specialized lambda:
-
-- parameters with known propagated expressions are removed,
-- remaining parameters are kept,
-- the lambda body is rewritten with the propagated values substituted,
-- the call site is rebuilt with only the remaining arguments.
-
-Which parameters survive is stated once as a [`Sieve`](@ref mim::Sieve) over the old [`Var`s](@ref mim::Var), and all three rebuilds read it back:
-[`gather`](@ref mim::Sieve::gather) picks the surviving domains and arguments, while [`operator[]`](@ref mim::Sieve::operator[]) maps each old parameter either to its new [`Var`](@ref mim::Var) or - on [`Gone`](@ref mim::Sieve::Gone) - to its propagated value.
-
-So SCCP follows the standard [`RWPhase`](@ref mim::RWPhase) pattern:
-
-1. analyze the old world,
-2. rewrite into a new world using the computed facts,
-3. swap worlds.
-
-### Discussion
-
-Separating SCCP into analysis and rewrite keeps both parts simple:
-
-- the analysis never mutates or partially rewrites the program,
-- the rewrite does not need to discover facts on the fly,
-- fixed-point logic stays in the analysis stage where it belongs,
-- the handoff from analysis to rewrite is explicit through [`Analysis::lattice()`](@ref mim::Analysis::lattice) and [`RWBase::lattice()`](@ref mim::RWBase::lattice).
-
-This separation is the main design pattern to follow for nontrivial optimizations.
-
-@note
-The complete SCCP example is roughly 130 lines of C++ source code.
-Most of the usual compiler boilerplate is absorbed by the existing [`Analysis`](@ref mim::Analysis), [`RWPhase`](@ref mim::RWPhase), and [`Rewriter`](@ref mim::Rewriter) infrastructure, so the implementation can focus on the optimization itself.
-
 ## Choosing the Right Base Class
 
 A useful rule of thumb is:
@@ -610,7 +559,6 @@ A useful rule of thumb is:
 - derive from [`Phase`](@ref mim::Phase) if you just need a custom one-off action,
 - derive from [`Analysis`](@ref mim::Analysis) if you want a graph-aware traversal that computes facts on the current world,
 - derive from [`RWPhase`](@ref mim::RWPhase) if you want to rebuild the world into a transformed new one, optionally consuming facts from an associated [`Analysis`](@ref mim::Analysis),
-- derive from [`InplaceRWPhase`](@ref mim::InplaceRWPhase) if your rewrite is type-preserving and _local_, so that paying for a full rebuild would be wasteful,
 - derive from [`ClosedMutPhase`](@ref mim::ClosedMutPhase) if you want to visit all reachable closed mutables,
 - derive from [`NestPhase`](@ref mim::NestPhase) if that visit should come with a computed [`Nest`](@ref mim::Nest).
 
@@ -685,8 +633,7 @@ Phases are MimIR's main unit of compiler work.
 
 - [`Phase`](@ref mim::Phase) is the minimal base abstraction.
 - [`Analysis`](@ref mim::Analysis) is for graph-aware fact collection on the current world and provides a reusable [`lattice()`](@ref mim::Analysis::lattice) for abstract values.
-- [`RWPhase`](@ref mim::RWPhase) is for rewriting the current world into a transformed new one and can read analysis results through [`RWBase::lattice()`](@ref mim::RWBase::lattice).
-- [`InplaceRWPhase`](@ref mim::InplaceRWPhase) is for type-preserving, local rewrites of the current world that must not pay for a rebuild.
+- [`RWPhase`](@ref mim::RWPhase) is for rewriting the current world into a transformed new one and can read analysis results through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
 - [`PhaseMan`](@ref mim::PhaseMan) sequences phases, optionally to a fixed point.
 - [`ClosedMutPhase`](@ref mim::ClosedMutPhase) and [`NestPhase`](@ref mim::NestPhase) are traversal helpers for common whole-world inspections.
 

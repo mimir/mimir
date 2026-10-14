@@ -1,0 +1,34 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// A field updated in a loop becomes a header param; the invariant field folds.
+
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
+
+extern fun test(m: mem.M 0, a: Nat): [mem.M 0, Nat] =
+    ret (m, p) = mem.slot ([Nat, Nat], 0) $ m;
+    let m      = mem.store (m, p, (0, a));
+    head m where
+        con head(m: mem.M 0) =
+            ret (m, cond) = dont_know $ m;
+            (exit, body)#cond m where
+                con body(m: mem.M 0) =
+                    let (m, i) = mem.load (m, mem.lea (p, 0_2));
+                    let m      = mem.store (m, mem.lea (p, 0_2), i + 1);
+                    head m;
+
+                con exit(m: mem.M 0) =
+                    let (m, i) = mem.load (m, mem.lea (p, 0_2));
+                    let (m, k) = mem.load (m, mem.lea (p, 1_2));
+                    return (m, i + k);
+            end
+    end;
+
+// CHECK-NOT: mem.slot
+// CHECK-NOT: mem.lea
+// CHECK-NOT: mem.load
+// CHECK: core.nat.add (i, a)

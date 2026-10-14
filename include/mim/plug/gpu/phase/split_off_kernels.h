@@ -6,6 +6,7 @@
 
 namespace mim::plug::gpu::phase {
 
+/// Afterwards, old_world() is the host, which keeps each kernel as a declaration, and new_world() the device.
 class SplitOffKernels : public RWPhase {
 public:
     SplitOffKernels(World& world, flags_t annex)

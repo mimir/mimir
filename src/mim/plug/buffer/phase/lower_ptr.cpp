@@ -44,7 +44,6 @@ const Def* pack_tuple(const Def* s, const Def* val) {
 } // namespace
 
 const Def* LowerPtr::rewrite_imm_App(const App* app) {
-    if (is_bootstrapping()) return RWPhase::rewrite_imm_App(app);
     auto& w = new_world();
 
     if (auto buf_ax = Axm::isa<buffer::Buf>(app)) {

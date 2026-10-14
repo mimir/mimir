@@ -41,7 +41,7 @@ extern lam _compile (): compile.Phase =
                            compile.named "mem.seo", compile.adce),
         compile.lam_spec,
         compile.single_erasure,
-        compile.branch_normalize,
+        compile.dispatch_normalize,
         compile.ret_wrap,
         compile.named "mem.alloc2malloc_repl",
         compile.named "refly.remove_dbg_repl",

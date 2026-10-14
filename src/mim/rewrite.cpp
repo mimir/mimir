@@ -2,6 +2,7 @@
 
 #include <fe/assert.h>
 
+#include "mim/driver.h"
 #include "mim/world.h"
 
 // Don't use fancy C++-lambdas; it's way too annoying stepping through them in a debugger.
@@ -147,7 +148,7 @@ const Def* Rewriter::rewrite_imm_Pi(const Pi* d) {
 const Def* Rewriter::rewrite_imm_Proxy(const Proxy* d) {
     auto new_type = rewrite(d->type());
     auto new_ops  = rewrite(d->ops());
-    return world().proxy(new_type, new_ops, d->tag());
+    return world().proxy(new_type, new_ops, d->tag(), d->tracks_vars(), d->tracks_muts());
 }
 
 const Def* Rewriter::rewrite_imm_Rule(const Rule* d) {
@@ -164,26 +165,20 @@ const Def* Rewriter::rewrite_imm_Tuple(const Tuple* d) {
     return world().tuple(new_type, new_ops);
 }
 
-const Def* Rewriter::rewrite_mut_Global(Global* d) {
-    return rewrite_stub(d, world().global(rewrite(d->type()), d->is_mutable()));
-}
 const Def* Rewriter::rewrite_mut_Lam(Lam* d) { return rewrite_stub(d, world().mut_lam(rewrite(d->type())->as<Pi>())); }
 const Def* Rewriter::rewrite_mut_Rule(Rule* d) {
     return rewrite_stub(d, world().mut_rule(rewrite(d->type())->as<Reform>()));
 }
 
 const Def* Rewriter::rewrite_mut_Pi(Pi* d) {
-    if (d->is_immutabilizable()) return rewrite_imm_Pi(d);
     return rewrite_stub(d, world().mut_pi(rewrite(d->type()), d->is_implicit()));
 }
 
 const Def* Rewriter::rewrite_mut_Sigma(Sigma* d) {
-    if (d->is_immutabilizable()) return rewrite_imm_Sigma(d);
     return rewrite_stub(d, world().mut_sigma(rewrite(d->type()), d->num_ops()));
 }
 
 const Def* Rewriter::rewrite_mut_Variant(Variant* d) {
-    if (d->is_immutabilizable()) return rewrite_imm_Variant(d);
     return rewrite_stub(d, world().mut_variant(rewrite(d->type()), d->num_ops()));
 }
 
@@ -221,18 +216,13 @@ const Def* Rewriter::rewrite_imm_Seq(const Seq* seq) {
 }
 
 const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
-    if (seq->is_immutabilizable()) return rewrite_imm_Seq(seq);
-
-    if (!seq->is_set()) {
-        auto new_seq = world().mut_seq(seq->is_intro(), rewrite(seq->type()));
-        return map(seq, new_seq);
-    }
+    if (!seq->is_set()) return rewrite_stub(seq, world().mut_seq(seq->is_intro(), rewrite(seq->type())));
 
     auto new_shape = rewrite(*seq->shape())->zonk();
     auto l         = seq->shape().is_fused() ? std::nullopt : Lit::isa(new_shape);
     if (l && *l == 0) return world().prod(seq->is_intro());
 
-    if (auto var = seq->has_var(); var && l && *l <= world().flags().scalarize_threshold) {
+    if (auto var = seq->has_var(); var && l && *l < world().flags().scalarize_threshold) {
         auto new_ops = fe::Vector<const Def*, 32>(*l);
         for (size_t i = 0, e = *l; i != e; ++i) {
             push();
@@ -243,7 +233,6 @@ const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
         return map(seq, world().prod(seq->is_intro(), new_ops));
     }
 
-    if (!seq->has_var()) return map(seq, world().seq(seq->is_intro(), new_shape, rewrite(seq->body())));
     return rewrite_stub(seq, world().mut_seq(seq->is_intro(), rewrite(seq->type())));
 }
 
@@ -255,7 +244,7 @@ const Def* Rewriter::rewrite_stub(Def* old_mut, Def* new_mut) {
     for (size_t i = 0, e = old_mut->num_ops(); i != e; ++i)
         new_mut->set(i, rewrite(old_mut->op(i)));
 
-    return seal_stub(old_mut, new_mut);
+    return seal(old_mut, new_mut);
 }
 
 const Def* Rewriter::rewrite_stub(Def* old_mut, Def* new_mut, fe::View<size_t> new2old) {
@@ -267,12 +256,12 @@ const Def* Rewriter::rewrite_stub(Def* old_mut, Def* new_mut, fe::View<size_t> n
     for (size_t i = 0, e = new2old.size(); i != e; ++i)
         new_mut->set(i, rewrite(old_mut->op(new2old[i])));
 
-    return seal_stub(old_mut, new_mut);
+    return seal(old_mut, new_mut);
 }
 
-const Def* Rewriter::seal_stub(Def* old_mut, Def* new_mut) {
-    // Even when the old binder was not immutabilizable, rewriting may have made the new one vacuous.
-    if (new_mut->is_immutabilizable())
+const Def* Rewriter::seal(Def* old_mut, Def* new_mut) {
+    // A stub that something already captured must stay, or the capture and its users disagree on which Def it is.
+    if (new_mut->users().empty() && new_mut->is_immutabilizable())
         if (auto new_imm = new_mut->immutabilize()) return map(old_mut, new_imm);
     return new_mut;
 }
@@ -361,6 +350,16 @@ const Def* Zonker::rewire_mut(Def* mut) {
     if (auto new_imm = mut->immutabilize()) return map(mut, new_imm);
 
     return mut;
+}
+
+/*
+ * Importer
+ */
+
+const Def* Importer::rewrite(const Def* def) {
+    if (auto new_def = lookup(def)) return new_def;
+    if (auto flags = world().driver().library()->annexes().flags(def)) return map(def, world().annex(*flags));
+    return Rewriter::rewrite(def);
 }
 
 } // namespace mim

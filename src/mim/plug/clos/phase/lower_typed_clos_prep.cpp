@@ -97,20 +97,18 @@ bool LowerTypedClosPrep::analyze() {
         }
     };
 
-    for (auto def : old_world().roots())
+    for (auto def : old_world().externals().muts())
         visit(visit, def);
 
     return changed;
 }
 
 const Def* LowerTypedClosPrep::rewrite_imm_Tuple(const Tuple* tuple) {
-    if (!is_bootstrapping()) {
-        if (auto closure = isa_clos_lit(tuple, false)) {
-            auto fnc = closure.fnc();
-            if (!Axm::isa<anno>(fnc)) {
-                auto new_fnc = new_world().call(esc_.contains(fnc) ? anno::esc : anno::bottom, rewrite(fnc));
-                return clos_pack(rewrite(closure.env()), new_fnc, rewrite(closure->type()));
-            }
+    if (auto closure = isa_clos_lit(tuple, false)) {
+        auto fnc = closure.fnc();
+        if (!Axm::isa<anno>(fnc)) {
+            auto new_fnc = new_world().call(esc_.contains(fnc) ? anno::esc : anno::bottom, rewrite(fnc));
+            return clos_pack(rewrite(closure.env()), new_fnc, rewrite(closure->type()));
         }
     }
     return RWPhase::rewrite_imm_Tuple(tuple);

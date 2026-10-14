@@ -1,0 +1,33 @@
+// RUN: %mim %s -o - | %FileCheck %s
+plugin core;
+plugin compile;
+
+use core.ops.n;
+
+extern fun dont_know []: Bool;
+extern fun get []: Nat;
+
+// `exit` gets `y` - bound by init's continuation - from `init` and ⊥ from `early`, which lies outside of it.
+// So `y` must not be propagated into `exit`.
+extern fun test (c: Bool): Nat =
+    (init, early)#c () where
+        con early () = exit ⊥:Nat;
+
+        con init () =
+            ret y = get $ ();
+            exit y;
+
+        con exit (v: Nat) =
+            ret b = dont_know $ ();
+            return (v, v + 1)#b;
+    end;
+
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.beta_red,
+        compile.eta_conv,
+        compile.sccp,
+    );
+
+// CHECK: con exit ({{[[:alnum:]_]+}}: Nat)
+// CHECK: exit ⊥:Nat

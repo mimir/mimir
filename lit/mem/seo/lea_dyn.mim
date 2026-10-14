@@ -1,0 +1,15 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// A non-literal index keeps the slot.
+
+plugin core;
+plugin mem;
+
+extern fun test(m: mem.M 0, a: Nat, i: Idx 4): [mem.M 0, Nat] =
+    ret (m, p) = mem.slot («4; Nat», 0) $ m;
+    let m      = mem.store (m, mem.lea (p, i), a);
+    let (m, x) = mem.load (m, mem.lea (p, 0_4));
+    return (m, x);
+
+// CHECK: mem.lea
+// CHECK: mem.mslot

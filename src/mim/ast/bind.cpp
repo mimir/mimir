@@ -37,16 +37,19 @@ public:
         scopes_.pop_back();
     }
 
+    struct Barrier {
+        size_t scopes, mods;
+    };
+
     /// A file must not see the scope of whoever imports it, so its Scope becomes the new lookup floor.
-    size_t push_barrier(Scope& scope) {
+    Barrier push_barrier(Scope& scope) {
         push(scope);
-        auto old = std::exchange(barrier_, scopes_.size() - 1);
-        mod_stack_.clear();
-        return old;
+        return {std::exchange(barrier_, scopes_.size() - 1), std::exchange(mod_barrier_, mod_stack_.size())};
     }
 
-    void pop_barrier(size_t old) {
-        barrier_ = old;
+    void pop_barrier(Barrier old) {
+        barrier_     = old.scopes;
+        mod_barrier_ = old.mods;
         pop();
     }
 
@@ -55,8 +58,8 @@ public:
     ///@{
     void push_mod(Sym name) { mod_stack_.emplace_back(name); }
     void pop_mod() { mod_stack_.pop_back(); }
-    size_t mod_depth() const { return mod_stack_.size(); }
-    Sym enclosing_mod() const { return mod_stack_.empty() ? Sym() : mod_stack_.back(); }
+    size_t mod_depth() const { return mod_stack_.size() - mod_barrier_; }
+    Sym enclosing_mod() const { return mod_depth() == 0 ? Sym() : mod_stack_.back(); }
     ///@}
 
     const Decl* find(Dbg dbg, bool quiet = false) {
@@ -129,8 +132,9 @@ private:
     AST& ast_;
     Ptr<DummyDecl> dummy_;
     fe::Vector<Frame> scopes_;
-    size_t barrier_ = 0;
     fe::Vector<Sym> mod_stack_;
+    size_t barrier_     = 0;
+    size_t mod_barrier_ = 0;
 };
 
 /*

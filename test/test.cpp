@@ -296,6 +296,49 @@ TEST_CASE("Checker: alpha") {
     }
 }
 
+TEST_CASE("Lam: eta_reduce fast-forwards to the end of the η-chain") {
+    Driver driver;
+    World& w = driver.world();
+    auto pi  = w.pi(w.type_nat(), w.type_nat());
+
+    // x → y → z, where z is no η-redex
+    auto x = w.mut_lam(pi);
+    auto y = w.mut_lam(pi);
+    auto z = w.mut_lam(pi);
+    x->set(false, w.app(y, x->var()));
+    y->set(false, w.app(z, y->var()));
+    z->set(false, z->var());
+    CHECK(Lam::eta_reduce(x) == z);
+    CHECK(Lam::eta_reduce(y) == z);
+    CHECK(Lam::eta_reduce(z) == nullptr);
+
+    // a → b → c → b
+    auto a = w.mut_lam(pi);
+    auto b = w.mut_lam(pi);
+    auto c = w.mut_lam(pi);
+    a->set(false, w.app(b, a->var()));
+    b->set(false, w.app(c, b->var()));
+    c->set(false, w.app(b, c->var()));
+    CHECK(Lam::eta_reduce(a) == b);
+    CHECK(Lam::eta_reduce(b) == nullptr);
+    CHECK(Lam::eta_reduce(c) == nullptr);
+
+    auto s = w.mut_lam(pi);
+    s->set(false, w.app(s, s->var()));
+    CHECK(Lam::eta_reduce(s) == nullptr);
+
+    // l[0] → l[1] → l[2] → l[3] → l[4] → l[5] → l[2]: an even cycle the hare must not skip over
+    auto l = std::array<Lam*, 6>{};
+    for (auto& lam : l)
+        lam = w.mut_lam(pi);
+    for (size_t i = 0; i != l.size(); ++i)
+        l[i]->set(false, w.app(l[i + 1 == l.size() ? 2 : i + 1], l[i]->var()));
+    CHECK(Lam::eta_reduce(l[0]) == l[2]);
+    CHECK(Lam::eta_reduce(l[1]) == l[2]);
+    for (size_t i = 2; i != l.size(); ++i)
+        CHECK(Lam::eta_reduce(l[i]) == nullptr);
+}
+
 TEST_CASE("free vars") {
     Driver driver;
     World& w = driver.world();
