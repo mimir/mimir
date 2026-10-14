@@ -66,7 +66,7 @@ private:
     Dbg parse_id(fe::Cite ctxt = {});
     Ptr<Path> parse_path(fe::Cite ctxt = {});
     Ptr<UseDecl> parse_import_or_plugin(Tracker, Mods);
-    Ptr<Expr> parse_type_ascr(fe::Cite ctxt = {});
+    Ptr<Expr> parse_type_ascr(fe::Cite ctxt);
 
     /// Directory of the file currently being parsed; empty if its Loc%s have no fe::Src.
     fs::path curr_dir() const { return curr_.src ? curr_.src->path().parent_path() : fs::path(); }
@@ -117,7 +117,6 @@ private:
     ///@{
     Ptr<Expr> parse_decl_expr();
     Ptr<Expr> parse_lit_expr();
-    Ptr<Expr> parse_extremum_expr();
     Ptr<Expr> parse_type_expr();
     Ptr<Expr> parse_rule_expr();
     Ptr<Expr> parse_ret_expr();
@@ -157,9 +156,6 @@ private:
 
     /// @name parse decls
     ///@{
-    /// If @p ctxt ...
-    /// * ... empty: **Only** decls are parsed. @returns `nullptr`
-    /// * ... **non**-empty: Decls are parsed, then an expression. @returns expression.
     Ptrs<ValDecl> parse_decls(Mods group = {});
 
     /// Parses any combination of `priv`/`pub`/`extern`/`anx` modifier tokens, in any order.
@@ -169,8 +165,6 @@ private:
     /// Errors if @p mods sets `extern`, for decl kinds that don't support it (`let`/bare `rec`):
     /// currently only a function declaration (`lam`/`con`/`fun`, see Parser::parse_lam_decl) may be `extern`.
     /// The default-`Vis` nudge itself lives in Mods::default_vis, resolved lazily by ValDecl::vis.
-    /// `mod` doesn't call this at all: as pure AST grouping it supports neither `extern` nor `anx`
-    /// (see Parser::parse_mod_decl).
     void check_no_extern(const Mods&, fe::Cite entity);
     Ptr<ValDecl> parse_axm_decl(Tracker, Mods);
     /// `(tag_0 [= alias]*, ...)` of an `axm` family.

@@ -13,12 +13,12 @@ jobs:
       fail-fast: false
       matrix:
         # svector's C++23 range members need gcc-15's libstdc++, which ubuntu-24.04 lacks.
-        # The `RUN: clang ...` lines in lit/ and `find_program(NAMES clang)` in cmake/Mim.cmake resolve to the `clang` package.
+        # The `RUN: clang ...` lines in lit/ and `find_program(NAMES clang)` in cmake/Mim.cmake resolve via /usr/lib/llvm-22/bin.
         include:
           - build-type: Debug
-            cc: clang-20
-            cxx: clang++-20
-            packages: clang-20
+            cc: clang-22
+            cxx: clang++-22
+            packages: ""
             test-target: test-all
             cmake-args: >-
               -DMIM_BUILD_PYTHON=OFF
@@ -28,7 +28,7 @@ jobs:
             cc: gcc-15
             cxx: g++-15
             packages: g++-15 valgrind
-            test-target: lit test-roundtrip
+            test-target: lit test-roundtrip test-py
             cmake-args: -DMIM_LIT_WITH_VALGRIND=ON
     env:
       ASAN_OPTIONS: "halt_on_error=1:abort_on_error=1:exitcode=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:detect_leaks=1"
@@ -43,13 +43,14 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm-20-tools ninja-build ${{matrix.packages}}
-          sudo pip install lit psutil
+          sudo apt-get install -y clang-22 llvm-22-tools ninja-build ${{matrix.packages}}
+          echo /usr/lib/llvm-22/bin >> $GITHUB_PATH
+          sudo pip install "lit<24" psutil
 
       # ccache hooks the compiler through its /usr/lib/ccache/<name> symlinks, which the action
       # prepends to PATH -- so CC/CXX below must stay *bare names*; an absolute path would bypass
       # them (see macos.yml, where it did). Keep this after the compiler install so the symlinks
-      # cover clang-20/g++-15. max_size is only a cap: 500M left the sanitizer build's cache at
+      # cover clang-22/g++-15. max_size is only a cap: 500M left the sanitizer build's cache at
       # 99.84% with 6 eviction sweeps per run, evicting objects that then had to be recompiled.
       - name: Setup ccache
         uses: Chocobo1/setup-ccache-action@v1
@@ -66,7 +67,7 @@ jobs:
                 -DCMAKE_BUILD_TYPE=${{matrix.build-type}} \
                 -DBUILD_TESTING=ON                        \
                 -DMIM_BUILD_EXAMPLES=ON                   \
-                -DMIM_FILECHECK=/usr/bin/FileCheck-20     \
+                -DMIM_FILECHECK=/usr/bin/FileCheck-22     \
                 -DMIM_LIT_TIMEOUT=300                     \
                 ${{matrix.cmake-args}}
 

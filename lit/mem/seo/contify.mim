@@ -4,7 +4,7 @@ plugin mem;
 
 use core.ops.n;
 
-extern fun dont_know (): Bool;
+extern fun dont_know []: Bool;
 extern fun foo [Nat]: Nat;
 
 // Both call sites of `g` hand it the same continuation `k`, so SCCP propagates `k` and drops the parameter.

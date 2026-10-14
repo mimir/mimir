@@ -6,30 +6,35 @@ plugin math;
 
 use core.ops.n;
 
-fun smpl_op {n: Nat} (A B: «n; Nat»):  «n; Nat» =
-    let C = vec.zip `+ (A, B);
-    return (vec.zip `- (C, ‹n; 1›));
+fun smpl_op {n: Nat} (a b: «n; Nat»): «n; Nat» =
+    let c = vec.zip `+ (a, b);
+    return (vec.zip `- (c, ‹n; 1›));
 
-fun arth_op {n: Nat} (A B: «n; math.F32»): «n; math.F32» =
+fun arth_op {n: Nat} (a b: «n; math.F32»): «n; math.F32» =
     use math.ops.fast;
-    let C = vec.zip `+ (A, B);
-    return (vec.zip `* (C, B));
+    let c = vec.zip `+ (a, b);
+    return (vec.zip `* (c, b));
 
-fun cmp {n: Nat} (A B: «n; Nat»): «n; Bool» =
-    return (vec.zip `< (A, B));
+fun cmp {n: Nat} (a b: «n; Nat»): «n; Bool» =
+    return (vec.zip `< (a, b));
 
-extern fun foo (A B: «4; Nat»): «4; Nat» =
-    ret C = smpl_op @4 $ (A, B);
-    ret D = smpl_op @4 $ (A, B);
-    return D;
+extern fun foo (a b: «4; Nat»): «4; Nat» =
+    ret c = smpl_op @4 $ (a, b);
+    ret d = smpl_op @4 $ (a, b);
+    return d;
 
-extern fun bar (A B: «2; math.F32»): «2; math.F32» =
-    ret C = arth_op @2 $ (A, B);
-    ret D = arth_op @2 $ (A, C);
-    return D;
+extern fun bar (a b: «2; math.F32»): «2; math.F32» =
+    ret c = arth_op @2 $ (a, b);
+    ret d = arth_op @2 $ (a, c);
+    return d;
 
-extern fun war (A B: «2; Nat»): «2; Bool» =
-    ret C = cmp @2 $ (A, B);
-    return C;
+extern fun war (a b: «2; Nat»): «2; Bool» =
+    ret c = cmp @2 $ (a, b);
+    return c;
 
-// CHECK: define
+// CHECK-DAG: define <4 x i64> @foo(
+// CHECK-DAG: add nuw nsw <4 x i64>
+// CHECK-DAG: define <2 x float> @bar(
+// CHECK-DAG: fmul fast <2 x float>
+// CHECK-DAG: define <2 x i1> @war(
+// CHECK-DAG: icmp ult <2 x i64>

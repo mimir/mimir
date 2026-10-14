@@ -32,7 +32,7 @@ Automates the MimIR release process:
   status   Show the current version, suffix, and repo state.
   cut      Drop the -dev suffix, commit, tag, push, and publish a GitHub release.
   bump     Bump to the next minor version with a -dev suffix, commit, and push.
-  verify   Poll the doxygen CI run and check that docs.github.io/versions.json
+  verify   Poll the doxygen CI run and check that mimir.github.io/versions.json
            lists master and all released versions.
   all      Run cut, then bump, then verify, pausing for confirmation in between.
 

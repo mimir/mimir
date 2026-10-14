@@ -12,8 +12,7 @@ namespace mim::plug::tensor::phase {
 /// these low-level axioms by an earlier `Lower` phase.
 class LowerMapReduce : public RWPhase {
 public:
-    LowerMapReduce(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     const Def* rewrite_imm_App(const App*) final;

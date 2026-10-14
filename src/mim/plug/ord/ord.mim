@@ -35,6 +35,7 @@ axm Map: Key → * → *;
 /// ### init
 ///
 /// Creates a set / map from a list of values / key-value pairs.
+/// Duplicate keys are merged; for maps the last binding wins.
 ///
 pub mod init
     axm set: [K: Key] →          {n: Nat} → «n;  K#T    » → Set K  , normalize_init;

@@ -12,10 +12,8 @@
 
 namespace mim {
 
-class Nest;
 class Phase;
 class PhaseMan;
-class World;
 
 using Phases = std::deque<std::unique_ptr<Phase>>;
 
@@ -47,24 +45,7 @@ public:
     } ///< The Phase to use instead; `nullptr` means *elide*.
     ///@}
 
-    static std::unique_ptr<Phase> create(const Flags2Phases& phases, const Def* def) {
-        auto& world = def->world();
-        auto p_def  = App::uncurry_callee(def);
-        world.log().d("apply phase {}", p_def);
-
-        if (auto axm = p_def->isa<Axm>())
-            if (auto i = phases.find(axm->flags()); i != phases.end()) {
-                auto phase = i->second(world);
-                if (phase) {
-                    phase->apply(def->isa<App>());
-                    if (phase->redirects()) return phase->take_resolved();
-                }
-                return phase;
-            } else
-                fe::throwf("phase `{}` not found", axm->sym());
-        else
-            fe::throwf("unsupported callee for a phase: `{}`", p_def);
-    }
+    static std::unique_ptr<Phase> create(const Flags2Phases& phases, const Def* def);
 
     template<class A, class P>
     static void hook(Flags2Phases& phases) {
@@ -172,9 +153,6 @@ public:
 
     /// @name Sparse Fixed-Point Iteration
     ///@{
-    bool is_sparse() const {
-        return curr_sparse_;
-    } ///< Does the current round only re-drain last round's dirty mutables?
     void make_dense() { dense_ = true; } ///< Forces whole-World rounds unconditionally.
     /// Bumped on every observable lattice change; snapshot it around a code region to detect changes.
     size_t version() const { return version_; }
@@ -187,10 +165,7 @@ public:
     const auto& lattice() const { return lattice_; } ///< The whole map; used e.g. to diff two fixed-point runs.
 
     /// @returns the abstract value recorded for @p def, or `nullptr` if unknown.
-    const Def* lattice(const Def* def) const {
-        if (auto i = lattice_.find(def); i != lattice_.end()) return i->second;
-        return nullptr;
-    }
+    const Def* lattice(const Def* def) const { return fe::lookup(lattice_, def); }
 
     /// The representative of @p def: follows `def ↦ lattice(def)` to the end of its chain.
     ///
@@ -223,15 +198,7 @@ protected:
     /// since a non-monotone lattice's consumers may well distinguish ⊥ from ⊤.
     /// Every change also touch()es curr_mut() - the seed set of the next sparse round.
     /// @returns `true` iff this changed the entry - i.e. iff it invalidate()d.
-    bool lattice_force(const Def* concr, const Def* abstr) {
-        map(concr, abstr);
-
-        if (auto [i, ins] = lattice_.emplace(concr, abstr); !ins) {
-            if (i->second == abstr) return false;
-            i->second = abstr;
-        }
-        return touch(), true;
-    }
+    bool lattice_force(const Def* concr, const Def* abstr);
 
     /// Writes `concr ↦ abstr` into lattice() and map().
     /// invalidate()s - and thereby triggers another fixed-point round - iff this changes observable information:
@@ -239,18 +206,7 @@ protected:
     /// Freshly inserting ⊤ (`concr ↦ concr`) stays silent, as it is indistinguishable from *absent* for consumers.
     /// Every change also touch()es curr_mut() - the seed set of the next sparse round.
     /// @returns `true` iff this changed observable information - i.e. iff it invalidate()d.
-    bool lattice(const Def* concr, const Def* abstr) {
-        map(concr, abstr);
-
-        if (auto [i, ins] = lattice_.emplace(concr, abstr); !ins) {
-            assert((i->second != concr || abstr == concr) && "monotonicity violation: must not descend from ⊤");
-            if (i->second == abstr) return false;
-            i->second = abstr;
-        } else if (concr == abstr) {
-            return false;
-        }
-        return touch(), true;
-    }
+    bool lattice(const Def* concr, const Def* abstr);
 
     /// Monotonically forces @p def to ⊤ (keep as is).
     /// @returns `true` iff this changed observable information - i.e. iff it invalidate()d.
@@ -277,11 +233,19 @@ protected:
     /// @returns whether @p app applies an Axm.
     bool pin_axm(const App* app, DefPred auto pinnable) {
         if (!app->uncurry_callee()->isa<Axm>()) return false;
+
+        auto cands   = DefVec();
         auto visited = DefSet();
-        for (const Def* d = app; auto a = d->isa<App>(); d = a->callee())
-            pin_imm(visited, a->arg(), [](const Def*) { return false; });
-        pin_imm(visited, app->callee_type()->dom(), pinnable);
-        pin_imm(visited, app->type(), pinnable);
+        auto collect = [&](this auto& self, const Def* def) -> void {
+            if (!visited.emplace(def).second) return;
+            if (pinnable(def)) cands.emplace_back(def);
+            if (def->isa_mut()) return;
+            for (auto d : def->deps())
+                self(d);
+        };
+        collect(app->callee_type()->dom());
+        collect(app->type());
+        pin_outside_args(app, cands);
         return true;
     }
 
@@ -338,6 +302,7 @@ private:
     }
 
     bool is_cyclic(const Def* def) const;
+    void pin_outside_args(const App*, const DefVec& cands);
 
     /// Walks all enqueued mutables' dependencies - in BFS order - under each mutable's curr_mut() scope.
     void drain();
@@ -444,8 +409,7 @@ private:
 /// Implement the replace() hook - or use the MIM_REPL macro for an inline definition.
 class Repl : public RWPhase {
 public:
-    Repl(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
     /// replace() inspects and builds Def%s of the **old** world; the RWPhase machinery carries the result over.
     World& world() { return old_world(); }
@@ -455,10 +419,8 @@ public:
 
 private:
     const Def* rewrite(const Def* def) final {
-        for (bool todo = true; todo;) {
-            todo = false;
-            if (auto subst = replace(def)) todo = true, def = subst;
-        }
+        while (auto subst = replace(def))
+            def = subst;
 
         return Rewriter::rewrite(def);
     }
@@ -486,8 +448,7 @@ class Cleanup : public RWPhase {
 public:
     Cleanup(World& world)
         : RWPhase(world, "cleanup") {}
-    Cleanup(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 };
 
 /// Organizes several Phase%s into a pipeline.

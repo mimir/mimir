@@ -15,7 +15,7 @@ plugin refly;
 ///
 /// ### For
 ///
-/// This operation ranges from (including) `begin` to (excluding) `end` using `step` as stride.
+/// This operation ranges from (including) `begin` to (excluding) `_end` using `step` as stride.
 /// In addition, this loop manages `n` loop accumulators whose initial values `init` must be given.
 /// On each iteration, the given `body` is invoked and receives
 ///
@@ -24,14 +24,13 @@ plugin refly;
 /// - a `yield` continuation to continue with the next iteration, passing the new accumulator values.
 ///
 /// After termination of the loop, `exit` is invoked with the final accumulator values.
+///
+/// A `For` whose **body** is wrapped in the identity annotation `ll.vec` is a schedule's nominated vector loop; `affine.lower_for` strips the wrapper and re-attaches it to the loop's exit condition for the backend (when the ll plugin is loaded — otherwise it is dropped).
+///
 axm For: {m n: Nat, Ts: «n; *»}
        → [Cn [iter: Idx m, acc: «i: n; Ts#i», yield: Cn «i: n; Ts#i»]] // body
        → [Cn «i: n; Ts#i»]                                             // exit
        → Cn [begin _end step: Idx m, init: «i: n; Ts#i»];
-///
-/// A `For` whose **body** is wrapped in the identity annotation `ll.vec` is a schedule's nominated
-/// vector loop; `affine.lower_for` strips the wrapper and re-attaches it to the loop's exit
-/// condition for the backend (when the ll plugin is loaded — otherwise it is dropped).
 ///
 /// ## Affine Index Operations
 ///
@@ -47,6 +46,13 @@ axm Index: *;
 ///
 axm lit: Nat → Index;
 ///
+/// ### semiop(mul,ceildiv,floordiv,rem)
+///
+/// Performs semi-linear operations on affine indices.
+/// The second argument is a natural number that must be constant with regard to the indices.
+///
+axm semiop.(mul,ceildiv,floordiv,rem): [Index, Nat] → Index;
+///
 /// ### op(add,sub)
 ///
 /// Performs addition and subtraction on affine indices.
@@ -55,22 +61,16 @@ axm lit: Nat → Index;
 ///
 /// Negates an affine index.
 ///
-axm semiop.(mul,ceildiv,floordiv,rem): [Index, Nat] → Index;
+/// ### op(mul)
 ///
-/// ### semiop(mul,ceildiv,floordiv,rem)
-///
-/// Performs semi-linear operations on affine indices.
-/// The second argument is a natural number that must be constant with regard to the indices.
-///
-/// - affine.op.mul
-///   Performs multiplication of an affine index with a constant natural number.
-///   The second argument must be a *closed* constant - a stronger requirement than affine.semiop imposes - which is enforced via refly.check.
+/// Performs multiplication of an affine index with a constant natural number.
+/// The second argument must be a *closed* constant - a stronger requirement than affine.semiop imposes - which is enforced via refly.check.
 ///
 pub mod op
     axm (add, sub): [Index, Index] → Index;
     axm neg: Index → Index;
-    anx lam mul (d : Index, c : Nat): Index =
-        semiop.mul(d, refly.check (core.pe.is_closed(c), c, "The second argument of affine.op.mul must be a constant."));
+    anx lam mul (d: Index, c: Nat): Index =
+        semiop.mul (d, refly.check (core.pe.is_closed c, c, "The second argument of affine.op.mul must be a constant."));
 end
 ///
 /// ### map
@@ -84,8 +84,8 @@ axm map: {m n: Nat}
        → ([«n; Index»] → «m; Index»)
        → «i: n; Idx (sin#i)»
        → {a: Nat}
-       → (mem.M a)
-       → [(mem.M a), «i: m; Idx (sout#i)»];
+       → mem.M a
+       → [mem.M a, «i: m; Idx (sout#i)»];
 ///
 /// ### id
 ///

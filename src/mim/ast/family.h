@@ -128,11 +128,6 @@
     case Tag::D_brckt_l: /*SigmaExpr*/           \
     case Tag::D_paren_l  /*TupleExpr*/
 
-#define C_CURRIED_B       \
-              D_brace_l:  \
-    case Tag::D_brckt_l:  \
-    case Tag::D_quote_l
-
 #define C_CURRIED_P       \
               D_brace_l:  \
     case Tag::D_brckt_l:  \

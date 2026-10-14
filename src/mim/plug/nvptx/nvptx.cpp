@@ -152,8 +152,7 @@ void compile2fatbin(const NvptxCompileArgs& c) {
 
 class Emit : public Phase {
 public:
-    Emit(World& world, flags_t annex)
-        : Phase(world, annex) {}
+    using Phase::Phase;
 
     void start() override {
         auto name = world().name() ? world().name().str() : "a"s;
@@ -184,7 +183,7 @@ public:
         if (arg_flag(args(), "no-cubin-embed"))                 c.embed_cubin       = false;
         // clang-format on
 
-        auto rt = arg_value(args(), "rt") == "extern" ? ll::Emitter::Rt::ext : ll::Emitter::Rt::embed;
+        auto rt = ll::arg_rt(args());
 
         auto split_apply_phase = Phase::create(world().driver().phases(), world().annex<gpu::split_apply>());
         auto setup_phase

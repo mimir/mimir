@@ -9,8 +9,7 @@
 /// ## Dependencies
 ///
 /// `opt` only depends on `compile`.
-/// Every other plugin is referenced *by name* through `compile.named` (which resolves to the plugin's
-/// annex iff it is loaded) and `compile.cond` (which gates a whole sub-pipeline on a plugin being loaded).
+/// Every other plugin is referenced *by name* through `compile.named` (which resolves to the plugin's annex iff it is loaded) and `compile.cond` (which gates a whole sub-pipeline on a plugin being loaded).
 /// This way the default pipeline does not have to import any of the optional plugins.
 ///
 plugin compile;
@@ -41,7 +40,7 @@ extern lam _default_compile (): compile.Phase =
         compile.named "tensor.lower_tensor",
         compile.named "tensor.fuse_tensor",
         compile.named "tensor.lower_to_mem",
-        // Only run add_mem if the tensor plugin is loaded: tensor bufferization emits mem.M placeholders that must be stitched into a global mem chain.
+        // tensor bufferization emits mem.M placeholders that need a mem chain.
         compile.cond "tensor" (compile.named "mem.add_mem"),
 
         // btensor
@@ -89,7 +88,7 @@ extern lam _default_compile (): compile.Phase =
         compile.nom_erasure,
         compile.single_erasure,
 
-        //  prepare codegen
+        // prepare codegen
         optimize,
         compile.dispatch_normalize,
         compile.ret_wrap,

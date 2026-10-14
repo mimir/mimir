@@ -220,12 +220,10 @@ void HostEmitter::emit_gpu_setup(ll::BB& bb, const std::string& name) {
             std::print(vars_decls_, "{} = private constant [{} x i8] c\"", fatbin_name_, fatbin_bytes.size());
             for (auto byte : fatbin_bytes) {
                 bool invalid_cstr_char = byte == '"' || byte == '\\';
-                if (std::isprint(byte) && !invalid_cstr_char) {
+                if (std::isprint(byte) && !invalid_cstr_char)
                     std::print(vars_decls_, "{:c}", byte);
-                } else {
-                    auto byte_val = static_cast<int>(byte);
-                    std::print(vars_decls_, "\\{:x}{:x}", byte_val / 16, byte_val % 16);
-                }
+                else
+                    std::print(vars_decls_, "\\{:02x}", byte);
             }
             std::println(vars_decls_, "\"");
         } else {
@@ -391,7 +389,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         auto n = is_async ? 3_n : 2_n;
 
         if (is_async)
-            declare("i32 @{}(i64)", Cu_Mem_Free_Async);
+            declare("i32 @{}(i64, ptr)", Cu_Mem_Free_Async);
         else
             declare("i32 @{}(i64)", Cu_Mem_Free);
 
@@ -459,7 +457,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         else
             declare("i32 @{}(ptr, i64, i64)", Cu_Memcpy_Dtoh);
 
-        auto [type]    = copy_to_host->decurry()->args<1>();
+        auto type      = copy_to_host->decurry()->arg();
         World& w       = type->world();
         auto type_size = w.call(core::trait::size, type);
 
@@ -537,7 +535,6 @@ void DeviceEmitter::start() {
         kernels_.emplace(kernel_lam);
     }
     Super::start();
-    return;
 }
 
 std::string DeviceEmitter::prepare() {

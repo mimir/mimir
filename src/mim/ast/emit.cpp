@@ -223,7 +223,7 @@ const Def* IdPtrn::emit_value(Emitter& e, const Def* def) const {
     if (auto res = Checker::assignable(id_ty, def)) return def_ = res->set(dbg());
 
     e.error()
-        .e(loc(), "value bound to `{}` is not assinable to its annotated type", dbg().sym())
+        .e(loc(), "value bound to `{}` is not assignable to its annotated type", dbg().sym())
         .n("expected `{}`, got `{}`", id_ty, type_of(def))
         .bail();
 }
@@ -253,7 +253,12 @@ static void emit_var(Emitter& e, const Ptrn* ptrn, Def* mut) {
 const Def* TuplePtrn::emit_value(Emitter& e, const Def* def) const {
     auto _ = e.world().push(loc());
     emit_type(e);
-    for (size_t i = 0, n = num_ptrns(); i != n; ++i)
+    auto n = num_ptrns();
+    // An unset Hole type has arity 1 until inference resolves it, so only a known arity may be rejected.
+    if (auto t = def->type()->zonk(); n != 1 && !Hole::isa_unset(t))
+        if (auto a = Lit::isa(t->arity()); a && *a != n)
+            e.error().e(loc(), "pattern has {} components, but a value of type `{}` has {}", n, t, *a).bail();
+    for (size_t i = 0; i != n; ++i)
         ptrn(i)->emit_proj(e, def, n, i);
     return def_ = def;
 }
@@ -416,6 +421,11 @@ const Def* LitExpr::emit_(Emitter& e) const {
     switch (tag()) {
         case Tag::L_f:   return t ? e.world().lit(t, encode_f(e, loc(), t, tok().lit_u())) : e.world().lit_nat(tok().lit_u());
         case Tag::L_s:
+            if (auto size = t ? Idx::isa_lit(t) : std::nullopt; size && *size != 0) {
+                auto mag = -tok().lit_u();
+                return e.world().lit(t, (*size - mag % *size) % *size);
+            }
+            [[fallthrough]];
         case Tag::L_u:   return t ? e.world().lit(t, tok().lit_u()) : e.world().lit_nat(tok().lit_u());
         case Tag::L_i:   { auto [size, val] = tok().lit_i(); return e.world().lit_idx(size, val); }
         case Tag::L_c:   return e.world().lit_i8(tok().lit_c());
@@ -698,11 +708,8 @@ void PiExpr::Dom::emit_type(Emitter& e) const {
         auto ret_t = e.world().cn(ret()->emit_type(e));
         sigma->set(1, ret_t);
 
-        if (auto imm = sigma->immutabilize())
-            dom_t = imm;
-        else
-            dom_t = sigma;
-        pi_->set_dom(dom_t);
+        auto imm = sigma->immutabilize();
+        pi_->set_dom(imm ? imm : sigma);
     } else {
         pi_->set_dom(dom_t);
         emit_var(e, ptrn(), pi_);
@@ -739,12 +746,22 @@ const Def* AppExpr::emit_(Emitter& e) const {
 }
 
 const Def* RetExpr::emit_(Emitter& e) const {
-    auto c = callee()->emit(e);
+    auto& w = e.world();
+    auto c  = callee()->emit(e);
     if (auto pi = c->type()->isa<Pi>())
         if (auto cn = pi->ret_pi()) {
-            auto con  = e.world().mut_lam(cn);
-            auto pair = e.world().tuple({arg()->emit(e), con});
-            auto app  = e.world().app(c, pair);
+            auto a = arg()->emit(e);
+            // A dependent domain's ret type refers to the other arguments, so instantiate it with them.
+            if (auto sigma = pi->dom()->isa_mut<Sigma>()) {
+                auto n    = sigma->num_ops();
+                auto args = DefVec(n, [&](size_t i) {
+                    return i + 1 == n ? w.bot(sigma->op(i)) : n == 2 ? a : a->proj(n - 1, i);
+                });
+                if (auto inst = sigma->reduce(w.tuple(args)).back()->isa<Pi>()) cn = inst;
+            }
+            auto con  = w.mut_lam(cn);
+            auto pair = w.tuple({a, con});
+            auto app  = w.app(c, pair);
             ptrn()->emit_value(e, con->var());
             con->set(false, body()->emit(e));
             return app;
@@ -790,7 +807,7 @@ const Def* TupleExpr::emit_(Emitter& e) const {
 
 const Def* SeqExpr::emit_(Emitter& e) const {
     auto s = arity()->emit_type(e);
-    if (auto lit_s = Lit::isa(s); lit_s && *lit_s == 0) return e.world().unit(is_pack());
+    if (auto lit_s = Lit::isa(s); lit_s && *lit_s == 0) return e.world().prod(is_pack());
 
     if (arity()->dbg().is_anon()) { // immutable
         auto b = body()->emit(e);

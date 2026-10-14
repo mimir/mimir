@@ -31,7 +31,8 @@ Ptr<File> Parser::parse_file() {
 const File* Parser::import(Dbg dbg, bool is_path, Tok::Tag tag, std::ostream* md, bool record) {
     auto name   = dbg.sym();
     auto plugin = tag == Tag::K_plugin ? Driver::plugin_name(name.view()) : std::string();
-    if (tag == Tag::K_plugin && !driver().is_loaded(plugin) && !driver().flags().bootstrap) driver().load(name.view());
+    if (tag == Tag::K_plugin && !driver().is_loaded(plugin) && !driver().flags().bootstrap)
+        driver().load(name.view(), dbg.loc());
 
     driver().log().v("📥 import `{}`", name);
 
@@ -40,8 +41,7 @@ const File* Parser::import(Dbg dbg, bool is_path, Tok::Tag tag, std::ostream* md
 
     auto path  = fs::path();
     auto probe = [&path](fs::path p) {
-        std::error_code ignore;
-        if (bool reg_file = fs::is_regular_file(p, ignore); !reg_file || ignore) return false;
+        if (std::error_code ec; !fs::is_regular_file(p, ec)) return false;
         path = std::move(p);
         return true;
     };
@@ -62,7 +62,10 @@ const File* Parser::import(Dbg dbg, bool is_path, Tok::Tag tag, std::ostream* md
     }
 
     if (path.empty()) {
-        error().e(dbg.loc(), "cannot find `{}` in the search paths", name);
+        if (std::error_code ec; fs::is_directory(fs::path(name.view()), ec))
+            error().e(dbg.loc(), "`{}` is a directory, not a Mim file", name);
+        else
+            error().e(dbg.loc(), "cannot find `{}` in the search paths", name);
         return {};
     }
 
@@ -191,7 +194,6 @@ Ptr<Path> Parser::parse_path(fe::Cite ctxt) {
 
 Ptr<Expr> Parser::parse_type_ascr(fe::Cite ctxt) {
     if (accept(Tag::T_colon)) return parse_expr(ctxt);
-    if (!ctxt) return nullptr;
     syntax_err("`:`", ctxt);
     return ptr<ErrorExpr>(missing());
 }
@@ -401,8 +403,7 @@ Ptr<Expr> Parser::parse_decl_expr() {
 /// Applies a leading `-` to a numeric literal Tok.
 static Tok negate(Tok tok) {
     switch (tok.tag()) {
-        case Tag::L_s:
-        case Tag::L_u: return {tok.loc(), -s64(tok.lit_u())};
+        case Tag::L_u: return {tok.loc(), std::bit_cast<s64>(-tok.lit_u())};
         case Tag::L_f: return {tok.loc(), -std::bit_cast<f64>(tok.lit_u())};
         case Tag::L_i: {
             auto [mod, val] = tok.lit_i();
@@ -435,8 +436,7 @@ Ptr<Expr> Parser::parse_sigma_expr() {
             auto alias = ptr<AliasPtrn>(track, ptrn, parse_id("alias pattern"));
             return parse_pi_expr(alias);
         }
-        case Tag::C_CURRIED_B:
-        case Tag::T_arrow_r: return parse_pi_expr(ptrn); // TODO precedences for patterns
+        case Tag::T_arrow_r: return parse_pi_expr(ptrn);
         default: return ptr<SigmaExpr>(ptrn);
     }
 }
@@ -694,10 +694,8 @@ std::tuple<Ptr<Expr>, Dbg, Tok, Tok> Parser::parse_axm_tail() {
         normalizer = lex().dbg();
     }
     if (accept(Tag::T_comma)) {
-        if (auto c = expect(Tag::L_u, "curry counter for axm")) curry = c;
-        if (accept(Tag::T_comma)) {
-            if (auto t = expect(Tag::L_u, "trip count for axm")) trip = t;
-        }
+        curry = expect(Tag::L_u, "curry counter for axm");
+        if (accept(Tag::T_comma)) trip = expect(Tag::L_u, "trip count for axm");
     }
     return {type, normalizer, curry, trip};
 }
@@ -752,14 +750,13 @@ Ptr<ValDecl> Parser::parse_let_decl(Tracker track, Mods mods) {
     eat(Tag::K_let);
     auto ptrn = parse_ptrn({}, "binding pattern of a let declaration", Prec::Bot);
     expect(Tag::T_assign, "let");
-    parse_type_ascr();
     auto value = parse_expr("value of a let declaration");
     return ptr<LetDecl>(track, mods, ptrn, value);
 }
 
 Ptr<ValDecl> Parser::parse_mod_decl(Tracker track, Mods mods) {
     // a mod is pure AST grouping, not a single value, so neither `extern` nor `anx` apply to it
-    if (mods.is_extern) error().e(curr_, "`extern` is only meaningful on a function declaration, not a module");
+    check_no_extern(mods, "module");
     if (mods.is_anx) error().e(curr_, "`anx` doesn't apply to a module - it groups declarations, not a single value");
     auto vis = mods.vis.value_or(Vis::Priv);
     eat(Tag::K_mod);
@@ -819,8 +816,7 @@ Ptr<ValDecl> Parser::parse_rule_decl(Tracker track, Mods mods) {
     auto ptrn    = parse_ptrn({}, "meta variables in rewrite rule");
     expect(Tag::T_colon, "rewrite rule declaration");
     auto lhs   = parse_expr("rewrite pattern");
-    auto guard = ahead().isa(Tag::K_when) ? (eat(Tag::K_when), parse_expr("rewrite guard"))
-                                          : ptr<PrimaryExpr>(missing(), Tag::K_tt);
+    auto guard = accept(Tag::K_when) ? parse_expr("rewrite guard") : ptr<PrimaryExpr>(missing(), Tag::K_tt);
     expect(Tag::T_fat_arrow, "rewrite rule declaration");
     auto rhs = parse_expr("rewrite result");
     return ptr<RuleDecl>(track, mods, dbg, ptrn, lhs, rhs, guard, is_norm);
@@ -846,6 +842,12 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
         default: std::unreachable();
     }
     // clang-format on
+
+    if (decl)
+        if (auto late = parse_modifiers(); late.any()) {
+            error().e(curr_, "modifiers must precede the keyword of a {}", entity);
+            mods = late.inherit(mods);
+        }
 
     auto dbg = decl ? parse_id(entity) : Dbg();
     Ptrs<LamDecl::Dom> doms;

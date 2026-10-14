@@ -105,7 +105,7 @@ std::optional<LowerIndex::Range> LowerIndex::range_of(const Def* d) const {
 
         if (auto div = Axm::isa<core::div>(ex->tuple()); div && i == 1) {
             // `core.div` takes `(mem, (x, c))`.
-            auto [x, c] = div->arg()->proj(2, 1)->projs<2>();
+            auto [x, c] = div->arg(2, 1)->projs<2>();
             auto k      = const_val(c);
             if (!k || *k <= 0) return {};
             // `urem` is bounded by its divisor whatever its operand; `udiv` only by a non-negative operand's range.
@@ -244,7 +244,7 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         switch (semiop.id()) {
             case affine::semiop::mul: {
                 if (Axm::isa<refly::check>(c))
-                    fe::throwf("`affine.semiop.mul` called with non-constant second argument");
+                    app->blame("`affine.semiop.mul` called with non-constant second argument").bail();
                 // `c` is a `Nat` constant; reinterpret it on the `Idx 0` carrier.
                 return w.call(core::wrap::mul, core::Mode::none, Defs{x, w.call<core::bitcast>(w.type_i64(), c)});
             }
@@ -273,7 +273,8 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
     // `core.nat`).
     auto strides = [&](const Def* s, size_t n) {
         DefVec str(n);
-        if (n) str[n - 1] = w.lit_nat(1);
+        if (n == 0) return str;
+        str[n - 1] = w.lit_nat(1);
         for (size_t k = n - 1; k-- != 0;)
             str[k] = w.call(core::nat::mul, Defs{str[k + 1], s->proj(n, k + 1)});
         for (size_t k = 0; k != n; ++k)
@@ -319,11 +320,11 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         auto [mn, sinout, f, idxs, _] = app->callee()->as<App>()->uncurry_args<5>();
         auto [sin, sout]              = sinout->projs<2>();
 
-        auto __     = fe::Restore(mem_);
-        auto mem    = rewrite(app->arg()); // the `affine.map`'s mem operand
-        auto ins    = rewrite(idxs)->projs();
-        auto lifted = w.tuple(DefVec(ins.size(), [&](size_t i) { return w.call(core::conv::u, w.lit_i64(), ins[i]); }));
-        auto f_lam  = f->isa_mut<Lam>();
+        auto __  = fe::Restore(mem_);
+        auto mem = rewrite(app->arg()); // the `affine.map`'s mem operand
+        auto lifted
+            = w.tuple(rewrite(idxs)->projs([&](const Def* i) { return w.call(core::conv::u, w.lit_i64(), i); }));
+        auto f_lam = f->isa_mut<Lam>();
 
         Lam* idx_map_lam = nullptr;
         Lam* rw_idx_lam  = nullptr;
@@ -364,15 +365,14 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
             pop();
         }
 
-        auto outs = w.app(idx_map_lam, {mem, lifted});
+        auto [out_mem, out_idxs] = w.app(idx_map_lam, {mem, lifted})->projs<2>();
 
         auto sout_n   = rewrite(sout);
         auto n_out    = sout_n->num_projs();
-        auto narrowed = w.tuple(DefVec(n_out, [&](size_t j) {
-            return w.call(core::conv::u, sout_n->proj(n_out, j), outs->proj(2, 1)->proj(n_out, j));
-        }));
+        auto narrowed = w.tuple(DefVec(
+            n_out, [&](size_t j) { return w.call(core::conv::u, sout_n->proj(n_out, j), out_idxs->proj(n_out, j)); }));
 
-        return w.tuple({outs->proj(2, 0), narrowed});
+        return w.tuple({out_mem, narrowed});
     }
 
     return RWPhase::rewrite_imm_App(app);

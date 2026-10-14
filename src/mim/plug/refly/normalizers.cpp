@@ -19,9 +19,6 @@ const Def* do_reify(const Def* def) {
     return world.lit(world.call<Code>(def->type()), reinterpret_cast<u64>(def));
 }
 
-// And here we are doing the reverse to retrieve the original pointer again.
-const Def* do_reflect(const Def* def) { return reinterpret_cast<const Def*>(def->as<Lit>()->get()); }
-
 void debug_print(const Def* lvl, const Def* def) {
     auto& world = def->world();
     auto level  = fe::Log::Level::Debug;
@@ -52,7 +49,10 @@ const Def* normalize_dbg(const Def*, const Def*, const Def* arg) {
 
 const Def* normalize_reify(const Def*, const Def*, const Def* arg) { return do_reify(arg); }
 
-const Def* normalize_reflect(const Def*, const Def*, const Def* arg) { return do_reflect(arg); }
+const Def* normalize_reflect(const Def*, const Def*, const Def* arg) {
+    if (auto l = Lit::isa(arg)) return reinterpret_cast<const Def*>(*l);
+    return {};
+}
 
 const Def* normalize_type(const Def*, const Def*, const Def* arg) { return arg->type(); }
 const Def* normalize_gid(const Def*, const Def*, const Def* arg) { return arg->world().lit_nat(arg->gid()); }

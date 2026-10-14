@@ -26,7 +26,7 @@ void StaticArgOpt::visit(const App* app, Lam* lam) {
 }
 
 Sieve StaticArgOpt::sieve(Lam* lam) {
-    if (auto i = lam2sieve_.find(lam); i != lam2sieve_.end()) return i->second;
+    if (auto s = fe::lookup(lam2sieve_, lam)) return *s;
 
     auto n = lam->num_tdoms();
 
@@ -39,9 +39,7 @@ Sieve StaticArgOpt::sieve(Lam* lam) {
 
     // A static *function* arg is what SAT is after, as it exposes the loop's free var to inlining (Santos §7).
     // So seed the split with the rightmost Pi-typed dom and keep only the sites forwarding it; ∀ if there is none.
-    auto pool = fe::Bitset();
-    for (size_t s = 0, e = sites.size(); s != e; ++s)
-        pool.set(s);
+    auto pool = fe::Bitset(sites.size(), true);
     for (size_t d = n; d-- != 0;) {
         if (!lam->tdom(d)->isa<Pi>()) continue;
         auto seeded = false;
@@ -53,9 +51,7 @@ Sieve StaticArgOpt::sieve(Lam* lam) {
         break;
     }
 
-    auto statics = fe::Bitset();
-    for (size_t d = 0; d != n; ++d)
-        statics.set(d);
+    auto statics = fe::Bitset(n, true);
     for (size_t s = 0, e = sites.size(); s != e; ++s)
         if (pool[s]) statics &= sites[s];
     if (statics.none()) return lam2sieve_.emplace(lam, Sieve(n)).first->second;
@@ -76,7 +72,7 @@ const Def* StaticArgOpt::rewrite_mut_Lam(Lam* old_lam) {
     auto loop = w.mut_lam(loop_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
     loop->debug_suffix("_loop");
     log().d("{} → wrap {}, loop {}", old_lam, wrap, loop);
-    old2wrap_loop_[old_lam] = {wrap, loop};
+    old2loop_[old_lam] = loop;
 
     // The body lives in loop; the static vars stay wrap's and are free in loop.
     auto vars = DefVec(n, [&](size_t d) {
@@ -95,8 +91,7 @@ const Def* StaticArgOpt::rewrite_imm_App(const App* old_app) {
     if (auto old_lam = old_app->callee()->isa_mut<Lam>()) {
         if (auto sieve = this->sieve(old_lam); !sieve.all()) {
             rewrite(old_lam); // make sure wrap/loop exist
-            if (auto i = old2wrap_loop_.find(old_lam); i != old2wrap_loop_.end()) {
-                auto loop = i->second.second;
+            if (auto loop = fe::lookup(old2loop_, old_lam)) {
                 for (size_t d = 0, n = old_lam->num_tdoms(); d != n; ++d)
                     if (sieve[d] == Sieve::Gone && old_app->targ(d) != old_lam->tvar(d))
                         return RWPhase::rewrite_imm_App(old_app); // not our class: go through wrap

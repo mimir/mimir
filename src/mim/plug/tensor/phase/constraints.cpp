@@ -1,5 +1,7 @@
 #include "mim/plug/tensor/phase/constraints.h"
 
+#include <mim/lam.h>
+
 namespace mim::plug::tensor::phase {
 
 namespace {
@@ -19,7 +21,11 @@ bool statically_violates(const Def* lhs, const Def* rhs) {
 
 } // namespace
 
-bool check_gather_shape_constraints(const Def* rank, const Def* dim, const Def* src_shape, const Def* idx_shape) {
+bool check_gather_shape_constraints(const App* app,
+                                    const Def* rank,
+                                    const Def* dim,
+                                    const Def* src_shape,
+                                    const Def* idx_shape) {
     auto rank_l = Lit::isa<u64>(rank);
     auto dim_l  = Lit::isa<u64>(dim);
     if (!rank_l || !dim_l) return false;
@@ -29,13 +35,15 @@ bool check_gather_shape_constraints(const Def* rank, const Def* dim, const Def* 
         if (d != *dim_l) {
             auto lhs = idx_shape->proj(*rank_l, d);
             auto rhs = src_shape->proj(*rank_l, d);
-            if (statically_violates(lhs, rhs)) fe::throwf("gather index shape exceeds input shape at axis {}", d);
+            if (statically_violates(lhs, rhs))
+                app->blame("gather index shape exceeds input shape at axis {}", d).bail();
             proven &= statically_le(lhs, rhs);
         }
     return proven;
 }
 
-bool check_scatter_shape_constraints(const Def* rank,
+bool check_scatter_shape_constraints(const App* app,
+                                     const Def* rank,
                                      const Def* dim,
                                      const Def* src_shape,
                                      const Def* idx_shape,
@@ -50,10 +58,11 @@ bool check_scatter_shape_constraints(const Def* rank,
         auto upd = updates_shape->proj(*rank_l, d);
         if (d != *dim_l) {
             auto src = src_shape->proj(*rank_l, d);
-            if (statically_violates(idx, src)) fe::throwf("scatter index shape exceeds input shape at axis {}", d);
+            if (statically_violates(idx, src))
+                app->blame("scatter index shape exceeds input shape at axis {}", d).bail();
             proven &= statically_le(idx, src);
         }
-        if (statically_violates(idx, upd)) fe::throwf("scatter index shape exceeds updates shape at axis {}", d);
+        if (statically_violates(idx, upd)) app->blame("scatter index shape exceeds updates shape at axis {}", d).bail();
         proven &= statically_le(idx, upd);
     }
     return proven;

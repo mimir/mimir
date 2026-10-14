@@ -1,0 +1,25 @@
+name: lint
+
+on:
+  push:
+  pull_request:
+    branches: [master]
+
+jobs:
+  pre-commit:
+    name: pre-commit
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Run pre-commit
+        run: |
+          pip install pre-commit
+          pre-commit run --all-files --show-diff-on-failure

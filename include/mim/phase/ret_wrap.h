@@ -6,8 +6,7 @@ namespace mim {
 
 class RetWrap : public RWPhase {
 public:
-    RetWrap(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     enum Lattice : u8 { Bot, Single, Eta };
@@ -23,7 +22,7 @@ private:
     }
 
     Lattice lattice(const Def* def) {
-        if (auto i = def2lattice_.find(def); i != def2lattice_.end()) return i->second;
+        if (auto l = fe::lookup(def2lattice_, def)) return *l;
         return Bot;
     }
 

@@ -14,4 +14,4 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
         f (r, ret_cont2);
     f (42I32, ret_cont);
 
-// CHECK-DAG: return{{.*}}3111696
+// CHECK-DAG: return_{{[0-9]+}} ({{.*}}, 3111696I32)

@@ -16,20 +16,46 @@ namespace {
 /// As World::lit_idx_mod but at token level: a @p mod of `0` means 2^64 and wraps nothing.
 Tok idx_tok(Loc loc, u64 mod, u64 val) { return {loc, mod, mod == 0 ? val : val % mod}; }
 
+std::optional<char> unescape(char32_t c) {
+    // clang-format off
+    switch (c) {
+        case '\'': return '\'';
+        case '\\': return '\\';
+        case  '"': return '"';
+        case  '0': return '\0';
+        case  'a': return '\a';
+        case  'b': return '\b';
+        case  'f': return '\f';
+        case  'n': return '\n';
+        case  'r': return '\r';
+        case  't': return '\t';
+        case  'v': return '\v';
+        default:   return {};
+    }
+    // clang-format on
+}
+
 bool is_id_head(char32_t c) { return c == '_' || utf8::isalpha(c); }
 bool is_id_tail(char32_t c) { return c == '_' || utf8::isalnum(c); }
 
-/// std::from_chars leaves @p res alone on overflow, where the widest literal is what Mim means.
-u64 to_u64(std::string_view sv, int base) {
+/// `std::nullopt` on overflow.
+std::optional<u64> parse_u64(std::string_view sv, int base) {
     u64 res = 0;
     auto ec = std::from_chars(sv.data(), sv.data() + sv.size(), res, base).ec;
-    return ec == std::errc::result_out_of_range ? std::numeric_limits<u64>::max() : res;
+    if (ec == std::errc::result_out_of_range) return {};
+    return res;
 }
 
-f64 to_f64(std::string_view sv, int base) {
+/// Saturates on overflow, where the widest literal is what Mim means.
+u64 to_u64(std::string_view sv, int base) { return parse_u64(sv, base).value_or(std::numeric_limits<u64>::max()); }
+
+/// `std::nullopt` if @p sv is out of range.
+std::optional<f64> to_f64(std::string_view sv, int base) {
     f64 res = 0.;
-    std::from_chars(sv.data(), sv.data() + sv.size(), res,
-                    base == 16 ? std::chars_format::hex : std::chars_format::general);
+    auto ec = std::from_chars(sv.data(), sv.data() + sv.size(), res,
+                              base == 16 ? std::chars_format::hex : std::chars_format::general)
+                  .ec;
+    if (ec == std::errc::result_out_of_range) return {};
     return res;
 }
 
@@ -124,7 +150,7 @@ Tok Lexer::lex() {
             if (accept(utf8::isdigit)) {
                 lex_digits();
                 lex_exp();
-                return {loc_, to_f64(view(), 10)};
+                return {loc_, lex_f64(view(), 10)};
             }
 
             return tok(Tag::T_dot);
@@ -147,10 +173,27 @@ Tok Lexer::lex() {
         }
 
         if (accept('\'')) {
+            if (ahead(0) == '\'' && ahead(1) == '\'') {
+                next(), next();
+                error().e(loc_, "character constant must be escaped: `\\'`");
+                return {loc_, char8_t('\'')};
+            }
+            if (accept('\'')) {
+                error().e(loc_, "empty character literal");
+                return {loc_, char8_t('\0')};
+            }
             auto c = lex_char();
             if (accept('\'')) return {loc_, c};
-            error().e(loc_, "invalid character literal `{}`", view());
-            continue;
+            // Like C, a malformed literal extends to its closing quote or the end of the line so that its tail doesn't
+            // cascade.
+            auto eol = [this] { return ahead() == '\n' || ahead() == '\r' || ahead() == utf8::EoF; };
+            while (ahead() != '\'' && !eol())
+                if (next() == '\\' && !eol()) next();
+            if (accept('\''))
+                error().e(loc_, "character literal must contain exactly one character");
+            else
+                error().e(loc_, "unterminated character literal");
+            return {loc_, c};
         }
 
         if (accept('\"')) return lex_str();
@@ -241,12 +284,18 @@ Tok Lexer::lex_lit() {
 
     lex_digits(base);
     auto end = loc_.end.off;
+    if (base != 10 && end == begin && ahead() != '.')
+        error().e(loc_, "expected digits after `0{}`", base == 16 ? 'x' : base == 8 ? 'o' : 'b');
 
     if (accept(utf8::any('i', 'I'))) {
         auto val   = to_u64(body(end), base);
         auto i     = loc_.end.off;
         lex_digits();
         auto width = to_u64(buf_.substr(i, loc_.end.off - i), 10);
+        if (width == 0 || width > 64) {
+            error().e(loc_, "bit width of an Idx literal must be within 1 and 64");
+            width = 64;
+        }
         return Tok{loc_, Idx::bitwidth2size(width), val};
     }
 
@@ -282,8 +331,11 @@ Tok Lexer::lex_lit() {
         is_float |= has_exp;
     }
 
-    if (is_float) return Tok{loc_, to_f64(body(loc_.end.off), base)};
-    else          return Tok{loc_, to_u64(body(end),          base)};
+    if (is_float) return Tok{loc_, lex_f64(body(loc_.end.off), base)};
+
+    auto val = parse_u64(body(end), base);
+    if (!val) error().w(loc_, "integer literal saturates to `⊤:Nat`");
+    return Tok{loc_, val.value_or(std::numeric_limits<u64>::max())};
 }
 
 void Lexer::lex_digits(int base /*= 10*/) {
@@ -296,6 +348,12 @@ void Lexer::lex_digits(int base /*= 10*/) {
         // clang-format on
         default: std::unreachable();
     }
+}
+
+f64 Lexer::lex_f64(std::string_view sv, int base) {
+    auto res = to_f64(sv, base);
+    if (!res) error().e(loc_, "floating-point literal is out of range");
+    return res.value_or(0.);
 }
 
 bool Lexer::lex_exp(int base /*= 10*/) {
@@ -311,24 +369,13 @@ bool Lexer::lex_exp(int base /*= 10*/) {
 
 char8_t Lexer::lex_char() {
     if (accept('\\')) {
-        // clang-format off
-        switch (auto c = ahead()) {
-            case '\'': next(); return '\'';
-            case '\\': next(); return '\\';
-            case  '"': next(); return '\"';
-            case  '0': next(); return '\0';
-            case  'a': next(); return '\a';
-            case  'b': next(); return '\b';
-            case  'f': next(); return '\f';
-            case  'n': next(); return '\n';
-            case  'r': next(); return '\r';
-            case  't': next(); return '\t';
-            case  'v': next(); return '\v';
-            default:
-                if (c != utf8::EoF) error().e(loc_.anew_end(), "invalid escape character `\\{}`", (char)c);
-                return '\0';
+        auto c = ahead();
+        if (auto u = unescape(c)) return next(), *u;
+        if (c != utf8::EoF) {
+            error().e(loc_.anew_end(), "invalid escape character `\\{}`", utf8::Char32(c));
+            next();
         }
-        // clang-format on
+        return '\0';
     }
 
     auto c = next();
@@ -371,23 +418,11 @@ std::string Lexer::unquote(std::string_view body, uint32_t begin) {
     for (size_t i = 0, e = body.size(); i != e; ++i) {
         auto c = body[i];
         if (c == '\\' && i + 1 != e) {
-            // clang-format off
-            switch (body[++i]) {
-                case '\'': res += '\''; break;
-                case '\\': res += '\\'; break;
-                case  '"': res += '\"'; break;
-                case  '0': res += '\0'; break;
-                case  'a': res += '\a'; break;
-                case  'b': res += '\b'; break;
-                case  'f': res += '\f'; break;
-                case  'n': res += '\n'; break;
-                case  'r': res += '\r'; break;
-                case  't': res += '\t'; break;
-                case  'v': res += '\v'; break;
-                // clang-format on
-                default:
-                    auto loc = Loc(src_, Pos(begin + u32(i) - 1), Pos(begin + u32(i) + 1));
-                    error().e(loc, "invalid escape character `\\{}`", body[i]);
+            if (auto u = unescape(body[++i])) {
+                res += *u;
+            } else {
+                auto loc = Loc(src_, Pos(begin + u32(i) - 1), Pos(begin + u32(i) + 1));
+                error().e(loc, "invalid escape character `\\{}`", body[i]);
             }
         } else {
             res += c;

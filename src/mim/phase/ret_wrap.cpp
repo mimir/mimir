@@ -26,7 +26,7 @@ void RetWrap::visit(const Def* def, Lattice l) {
         if (auto ret_var = lam->ret_var()) {
             auto var = lam->has_var(); // must be set due to lam->ret_var() above
             join(ret_var, Bot);
-            if (ret_var != lam->var()) {
+            if (ret_var != var) {
                 log().d("{} → {}", var, ret_var);
                 var2def_[var] = ret_var;
             }

@@ -15,7 +15,7 @@ config.suffixes = ['.mim']
 
 if not getattr(config, 'test_source_root', None):
     config.test_source_root = os.path.dirname(__file__)
-config.test_exec_root = os.path.join(config.my_obj_root, 'test')
+config.test_exec_root = os.path.join(config.my_obj_root, 'lit', 'out')
 
 # `--param roundtrip=mim|ast` ignores the RUN lines and checks instead that each input's `-o`/`--output-ast` output round-trips.
 roundtrip = lit_config.params.get('roundtrip')
@@ -27,6 +27,8 @@ if roundtrip:
     config.name = f'mim roundtrip-{roundtrip}'
     config.test_format = MimRoundTripTest(*flags[roundtrip])
     config.test_exec_root = os.path.join(config.my_obj_root, 'roundtrip', roundtrip)
+    # `UNSUPPORTED: roundtrip` opts out an input that only compiles with flags from its RUN lines.
+    config.available_features.add('roundtrip')
 
 config.substitutions.append(('%mim', config.mim))
 config.substitutions.append(('%FileCheck', '"{}"'.format(config.filecheck)))

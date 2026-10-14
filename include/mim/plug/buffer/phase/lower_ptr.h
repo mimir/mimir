@@ -12,8 +12,7 @@ namespace mim::plug::buffer {
 /// - `write` becomes `mem.lea` + `mem.store`
 class LowerPtr : public RWPhase {
 public:
-    LowerPtr(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
     const Def* rewrite_imm_App(const App*) override;
 };

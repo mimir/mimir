@@ -16,8 +16,7 @@
 /// A floating-point type with `p` bits of precision and `e` exponent bits.
 /// The sign bit is neither included in `p` nor in `e`.
 /// Thus, the total number of bits occupied by a value of this type is `p + e + 1`.
-/// Current constant folding only supports IEEE binary16/binary32/binary64 literals,
-/// subject to host `f16` support.
+/// Current constant folding only supports IEEE binary16/binary32/binary64 literals, subject to host `f16` support.
 ///
 axm F: «2; Nat» → *;
 
@@ -81,10 +80,10 @@ anx lam minus (m: Nat) {pe: «2; Nat»} (a: F pe): F pe =
 ///   If the operands compare equal, returns a value that compares equal to both operands.
 ///   This means that `fmin(+/-0.0, +/-0.0)` could return either `-0.0` or `0.0`.
 /// - `I`:
-///   Follows the semantics of `minNum`/`maxNum` specified in the draft of IEEE 754-2018.
+///   Follows IEEE 754-2019 `minimum`/`maximum` (LLVM's `llvm.minimum`/`llvm.maximum`).
 ///   If either operand is a NaN, returns NaN.
-///   Otherwise, returns the lesser of the two arguments.
-///   `-0.0` is considered to be less than `+0.0` for this intrinsic.
+///   Otherwise, returns the lesser/greater of the two arguments.
+///   `-0.0` is considered to be less than `+0.0`.
 ///
 /// | Subtag | Alias        | I | M |
 /// |--------|--------------|---|---|
@@ -115,7 +114,7 @@ axm extrema.(im = fmin,       iM = fmax,
 /// | `aHfF` |  `cosh`      | o | x | xo | hyperbolic cosine         | \f$\cosh x\f$           |
 /// | `aHFf` |  `tanh`      | o | x | ox | hyperbolic tangent        | \f$\tanh x\f$           |
 /// | `aHFF` |              | o | x | xx | *unused*                  | -                       |
-/// | `Ahff` | `asin` , `a` | x | o | oo | arcus sine                | \f$\textrm{asin}\,x\f$  |
+/// | `Ahff` | `asin`, `a`  | x | o | oo | arcus sine                | \f$\textrm{asin}\,x\f$  |
 /// | `AhfF` | `acos`       | x | o | xo | arcus cosine              | \f$\textrm{acos}\,x\f$  |
 /// | `AhFf` | `atan`       | x | o | ox | arcus tangent             | \f$\textrm{atan}\,x\f$  |
 /// | `AhFF` |              | x | o | xx | *unused*                  | -                       |
@@ -213,7 +212,7 @@ axm abs: Nat → {pe: «2; Nat»} → F pe → F pe, normalize_abs;
 /// | `math.round.r` | [round to nearest integer](https://en.wikipedia.org/wiki/Rounding#Rounding_to_the_nearest_integer) | \f$round (x)\f$          |
 /// | `math.round.t` | [round towards zero](https://en.wikipedia.org/wiki/Rounding#Rounding_toward_zero)                  | \f$trunc (x)\f$          |
 ///
-axm round.(f,c,r,t): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_round;
+axm round.(f, c, r, t): Nat → {pe: «2; Nat»} → F pe → F pe, normalize_round;
 ///
 /// ## Other Operations
 ///
@@ -282,19 +281,21 @@ anx lam nan     (pe: «2; Nat»): F pe = conv.f2f pe 0x7FF8000000000000:F64;
 /// [Standard logistic function](https://en.wikipedia.org/wiki/Logistic_function) of a floating-point number (\f$\textrm{slf}(x) = \frac{1}{1+e^{-x}}\f$)
 ///
 anx lam slf (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
-    arith.div m ((conv.f2f pe 1.0:(F64)), arith.add m ((conv.f2f pe 1.0:(F64)), exp.exp m (minus m x)));
+    arith.div m (conv.f2f pe 1.0:F64, arith.add m (conv.f2f pe 1.0:F64, exp.exp m (minus m x)));
 ///
 /// ### sgn
 ///
 /// [Sign function](https://en.wikipedia.org/wiki/Sign_function)
+/// NaN and `±0.0` are returned unchanged.
 anx lam sgn (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
-    ((conv.f2f pe (-1.0:(F64))), ((conv.f2f pe 0.0:(F64)), (conv.f2f pe 1.0:(F64)))#(cmp.g m (x,(conv.f2f pe 0.0:(F64)))))#(cmp.ge m (x, (conv.f2f pe 0.0:(F64))));
+    let zero = conv.f2f pe 0.0:F64;
+    ((x, conv.f2f pe 1.0:F64)#(cmp.g m (x, zero)), conv.f2f pe (-1.0:F64))#(cmp.l m (x, zero));
 ///
 /// ### rrt
 ///
 /// [Reciprocal](https://en.wikipedia.org/wiki/Multiplicative_inverse) of the [square root](https://en.wikipedia.org/wiki/Square_root) (\f$\textrm{rrt}(x) = \frac{1}{\sqrt{x}}\f$)
 anx lam rrt (m: Nat) {pe: «2; Nat»} (x: F pe): F pe =
-    arith.div m (conv.f2f pe 1.0:(F64), rt.sq m x);
+    arith.div m (conv.f2f pe 1.0:F64, rt.sq m x);
 ///
 /// ## Operators
 ///

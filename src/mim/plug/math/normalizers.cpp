@@ -94,7 +94,7 @@ std::optional<u64> fold_float_to_signed_bits(std::floating_point auto x) {
     if (!std::isfinite(x)) return {};
 
     auto truncated = std::trunc(static_cast<long double>(x));
-    if (truncated < signed_min<w>() || truncated > signed_max<w>()) return {};
+    if (truncated < signed_min<w>() || truncated >= -signed_min<w>()) return {};
     return encode_signed<w>(truncated);
 }
 
@@ -103,7 +103,7 @@ std::optional<u64> fold_float_to_unsigned_bits(std::floating_point auto x) {
     if (!std::isfinite(x)) return {};
 
     auto truncated = std::trunc(static_cast<long double>(x));
-    if (truncated < 0.0L || truncated > unsigned_max<w>()) return {};
+    if (truncated < 0.0L || truncated >= unsigned_max<w>() + 1.0L) return {};
     return encode_unsigned<w>(truncated);
 }
 
@@ -201,10 +201,9 @@ std::optional<u64> fold_binary_lit(u64 a, u64 b) {
     } else if constexpr (std::is_same_v<Id, math::extrema>) {
         T result;
 
-        if (x == T(-0.0) && y == T(+0.0)) {
-            result = (id == extrema::fmin || id == extrema::ieee754min) ? x : y;
-        } else if (x == T(+0.0) && y == T(-0.0)) {
-            result = (id == extrema::fmin || id == extrema::ieee754min) ? y : x;
+        if (x == T(0) && y == T(0) && std::signbit(x) != std::signbit(y)) {
+            bool min = id == extrema::fmin || id == extrema::ieee754min;
+            result   = min == std::signbit(x) ? x : y;
         } else if constexpr (id == extrema::fmin || id == extrema::fmax) {
             result = id == extrema::fmin ? std::fmin(x, y) : std::fmax(x, y);
         } else if constexpr (id == extrema::ieee754min || id == extrema::ieee754max) {
@@ -416,11 +415,10 @@ const Def* normalize_extrema(const Def* type, const Def* c, const Def* arg) {
     auto [a, b] = arg->projs<2>();
     auto m      = callee->decurry()->arg();
     auto lm     = Lit::isa(m);
-    // TODO commute
 
     if (auto lit = fold<extrema, id>(world, type, a, b)) return lit;
 
-    if (lm && (fe::has_flag(static_cast<Mode>(*lm), Mode::nnan) || fe::has_flag(static_cast<Mode>(*lm), Mode::nsz))) {
+    if (lm && fe::has_flag(static_cast<Mode>(*lm), Mode::nnan | Mode::nsz)) {
         switch (id) {
             case extrema::ieee754min: return world.call(extrema::fmin, m, Defs{a, b});
             case extrema::ieee754max: return world.call(extrema::fmax, m, Defs{a, b});
@@ -502,8 +500,13 @@ const Def* normalize_conv(const Def* dst_t, const Def*, const Def* x) {
     constexpr bool sf = id == conv::f2f || id == conv::f2s || id == conv::f2u;
     constexpr bool df = id == conv::f2f || id == conv::s2f || id == conv::u2f;
 
-    auto sw = sf ? isa_f(s_t) : (ls ? Idx::size2bitwidth(*ls) : std::optional<nat_t>());
-    auto dw = df ? isa_f(d_t) : (ld ? Idx::size2bitwidth(*ld) : std::optional<nat_t>());
+    // Only a power-of-two Idx is an integer of its bitwidth.
+    auto int_w = [](std::optional<nat_t> l) -> std::optional<nat_t> {
+        if (l && (*l == 0 || std::has_single_bit(*l))) return Idx::size2bitwidth(*l);
+        return {};
+    };
+    auto sw = sf ? isa_f(s_t) : int_w(ls);
+    auto dw = df ? isa_f(d_t) : int_w(ld);
 
     if (auto l = Lit::isa(x); l && sw && dw)
         if (auto res = fold_conv<id>(*sw, *dw, *l)) return world.lit(d_t, *res);

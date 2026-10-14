@@ -56,15 +56,13 @@ static const Def* compose_cn(const Def* f, const Def* g) {
 
 // TODO: maybe use template (https://codereview.stackexchange.com/questions/141961/memoization-via-template) to memoize
 const Def* Eval::augment(const Def* def, Lam* f, Lam* f_diff) {
-    if (auto i = augmented.find(def); i != augmented.end()) return i->second;
-    augmented[def] = augment_(def, f, f_diff);
-    return augmented[def];
+    if (auto res = fe::lookup(augmented, def)) return res;
+    return augmented[def] = augment_(def, f, f_diff);
 }
 
 const Def* Eval::derive(const Def* def) {
-    if (auto i = derived.find(def); i != derived.end()) return i->second;
-    derived[def] = derive_(def);
-    return derived[def];
+    if (auto res = fe::lookup(derived, def)) return res;
+    return derived[def] = derive_(def);
 }
 
 const Def* Eval::rewrite_imm_App(const App* app) {
@@ -357,34 +355,31 @@ const Def* Eval::augment_app(const App* app, Lam* f, Lam* f_diff) {
     }
 
     // TODO: dest with a function such that f args != g args
-    {
-        // normal function app
-        // ```
-        // g: cn[E, cn X]
-        // g(args,cont)
-        // g': cn[E, cn[X, cn[X, cn E]]]
-        // g'(aug_args, ____)
-        // ```
-        // At this point g_deriv might still be "autodiff ... g".
-        auto g_deriv = aug_callee;
+    // normal function app
+    // ```
+    // g: cn[E, cn X]
+    // g(args,cont)
+    // g': cn[E, cn[X, cn[X, cn E]]]
+    // g'(aug_args, ____)
+    // ```
+    // At this point g_deriv might still be "autodiff ... g".
+    auto g_deriv = aug_callee;
 
-        auto [real_aug_args, aug_cont] = aug_arg->projs<2>();
-        auto e_pb                      = partial_pullback[real_aug_args];
+    auto [real_aug_args, aug_cont] = aug_arg->projs<2>();
+    auto e_pb                      = partial_pullback[real_aug_args];
 
-        // TODO: better debug names
-        auto ret_g_deriv_ty = g_deriv->type()->as<Pi>()->dom(2, 1);
-        auto c1_ty          = ret_g_deriv_ty->as<Pi>();
-        auto c1             = world().mut_lam(c1_ty)->set("c1");
-        auto res            = c1->var(2, 0);
-        auto r_pb           = c1->var(2, 1);
-        c1->app(true, aug_cont, {res, compose_cn(e_pb, r_pb)});
+    // TODO: better debug names
+    auto ret_g_deriv_ty = g_deriv->type()->as<Pi>()->dom(2, 1);
+    auto c1_ty          = ret_g_deriv_ty->as<Pi>();
+    auto c1             = world().mut_lam(c1_ty)->set("c1");
+    auto res            = c1->var(2, 0);
+    auto r_pb           = c1->var(2, 1);
+    c1->app(true, aug_cont, {res, compose_cn(e_pb, r_pb)});
 
-        auto aug_app = world().app(aug_callee, {real_aug_args, c1});
+    auto aug_app = world().app(aug_callee, {real_aug_args, c1});
 
-        // The result is * => no pb needed, no composition needed.
-        return aug_app;
-    }
-    assert(false && "should not be reached");
+    // The result is * => no pb needed, no composition needed.
+    return aug_app;
 }
 
 /// Rewrites the given definition in a lambda environment.

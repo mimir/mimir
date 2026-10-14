@@ -162,7 +162,6 @@ private:
 };
 
 // clang-format off
-template<class Id> concept annex_with_subs    = Annex::num<Id>() != 0;
 template<class Id> concept annex_without_subs = Annex::num<Id>() == 0;
 // clang-format on
 

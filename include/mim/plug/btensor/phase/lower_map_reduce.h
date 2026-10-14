@@ -14,8 +14,7 @@ namespace mim::plug::btensor::phase {
 /// than a monolithic `mem.store` of a giant literal array (which the LLVM backend cannot digest).
 class LowerMapReduce : public RWPhase {
 public:
-    LowerMapReduce(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     const Def* rewrite_imm_App(const App*) override;

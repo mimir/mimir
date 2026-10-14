@@ -25,8 +25,7 @@ namespace mim::plug::affine::phase {
 /// In this case we have to equip `new_body`/`new_exit` with a `mem` as well.
 class LowerFor : public RWPhase {
 public:
-    LowerFor(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
     const Def* rewrite_imm_App(const App*) final;
 };

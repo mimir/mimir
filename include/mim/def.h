@@ -102,19 +102,17 @@ using DefVec = fe::Vector<const Def*>;
 /// GIDSet / GIDMap keyed by Def::gid of `Def*`.
 ///@{
 template<class To>
-using MutMap  = GIDMap<Def*, To>;
-using MutSet  = GIDSet<Def*>;
-using Mut2Mut = MutMap<Def*>;
-using Muts    = fe::Patricia<Def, DefKey>::Set;
+using MutMap = GIDMap<Def*, To>;
+using MutSet = GIDSet<Def*>;
+using Muts   = fe::Patricia<Def, DefKey>::Set;
 ///@}
 
 /// @name Var
 /// GIDSet / GIDMap keyed by Var::gid of `const Var*`.
 ///@{
 template<class To>
-using VarMap  = GIDMap<const Var*, To>;
-using Var2Var = VarMap<const Var*>;
-using Vars    = fe::Patricia<const Var, DefKey>::Set;
+using VarMap = GIDMap<const Var*, To>;
+using Vars   = fe::Patricia<const Var, DefKey>::Set;
 ///@}
 
 using NormalizeFn = const Def* (*)(const Def*, const Def*, const Def*);
@@ -182,15 +180,6 @@ enum class Judge : u32 {
     Hole  = 1 << 4, ///< Special rule for Hole.
     // clang-format on
 };
-
-/// Classifies whether a [`Node`](@ref mim::Node) may occur as a *mutable*, an *immutable*, or both.
-/// @see @ref mut
-enum class Mut {
-    // clang-format off
-    Mut = 1 << 0, ///< Node may be mutable.
-    Imm = 1 << 1, ///< Node may be immutable.
-    // clang-format on
-};
 ///@}
 
 } // namespace mim
@@ -199,7 +188,6 @@ enum class Mut {
 // clang-format off
 template<> struct fe::is_bit_enum<mim::Dep>   : std::true_type {};
 template<> struct fe::is_bit_enum<mim::Judge> : std::true_type {};
-template<> struct fe::is_bit_enum<mim::Mut>   : std::true_type {};
 // clang-format on
 #endif
 
@@ -292,7 +280,7 @@ struct DotConfig {
 /// | Idx               | Lit               |                   |
 /// In addition there is:
 /// * Var: A variable. Currently the following Def%s may be binders:
-///     * Pi, Lam, Sigma, Arr, Pack
+///     * Pi, Lam, Sigma, Arr, Pack, Rule
 /// * Axm: To introduce new entities.
 /// * Proxy: Used for intermediate values during optimizations.
 /// * Hole: A metavariable filled in by the type inference (always mutable as holes are filled in later).
@@ -324,6 +312,8 @@ protected:
     Def(Node, const Def* type, size_t num_ops, flags_t flags);   ///< Constructor for a *mutable* Def.
     Def(Node, Def* binder);                                      ///< Constructor for a Var; stores its @p binder.
     ///@}
+
+    void collect_locals(); ///< Fills in an immutable's local Vars and Muts once it is in the sea.
 
 public:
     /// @name Getters
@@ -606,14 +596,6 @@ public:
     bool is_annex() const noexcept { return annex_; }
     ///@}
 
-    /// @name dirty
-    /// Scratch bit for Phase%s to mark muts that need re-examination.
-    /// @see Phase::taint
-    ///@{
-    bool is_dirty() const noexcept { return dirty_; }
-    void dirty(bool dirty = true) noexcept { dirty_ = dirty; }
-    ///@}
-
     /// @name Casts
     /// @see @ref cast_builtin
     ///@{
@@ -848,11 +830,10 @@ protected:
     u8 trip_  = 0;
 
 private:
-    Node node_; // node_t is u8; the four flags + dep_ below fill the remaining byte of this word
+    Node node_; // node_t is u8; the three flags + dep_ below fill the remaining byte of this word
     bool mut_           : 1;
     bool external_      : 1;
     mutable bool annex_ : 1;
-    bool dirty_         : 1;
     unsigned dep_       : 4;
     u32 mark_ = 0;
     u32 gid_;
@@ -1071,11 +1052,6 @@ public:
         return res;
     }
     static std::optional<nat_t> isa_lit(const Def* def);
-    static nat_t as_lit(const Def* def) {
-        auto res = isa_lit(def);
-        assert(res.has_value());
-        return *res;
-    }
     ///@}
 
     /// @name Convert between Idx::isa and bitwidth and vice versa

@@ -6,6 +6,11 @@ const ZOOM_MIN = 0.2, ZOOM_MAX = 50, ZOOM_STEP = 1.25;
 // A node's <title> is its dot id; an edge's is `<tail>:<port>-><head>`.
 const nid = g => g.querySelector('title')?.textContent ?? '';
 
+const POPOUT = `
+    <button class="popout" title="Show this graph in a window of its own.">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+    </button>`;
+
 export class GraphView {
     #host;
     #view = null;      // the <g> carrying the pan/zoom transform, or null while no graph is up
@@ -16,7 +21,8 @@ export class GraphView {
     #dragging = false;
     #dragged = false;
 
-    constructor(host, nav) {
+    // `popOut`, if given, gets a button of its own next to the zoom buttons.
+    constructor(host, popOut) {
         this.#host = host;
         host.addEventListener('pointerdown', e => this.#pan(e));
         host.addEventListener('mousemove', e => { if (!this.#pinned && !this.#dragging) this.#show(this.#nodeAt(e)); });
@@ -29,7 +35,19 @@ export class GraphView {
         host.addEventListener('wheel', e => this.#wheel(e), { passive: false });
         host.addEventListener('dblclick', () => this.#view && this.fit());
         host.addEventListener('keydown', e => this.#key(e));
-        nav?.addEventListener('click', e => this.#nav(e.target.dataset.zoom));
+        host.after(this.#navBar(popOut));
+    }
+
+    #navBar(popOut) {
+        const nav = document.createElement('div');
+        nav.className = 'graph-nav';
+        nav.innerHTML = (popOut ? POPOUT : '') + `
+            <button data-zoom="out" title="Zoom out (-)">&#8722;</button>
+            <button data-zoom="in"  title="Zoom in (+)">+</button>
+            <button data-zoom="fit" title="Fit (0, or double-click)">Fit</button>`;
+        nav.querySelector('.popout')?.addEventListener('click', popOut);
+        nav.addEventListener('click', e => this.#nav(e.target.dataset.zoom));
+        return nav;
     }
 
     #nav(how) {

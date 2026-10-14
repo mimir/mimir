@@ -36,4 +36,4 @@ fun bar(cond: Bool): Nat =
         f1 Nat ((23, 42), cn res: Nat = return res);
     (f, t)#cond ();
 
-// CHECK-DAG: return{{.*}}48
+// CHECK-DAG: return_{{[0-9]+}} ({{.*}}, 48I32)

@@ -170,6 +170,7 @@ public:
         swap(a1.arena_,  a2.arena_ );
         swap(a1.files_,  a2.files_ );
         swap(a1.scopes_, a2.scopes_);
+        swap(a1.plugin2sym2annex_, a2.plugin2sym2annex_);
         // clang-format on
     }
 
@@ -402,7 +403,6 @@ public:
 
     Tok::Tag delim_l() const { return delim_l_; }
     Tok::Tag delim_r() const { return Tok::delim_l2r(delim_l()); }
-    bool is_paren() const { return delim_l() == Tok::Tag::D_paren_l; }
     bool is_brckt() const { return delim_l() == Tok::Tag::D_brckt_l; }
     bool is_implicit() const override { return delim_l_ == Tok::Tag::D_brace_l; }
 
@@ -1168,7 +1168,6 @@ public:
             : PiExpr::Dom(loc, ptrn)
             , filter_(filter) {}
 
-        bool is_implicit() const { return ptrn()->is_implicit(); }
         const Expr* filter() const { return filter_.get(); }
 
         void bind(Scopes&, bool quiet = false) const override;

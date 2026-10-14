@@ -21,10 +21,6 @@ template<> struct std::formatter<automaton::NFA> : fe::ostream_formatter {};
 
 namespace mim::plug::regex {
 
-namespace {
-const Def* wrap_in_cps2ds(const Def* callee) { return cps::op_cps2ds_dep(callee); }
-} // namespace
-
 const Def* LowerRegex::rewrite_imm_App(const App* app) {
     auto callee = app->callee();
     if (Axm::isa<regex::conj>(callee) || Axm::isa<regex::disj>(callee) || Axm::isa<regex::not_>(callee)
@@ -39,7 +35,7 @@ const Def* LowerRegex::rewrite_imm_App(const App* app) {
         log().d("DFA: {}", *dfa);
 
         auto min_dfa = automaton::minimize_dfa(*dfa);
-        return wrap_in_cps2ds(dfa2matcher(new_world(), *min_dfa, new_n));
+        return cps::op_cps2ds_dep(dfa2matcher(new_world(), *min_dfa, new_n));
     }
 
     return RWPhase::rewrite_imm_App(app);
