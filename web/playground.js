@@ -110,7 +110,7 @@ async function run() {
 
     running = false;
     $('run').classList.remove('running');
-    $('run').lastChild.textContent = 'Run';
+    $('run').lastChild.textContent = 'Compile';
     if (queued) { queued = false; run(); }
 }
 
