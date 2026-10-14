@@ -90,6 +90,8 @@ void IdPtrn::stream(fe::Tab& tab, std::ostream& os) const {
     os << "<invalid identifier pattern>";
 }
 
+void IdDecl::stream(fe::Tab&, std::ostream& os) const { os << dbg(); }
+
 void TuplePtrn::stream(fe::Tab& tab, std::ostream& os) const {
     os << delim_l();
     for (std::string_view sep{}; auto ptrn : ptrns()) {
@@ -196,7 +198,7 @@ void MatchExpr::stream(fe::Tab& tab, std::ostream& os) const {
 
 void PiExpr::Dom::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}", S(tab, ptrn()));
-    if (ret()) std::print(os, " {} {}", Tag::T_arrow_r, S(tab, ret()->type()));
+    if (ret()) std::print(os, " {} {}", Tag::T_arrow_r, S(tab, ret_type()));
 }
 
 void PiExpr::stream(fe::Tab& tab, std::ostream& os) const {
@@ -218,7 +220,9 @@ void SigmaExpr::stream(fe::Tab& tab, std::ostream& os) const { ptrn()->stream(ta
 void TupleExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "({})", R(tab, elems())); }
 
 void SeqExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{}{}; {}{}", is_pack() ? "‹" : "«", S(tab, arity()), S(tab, body()), is_pack() ? "›" : "»");
+    os << (is_pack() ? "‹" : "«");
+    if (index()->dbg()) std::print(os, "{}: ", S(tab, index()));
+    std::print(os, "{}; {}{}", S(tab, shape()), S(tab, body()), is_pack() ? "›" : "»");
 }
 
 void SingleExpr::stream(fe::Tab& tab, std::ostream& os) const {
@@ -334,7 +338,7 @@ void LamDecl::Dom::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}", S(tab, ptrn()));
     if (filter()) std::print(os, "@{}", S(tab, filter()));
     // Parser::parse_lam_decl fills in an omitted codomain of a `fun`/`fn` as a hole.
-    if (ret() && !ret()->type()->isa<HoleExpr>()) std::print(os, ": {}", S(tab, ret()->type()));
+    if (ret() && !ret_type()->isa<HoleExpr>()) std::print(os, ": {}", S(tab, ret_type()));
 }
 
 /// Does @p expr span several statements and hence deserve an indented block of its own?

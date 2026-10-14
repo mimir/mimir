@@ -169,6 +169,8 @@ void IdPtrn::bind(Scopes& s, bool rebind, bool quiet) const {
     s.bind(dbg(), this, rebind, quiet);
 }
 
+void IdDecl::bind(Scopes& s, bool quiet) const { s.bind(dbg(), this, false, quiet); }
+
 void AliasPtrn::bind(Scopes& s, bool rebind, bool quiet) const {
     ptrn()->bind(s, rebind, quiet);
     s.bind(dbg(), this, rebind, quiet);
@@ -278,7 +280,10 @@ void MatchExpr::bind(Scopes& s) const {
 
 void PiExpr::Dom::bind(Scopes& s, bool quiet) const {
     ptrn()->bind(s, false, quiet);
-    if (ret()) ret()->bind(s, false, quiet);
+    if (ret()) {
+        if (!quiet) ret_type()->bind(s);
+        ret()->bind(s, quiet);
+    }
 }
 
 void PiExpr::bind(Scopes& s) const {
@@ -320,7 +325,8 @@ void TupleExpr::bind(Scopes& s) const {
 
 void SeqExpr::bind(Scopes& s) const {
     s.push();
-    arity()->bind(s, false, false);
+    shape()->bind(s);
+    index()->bind(s);
     body()->bind(s);
     s.pop();
 }

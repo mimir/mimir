@@ -257,6 +257,23 @@ protected:
     mutable const Def* def_ = nullptr;
 };
 
+/// `dbg` bound to a Def whose type the binding construct dictates; hence, it carries no annotation.
+class IdDecl : public Decl {
+public:
+    IdDecl(Dbg dbg)
+        : Decl(dbg.loc())
+        , dbg_(dbg) {}
+
+    Dbg dbg() const override { return dbg_; }
+
+    void bind(Scopes&, bool quiet = false) const;
+    const Def* emit(const Def*) const;
+    void stream(fe::Tab&, std::ostream&) const override;
+
+private:
+    Dbg dbg_;
+};
+
 /// Base class of all declarations that bind values.
 class ValDecl : public Decl {
 protected:
@@ -327,14 +344,8 @@ public:
     Vis vis() const override { return vis_; }
     bool is_anx() const override { return anx_; }
 
-    static Ptr<IdPtrn> make_id(AST& ast, Dbg dbg, Ptr<Expr> type) {
-        auto loc = (type && dbg) ? dbg.loc() + type->loc() : type ? type->loc() : dbg.loc();
-        return ast.ptr<IdPtrn>(loc, dbg, type);
-    }
-
     void bind(Scopes&, bool rebind, bool quiet) const override;
     const Def* emit_value(Emitter&, const Def*) const override;
-    const Def* emit_value_without_type_check(Emitter&, const Def*) const;
     const Def* emit_type(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 
@@ -765,11 +776,12 @@ public:
 
         bool is_implicit() const { return ptrn_->is_implicit(); }
         const Ptrn* ptrn() const { return ptrn_.get(); }
-        const IdPtrn* ret() const { return ret_.get(); }
+        const IdDecl* ret() const { return ret_.get(); }
+        const Expr* ret_type() const { return ret_type_.get(); }
 
         void add_ret(AST& ast, Ptr<Expr> type) const {
-            auto loc = type->loc();
-            ret_     = ast.ptr<IdPtrn>(loc, Dbg(loc, ast.sym_return()), type);
+            ret_      = ast.ptr<IdDecl>(Dbg(type->loc(), ast.sym_return()));
+            ret_type_ = type;
         }
 
         virtual void bind(Scopes&, bool quiet = false) const;
@@ -782,7 +794,8 @@ public:
 
     private:
         Ptr<Ptrn> ptrn_;
-        mutable Ptr<IdPtrn> ret_;
+        mutable Ptr<IdDecl> ret_;
+        mutable Ptr<Expr> ret_type_;
 
         friend class PiExpr;
     };
@@ -917,17 +930,19 @@ private:
     const Def* emit_(Emitter&) const override;
 };
 
-/// `«arity; body»` or `‹arity; body›` if SeqExpr::is_pack.
+/// `«index: shape; body»` or `‹index: shape; body›` if SeqExpr::is_pack; `index: ` is optional.
 class SeqExpr : public Expr {
 public:
-    SeqExpr(Loc loc, bool is_pack, Ptr<IdPtrn> arity, Ptr<Expr> body)
+    SeqExpr(Loc loc, bool is_pack, Ptr<IdDecl> index, Ptr<Expr> shape, Ptr<Expr> body)
         : Expr(loc)
         , is_pack_(is_pack)
-        , arity_(arity)
+        , index_(index)
+        , shape_(shape)
         , body_(body) {}
 
     bool is_pack() const { return is_pack_; }
-    const IdPtrn* arity() const { return arity_.get(); }
+    const IdDecl* index() const { return index_.get(); }
+    const Expr* shape() const { return shape_.get(); }
     const Expr* body() const { return body_.get(); }
 
     void bind(Scopes&) const override;
@@ -937,7 +952,8 @@ private:
     const Def* emit_(Emitter&) const override;
 
     bool is_pack_;
-    Ptr<IdPtrn> arity_;
+    Ptr<IdDecl> index_;
+    Ptr<Expr> shape_;
     Ptr<Expr> body_;
 };
 

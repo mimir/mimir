@@ -228,7 +228,7 @@ const Def* IdPtrn::emit_value(Emitter& e, const Def* def) const {
         .bail();
 }
 
-const Def* IdPtrn::emit_value_without_type_check(Emitter& e, const Def* def) const { return def_ = def->set(dbg()); }
+const Def* IdDecl::emit(const Def* def) const { return def_ = def->set(dbg()); }
 
 const Def* GrpPtrn::emit_value(Emitter&, const Def* def) const { return def_ = def->set(dbg()); }
 
@@ -705,7 +705,7 @@ void PiExpr::Dom::emit_type(Emitter& e) const {
         auto var   = sigma->var();
         sigma->set(0, dom_t);
         ptrn()->emit_proj(e, var, 2, 0);
-        auto ret_t = e.world().cn(ret()->emit_type(e));
+        auto ret_t = e.world().cn(ret_type()->emit(e));
         sigma->set(1, ret_t);
 
         auto imm = sigma->immutabilize();
@@ -806,10 +806,10 @@ const Def* TupleExpr::emit_(Emitter& e) const {
 }
 
 const Def* SeqExpr::emit_(Emitter& e) const {
-    auto s = arity()->emit_type(e);
+    auto s = shape()->emit(e);
     if (auto lit_s = Lit::isa(s); lit_s && *lit_s == 0) return e.world().prod(is_pack());
 
-    if (arity()->dbg().is_anon()) { // immutable
+    if (index()->dbg().is_anon()) { // immutable
         auto b = body()->emit(e);
         return e.world().seq(is_pack(), s, b);
     }
@@ -822,7 +822,7 @@ const Def* SeqExpr::emit_(Emitter& e) const {
         auto p = e.world().mut_pack(a);
         p->set_shape(s);
         auto var = p->var();
-        arity()->emit_value_without_type_check(e, var);
+        index()->emit(var);
         auto b = body()->emit(e);
         p->set_body(b);
         auto arr_b = b->type();
@@ -833,7 +833,7 @@ const Def* SeqExpr::emit_(Emitter& e) const {
         return e.world().fuse(p);
     } else {
         auto var = a->var();
-        arity()->emit_value_without_type_check(e, var);
+        index()->emit(var);
         a->set_body(body()->emit(e));
         return e.world().fuse(a);
     }
@@ -972,7 +972,7 @@ Lam* LamDecl::Dom::emit_value(Emitter& e) const {
     if (ret()) {
         auto var = lam_->var();
         ptrn()->emit_proj(e, var, 2, 0);
-        ret()->emit_value_without_type_check(e, var->proj(2, 1));
+        ret()->emit(var->proj(2, 1));
     } else {
         emit_var(e, ptrn(), lam_);
     }

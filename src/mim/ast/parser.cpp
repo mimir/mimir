@@ -357,7 +357,7 @@ Ptr<Expr> Parser::parse_seq_or_single_expr() {
     bool is_pack = ahead().isa(Tag::D_angle_l);
     auto delim_l = is_pack ? Tag::D_angle_l : Tag::D_quote_l;
     auto delim_r = Tok::delim_l2r(delim_l);
-    auto arities = Ptrs<IdPtrn>();
+    auto arities = fe::Vector<std::pair<Ptr<IdDecl>, Ptr<Expr>>>();
     auto _       = anchor(eat(delim_l), delim_r);
     auto ctxt    = fe::Cite(is_pack ? "shape of a pack or a singleton term introduction"
                                     : "shape of an array or a singleton type formation");
@@ -375,7 +375,7 @@ Ptr<Expr> Parser::parse_seq_or_single_expr() {
             eat(delim_r);
             return ptr<SingleExpr>(track, is_pack, expr);
         }
-        arities.emplace_back(IdPtrn::make_id(ast(), dbg, expr));
+        arities.emplace_back(ptr<IdDecl>(dbg), expr);
         ctxt = fe::Cite(is_pack ? "shape of a pack" : "shape of an array");
     } while (accept(Tag::T_comma) && !ahead().isa(Tag::T_semicolon));
 
@@ -385,9 +385,9 @@ Ptr<Expr> Parser::parse_seq_or_single_expr() {
     expect(delim_r, fe::Cite(is_pack ? "closing delimiter of a pack" : "closing delimiter of an array"));
 
     // `‹a, b; e›` nests one SeqExpr per arity; only the outermost one covers the delimiters.
-    for (auto& ptrn : arities | std::views::reverse) {
-        auto loc = &ptrn == &arities.front() ? Loc(track) : ptrn->loc() + curr_;
-        body     = ptr<SeqExpr>(loc, is_pack, ptrn, body);
+    for (auto& [index, shape] : arities | std::views::reverse) {
+        auto loc = &index == &arities.front().first ? Loc(track) : (index->dbg() ? index->loc() : shape->loc()) + curr_;
+        body     = ptr<SeqExpr>(loc, is_pack, index, shape, body);
     }
 
     return body;
