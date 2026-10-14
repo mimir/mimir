@@ -1,9 +1,17 @@
 // RUN: rm -f %{s:stem}.ll
 // RUN: %mim -p opt %s -p ll
 // RUN: clang %{s:stem}.ll -c -o %t -Wno-override-module
+// RUN: %FileCheck %s < %{s:stem}.ll
 
 plugin core;
 plugin vec;
+plugin mem;
+plugin math;
+
+// A named type has one form, the SSA one, as on master: declared once, loaded and stored without conversion.
+// CHECK: %[[NODE:Node_[0-9]+]] = type{<16 x float>, %[[NODE]] addrspace(0)*}
+// CHECK-NOT: = type
+rec Node = [acc: «16; math.F32», next: mem.Ptr0 Node];
 
 fun foo{n: Nat} (A B: «n; Nat»):  «n; Nat» =
     let C = vec.zip core.nat.sub (A, B);
@@ -15,3 +23,44 @@ extern fun bar(): «4; Nat» =
     ret C = foo @4 $ (A, B);
     ret D = foo @4 $ (A, B);
     return D;
+
+// A loop-carried «16; F32» is a vector, also after the same type was converted for memory: the load and store convert.
+// CHECK-LABEL: define void @acc
+// CHECK: load [16 x float]
+// CHECK: phi <16 x float>
+// CHECK: extractelement <16 x float>
+// CHECK: insertelement <16 x float>
+// CHECK: store [16 x float]
+extern fun acc (m: mem.M 0, p: mem.Ptr0 «16; math.F32», n: I32): mem.M 0 =
+    let (m, x) = mem.load (m, p);
+    loop (m, 0I32, x)
+    where
+        con loop (m: mem.M 0, i: I32, a: «16; math.F32») =
+            (exit, body)#(core.icmp.ul (i, n)) m
+            where
+                con body m: mem.M 0 =
+                    let k = core.conv.u 16 i;
+                    loop (m, core.wrap.add 0 (1I32, i), a#k ← math.arith.add 0 (a#k, x#k));
+                con exit (m: mem.M 0) = return (mem.store (m, p, a));
+            end
+    end
+
+// CHECK-LABEL: define void @node
+// CHECK: load %[[NODE]]
+// CHECK-NOT: insertelement
+// CHECK: store %[[NODE]]
+extern fun node (m: mem.M 0, p: mem.Ptr0 Node): mem.M 0 =
+    let (m, x) = mem.load (m, p);
+    return (mem.store (m, x#next, x));
+
+// A pair holding the array converts field by field: the vector is rebuilt inside the SSA pair and taken apart for the store.
+// CHECK-LABEL: define void @pair
+// CHECK: load {[16 x float], i32}
+// CHECK: insertvalue {<16 x float>, i32}
+// CHECK: extractelement <16 x float>
+// CHECK: insertelement <16 x float>
+// CHECK: store {[16 x float], i32}
+extern fun pair (m: mem.M 0, p: mem.Ptr0 [«16; math.F32», I32], i: I32): mem.M 0 =
+    let (m, (v, c)) = mem.load (m, p);
+    let k = core.conv.u 16 i;
+    return (mem.store (m, p, (v#k ← math.arith.add 0 (v#k, v#k), core.wrap.add 0 (c, 1I32))));
