@@ -15,6 +15,8 @@
 #include <mim/plug/cps/cps.h>
 #include <mim/plug/mem/mem.h>
 
+#include "mim/plug/gpu/gpu.h"
+
 namespace mim::plug::gpu::phase {
 
 namespace {

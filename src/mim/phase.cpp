@@ -22,6 +22,25 @@ Phase::Phase(World& world, flags_t annex)
 
 const fe::Vector<std::string>& Phase::args() { return driver().args(Annex::demangle(Annex::flags2plugin(annex_))); }
 
+std::unique_ptr<Phase> Phase::create(const Flags2Phases& phases, const Def* def) {
+    auto& world = def->world();
+    auto p_def  = App::uncurry_callee(def);
+    world.log().d("apply phase {}", p_def);
+
+    if (auto axm = p_def->isa<Axm>())
+        if (auto i = phases.find(axm->flags()); i != phases.end()) {
+            auto phase = i->second(world);
+            if (phase) {
+                phase->apply(def->isa<App>());
+                if (phase->redirects()) return phase->take_resolved();
+            }
+            return phase;
+        } else
+            fe::throwf("no phase registered for stage `{}`; is its plugin loaded?", axm->sym());
+    else
+        fe::throwf("unsupported callee for a phase: `{}`", p_def);
+}
+
 std::unique_ptr<Phase> Phase::recreate() {
     auto ctor = driver().phase(annex());
     auto ptr  = (*ctor)(world());
@@ -97,6 +116,50 @@ void Analysis::rewrite_external(Def* mut) { rewrite(mut); }
 const Def* Analysis::lookup(const Def* def) {
     if (auto res = Rewriter::lookup(def)) return res;
     return world().annexes().opaque(def) ? def : nullptr;
+}
+
+bool Analysis::lattice_force(const Def* concr, const Def* abstr) {
+    map(concr, abstr);
+
+    if (auto [i, ins] = lattice_.emplace(concr, abstr); !ins) {
+        if (i->second == abstr) return false;
+        i->second = abstr;
+    }
+    return touch(), true;
+}
+
+bool Analysis::lattice(const Def* concr, const Def* abstr) {
+    map(concr, abstr);
+
+    if (auto [i, ins] = lattice_.emplace(concr, abstr); !ins) {
+        assert((i->second != concr || abstr == concr) && "monotonicity violation: must not descend from ⊤");
+        if (i->second == abstr) return false;
+        i->second = abstr;
+    } else if (concr == abstr) {
+        return false;
+    }
+    return touch(), true;
+}
+
+void Analysis::pin_outside_args(const App* app, const DefVec& cands) {
+    if (cands.empty()) return;
+
+    // The args' subgraph is downward-closed, so exempting it only needs to find the candidates therein.
+    auto todo   = DefSet(cands.begin(), cands.end());
+    auto seen   = DefSet();
+    auto exempt = [&](this auto& self, const Def* def) -> bool {
+        if (!seen.emplace(def).second) return false;
+        if (todo.erase(def) && todo.empty()) return true;
+        if (def->isa_mut()) return false;
+        for (auto d : def->deps())
+            if (self(d)) return true;
+        return false;
+    };
+    for (const Def* d = app; auto a = d->isa<App>(); d = a->callee())
+        if (exempt(a->arg())) break;
+
+    for (auto cand : cands)
+        if (todo.contains(cand)) pin(cand);
 }
 
 bool Analysis::is_cyclic(const Def* def) const {

@@ -2,14 +2,11 @@
 
 #include <mim/phase.h>
 
-#include "mim/plug/gpu/gpu.h"
-
 namespace mim::plug::gpu::phase {
 
 class LowerMapReduce : public RWPhase {
 public:
     using Super = RWPhase;
-
     using RWPhase::RWPhase;
 
 private:
