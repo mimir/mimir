@@ -1,0 +1,10 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+// CHECK: fun count_cps
+// CHECK: cps.cps2ds_dep
+plugin core;
+plugin cps;
+
+lam count (n m: Nat)@ff: «n; Nat» =
+    core.select (core.ncmp.e (m, 0), ‹n; m›, core.bitcast «n; Nat» (count (n, core.nat.sub (m, 1))));
+
+extern lam f (n m: Nat): «n; Nat» = count (n, m);
