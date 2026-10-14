@@ -65,6 +65,8 @@ extern lam _default_compile (): compile.Phase =
 
         // affine + cps
         compile.named "affine.lower_index",
+        // omp: outline parallel loop bodies while cps.cps2ds is still around for the sequential fallback
+        compile.named "omp.outline",
         compile.named "cps.conv",
         compile.unload "cps",
         compile.named "affine.lower_for",

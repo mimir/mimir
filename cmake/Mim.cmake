@@ -44,6 +44,29 @@ if(MIM_BUILD_LL_RUNTIME AND NOT MIM_CLANG)
     )
 endif()
 
+# Whether clang can build and link an OpenMP program and llvm-link is around to merge the runtime modules.
+# Gates the `omp` plugin's runtime wrappers and the `omp` lit feature.
+set(MIM_HAS_OPENMP OFF)
+find_program(MIM_LLVM_LINK NAMES llvm-link)
+if(MIM_BUILD_LL_RUNTIME AND MIM_CLANG AND MIM_LLVM_LINK)
+    set(MIM_OPENMP_CHECK_DIR ${CMAKE_BINARY_DIR}/CMakeFiles/mim_openmp_check)
+    file(MAKE_DIRECTORY ${MIM_OPENMP_CHECK_DIR})
+    file(WRITE ${MIM_OPENMP_CHECK_DIR}/check.c
+        "#include <omp.h>\nint main(void) { return omp_get_max_threads() < 1; }\n"
+    )
+    execute_process(
+        COMMAND ${MIM_CLANG} -fopenmp ${MIM_OPENMP_CHECK_DIR}/check.c -o ${MIM_OPENMP_CHECK_DIR}/check
+        RESULT_VARIABLE MIM_OPENMP_CHECK_RC
+        OUTPUT_QUIET
+        ERROR_QUIET
+    )
+    if(MIM_OPENMP_CHECK_RC EQUAL 0)
+        set(MIM_HAS_OPENMP ON)
+    else()
+        message(STATUS "MimIR: clang cannot build OpenMP programs; the omp runtime wrappers will not be built.")
+    endif()
+endif()
+
 # Collects the .mim files that bootstrapping mim_file reads, transitively.
 # A plugin/import directive resolves to <root>/<name>/<name>.mim, mirroring add_mim_plugin's -P arguments.
 # A newly added directive is only picked up on the next configure; editing an existing one is tracked.
@@ -309,10 +332,11 @@ endfunction()
 ##
 ## \code{.cmake}
 ## add_mim_runtime(<plugin-name>
-##     SOURCES <source>...)
+##     SOURCES <source>...
+##     [COMPILE_OPTIONS <option>...])
 ## \endcode
 ##
-## All `SOURCES` are compiled with `clang` and merged into a single textual module
+## All `SOURCES` are compiled with `clang` (plus `COMPILE_OPTIONS`) and merged into a single textual module
 ## `<libdir>/mim/rt/<plugin-name>_rt.ll`, next to the plugins. A backend locates
 ## that one file via the driver's search paths (see
 ## \ref mim::plug::ll::Emitter::load_rt_module) and either embeds it into or links
@@ -329,16 +353,18 @@ function(add_mim_runtime)
     set(PLUGIN ${ARGV0})
 
     cmake_parse_arguments(
-        PARSE_ARGV 1        # skip first arg
-        PARSED              # prefix of output variables
-        ""                  # options (none)
-        ""                  # one-value keywords (none)
-        "SOURCES"           # multi-value keywords
+        PARSE_ARGV 1                # skip first arg
+        PARSED                      # prefix of output variables
+        ""                          # options (none)
+        ""                          # one-value keywords (none)
+        "SOURCES;COMPILE_OPTIONS"   # multi-value keywords
     )
 
     if(NOT MIM_BUILD_LL_RUNTIME OR NOT MIM_CLANG)
         return()
     endif()
+
+    set(RT_CFLAGS -O2 ${PARSED_COMPILE_OPTIONS})
 
     set(RT_DIR ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim/rt)
     file(MAKE_DIRECTORY ${RT_DIR})
@@ -351,7 +377,7 @@ function(add_mim_runtime)
     if(N_SOURCES EQUAL 1)
         add_custom_command(
             OUTPUT  ${RT_LL}
-            COMMAND ${MIM_CLANG} -S -emit-llvm -O2 ${RT_SOURCES} -o ${RT_LL}
+            COMMAND ${MIM_CLANG} -S -emit-llvm ${RT_CFLAGS} ${RT_SOURCES} -o ${RT_LL}
             DEPENDS ${RT_SOURCES}
             COMMENT "Compiling MimIR runtime '${PLUGIN}' to LLVM IR"
             VERBATIM
@@ -369,7 +395,7 @@ function(add_mim_runtime)
             set(bc ${RT_DIR}/${PLUGIN}_${stem}.bc)
             add_custom_command(
                 OUTPUT  ${bc}
-                COMMAND ${MIM_CLANG} -emit-llvm -O2 -c ${src} -o ${bc}
+                COMMAND ${MIM_CLANG} -emit-llvm ${RT_CFLAGS} -c ${src} -o ${bc}
                 DEPENDS ${src}
                 COMMENT "Compiling MimIR runtime source '${stem}' to LLVM bitcode"
                 VERBATIM

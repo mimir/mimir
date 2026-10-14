@@ -1,0 +1,56 @@
+/// # The omp Plugin {#omp}
+///
+/// @see mim::plug::omp
+///
+/// [TOC]
+///
+/// CPU parallelism through [OpenMP](https://www.openmp.org): a fork-join parallel loop over contiguous chunks of an
+/// iteration range.
+/// `omp.outline` lifts each loop body into a closed kernel, and the `ll` backend hands that kernel to the OpenMP
+/// runtime through the C wrapper `mim_par_for` in `rt/mim_omp_rt.c` (see @ref plugin_runtime), so the emitted
+/// module has to be linked with `-fopenmp`.
+/// With this plugin loaded (`-p omp`), `btensor` runs the leading output dims of every `map_reduce` loop nest as
+/// one such parallel loop (see `btensor.outer_nest`).
+///
+/// ## Dependencies
+///
+plugin core;
+plugin cps;
+plugin mem;
+import compile;
+///
+/// ## Operations
+///
+/// ### par_for
+///
+/// Runs `body` over `[begin, end)` with stride `step` in parallel.
+/// Every thread receives one contiguous sub-range `[lo, hi)` of the iterations together with its own memory and
+/// iterates it sequentially; nothing but memory is carried across iterations, and `body` must not use memory from
+/// outside the loop.
+/// The address space `a` is only ever `0` here; it keeps the body's type open, since the closed `Cn [mem.M 0]`
+/// of a loop's exit block must not be fixed by an axiom's type before closure conversion sees it.
+axm par_for: {m a: Nat}
+           → [body: Cn [mem.M a, lo hi: Idx m, Cn [mem.M a]]]
+           → [mem.M a, begin _end step: Idx m]
+           → mem.M a;
+///
+/// ### launch
+///
+/// The outlined form of `par_for` (see `outline`): `kernel` names, by its symbol, an external function
+/// `Cn [mem.M 0, mem.Ptr0 Env, lo hi: I64, Cn [mem.M 0]]` that reads the values the loop body captured from `env`,
+/// which the `ll` backend passes through a pointer alongside the chunk bounds.
+/// Naming the kernel instead of referring to it keeps it an ordinary external function for closure conversion.
+axm launch: {Env: *, n: Nat}
+          → [kernel: «n; I8»]
+          → [mem.M 0, env: Env, begin _end step: I64]
+          → mem.M 0;
+///
+/// ## Phases
+///
+/// ### outline
+///
+/// Lifts the body of every `par_for` into a closed kernel over an environment of the values it captures and
+/// rewrites the loop into a `launch`.
+/// A body whose kernel cannot be closed - it uses memory from outside the loop, or a type of a captured value
+/// depends on a value of the enclosing function - runs sequentially instead, with a warning.
+axm outline: compile.Phase;

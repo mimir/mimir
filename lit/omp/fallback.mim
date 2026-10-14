@@ -1,0 +1,27 @@
+// RUN: %mim -p opt -p omp %s -p ll -X ll:o=%t.ll -V 2>&1 | %FileCheck %s
+// RUN: %FileCheck %s --check-prefix=LL < %t.ll
+// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: %t a b c d; test $? -eq 5
+
+// A par_for body that reaches for memory from outside the loop cannot become a kernel: omp.outline warns
+// and runs it sequentially over the whole range instead, so no OpenMP call is emitted and the chunk
+// length the body stores is the full `argc`.
+
+plugin core;
+plugin mem;
+plugin omp;
+
+use core.ops.u.w;
+
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I32, 0), 0), return: Cn [mem.M 0, I32]) =
+    let (m, ptr) = mem.alloc («2; I32», 0) m;
+    let lea = mem.lea (ptr, 0₂);
+    let m = mem.store (m, lea, 0I32);
+    return (mem.load (omp.par_for body (m, 0I32, argc, 1I32), lea))
+    where
+        con body (_: mem.M 0, lo hi: I32, k: Cn [mem.M 0]) =
+            k (mem.store (m, lea, hi - lo));
+    end;
+
+// CHECK: running sequentially since its body uses memory
+// LL-NOT: mim_par_for

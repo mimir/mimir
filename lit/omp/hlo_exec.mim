@@ -1,0 +1,10 @@
+// REQUIRES: omp
+// RUN: %mim -p opt -p omp %S/../tensor/hlo_exec.mim -p ll -X ll:o=%t.ll
+// RUN: %FileCheck %s < %t.ll
+// RUN: clang++ -std=c++23 -fopenmp %S/../tensor/hlo_aux.cpp %t.ll -o %t -Wno-override-module
+// RUN: %t
+
+// The MLP of tensor/hlo_exec.mim with every map_reduce's output loops run through the OpenMP runtime
+// wrapper; hlo_aux.cpp checks the result against a plain C++ forward pass.
+
+// CHECK: call void @mim_par_for(

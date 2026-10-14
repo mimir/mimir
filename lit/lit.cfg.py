@@ -53,3 +53,7 @@ config.available_features.add(f"system-{sys.platform}")
 # lit.site.cfg.py. Tests gate on this via `// REQUIRES: cuda`.
 if getattr(config, 'cuda_can_run_on_device', False):
     config.available_features.add('cuda')
+# OpenMP support (clang with libomp) is detected once by CMake and passed in via lit.site.cfg.py.
+# Tests that link the emitted module with `-fopenmp` gate on this via `// REQUIRES: omp`.
+if getattr(config, 'omp', False):
+    config.available_features.add('omp')

@@ -1,0 +1,10 @@
+// REQUIRES: omp
+// RUN: %mim -p opt -p clos -p omp %S/../tensor/fc_exec.mim -p ll -X ll:o=%t.ll
+// RUN: %FileCheck %s < %t.ll
+// RUN: clang++ -std=c++23 -fopenmp %S/../tensor/fc_aux.cpp %t.ll -o %t -Wno-override-module
+// RUN: %t
+
+// tensor/fc_exec.mim through closure conversion and the OpenMP runtime wrapper together: the outlined
+// kernels must survive clos as plain external functions.
+
+// CHECK: call void @mim_par_for(

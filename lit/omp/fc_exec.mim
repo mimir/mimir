@@ -1,0 +1,11 @@
+// REQUIRES: omp
+// RUN: %mim -p opt -p omp %S/../tensor/fc_exec.mim -p ll -X ll:o=%t.ll
+// RUN: %FileCheck %s < %t.ll
+// RUN: clang++ -std=c++23 -fopenmp %S/../tensor/fc_aux.cpp %t.ll -o %t -Wno-override-module
+// RUN: %t
+
+// The fc layers of tensor/fc_exec.mim with their output loops run through the OpenMP runtime wrapper;
+// fc_aux.cpp checks every output against a scalar reference.
+
+// CHECK: define {{.*}}@mim_par_for(
+// CHECK: call void @mim_par_for(
