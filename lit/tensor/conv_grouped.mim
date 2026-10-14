@@ -1,0 +1,42 @@
+// RUN: %mim -p opt %s -o %t
+// RUN: cat %t | %FileCheck %s
+// RUN: cat %t | %FileCheck %s --check-prefix=GONE
+
+// tensor.conv_grouped folds the group into the batch dim, so each group takes the dense `conv_schedule` of a conv
+// with cin / groups input and cout / groups output channels (cf. conv_sched.mim):
+// * 3x3, 64 channels per group at 8x8: the window unrolls, ow vectorizes and rows block — chooser (4, 2);
+// * 1x1, 64 channels per group at 8x8: `co` jams into the vector body and a `ci` tile joins the window — chooser (4, 3);
+// * 1x1, 20 channels per group: the whole reduction unrolls (20 taps ≤ 32) — chooser (10, 4).
+// The group only enters the outermost loop's arithmetic: the batch·group dim divides and wraps by `groups`.
+// GONE-NOT: tensor.conv_grouped
+
+plugin tensor;
+plugin math;
+plugin compile;
+
+use tensor;
+
+let F32  = math.F32;
+let fast = math.mode.fast;
+let Ring = (F32, 0.0:F32, math.arith.add fast, math.arith.mul fast);
+
+extern lam g64 (input: «2, 128, 8, 8; F32», w: «32, 64, 3, 3; F32»): «2, 32, 8, 8; F32» =
+    conv_grouped Ring (2, (1, 1), (1, 1), (1, 1)) (input, w);
+extern lam gp64 (input: «2, 192, 8, 8; F32», w: «48, 64, 1, 1; F32»): «2, 48, 8, 8; F32» =
+    conv_grouped Ring (3, (1, 1), (1, 1), (0, 0)) (input, w);
+extern lam gp16 (input: «2, 60, 16, 16; F32», w: «120, 20, 1, 1; F32»): «2, 120, 16, 16; F32» =
+    conv_grouped Ring (3, (1, 1), (1, 1), (0, 0)) (input, w);
+
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.cleanup,
+        tensor.lower_tensor,
+        compile.cleanup,
+    );
+
+// CHECK-DAG: {{mk_[0-9]+ \(4, 2\)}}
+// CHECK-DAG: {{mk_[0-9]+ \(4, 3\)}}
+// CHECK-DAG: {{mk_[0-9]+ \(10, 4\)}}
+// CHECK-DAG: affine.semiop.floordiv ({{.*}}, 3)
+// CHECK-DAG: affine.semiop.rem ({{.*}}, 3)
+// CHECK-NOT: if_static
