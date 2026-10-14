@@ -154,7 +154,7 @@ esc    ::= "\'" | "\\" | "\"" | "\0" | "\a" | "\b"
         |  "\f" | "\n" | "\r" | "\t" | "\v"
 ```
 
-`ascii_char` is any ASCII character except `\`, `ascii_string_char` is any ASCII character except `\` and `"`, and a non-ASCII payload character is an error.
+`ascii_char` is any ASCII character except `\` and `'`, `ascii_string_char` is any ASCII character except `\` and `"`, and a non-ASCII payload character is an error.
 
 ### Comments
 

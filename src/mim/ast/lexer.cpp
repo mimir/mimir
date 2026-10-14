@@ -173,20 +173,26 @@ Tok Lexer::lex() {
         }
 
         if (accept('\'')) {
+            if (ahead(0) == '\'' && ahead(1) == '\'') {
+                next(), next();
+                error().e(loc_, "character constant must be escaped: `\\'`");
+                return {loc_, char8_t('\'')};
+            }
+            if (accept('\'')) {
+                error().e(loc_, "empty character literal");
+                return {loc_, char8_t('\0')};
+            }
             auto c = lex_char();
             if (accept('\'')) return {loc_, c};
-            // Within the lookahead, a too-long literal is consumed whole so that its tail doesn't cascade.
-            for (size_t i = 1; i != 3; ++i) {
-                if (ahead(i - 1) == utf8::EoF || utf8::isspace(ahead(i - 1)) || ahead(i - 1) == '\'') break;
-                if (ahead(i) == '\'') {
-                    for (size_t j = 0; j <= i; ++j)
-                        next();
-                    error().e(loc_, "character literal must contain exactly one character");
-                    return {loc_, c};
-                }
-            }
-            error().e(loc_, "invalid character literal `{}`", view());
-            continue;
+            // Like C, a malformed literal extends to its closing quote or the end of the line so that its tail doesn't
+            // cascade.
+            while (ahead() != '\'' && ahead() != '\n' && ahead() != utf8::EoF)
+                if (next() == '\\' && ahead() != '\n' && ahead() != utf8::EoF) next();
+            if (accept('\''))
+                error().e(loc_, "character literal must contain exactly one character");
+            else
+                error().e(loc_, "unterminated character literal");
+            return {loc_, c};
         }
 
         if (accept('\"')) return lex_str();
