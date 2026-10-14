@@ -4,9 +4,9 @@
 ///
 /// [TOC]
 ///
-/// Bufferized tensor operations: a generic `map_reduce` loop-nest abstraction plus derived operations
-/// (matrix product, transpose, pad, concat, ...), lowered to `affine.For` loop nests over `buffer` element
-/// operations.
+/// Bufferized tensor operations: a generic `map_reduce` loop-nest abstraction plus the pointwise and
+/// indexing operations (broadcast, pad, concat, gather, scatter), lowered to `affine.For` loop nests over
+/// `buffer` element operations.
 ///
 /// This is the bufferized mirror of the `tensor` plugin: every op here is the `buffer.Buf` counterpart of a
 /// `tensor.*` op, takes the same groups in the same order, and threads `mem.M` on top.
@@ -54,8 +54,7 @@ anx let Ring = [
 ///
 /// ## Map-Reduce
 ///
-/// The loop-nest core every other operation is lowered onto: `product_2d` and `transpose_2d` are plain
-/// `lam`s over `map_reduce`, the remaining axioms are expanded by `lower_map_reduce` directly.
+/// The loop-nest core; the remaining axioms are expanded by `lower_map_reduce` directly.
 ///
 /// ### id
 ///
@@ -180,63 +179,6 @@ axm pad: {T: *, r: Nat}
        → [s_out: «r; Nat»]
        → [mem.M 0, dst: buffer.Buf (r, s_out, T), input: buffer.Buf (r, s_in, T), value: T]
        → [mem.M 0, buffer.Buf (r, s_out, T)];
-///
-/// ### btensor_copy
-///
-/// Ignores the (⊥) accumulator and just returns the read value — the mem-threaded counterpart of `tensor_copy`.
-///
-fun btensor_copy {T: *} (m: mem.M 0, acc: T, y: T)@tt: [mem.M 0, T] = return (m, y);
-///
-/// ### transpose_2d
-///
-/// Permutes the dimensions of a 2-dimensional matrix by reading the input at the swapped loop variables; there is no reduction loop.
-/// As there, the shape is a single `«2; Nat»` vector instead of two separate `Nat`s and `{T}` precedes
-/// `{s}`; like `product_2d` this is a `lam` over `map_reduce` rather than an `axm`.
-///
-anx lam transpose_2d {T: *} {s: «2; Nat»}
-                     (m: mem.M 0, input: buffer.Buf (2, s, T))
-                   : [mem.M 0, buffer.Buf (2, (s#tt, s#ff), T)] =
-    let s_out = (s#tt, s#ff);
-    let (m, dst) = buffer.alloc (2, s_out, T) m;
-    map_reduce (s_out, s_out)
-        (btensor_copy, ⊥:T)
-        affine.id
-        (proj_map (1, 0),)
-        (m, dst, input);
-///
-/// ## Reductions
-///
-/// Operations that fold a reduction dim away.
-///
-/// ### product_2d_fun
-///
-/// Fused multiply-add over the ring `R`; `x` is the `t1` element, `y` the `t2` element.
-/// The mem-threaded counterpart of the `tensor` plugin's `dot_general_fun`.
-fun product_2d_fun (R: Ring) (m: mem.M 0, acc: R#T, (x y: R#T))@tt: [mem.M 0, R#T] =
-    return (m, R#add (acc, R#mul (x, y)));
-///
-/// ### product_2d
-///
-/// Computes the matrix product of two 2-dimensional matrices in the ring `R`.
-/// `[R: Ring]` is the leading *explicit* group, as there: a ring cannot be recovered from `R#T` by
-/// inference.
-///
-/// Unlike `tensor.product_2d` this is a `lam` wrapping `map_reduce` directly, not an `axm` paired with
-/// an `_impl` annex and a lowering phase: nothing in this plugin inspects the high-level form — no
-/// fusion phase over `btensor.*`, and the normalizer was a no-op — so the extra staging bought nothing.
-/// `transpose_2d` follows the same pattern.
-///
-/// The loop vector is `(i, j, k)` and follows the principle `ij ← ik, kj`
-/// (\f$\mathit{out}_{i,j} = \sum_k \mathit{t1}_{i,k} \cdot \mathit{t2}_{k,j}\f$), so `k` is the single reduction loop.
-anx lam product_2d (R: Ring) {m k l: Nat}
-                       (mm: mem.M 0, t1: buffer.Buf (2, (m, k), R#T), t2: buffer.Buf (2, (k, l), R#T))
-                     : [mem.M 0, buffer.Buf (2, (m, l), R#T)] =
-    let (mm, dst) = buffer.alloc (2, (m, l), R#T) mm;
-    map_reduce ((m, l), (m, l, k))
-        (product_2d_fun R, R#_0)
-        (proj_map (0, 1))
-        (proj_map (0, 2), proj_map (2, 1))
-        (mm, dst, (t1, t2));
 ///
 /// ## Indexing
 ///
