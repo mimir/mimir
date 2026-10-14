@@ -24,7 +24,7 @@ jobs:
 
       - name: Install dependencies
         shell: cmd
-        run: python -m pip install lit psutil
+        run: python -m pip install "lit<24" psutil
 
       - name: Install FileCheck
         uses: i3h/download-release-asset@v1
@@ -83,19 +83,24 @@ jobs:
                 -DBUILD_TESTING=ON                        ^
                 -DMIM_BUILD_EXAMPLES=ON                   ^
                 -DMIM_TEST_ROUNDTRIP=${{matrix.build-type == 'Release' && 'ON' || 'OFF'}} ^
-                -DPython3_EXECUTABLE=%PYTHON_EXE%         ^
                 -DPython_EXECUTABLE=%PYTHON_EXE%          ^
-                -DPYTHON_EXECUTABLE=%PYTHON_EXE%          ^
                 -DMIM_LIT_TIMEOUT=300                     ^
                 -DMIM_FILECHECK=${{github.workspace}}/bin/FileCheck-x86_64-win.exe
 
       # Deliberately after Configure: moving it earlier would let `find_program(NAMES clang)` in
       # cmake/Mim.cmake succeed and switch MIM_BUILD_LL_RUNTIME on for Windows, which is a behaviour
       # change, not a cleanup. lit still needs clang on PATH at test time.
+      # KyleMayes/install-llvm-action stopped at 21.1.8, so use LLVM's own installer.
       - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v2.0.9
-        with:
-          version: "21.1.8"
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $v = '22.1.8'
+          $dir = "$env:RUNNER_TEMP\llvm"
+          Invoke-WebRequest "https://github.com/llvm/llvm-project/releases/download/llvmorg-$v/LLVM-$v-win64.exe" -OutFile "$env:RUNNER_TEMP\llvm.exe"
+          Start-Process "$env:RUNNER_TEMP\llvm.exe" -ArgumentList '/S', "/D=$dir" -Wait
+          & "$dir\bin\clang.exe" --version
+          "$dir\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
 
       - name: Build
         shell: cmd

@@ -1,3 +1,4 @@
+// UNSUPPORTED: roundtrip
 // RUN: %mim -P %libdir %s -o - | %FileCheck %s
 // RUN: %mim -P %libdir %s --output-ast - | %FileCheck --check-prefix=AST %s
 

@@ -37,8 +37,7 @@ using Leaves = fe::Vector<Leaf>;
 /// comparison of their costs; a longer chain is only reassociated where one bracketing provably wins.
 class Reassoc : public RWPhase {
 public:
-    Reassoc(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     static constexpr u64 Default_max_dispatch = 4;

@@ -52,8 +52,7 @@ jobs:
                 -G Ninja                      \
                 -DCMAKE_BUILD_TYPE=Release    \
                 -DBUILD_TESTING=OFF           \
-                -DMIM_BUILD_PYTHON=OFF        \
-                -DMIM_VERIFY_PLUGINS=OFF
+                -DMIM_BUILD_PYTHON=OFF
           cmake --build build-native --target mim
 
       - name: Configure

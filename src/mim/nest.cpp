@@ -130,6 +130,7 @@ void Nest::calc_sibl_deps(Node* curr) const {
         for (auto op : curr->mut()->deps()) {
             for (auto local_mut : op->local_muts()) {
                 if (auto local_node = const_cast<Nest&>(*this)[local_mut]) {
+                    if (local_node->is_root()) local_node->recursive_ = true;
                     if (local_node == curr)
                         local_node->link(local_node);
                     else if (auto inest = local_node->inest()) {
@@ -161,16 +162,16 @@ void Nest::calc_SCCs(Node* curr) const {
 void Nest::Node::calc_SCCs() {
     Stack stack;
     for (int i = 0; auto& [_, node] : children())
-        if (node->idx_ == Unvisited) i = node->tarjan(i, this, stack);
+        if (node->idx_ == Unvisited) i = node->tarjan(i, stack);
 }
 
-uint32_t Nest::Node::tarjan(uint32_t i, Node* inest, Stack& stack) {
+uint32_t Nest::Node::tarjan(uint32_t i, Stack& stack) {
     this->idx_ = this->low_ = i++;
     this->on_stack_         = true;
     stack.emplace(this);
 
     for (auto dep : this->sibl_deps_.nodes_) {
-        if (dep->idx_ == Unvisited) i = dep->tarjan(i, inest, stack);
+        if (dep->idx_ == Unvisited) i = dep->tarjan(i, stack);
         if (dep->on_stack_) this->low_ = std::min(this->low_, dep->low_);
     }
 
@@ -204,8 +205,6 @@ const Nest::Node* Nest::Node::calc_dominance() const {
     if (idom_ || is_root() || !inest()->mut()) return this;
     nest().assign_postorder_numbers();
 
-    if (!inest()->mut()) idom_ = inest();
-
     // Holds all siblings in reverse post-order coming from the parent
     ankerl::unordered_dense::set<const Node*> visited;
     fe::Vector<const Node*> nodes;
@@ -217,8 +216,7 @@ const Nest::Node* Nest::Node::calc_dominance() const {
     }
 
     std::function<void(const Node*)> visit = [&](const Node* node) {
-        if (visited.contains(node)) return; // already visited
-        visited.insert(node);
+        if (!visited.insert(node).second) return;
         for (auto child : node->sibl_deps())
             visit(child);
         nodes.push_back(node);

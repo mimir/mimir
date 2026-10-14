@@ -10,4 +10,4 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
     let (c, _) = autodiff.zero [I32, I32];
     return (m, c);
 
-// CHECK-DAG: return{{.*}}0
+// CHECK-DAG: return_{{[0-9]+}} ({{.*}}, 0I32)

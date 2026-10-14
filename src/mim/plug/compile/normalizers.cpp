@@ -28,7 +28,7 @@ const Def* normalize_cond(const Def*, const Def* callee, const Def* phase) {
     auto& driver = world.driver();
     auto name    = callee->as<App>()->arg();
     if (auto str = tuple2str(name); !str.empty() && driver.is_loaded(str)) return phase;
-    return world.annex(Annex::base<null>());
+    return world.annex<null>();
 }
 
 MIM_compile_NORMALIZER_IMPL

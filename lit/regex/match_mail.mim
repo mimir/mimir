@@ -22,8 +22,6 @@ plugin cps;
 
 use core.ops.u.w;
 
-let Top = ⊤:Nat;
-
 // [a-zA-Z0-9]
 // (?:[a-zA-Z0-9]*[._\-]+[a-zA-Z0-9])*
 // [a-zA-Z0-9]*

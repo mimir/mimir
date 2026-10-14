@@ -22,13 +22,12 @@ namespace mim::plug::affine::phase {
 /// `core.conv.u`, apply the (now core-arithmetic) function `f`, and
 /// narrow each result back to its target `Idx (sout#j)` via `core.conv.u`.
 ///
-/// The division-based semiops (`ceildiv`, `floordiv`, `mod`) lower to `core.div`, which threads a `mem.M`. The mem is
+/// The division-based semiops (`ceildiv`, `floordiv`, `rem`) lower to `core.div`, which threads a `mem.M`. The mem is
 /// taken from the enclosing `affine.map`'s mem operand (tracked in #mem_), advanced through the div chain, and
 /// returned alongside the result.
 class LowerIndex : public RWPhase {
 public:
-    LowerIndex(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
     const Def* rewrite(const Def*) final;
     const Def* rewrite_imm_App(const App*) final;

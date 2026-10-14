@@ -15,8 +15,7 @@ namespace mim {
 /// §7](https://theses.gla.ac.uk/74568/1/10992188.pdf)
 class StaticArgOpt : public RWPhase {
 public:
-    StaticArgOpt(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     bool analyze() final;
@@ -33,7 +32,7 @@ private:
     DefSet analyzed_;
     LamMap<fe::Vector<fe::Bitset>> lam2sites_;
     LamMap<Sieve> lam2sieve_;
-    LamMap<std::pair<Lam*, Lam*>> old2wrap_loop_;
+    Lam2Lam old2loop_;
 };
 
 } // namespace mim

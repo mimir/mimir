@@ -311,7 +311,7 @@ const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
 
     auto v = version();
 
-    DefVec all_vars(n, [&](size_t i) { return known->var(n, i); });
+    auto all_vars = known->tvars();
     DefVec all_abstr_args(n, [&](size_t i) {
         // Strips EtaConv's per-occurrence wrappers so that call sites passing the same continuation still agree.
         if (auto f = Lam::eta_reduce(abstr_targs[i])) return profile_count("seo.eta.canonicalized"), f;
@@ -414,7 +414,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         if (returns_mem(app)) pin_reachable_slots(abstr_callee, abstr_arg);
         if (auto known = Lam::isa_rewritable(abstr_callee)) {
             auto n = known->num_tvars();
-            return apply_known(known, DefVec(n, [&](size_t i) { return abstr_arg->proj(n, i); }));
+            return apply_known(known, abstr_arg->projs(n));
         }
     }
 
@@ -463,7 +463,7 @@ static bool keep(Lam* lam, const Def* old_var, const Def* abstr) {
     if (abstr->isa<Bot>()) return false;                // ⊥       -> nuke
     if (Proxy::isa<Proxy_SCCP_Top>(abstr)) return true; // pending ⊤: nothing was propagated -> keep
     if (auto bundle = isa_bundle(abstr, lam)) return bundle->op(1) == old_var; // use first in GVN bundle
-    return false;                                                              // normal var -> keep
+    return false;                                                              // propagated value -> nuke
 }
 
 void SEO::Analysis::finalize() {
@@ -620,7 +620,7 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
                 log().d("needs seo: {}", old_lam);
                 size_t n      = old_lam->num_tvars();
                 auto new_lam  = build_lam(old_lam);
-                auto new_args = build_args(old_lam, DefVec(n, [&](size_t i) { return old_app->arg(n, i); }));
+                auto new_args = build_args(old_lam, old_app->args(n));
                 return map(old_app, new_world().app(new_lam, new_args));
             }
         }

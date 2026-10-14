@@ -37,6 +37,8 @@ let g3 = vec.first (core.icmp.e @10) ((8₁₀, 1₁₀, 3₁₀, 6₁₀, 9₁�
 let _  = refly.struc.e (g1, o.some 1₆);
 let _  = refly.struc.e (g2, o.none (Idx 6));
 let _  = refly.struc.e (g3, o.some 1₆);
+let g4 = vec.last core.ncmp.e ((8, 1, 3, 1, 9, 0), 1);
+let _  = refly.struc.e (g4, o.some 3₆);
 
 let r1 = ‹i: 3; i›;
 let r2 = ‹i: 3; core.wrap.add 0 (i, 1₃)›;

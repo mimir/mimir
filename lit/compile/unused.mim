@@ -11,4 +11,4 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
 anx lam _unused_compile(): compile.Phase =
     compile.cleanup;
 
-// CHECK-DAG: return{{.*}}42
+// CHECK-DAG: return_{{[0-9]+}} ({{.*}}, 42I32)

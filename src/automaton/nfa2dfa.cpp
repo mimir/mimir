@@ -12,7 +12,6 @@ struct NFASetLt {
         return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), NFANode::Lt{});
     }
 };
-} // namespace
 
 // calculate epsilon closure of a set of states
 NFASet epsilonClosure(const NFASet& states) {
@@ -26,7 +25,7 @@ NFASet epsilonClosure(const NFASet& states) {
         closure.insert(currentState);
         currentState->for_transitions([&](auto c, auto to) {
             if (c == NFA::SpecialTransitons::EPSILON) {
-                if (closure.find(to) == closure.end()) stateQueue.push(to);
+                if (!closure.contains(to)) stateQueue.push(to);
             }
         });
     }
@@ -34,6 +33,7 @@ NFASet epsilonClosure(const NFASet& states) {
 }
 
 NFASet epsilonClosure(const NFANode* state) { return epsilonClosure(NFASet{state}); }
+} // namespace
 
 // nfa2dfa implementation
 std::unique_ptr<DFA> nfa2dfa(const NFA& nfa) {
@@ -52,20 +52,18 @@ std::unique_ptr<DFA> nfa2dfa(const NFA& nfa) {
         for (auto& nfaState : currentState) {
             nfaState->for_transitions([&](auto c, auto to) {
                 if (c == NFA::SpecialTransitons::EPSILON) return;
-                if (nextStates.find(c) == nextStates.end())
-                    nextStates.try_emplace(c, NFASet{to});
-                else
-                    nextStates[c].insert(to);
+                nextStates[c].insert(to);
             });
         }
         // add new states for unknown next states
         for (auto& [c, tos] : nextStates) {
             auto toStateClosure = epsilonClosure(tos);
-            if (dfaStates.find(toStateClosure) == dfaStates.end()) {
-                dfaStates.emplace(toStateClosure, dfa->add_state());
-                stateQueue.push(toStateClosure);
+            auto [i, fresh]     = dfaStates.try_emplace(toStateClosure);
+            if (fresh) {
+                i->second = dfa->add_state();
+                stateQueue.push(std::move(toStateClosure));
             }
-            currentDfaState->add_transition(dfaStates[toStateClosure], c);
+            currentDfaState->add_transition(i->second, c);
         }
     }
     dfa->set_start(dfaStates[startState]);

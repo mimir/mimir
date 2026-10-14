@@ -207,19 +207,7 @@ std::optional<std::pair<fe::Vector<u64>, Poly>> matrix_chain_order(fe::View<Leaf
 } // namespace
 
 void Reassoc::start() {
-    auto num = [this](const char* key) -> std::optional<u64> {
-        auto val = arg_value(args(), key);
-        if (!val) return {};
-        auto n   = 0_u64;
-        auto end = val->data() + val->size();
-        if (auto [ptr, ec] = std::from_chars(val->data(), end, n); ec != std::errc() || ptr != end) {
-            log().w("ignoring `-X tensor:{}={}`: not a number", key, *val);
-            return {};
-        }
-        return n;
-    };
-
-    if (auto n = num("reassoc-max")) {
+    if (auto n = arg_u64(driver(), "reassoc-max")) {
         max_dispatch_ = *n;
         log().d("dispatch chains of up to {} matrices", *n);
         if (*n > Loud_max_dispatch)
@@ -334,8 +322,8 @@ Reassoc::dispatch(const Def* head, const Def* res_ty, fe::View<Leaf> mats, Defs 
             best = thunk, best_cost = cost;
         } else {
             auto cheaper = w.app(w.annex(core::ncmp::l), {cost, best_cost});
-            best         = w.extract(w.tuple({best, (const Def*)thunk}), cheaper);
-            best_cost    = w.extract(w.tuple({best_cost, cost}), cheaper);
+            best         = w.select(cheaper, thunk, best);
+            best_cost    = w.select(cheaper, cost, best_cost);
         }
     }
 

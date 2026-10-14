@@ -19,7 +19,7 @@ plugin cps;
 ///
 /// Char and string types:
 pub let Char = I8;
-lam Str(n: Nat): * = mem.Ptr0 «n; Char»;
+lam Str (n: Nat): * = mem.Ptr0 «n; Char»;
 /// `Res n` is a match result: the memory, a success flag, and the new position.
 lam Res (n: Nat): * = [mem.M 0, Bool, Idx n];
 /// `RE` is the matcher itself: it takes the memory, the string, and the current position.
@@ -52,7 +52,7 @@ axm range: «2; Char» → RE, normalize_range, 1;
 ///
 /// Wraps a literal.
 ///
-anx lam lit(val: Char) = range (val, val);
+anx lam lit (val: Char): RE = range (val, val);
 ///
 /// ### not_
 ///
@@ -108,7 +108,7 @@ axm empty: RE, 0;
 /// - `star`: `*` - zero or more
 /// - `plus`: `+` - one or more
 ///
-axm quant.(optional,star,plus): RE → RE, normalize_quant, 1;
+axm quant.(optional, star, plus): RE → RE, normalize_quant, 1;
 ///
 /// ## Phases
 ///

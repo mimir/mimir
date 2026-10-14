@@ -13,11 +13,10 @@ namespace mim {
 
 namespace {
 
-/// Formats and escapes for a Graphviz HTML-like label (`label=<...>`).
-template<class... Args>
-std::string html(std::format_string<Args...> fmt, Args&&... args) {
+/// Escapes @p s for a Graphviz HTML-like label (`label=<...>`).
+std::string html(std::string_view s) {
     std::string res;
-    for (auto c : std::format(fmt, std::forward<Args>(args)...)) {
+    for (auto c : s) {
         switch (c) {
             case '&': res += "&amp;"; break;
             case '<': res += "&lt;"; break;
@@ -123,7 +122,7 @@ public:
                 // Literals and axioms are heavily shared, so by default we detach their edges (invisible and
                 // non-constraining) to keep the layout readable. With inline_ we instead duplicate such a leaf per use:
                 // each reference gets its own local node, which avoids a star of long shared edges - handy for small
-                // graphs. A Var points back at its binder, so its edge is always detached to avoid long back-edges.
+                // graphs.
                 if (cfg_.inline_consts && (op->isa<Lit>() || op->isa<Axm>())) {
                     auto dup = std::format("_{}_{}", def->gid(), i);
                     emit_node(dup, op);
@@ -131,9 +130,8 @@ public:
                     type_edge(dup, op, max - 1);
                 } else {
                     recurse(op, max - 1);
-                    bool detach = def->isa<Var>()
-                               || (!cfg_.inline_consts
-                                   && (op->isa<Lit>() || op->isa<Axm>() || def->isa<Nat>() || def->isa<Idx>()));
+                    bool detach
+                        = !cfg_.inline_consts && (op->isa<Lit>() || op->isa<Axm>() || op->isa<Nat>() || op->isa<Idx>());
                     if (detach) {
                         // Detached edges are transparent by default to keep the layout readable (xdot still
                         // highlights them on hover). With show_hidden we render them statically in a subtle gray.
@@ -144,6 +142,12 @@ public:
                         std::println(os_, "{}{} -> _{};", tab_, tail(def, i), op->gid());
                 }
             }
+        }
+
+        if (auto var = def->isa<Var>()) {
+            recurse(var->binder(), max - 1);
+            std::println(os_, "{}_{} -> _{}[color=\"{}\",constraint=false];", tab_, def->gid(), var->binder()->gid(),
+                         cfg_.show_hidden ? "gray" : "#00000000");
         }
 
         type_edge(std::format("_{}", def->gid()), def, max - 1);
@@ -190,8 +194,7 @@ public:
     }
 
     void emit_name(const Def* def) {
-        std::print(os_, "{}<br/><font point-size=\"9\">{}</font>", html("{}", caption(def)),
-                   html("{}", def->unique_name()));
+        std::print(os_, "{}<br/><font point-size=\"9\">{}</font>", html(caption(def)), html(def->unique_name()));
     }
 
     /// Without the port cells of a full label there is nothing to dock at but the node itself.
@@ -246,27 +249,20 @@ private:
     DefSet done_;
 };
 
+template<class T>
+void dot_to(const T& t, const char* file, DotConfig cfg) {
+    if (!file) return t.dot(std::cout, cfg);
+    auto ofs = std::ofstream(file);
+    t.dot(ofs, cfg);
+}
+
 } // namespace
 
 void Def::dot(std::ostream& ostream, DotConfig cfg) const { Dot(ostream, cfg, this).run(this, cfg.max); }
 
-void Def::dot(const char* file, DotConfig cfg) const {
-    if (!file) {
-        dot(std::cout, cfg);
-    } else {
-        auto of = std::ofstream(file);
-        dot(of, cfg);
-    }
-}
+void Def::dot(const char* file, DotConfig cfg) const { dot_to(*this, file, cfg); }
 
-void World::dot(const char* file, DotConfig cfg) const {
-    if (!file) {
-        dot(std::cout, cfg);
-    } else {
-        auto of = std::ofstream(file);
-        dot(of, cfg);
-    }
-}
+void World::dot(const char* file, DotConfig cfg) const { dot_to(*this, file, cfg); }
 
 void World::dot(std::ostream& os, DotConfig cfg) const {
     Dot dot(os, cfg);
@@ -280,14 +276,7 @@ void World::dot(std::ostream& os, DotConfig cfg) const {
  * Nest
  */
 
-void Nest::dot(const char* file, DotConfig cfg) const {
-    if (!file) {
-        dot(std::cout, cfg);
-    } else {
-        auto of = std::ofstream(file);
-        dot(of, cfg);
-    }
-}
+void Nest::dot(const char* file, DotConfig cfg) const { dot_to(*this, file, cfg); }
 
 void Nest::dot(std::ostream& os, DotConfig cfg) const {
     auto tab = fe::Tab::spaces();
@@ -320,7 +309,7 @@ void Nest::Node::dot(fe::Tab tab, std::ostream& os) const {
                      sibl->name());
 
     auto rec   = is_mutually_recursive() ? "rec*" : (is_directly_recursive() ? "rec" : "");
-    auto label = std::format("<b>{}</b>", html("{}", name()));
+    auto label = std::format("<b>{}</b>", html(name()));
     if (*rec) label += std::format("<br/><i>{}</i>", rec);
     label += std::format("<br/><font point-size=\"8\">depth {}</font>", loop_depth());
     std::println(os, "{}\"{}\" [label=<{}>,tooltip=\"{}\"]", tab, name(), label, quote(s));

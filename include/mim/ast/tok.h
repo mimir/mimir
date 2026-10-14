@@ -66,7 +66,6 @@ constexpr Assoc prec_assoc(Prec p) {
 }
 
 constexpr bool is_rassoc(Prec p) { return prec_assoc(p) == Assoc::R; }
-constexpr bool is_lassoc(Prec p) { return prec_assoc(p) == Assoc::L; }
 
 /// Should a Pratt parser reduce when the current binding power is @p curr
 /// and the infix operator has precedence @p op?

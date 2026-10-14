@@ -1,5 +1,7 @@
 #include "mim/plug/autodiff/autodiff.h"
 
+#include <algorithm>
+
 #include <mim/config.h>
 #include <mim/phase.h>
 
@@ -119,6 +121,7 @@ const Def* autodiff_type_fun(const Def* ty) {
     if (auto sig = ty->isa<Sigma>()) {
         // TODO: mut sigma
         auto ops = DefVec(sig->ops(), [&](const Def* op) { return autodiff_type_fun(op); });
+        if (std::ranges::contains(ops, nullptr)) return nullptr;
         return world.sigma(ops);
     }
     // mem

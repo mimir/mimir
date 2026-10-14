@@ -13,8 +13,7 @@ namespace mim::plug::tensor::phase {
 /// `LowerMapReduce`.
 class Lower : public RWPhase {
 public:
-    Lower(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     const Def* rewrite_imm_App(const App*) final;

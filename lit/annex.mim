@@ -1,3 +1,4 @@
+// UNSUPPORTED: roundtrip
 // RUN: %mim %s --output-h - --bootstrap | %FileCheck %s
 
 plugin math;

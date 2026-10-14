@@ -31,3 +31,4 @@ extern fun f(x: Nat): Nat =
     end;
 
 // CHECK: extern fun f
+// CHECK: head_a ⊥:Nat;

@@ -7,8 +7,6 @@
 namespace mim {
 
 const Def* LamSpec::rewrite_imm_App(const App* old_app) {
-    if (auto i = old2new_.find(old_app); i != old2new_.end()) return i->second;
-
     auto old_lam = Lam::isa_rewritable(old_app->callee());
     if (!old_lam) return RWPhase::rewrite_imm_App(old_app);
 
@@ -40,7 +38,7 @@ const Def* LamSpec::rewrite_imm_App(const App* old_app) {
 
     for (size_t arg_i = 0, var_i = 0, n = num_old - skip; arg_i != n; ++arg_i) {
         auto arg = rewrite(old_app->arg(num_old, arg_i));
-        if (lam->dom(lam->num_doms(), arg_i)->isa<Pi>()) {
+        if (doms[arg_i]->isa<Pi>()) {
             new_vars.emplace_back(arg);
         } else {
             new_vars.emplace_back(new_lam->var(num_new, var_i++));
@@ -56,7 +54,7 @@ const Def* LamSpec::rewrite_imm_App(const App* old_app) {
     new_lam->set(lam->reduce(w.tuple(new_vars)));
     log().d("specialize {} → {}: {} → {}", lam, new_lam, lam->dom(), new_lam->dom());
 
-    return old2new_[old_app] = w.app(new_lam, new_args);
+    return w.app(new_lam, new_args);
 }
 
 } // namespace mim

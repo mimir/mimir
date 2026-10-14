@@ -64,8 +64,6 @@ public:
     DFA()                      = default;
     DFA(const DFA&)            = delete;
     DFA& operator=(const DFA&) = delete;
-
-    enum SpecialTransitons : std::uint16_t {};
 };
 
 template<class To>

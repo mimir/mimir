@@ -8,23 +8,6 @@ namespace mim::plug::clos::phase {
 
 namespace {
 
-const App* isa_callee(const Def* def, size_t i) { return i == 0 ? def->isa<App>() : nullptr; }
-
-bool isa_cnt(const App* body, const Def* def, size_t i) {
-    return Pi::isa_returning(body->callee_type()) && body->arg() == def && i == def->num_ops() - 1;
-}
-
-const Def* isa_br(const App* body, const Def* def) {
-    if (!Pi::isa_cn(body->callee_type())) return nullptr;
-    auto sw = Switch(body->callee());
-    return sw && sw.tuple() == def && def->isa<Tuple>() ? def : nullptr;
-}
-
-bool isa_callee_br(const App* body, const Def* def, size_t i) {
-    if (!Pi::isa_cn(body->callee_type())) return false;
-    return isa_callee(def, i) || isa_br(body, def);
-}
-
 Lam* isa_retvar(const Def* def) {
     if (auto [var, lam] = isa_var_proj<Lam>(def); var && lam && var == lam->ret_var()) return lam;
     return nullptr;
@@ -78,13 +61,7 @@ const Def* ClosConvPrep::eta_wrap(const Def* old_op, anno a) {
     return new_world().call(a, wrapper);
 }
 
-const Def* ClosConvPrep::rewrite_arg(const App* app, const Def* old_op) {
-    auto arg = app->arg();
-    auto i   = 0u;
-    auto n   = arg->num_projs();
-    for (; i < n; i++)
-        if (arg->proj(n, i) == old_op) break;
-
+const Def* ClosConvPrep::rewrite_arg(const App* app, const Def* old_op, size_t i, size_t n) {
     if (auto lam = isa_retvar(old_op); lam && from_outer_scope(lam)) {
         log().d("return var from an enclosing scope: {}", old_op);
         return eta_wrap(old_op, anno::free_bb)->set("free_ret");
@@ -93,7 +70,7 @@ const Def* ClosConvPrep::rewrite_arg(const App* app, const Def* old_op) {
         log().d("BB from an enclosing scope: {}", old_op);
         return new_world().call(anno::free_bb, rewrite(old_op));
     }
-    if (isa_cnt(app, arg, i)) {
+    if (Pi::isa_returning(app->callee_type()) && i == n - 1) {
         if (Axm::isa<anno>(anno::returning, old_op) || isa_retvar(old_op)) {
             return rewrite(old_op);
         } else if (auto contlam = old_op->isa_mut<Lam>()) {
@@ -105,17 +82,15 @@ const Def* ClosConvPrep::rewrite_arg(const App* app, const Def* old_op) {
         }
     }
 
-    if (!isa_callee_br(app, arg, i)) {
-        if (auto bb_lam = Lam::isa_mut_basicblock(old_op)) {
-            log().d("first-class use of BB: {}", bb_lam);
-            return new_world().call(anno::fstclass_bb, rewrite(bb_lam));
-        }
-        // @note This relies on branches staying in `Extract`-of-`Tuple` form; if eta-reduction were to collapse
-        // a branch back into a bare continuation, it would have to be re-wrapped here.
-        if (isa_retvar(old_op)) {
-            log().d("first-class use of return var: {}", old_op);
-            return eta_wrap(old_op, anno::fstclass_bb)->set("fstclass_ret");
-        }
+    if (auto bb_lam = Lam::isa_mut_basicblock(old_op)) {
+        log().d("first-class use of BB: {}", bb_lam);
+        return new_world().call(anno::fstclass_bb, rewrite(bb_lam));
+    }
+    // @note This relies on branches staying in `Extract`-of-`Tuple` form; if eta-reduction were to collapse
+    // a branch back into a bare continuation, it would have to be re-wrapped here.
+    if (isa_retvar(old_op)) {
+        log().d("first-class use of return var: {}", old_op);
+        return eta_wrap(old_op, anno::fstclass_bb)->set("fstclass_ret");
     }
 
     return rewrite(old_op);
@@ -157,7 +132,7 @@ const Def* ClosConvPrep::rewrite_imm_App(const App* app) {
         new_arg = rewrite(arg);
     } else {
         auto new_args = DefVec(arg->num_projs(),
-                               [&, n = arg->num_projs()](size_t i) { return rewrite_arg(app, arg->proj(n, i)); });
+                               [&, n = arg->num_projs()](size_t i) { return rewrite_arg(app, arg->proj(n, i), i, n); });
         new_arg       = arg->num_projs() == 1 ? new_args[0] : w.tuple(new_args);
     }
 

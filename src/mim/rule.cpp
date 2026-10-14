@@ -9,9 +9,9 @@
 
 namespace mim {
 
-std::tuple<const Var*, const Def*> tuple_of_dict(World& world, Def2Def& v2v) {
+static std::tuple<const Var*, const Def*> tuple_of_dict(World& world, Def2Def& v2v) {
     if (v2v.empty()) return {nullptr, nullptr};
-    std::vector<std::pair<const Def*, size_t>> tuple_of_args;
+    fe::Vector<std::pair<const Def*, size_t>> tuple_of_args;
     const Var* var_of_rule = nullptr;
     size_t tuple_size      = 1;
     for (auto [var, val] : v2v) {
@@ -24,7 +24,7 @@ std::tuple<const Var*, const Def*> tuple_of_dict(World& world, Def2Def& v2v) {
         }
     }
 
-    std::vector<const Def*> fin(tuple_size, nullptr);
+    auto fin = DefVec(tuple_size);
     for (auto val_pos : tuple_of_args)
         fin[val_pos.second] = val_pos.first;
     if (var_of_rule) {
@@ -36,14 +36,7 @@ std::tuple<const Var*, const Def*> tuple_of_dict(World& world, Def2Def& v2v) {
 }
 
 bool Rule::is_in_rule(const Def* expr) {
-    // are we inside a rule ?
-    for (auto var : expr->free_vars()) {
-        if (var->binder()->isa<Rule>()) {
-            // var is introduced by a rule: this is inside of a body of a rule
-            return true;
-        }
-    }
-    return false;
+    return std::ranges::any_of(expr->free_vars(), [](const Var* v) { return v->binder()->isa<Rule>(); });
 }
 
 bool Rule::its_a_match(const Def* expr, Def2Def& v2v) const {
@@ -55,29 +48,13 @@ bool Rule::its_a_match_(const Def* exp1, const Def* exp2, Def2Def& already_seen)
     // we assume all vars in exp2 are pattern matching meta variables
     // therefore they match everything
     if (exp1 == exp2) return true;
-    if (exp2->isa<Var>()) {
-        if (already_seen.contains(exp2)) return exp1 == already_seen[exp2];
-        if (exp2->as<Var>()->binder()->isa<Rule>()) {
-            already_seen[exp2] = exp1;
-            if (exp1->type() != nullptr && exp2->type() != nullptr)
-                if (!its_a_match_(exp1->type(), exp2->type(), already_seen)) return false;
-            return true;
-        }
-        return exp1 == exp2;
-        // we want to have 2 bound variables that are equal
-    }
-    if (auto e2 = exp2->isa<Extract>()) {
-        if (auto v = e2->tuple()->isa<Var>()) {
-            // we have a var in a tuple
-            if (already_seen.contains(e2)) return exp1 == already_seen[e2];
-            if (v->binder()->isa<Rule>()) {
-                already_seen[e2] = exp1;
-                if (exp1->type() != nullptr && exp2->type() != nullptr)
-                    if (!its_a_match_(exp1->type(), exp2->type(), already_seen)) return false;
-                return true;
-            }
-            return exp1 == exp2;
-        }
+    auto v = exp2->isa<Var>();
+    if (auto e2 = exp2->isa<Extract>()) v = e2->tuple()->isa<Var>();
+    if (v) {
+        if (auto seen = fe::lookup(already_seen, exp2)) return exp1 == seen;
+        if (!v->binder()->isa<Rule>()) return false;
+        already_seen[exp2] = exp1;
+        return !exp1->type() || !exp2->type() || its_a_match_(exp1->type(), exp2->type(), already_seen);
     }
 
     if (exp1->node() == exp2->node()) {

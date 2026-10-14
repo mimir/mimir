@@ -3,7 +3,6 @@
 #include <mim/config.h>
 #include <mim/phase.h>
 
-#include "mim/plug/mem/mem.h"
 #include "mim/plug/mem/phase/add_mem.h"
 #include "mim/plug/mem/phase/seo.h"
 

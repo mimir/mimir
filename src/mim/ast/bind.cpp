@@ -169,6 +169,8 @@ void IdPtrn::bind(Scopes& s, bool rebind, bool quiet) const {
     s.bind(dbg(), this, rebind, quiet);
 }
 
+void IdDecl::bind(Scopes& s, bool quiet) const { s.bind(dbg(), this, false, quiet); }
+
 void AliasPtrn::bind(Scopes& s, bool rebind, bool quiet) const {
     ptrn()->bind(s, rebind, quiet);
     s.bind(dbg(), this, rebind, quiet);
@@ -192,7 +194,7 @@ void Path::bind(Scopes& s, bool quiet) const {
         auto scope  = decl_->scope();
         auto member = scope ? fe::lookup(*scope, dbg.sym()) : nullptr;
         if (!member) {
-            if (!quiet) {
+            if (!quiet && !decl_->isa<DummyDecl>()) {
                 if (scope) {
                     s.error().e(dbg.loc(), "`{}` has no member `{}`", prev.sym(), dbg.sym());
                 } else {
@@ -230,8 +232,8 @@ void LitExpr::bind(Scopes& s) const {
     if (type()) {
         type()->bind(s);
         if (ISA(tag(), C_LIT_TYPED)) s.error().e(type()->loc(), "a `{}` must not have a type annotation", tag());
-    } else {
-        if (tag() == Tag::L_f) s.error().e(loc(), "floating-point literal requires a type annotation");
+    } else if (tag() == Tag::L_f) {
+        s.error().e(loc(), "floating-point literal requires a type annotation");
     }
 }
 
@@ -259,8 +261,7 @@ void InfixExpr::bind(Scopes& s) const {
 
 void MatchExpr::Arm::bind(Scopes& s) const {
     s.push();
-    // The constructor of `Cons (h, t)` is resolved against the scrutinee's type, not bound.
-    (payload() ? payload() : ptrn())->bind(s, false, false);
+    if (ptrn()) ptrn()->bind(s, false, false);
     body()->bind(s);
     s.pop();
 }
@@ -278,16 +279,13 @@ void MatchExpr::bind(Scopes& s) const {
 
 void PiExpr::Dom::bind(Scopes& s, bool quiet) const {
     ptrn()->bind(s, false, quiet);
-    if (ret()) ret()->bind(s, false, quiet);
+    if (ret_type() && !quiet) ret_type()->bind(s);
 }
 
 void PiExpr::bind(Scopes& s) const {
     s.push();
     dom()->bind(s);
-    if (codom()) {
-        if (ISA(tag(), C_CN)) s.error().e(codom()->loc(), "a continuation must not have a codomain");
-        codom()->bind(s);
-    }
+    if (codom()) codom()->bind(s);
     s.pop();
 }
 
@@ -304,8 +302,10 @@ void AppExpr::bind(Scopes& s) const {
 void RetExpr::bind(Scopes& s) const {
     callee()->bind(s);
     arg()->bind(s);
+    s.push();
     ptrn()->bind(s, true, false);
     body()->bind(s);
+    s.pop();
 }
 
 void SigmaExpr::bind(Scopes& s) const {
@@ -321,7 +321,8 @@ void TupleExpr::bind(Scopes& s) const {
 
 void SeqExpr::bind(Scopes& s) const {
     s.push();
-    arity()->bind(s, false, false);
+    shape()->bind(s);
+    index()->bind(s);
     body()->bind(s);
     s.pop();
 }
@@ -402,7 +403,7 @@ void AxmDecl::bind(Scopes& s) const {
             annex->normalizer = normalizer();
             annex->pi         = pi;
         } else if (annex) {
-            if (pi ^ *annex->pi)
+            if (annex->pi != pi)
                 s.error().e(dbg.loc(),
                             "all declarations of annex `{}` must be function types if one of them is (they share one "
                             "annex tag - via mod-nesting or a `tag.(...)` family - and must agree in shape)",
@@ -502,13 +503,14 @@ void RecDecl::bind_body(Scopes& s) const { body()->bind(s); }
 
 void LamDecl::Dom::bind(Scopes& s, bool quiet) const {
     PiExpr::Dom::bind(s, quiet);
+    if (ret()) ret()->bind(s, quiet);
     if (filter() && !quiet) filter()->bind(s);
 }
 
 void LamDecl::bind_decl(Scopes& s) const {
     s.push();
-    for (size_t i = 0, e = num_doms(); i != e; ++i)
-        dom(i)->bind(s);
+    for (auto&& dom : doms())
+        dom->bind(s);
 
     if (auto filter = doms().back()->filter()) {
         if (auto pe = filter->isa<PrimaryExpr>()) {

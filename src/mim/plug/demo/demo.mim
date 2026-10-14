@@ -11,5 +11,6 @@
 /// ### const_idx
 ///
 /// The constant `42`, evaluated by a normalizer.
+/// Requires `n > 42`.
 ///
 axm const_idx: [n: Nat] → Idx n, normalize_const;

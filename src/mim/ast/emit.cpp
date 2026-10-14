@@ -215,22 +215,22 @@ static bool is_wildcard(const Ptrn* ptrn) {
 
 const Def* ErrorPtrn::emit_value(Emitter&, const Def* def) const { return def; }
 
-const Def* IdPtrn::emit_value(Emitter& e, const Def* def) const {
-    if (!type()) return def_ = def->set(dbg());
-
-    auto id_ty = emit_type(e);
-
-    if (auto res = Checker::assignable(id_ty, def)) return def_ = res->set(dbg());
+static const Def* assign(Emitter& e, const Ptrn* ptrn, const Def* type, const Def* def) {
+    if (auto res = Checker::assignable(type, def)) return res->set(ptrn->dbg());
 
     e.error()
-        .e(loc(), "value bound to `{}` is not assinable to its annotated type", dbg().sym())
-        .n("expected `{}`, got `{}`", id_ty, type_of(def))
+        .e(ptrn->loc(), "value bound to `{}` is not assignable to its annotated type", ptrn->dbg().sym())
+        .n("expected `{}`, got `{}`", type, type_of(def))
         .bail();
 }
 
-const Def* IdPtrn::emit_value_without_type_check(Emitter& e, const Def* def) const { return def_ = def->set(dbg()); }
+const Def* IdPtrn::emit_value(Emitter& e, const Def* def) const {
+    return def_ = type() ? assign(e, this, emit_type(e), def) : def->set(dbg());
+}
 
-const Def* GrpPtrn::emit_value(Emitter&, const Def* def) const { return def_ = def->set(dbg()); }
+const Def* IdDecl::emit(const Def* def) const { return def_ = def->set(dbg()); }
+
+const Def* GrpPtrn::emit_value(Emitter& e, const Def* def) const { return def_ = assign(e, this, emit_type(e), def); }
 
 const Def* AliasPtrn::emit_value(Emitter& e, const Def* def) const {
     return def_ = ptrn()->emit_value(e, def)->set(dbg());
@@ -253,7 +253,12 @@ static void emit_var(Emitter& e, const Ptrn* ptrn, Def* mut) {
 const Def* TuplePtrn::emit_value(Emitter& e, const Def* def) const {
     auto _ = e.world().push(loc());
     emit_type(e);
-    for (size_t i = 0, n = num_ptrns(); i != n; ++i)
+    auto n = num_ptrns();
+    // An unset Hole type has arity 1 until inference resolves it, so only a known arity may be rejected.
+    if (auto t = def->type()->zonk(); n != 1 && !Hole::isa_unset(t))
+        if (auto a = Lit::isa(t->arity()); a && *a != n)
+            e.error().e(loc(), "pattern has {} components, but a value of type `{}` has {}", n, t, *a).bail();
+    for (size_t i = 0; i != n; ++i)
         ptrn(i)->emit_proj(e, def, n, i);
     return def_ = def;
 }
@@ -265,13 +270,14 @@ const Def* TuplePtrn::emit_value(Emitter& e, const Def* def) const {
 const Def* ErrorPtrn::emit_type(Emitter&) const { std::unreachable(); }
 
 const Def* IdPtrn::emit_type(Emitter& e) const {
-    auto _ = e.world().push(loc());
-    return type() ? type()->emit(e) : e.world().mut_hole_type();
+    auto _               = e.world().push(loc());
+    return emitted_type_ = type() ? type()->emit(e) : e.world().mut_hole_type();
 }
 
 const Def* AliasPtrn::emit_type(Emitter& e) const { return ptrn()->emit_type(e); }
 
-const Def* GrpPtrn::emit_type(Emitter& e) const { return id()->emit_type(e); }
+// The leading IdPtrn has just emitted the group's type.
+const Def* GrpPtrn::emit_type(Emitter&) const { return id()->emitted_type_; }
 
 const Def* TuplePtrn::emit_type(Emitter& e) const { return emit_body(e, {}); }
 
@@ -416,6 +422,11 @@ const Def* LitExpr::emit_(Emitter& e) const {
     switch (tag()) {
         case Tag::L_f:   return t ? e.world().lit(t, encode_f(e, loc(), t, tok().lit_u())) : e.world().lit_nat(tok().lit_u());
         case Tag::L_s:
+            if (auto size = t ? Idx::isa_lit(t) : std::nullopt; size && *size != 0) {
+                auto mag = -tok().lit_u();
+                return e.world().lit(t, (*size - mag % *size) % *size);
+            }
+            [[fallthrough]];
         case Tag::L_u:   return t ? e.world().lit(t, tok().lit_u()) : e.world().lit_nat(tok().lit_u());
         case Tag::L_i:   { auto [size, val] = tok().lit_i(); return e.world().lit_idx(size, val); }
         case Tag::L_c:   return e.world().lit_i8(tok().lit_c());
@@ -603,22 +614,18 @@ const Def* InfixExpr::emit_(Emitter& e) const {
     }
 }
 
-const IdPtrn* MatchExpr::Arm::ctor() const {
-    auto id = ptrn()->isa<IdPtrn>();
-    return id && !id->type() ? id : nullptr;
-}
-
 Lam* MatchExpr::Arm::emit(Emitter& e, const Def* dom) const {
-    auto _      = e.world().push(loc());
-    auto binder = dom && payload() ? payload() : ptrn();
-    auto dom_t  = binder->emit_type(e);
-    if (dom && !Checker::alpha<Checker::Check>(dom_t, dom))
-        e.error()
-            .e(binder->loc(), "pattern of type `{}` does not match the constructor's payload `{}`", dom_t, dom)
-            .bail();
-    auto pi  = e.world().pi(dom ? dom : dom_t, e.world().mut_hole_type());
-    auto lam = e.world().mut_lam(pi);
-    binder->emit_value(e, lam->var());
+    auto _ = e.world().push(loc());
+    if (ptrn()) {
+        auto dom_t = ptrn()->emit_type(e);
+        if (dom && !Checker::alpha<Checker::Check>(dom_t, dom))
+            e.error()
+                .e(ptrn()->loc(), "pattern of type `{}` does not match the constructor's payload `{}`", dom_t, dom)
+                .bail();
+        if (!dom) dom = dom_t;
+    }
+    auto lam = e.world().mut_lam(e.world().pi(dom, e.world().mut_hole_type()));
+    if (ptrn()) ptrn()->emit_value(e, lam->var());
     return lam->set(true, body()->emit(e));
 }
 
@@ -633,7 +640,9 @@ const Def* MatchExpr::emit_variant(Emitter& e, const Def* scrutinee, const Varia
                        variant->num_ops(), *index)
                     .bail();
             i = *index;
-        } else if (auto id = arm->ctor()) {
+        } else if (auto ctor = arm->ctor()) {
+            i = e.ctor(variant, ctor);
+        } else if (auto id = arm->ptrn()->isa<IdPtrn>(); id && !id->type()) {
             i = e.ctor(variant, id->dbg());
         } else {
             e.error()
@@ -665,7 +674,7 @@ const Def* MatchExpr::emit_(Emitter& e) const {
     if (auto variant = ops.front()->isa_type<Variant>()) return emit_variant(e, ops.front(), variant);
 
     for (auto arm : arms()) {
-        if (arm->payload() || arm->index())
+        if (arm->index() || arm->ctor())
             e.error()
                 .e(arm->loc(), "a constructor pattern needs a variant scrutinee")
                 .n("but the scrutinee has type `{}`", type_of(ops.front()))
@@ -690,19 +699,16 @@ void PiExpr::Dom::emit_type(Emitter& e) const {
     auto _     = e.world().push(loc());
     auto dom_t = ptrn()->emit_type(e);
 
-    if (ret()) {
+    if (ret_type()) {
         auto sigma = e.world().mut_sigma(2);
         auto var   = sigma->var();
         sigma->set(0, dom_t);
         ptrn()->emit_proj(e, var, 2, 0);
-        auto ret_t = e.world().cn(ret()->emit_type(e));
+        auto ret_t = e.world().cn(ret_type()->emit(e));
         sigma->set(1, ret_t);
 
-        if (auto imm = sigma->immutabilize())
-            dom_t = imm;
-        else
-            dom_t = sigma;
-        pi_->set_dom(dom_t);
+        auto imm = sigma->immutabilize();
+        pi_->set_dom(imm ? imm : sigma);
     } else {
         pi_->set_dom(dom_t);
         emit_var(e, ptrn(), pi_);
@@ -739,12 +745,22 @@ const Def* AppExpr::emit_(Emitter& e) const {
 }
 
 const Def* RetExpr::emit_(Emitter& e) const {
-    auto c = callee()->emit(e);
+    auto& w = e.world();
+    auto c  = callee()->emit(e);
     if (auto pi = c->type()->isa<Pi>())
         if (auto cn = pi->ret_pi()) {
-            auto con  = e.world().mut_lam(cn);
-            auto pair = e.world().tuple({arg()->emit(e), con});
-            auto app  = e.world().app(c, pair);
+            auto a = arg()->emit(e);
+            // A dependent domain's ret type refers to the other arguments, so instantiate it with them.
+            if (auto sigma = pi->dom()->isa_mut<Sigma>()) {
+                auto n    = sigma->num_ops();
+                auto args = DefVec(n, [&](size_t i) {
+                    return i + 1 == n ? w.bot(sigma->op(i)) : n == 2 ? a : a->proj(n - 1, i);
+                });
+                if (auto inst = sigma->reduce(w.tuple(args)).back()->isa<Pi>()) cn = inst;
+            }
+            auto con  = w.mut_lam(cn);
+            auto pair = w.tuple({a, con});
+            auto app  = w.app(c, pair);
             ptrn()->emit_value(e, con->var());
             con->set(false, body()->emit(e));
             return app;
@@ -789,10 +805,10 @@ const Def* TupleExpr::emit_(Emitter& e) const {
 }
 
 const Def* SeqExpr::emit_(Emitter& e) const {
-    auto s = arity()->emit_type(e);
-    if (auto lit_s = Lit::isa(s); lit_s && *lit_s == 0) return e.world().unit(is_pack());
+    auto s = shape()->emit(e);
+    if (auto lit_s = Lit::isa(s); lit_s && *lit_s == 0) return e.world().prod(is_pack());
 
-    if (arity()->dbg().is_anon()) { // immutable
+    if (index()->dbg().is_anon()) { // immutable
         auto b = body()->emit(e);
         return e.world().seq(is_pack(), s, b);
     }
@@ -805,7 +821,7 @@ const Def* SeqExpr::emit_(Emitter& e) const {
         auto p = e.world().mut_pack(a);
         p->set_shape(s);
         auto var = p->var();
-        arity()->emit_value_without_type_check(e, var);
+        index()->emit(var);
         auto b = body()->emit(e);
         p->set_body(b);
         auto arr_b = b->type();
@@ -816,7 +832,7 @@ const Def* SeqExpr::emit_(Emitter& e) const {
         return e.world().fuse(p);
     } else {
         auto var = a->var();
-        arity()->emit_value_without_type_check(e, var);
+        index()->emit(var);
         a->set_body(body()->emit(e));
         return e.world().fuse(a);
     }
@@ -955,7 +971,7 @@ Lam* LamDecl::Dom::emit_value(Emitter& e) const {
     if (ret()) {
         auto var = lam_->var();
         ptrn()->emit_proj(e, var, 2, 0);
-        ret()->emit_value_without_type_check(e, var->proj(2, 1));
+        ret()->emit(var->proj(2, 1));
     } else {
         emit_var(e, ptrn(), lam_);
     }

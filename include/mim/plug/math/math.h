@@ -52,28 +52,6 @@ inline const Def* mode(World& w, VMode m) {
 
 /// @name math.F
 ///@{
-inline const Def* type_f(const Def* pe) {
-    World& w = pe->world();
-    return w.app(w.annex<F>(), pe);
-}
-inline const Def* type_f(World& w, nat_t p, nat_t e) {
-    auto lp = w.lit_nat(p);
-    auto le = w.lit_nat(e);
-    return type_f(w.tuple({lp, le}));
-}
-template<nat_t P, nat_t E>
-inline auto match_f(const Def* def) {
-    if (auto f_ty = Axm::isa<F>(def)) {
-        auto [p, e] = f_ty->arg()->projs<2>([](auto op) { return Lit::isa(op); });
-        if (p && e && *p == P && *e == E) return f_ty;
-    }
-    return Axm::IsA<F, App>();
-}
-
-inline auto match_f16(const Def* def) { return match_f<10, 5>(def); }
-inline auto match_f32(const Def* def) { return match_f<23, 8>(def); }
-inline auto match_f64(const Def* def) { return match_f<52, 11>(def); }
-
 inline std::optional<nat_t> isa_f(const Def* def) {
     if (auto f_ty = Axm::isa<F>(def)) {
         if (auto [p, e] = f_ty->arg()->projs<2>([](auto op) { return Lit::isa(op); }); p && e) {
@@ -106,17 +84,6 @@ inline const Lit* lit_f(World& w, nat_t width, mim::f64 val) {
 // clang-format on
 ///@}
 
-/// @name math.arith
-///@{
-inline const Def* op_rminus(VMode m, const Def* a) {
-    World& w = a->world();
-    auto s   = isa_f(a->type());
-    if (!s) return nullptr;
-    if (auto zero = lit_f(w, *s, -0.0)) return w.call(arith::sub, mode(w, m), Defs{zero, a});
-    return nullptr;
-}
-///@}
-
 } // namespace mim::plug::math
 
 namespace mim {
@@ -128,11 +95,12 @@ constexpr bool is_commutative(plug::math::extrema ) { return true; }
 constexpr bool is_commutative(plug::math::arith id) { return id == plug::math::arith::add || id == plug::math::arith::mul; }
 constexpr bool is_commutative(plug::math::cmp   id) { return id == plug::math::cmp  ::e   || id == plug::math::cmp  ::ne ; }
 constexpr bool is_associative(plug::math::arith id) { return is_commutative(id); }
-// clang-format off
+// clang-format on
 ///@}
 
 } // namespace mim
 
 #ifndef DOXYGEN
-template<> struct fe::is_bit_enum<mim::plug::math::Mode> : std::true_type {};
+template<>
+struct fe::is_bit_enum<mim::plug::math::Mode> : std::true_type {};
 #endif

@@ -170,8 +170,6 @@ public:
     };
 
     void rt_mode(Rt rt) { rt_ = rt; }
-    /// Provides the textual LLVM IR of the runtime module to splice in `Rt::embed` mode.
-    void rt_module(std::string ll) { rt_module_ = std::move(ll); }
 
     /// Locates the runtime module `rt/<filename>` (produced by `add_mim_runtime`) in the driver's
     /// search paths, reads it, and stores it for `Rt::embed` splicing.
@@ -204,7 +202,7 @@ protected:
 
     /// As above but yielding an empty string is permitted.
     std::string emit_unsafe(const Def* def) {
-        if (auto i = locals_.find(def); i != locals_.end()) return i->second;
+        if (auto s = fe::lookup(locals_, def)) return *s;
 
         auto place          = scheduler_.smart(curr_lam_, def);
         auto& bb            = lam2bb_[place->mut()->as<Lam>()];
@@ -305,6 +303,11 @@ private:
     friend void mim_ll_emit_epilogue(Emitter&, Lam*);
     friend void mim_ll_emit_bb(Emitter&, BB&, const Def*, std::string&);
 };
+
+/// Parses `-X <backend>:rt=extern|embed`; Emitter::Rt::embed is the default.
+inline Emitter::Rt arg_rt(fe::View<std::string> args) {
+    return arg_value(args, "rt") == "extern" ? Emitter::Rt::ext : Emitter::Rt::embed;
+}
 
 /*
  * convert

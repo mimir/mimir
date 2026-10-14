@@ -56,10 +56,8 @@ axm ncmp.(gle = f, glE =  e, gLe =  l, gLE = le,
 /// - **signed** interpretation is defined by choosing, for each residue class modulo \f$s\f$, its canonical signed representative.
 ///
 /// Concretely, a value \f$x : \mathrm{Idx}\;s\f$ is considered non-negative iff \f$ x \le \lfloor (s-1)/2 \rfloor \f$, and negative otherwise.
-/// Hence the signed range is
-/// \f$ \big[ -\lfloor s/2 \rfloor,\; \lceil s/2 \rceil - 1 \big] \f$.
-/// For powers of two, i.e. \f$ s = 2^w \f$, this coincides exactly with the usual
-/// \f$w\f$-bit two's-complement interpretation.
+/// Hence the signed range is \f$ \big[ -\lfloor s/2 \rfloor,\; \lceil s/2 \rceil - 1 \big] \f$.
+/// For powers of two, i.e. \f$ s = 2^w \f$, this coincides exactly with the usual \f$w\f$-bit two's-complement interpretation.
 ///
 /// ### Mode
 ///
@@ -121,7 +119,7 @@ axm bit1.(f, neg, id, t): [m: Nat] → {s: Nat} → Idx s → Idx s, normalize_b
 /// | and_   |  x |  o |  o |  o | and                          |
 /// | nxor   |  x |  o |  o |  x | not exclusive or             |
 /// | snd    |  x |  o |  x |  o | second argument              |
-/// | iff    |  x |  o |  x |  x | implication (if and only if) |
+/// | iff    |  x |  o |  x |  x | implication                  |
 /// | fst    |  x |  x |  o |  o | first argument               |
 /// | ciff   |  x |  x |  o |  x | converse implication         |
 /// | or_    |  x |  x |  x |  o | or                           |
@@ -131,7 +129,7 @@ axm bit1.(f, neg, id, t): [m: Nat] → {s: Nat} → Idx s → Idx s, normalize_b
 ///
 axm bit2.( f,      nor, nciff, nfst, niff, nsnd, xor_, nand,
            and_,  nxor,   snd,  iff,  fst, ciff,  or_,    t):
-    [m: Nat] → {s: Nat} → «2; Idx s» → Idx s , normalize_bit2;
+    [m: Nat] → {s: Nat} → «2; Idx s» → Idx s, normalize_bit2;
 ///
 /// ### shr
 ///
@@ -244,7 +242,7 @@ axm icmp.(xygle = f,  xyglE = e,   xygLe,      xygLE,
           XyGle = sg, XyGlE = sge, XyGLe,      XyGLE,
           XYgle,      XYglE,       XYgLe,      XYgLE,
           XYGle,      XYGlE,       XYGLe = ne, XYGLE = t):
-    {s: Nat} → «2; Idx s» → Bool , normalize_icmp;
+    {s: Nat} → «2; Idx s» → Bool, normalize_icmp;
 ///
 /// ### extrema
 ///
@@ -253,7 +251,7 @@ axm icmp.(xygle = f,  xyglE = e,   xygLe,      xygLE,
 /// - un`s`igned or `S`igned
 /// - `m`inimum or `M`aximum
 ///
-axm extrema.(sm=umin, sM=umax, Sm=smin, SM=smax): {s: Nat} → «2; Idx s» → Idx s, normalize_extrema;
+axm extrema.(sm = umin, sM = umax, Sm = smin, SM = smax): {s: Nat} → «2; Idx s» → Idx s, normalize_extrema;
 ///
 /// ### abs
 ///
@@ -278,6 +276,7 @@ axm conv.(s, u): {ss: Nat} → [ds: Nat] → Idx ss → Idx ds, normalize_conv;
 ///
 /// Bitcast to reinterpret a value as another type.
 /// Can be used for pointer / integer conversions as well as integer / nat conversions.
+/// A value that does not fit into a target `Idx s` is truncated modulo `s`.
 ///
 axm bitcast: {S: *} → [D: *] → S → D, normalize_bitcast;
 ///

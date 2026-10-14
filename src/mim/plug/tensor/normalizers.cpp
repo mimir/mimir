@@ -28,10 +28,6 @@ const Def* normalize_broadcast(const Def* type, const Def* c, const Def* arg) {
 
     if (s_in == s_out || input->type() == type) return input;
 
-    auto r_nat = Lit::isa<u64>(r);
-    if (!r_nat) return nullptr;
-    if (r_nat == 0) return input;
-
     return nullptr;
 }
 
@@ -149,20 +145,13 @@ constexpr std::array Vec_widths = {1_u64, 4_u64, 8_u64, 16_u64};
 const Def* normalize_vec_width(const Def*, const Def*, const Def* arg) {
     // Read off the Driver so one graph can be re-emitted for another target by another Driver.
     auto& w = arg->world();
-    auto v  = arg_value(w.driver().args("tensor"), "vec-width");
-    if (!v) return arg;
-
-    auto n   = 0_u64;
-    auto end = v->data() + v->size();
-    if (auto [ptr, ec] = std::from_chars(v->data(), end, n); ec != std::errc() || ptr != end) {
-        w.log().w("ignoring `-X tensor:vec-width={}`: not a number", *v);
+    auto n  = arg_u64(w.driver(), "vec-width");
+    if (!n) return arg;
+    if (std::ranges::find(Vec_widths, *n) == Vec_widths.end()) {
+        w.log().w("ignoring `-X tensor:vec-width={}`: not one of {}", *n, fe::Join(Vec_widths, ", "));
         return arg;
     }
-    if (std::ranges::find(Vec_widths, n) == Vec_widths.end()) {
-        w.log().w("ignoring `-X tensor:vec-width={}`: not one of {}", n, fe::Join(Vec_widths, ", "));
-        return arg;
-    }
-    return w.lit_nat(n);
+    return w.lit_nat(*n);
 }
 
 const Def* normalize_shape(const Def*, const Def* c, const Def* arg) {

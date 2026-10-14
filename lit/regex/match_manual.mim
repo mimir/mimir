@@ -12,7 +12,6 @@ plugin cps;
 
 use core.ops.u.nw;
 
-let Top = ⊤:Nat;
 
 // matches (a|b)+a
 
@@ -74,7 +73,7 @@ extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:
         con error(m: mem.M 0, i: I32) =
             reject (m, 0I32)
             where
-                con reject(m: mem.M 0, _: Idx Top) = exit (m, 0I32);
+                con reject(m: mem.M 0, _: Idx ⊤:Nat) = exit (m, 0I32);
             end;
     end
 

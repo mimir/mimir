@@ -39,7 +39,7 @@ use core.ops.n;
 /// Represents an [algebraic ring](https://en.wikipedia.org/wiki/Ring_(mathematics)).
 /// E.g., `let nat_ring = (Nat, 0, core.nat.add, core.nat.mul);`.
 ///
-/// `tensor.Ring` is an alias for this type: `tensor` bufferizes onto `*`, so `btensor` is the lower of the
+/// `tensor.Ring` is an alias for this type: `tensor` bufferizes onto `btensor`, so `btensor` is the lower of the
 /// two layers and owns the definition.
 anx let Ring = [
     T: *,
@@ -77,8 +77,8 @@ axm map_reduce: {nis: Nat}
               → [So: «Ro; Nat», Sr: «Rn; Nat»]
               → {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
               → [f: Fn [mem.M 0, To, «i: nis; Tis#i»] → [mem.M 0, To], init: To]
-              → [map_out: [«Rn; affine.Index»] → «Ro; affine.Index»]
-              → [maps: «i: nis; ([«Rn; affine.Index»] → «Ris#i; affine.Index»)»]
+              → [map_out: «Rn; affine.Index» → «Ro; affine.Index»]
+              → [maps: «i: nis; («Rn; affine.Index» → «Ris#i; affine.Index»)»]
               → [mem.M 0, is: «i: nis; buffer.Buf (Ris#i, Sis#i, Tis#i)»]
               → [mem.M 0, buffer.Buf (Ro, So, To)], normalize_map_reduce;
 ///
@@ -102,9 +102,9 @@ axm map_reduce_post: {nis nps: Nat}
                       Tps: «nps; *», Rps: «j: nps; Nat», Sps: «j: nps; «Rps#j; Nat»»}
                    → [f: Fn [mem.M 0, To, «i: nis; Tis#i»] → [mem.M 0, To], init: To,
                       post: Fn [mem.M 0, To, «j: nps; Tps#j»] → [mem.M 0, Tp]]
-                   → [map_out: [«Rn; affine.Index»] → «Ro; affine.Index»]
-                   → [maps: «i: nis; ([«Rn; affine.Index»] → «Ris#i; affine.Index»)»,
-                      post_maps: «j: nps; ([«Ro; affine.Index»] → «Rps#j; affine.Index»)»]
+                   → [map_out: «Rn; affine.Index» → «Ro; affine.Index»]
+                   → [maps: «i: nis; («Rn; affine.Index» → «Ris#i; affine.Index»)»,
+                      post_maps: «j: nps; («Ro; affine.Index» → «Rps#j; affine.Index»)»]
                    → [mem.M 0, is: «i: nis; buffer.Buf (Ris#i, Sis#i, Tis#i)»,
                       post_is: «j: nps; buffer.Buf (Rps#j, Sps#j, Tps#j)»]
                    → [mem.M 0, buffer.Buf (Ro, So, Tp)];
@@ -183,11 +183,9 @@ fun btensor_copy {T: *} (m: mem.M 0, acc: T, y: T)@tt: [mem.M 0, T] = return (m,
 ///
 /// ### transpose_2d
 ///
-/// Permutes the dimensions of a 2-dimensional matrix.
+/// Permutes the dimensions of a 2-dimensional matrix by reading the input at the swapped loop variables; there is no reduction loop.
 /// As there, the shape is a single `«2; Nat»` vector instead of two separate `Nat`s and `{T}` precedes
 /// `{s}`; like `product_2d` this is a `lam` over `map_reduce` rather than an `axm`.
-///
-/// Transpose a matrix by reading the input at the swapped loop variables; there is no reduction loop.
 ///
 anx lam transpose_2d {T: *} {s: «2; Nat»}
                      (m: mem.M 0, input: buffer.Buf (2, s, T))
@@ -205,10 +203,10 @@ anx lam transpose_2d {T: *} {s: «2; Nat»}
 ///
 /// ### product_2d_fun
 ///
-/// Fused multiply-add over the ring `R`; `ab#0` is the `t1` element, `ab#1` the `t2` element.
-/// The mem-threaded counterpart of the `tensor` plugin's `conv_fun`.
-fun product_2d_fun (R: Ring) (m: mem.M 0, acc: R#T, ab: «2; R#T»)@tt: [mem.M 0, R#T] =
-    return (m, R#add (acc, R#mul (ab#0_2, ab#1_2)));
+/// Fused multiply-add over the ring `R`; `x` is the `t1` element, `y` the `t2` element.
+/// The mem-threaded counterpart of the `tensor` plugin's `dot_general_fun`.
+fun product_2d_fun (R: Ring) (m: mem.M 0, acc: R#T, (x y: R#T))@tt: [mem.M 0, R#T] =
+    return (m, R#add (acc, R#mul (x, y)));
 ///
 /// ### product_2d
 ///
@@ -218,9 +216,9 @@ fun product_2d_fun (R: Ring) (m: mem.M 0, acc: R#T, ab: «2; R#T»)@tt: [mem.M 0
 ///
 /// Unlike `tensor.product_2d` this is a `lam` wrapping `map_reduce` directly, not an `axm` paired with
 /// an `_impl` annex and a lowering phase: nothing in this plugin inspects the high-level form — no
-/// fusion phase over `*`, and the normalizer was a no-op — so the extra staging bought nothing.
+/// fusion phase over `btensor.*`, and the normalizer was a no-op — so the extra staging bought nothing.
 /// `transpose_2d` follows the same pattern.
-
+///
 /// The loop vector is `(i, j, k)` and follows the principle `ij ← ik, kj`
 /// (\f$\mathit{out}_{i,j} = \sum_k \mathit{t1}_{i,k} \cdot \mathit{t2}_{k,j}\f$), so `k` is the single reduction loop.
 anx lam product_2d (R: Ring) {m k l: Nat}
@@ -324,9 +322,9 @@ lam range_nest (r: Nat, Sr: «r; Nat») (A: *) (loop: ForT A, lo hi: Nat)
         con level (pref: «r; I32», m: mem.M 0, acc: A, k: Cn [mem.M 0, A]) =
             loop lbody lexit (0I32, core.bitcast I32 (Sr#(core.idx 0 r d)), 1I32, (m, acc))
             where
-                con lbody (iv: I32, macc: [mem.M 0, A], yield: Cn [mem.M 0, A]) =
-                    let pref2 = ‹j: r; core.select (core.bitcast Nat j == d, iv, pref#j)›;
-                    w (pref2, macc#0_2, macc#1_2, yield);
+                con lbody (iv: I32, (m: mem.M 0, acc: A), yield: Cn [mem.M 0, A]) =
+                    let pref = ‹j: r; core.select (core.bitcast Nat j == d, iv, pref#j)›;
+                    w (pref, m, acc, yield);
                 con lexit (macc: [mem.M 0, A]) = k macc;
             end;
         level;
@@ -334,7 +332,7 @@ lam range_nest (r: Nat, Sr: «r; Nat») (A: *) (loop: ForT A, lo hi: Nat)
     vec.fold.r @(Cn [«r; I32», mem.M 0, A, Cn [mem.M 0, A]], Nat) @m
         wrap (‹i: m; lo + core.bitcast Nat i›, inner);
 ///
-/// #### range_unroll
+/// ### range_unroll
 ///
 /// Like `range_nest`, but every dim in the range is fully **unrolled**: the inner continuation is
 /// chained once per iteration point by a right fold over the dim's (compile-time) extent —
@@ -347,9 +345,9 @@ lam range_unroll (r: Nat, Sr: «r; Nat») (A: *) (lo hi: Nat)
            : Cn [«r; I32», mem.M 0, A, Cn [mem.M 0, A]] =
         con level (pref: «r; I32», m: mem.M 0, acc: A, k: Cn [mem.M 0, A]) =
             lam step (i: Nat, kk: Cn [mem.M 0, A]): Cn [mem.M 0, A] =
-                con at (m2: mem.M 0, a2: A) =
-                    let pref2 = ‹j: r; core.select (core.bitcast Nat j == d, core.bitcast I32 i, pref#j)›;
-                    w (pref2, m2, a2, kk);
+                con at (m: mem.M 0, acc: A) =
+                    let pref = ‹j: r; core.select (core.bitcast Nat j == d, core.bitcast I32 i, pref#j)›;
+                    w (pref, m, acc, kk);
                 at;
             let t = Sr#(core.idx 0 r d);
             (vec.fold.r @(Cn [mem.M 0, A], Nat) @t step (‹i: t; core.bitcast Nat i›, k)) (m, acc);
@@ -375,9 +373,10 @@ anx lam NestT (ro rr: Nat, Sr: «ro + rr; Nat», To U: *): * =
 /// The scheduled nest builder, selecting one of the four nests below from the schedule:
 ///
 /// - `unroll` trailing reduction dims always run as compile-time-unrolled straight-line code.
-/// - a `vdim` naming a parallel dim (currently the last one) of extent ≠ 1 runs it as the innermost
-///   loop, inside the reduction loops, over a row-accumulator buffer — the unit-stride vectorization
-///   dim.
+/// - a `vdim` naming the last parallel dim of extent ≠ 1 runs it as the innermost loop, inside the
+///   reduction loops, over a row-accumulator buffer — the unit-stride vectorization dim.
+/// - a `vdim` naming the second-to-last parallel dim (`ro − 2`) selects the blocked nest: the last parallel
+///   dim runs as the vector loop with the block dim before it unroll-and-jammed into its body.
 /// - a `vdim` naming the innermost **reduction** dim selects the reduction-vectorized nest (`redvec`
 ///   below): the contraction runs as the vector loop with the last parallel dim unroll-and-jammed
 ///   into its body.
@@ -404,40 +403,40 @@ anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
 
         // CLASSIC: reduction loops inside all output loops, one accumulator cell at a time; the
         // write-back target `U` is threaded through the output loops like any loop accumulator.
-        con classic (mem0: mem.M 0, u0: U, done: Cn [mem.M 0, U])@tt =
+        con classic (m: mem.M 0, u: U, done: Cn [mem.M 0, U])@tt =
             con at_cell (pref: «r; I32», m: mem.M 0, u: U, k: Cn [mem.M 0, U]) =
-                con folded (mem2: mem.M 0, v: To) =
-                    wb (mem2, u, v, pref, k);
+                con folded (m: mem.M 0, v: To) =
+                    wb (m, u, v, pref, k);
                 (range_nest (r, Sr) To (affine_for @To, ro, u_lo) win) (pref, m, init, folded);
-            (range_nest (r, Sr) U (affine_for @U, 0, ro) at_cell) (‹r; 0I32›, mem0, u0, done);
+            (range_nest (r, Sr) U (affine_for @U, 0, ro) at_cell) (‹r; 0I32›, m, u, done);
 
         // VECTORIZED: the vector dim as the innermost loop over a row of accumulators — refill the
         // row per output row, fold whole rows in lockstep, then write the row back cell by cell.
-        con vectorized (mem0: mem.M 0, u0: U, done: Cn [mem.M 0, U])@tt =
+        con vectorized (m: mem.M 0, u: U, done: Cn [mem.M 0, U])@tt =
             let Sv = Sr#(core.idx 0 r vd);
             let vi_of = lm (pref: «r; I32»): Idx Sv = core.conv.u Sv (pref#(core.idx 0 r vd));
-            let (mem1, row) = buffer.alloc (1, Sv, To) mem0;
+            let (m, row) = buffer.alloc (1, Sv, To) m;
             con at_row (pref: «r; I32», m: mem.M 0, u: U, k: Cn [mem.M 0, U]) =
-                con fill (pref2: «r; I32», memf: mem.M 0, uf: U, kf: Cn [mem.M 0, U]) =
-                    let (memf2, row2) = buffer.write (1, Sv, To) (memf, row, vi_of pref2, init);
-                    kf (memf2, uf);
-                con at_point (pref2: «r; I32», memp: mem.M 0, up: U, kp: Cn [mem.M 0, U]) =
-                    let (memp1, acc0) = buffer.read (1, Sv, To) (memp, row, vi_of pref2);
-                    con after_win (memp2: mem.M 0, accn: To) =
-                        let (memp3, row3) = buffer.write (1, Sv, To) (memp2, row, vi_of pref2, accn);
-                        kp (memp3, up);
-                    win (pref2, memp1, acc0, after_win);
-                con wb_cell (pref2: «r; I32», memw: mem.M 0, uw: U, kw: Cn [mem.M 0, U]) =
-                    let (memw1, v) = buffer.read (1, Sv, To) (memw, row, vi_of pref2);
-                    wb (memw1, uw, v, pref2, kw);
-                con s2 (memB: mem.M 0, uB: U) =
-                    (range_nest (r, Sr) U (vec_for @U, vd, vd + 1) wb_cell) (pref, memB, uB, k);
-                con s1 (memA: mem.M 0, uA: U) =
+                con fill (pref: «r; I32», m: mem.M 0, uf: U, kf: Cn [mem.M 0, U]) =
+                    let (m, _) = buffer.write (1, Sv, To) (m, row, vi_of pref, init);
+                    kf (m, uf);
+                con at_point (pref: «r; I32», m: mem.M 0, up: U, kp: Cn [mem.M 0, U]) =
+                    let (m, acc) = buffer.read (1, Sv, To) (m, row, vi_of pref);
+                    con after_win (m: mem.M 0, acc: To) =
+                        let (m, _) = buffer.write (1, Sv, To) (m, row, vi_of pref, acc);
+                        kp (m, up);
+                    win (pref, m, acc, after_win);
+                con wb_cell (pref: «r; I32», m: mem.M 0, uw: U, kw: Cn [mem.M 0, U]) =
+                    let (m, v) = buffer.read (1, Sv, To) (m, row, vi_of pref);
+                    wb (m, uw, v, pref, kw);
+                con s2 (m: mem.M 0, u: U) =
+                    (range_nest (r, Sr) U (vec_for @U, vd, vd + 1) wb_cell) (pref, m, u, k);
+                con s1 (m: mem.M 0, u: U) =
                     (range_nest (r, Sr) U (novec_for @U, ro, u_lo)
                         (range_nest (r, Sr) U (vec_for @U, vd, vd + 1) at_point))
-                        (pref, memA, uA, s2);
+                        (pref, m, u, s2);
                 (range_nest (r, Sr) U (vec_for @U, vd, vd + 1) fill) (pref, m, u, s1);
-            (range_nest (r, Sr) U (novec_for @U, 0, vd) at_row) (‹r; 0I32›, mem1, u0, done);
+            (range_nest (r, Sr) U (novec_for @U, 0, vd) at_row) (‹r; 0I32›, m, u, done);
 
         // BLOCKED (`vdim = ro − 2`): the two trailing parallel dims are sunk inside the reduction
         // loops — the last dim runs as the vector loop and the BLOCK dim before it (any extent Sp;
@@ -452,7 +451,7 @@ anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
         let block_ok = core.bit2.and_ 2 (vdim + 2 == ro,
                        core.bit2.and_ 2 (Sr#(core.idx 0 r pd_c) != 1, Sr#(core.idx 0 r sd_c) != 1));
 
-        con blocked (mem0: mem.M 0, u0: U, done: Cn [mem.M 0, U])@tt =
+        con blocked (m: mem.M 0, u: U, done: Cn [mem.M 0, U])@tt =
             let Sp = Sr#(core.idx 0 r pd_c);
             let Sv = Sr#(core.idx 0 r sd_c);
             let Np = Sp * Sv;
@@ -460,31 +459,31 @@ anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
                 core.conv.u Np (core.wrap.add 0
                     (core.wrap.mul 0 (pref#(core.idx 0 r pd_c), core.bitcast I32 Sv),
                      pref#(core.idx 0 r sd_c)));
-            let (mem1, panel) = buffer.alloc (1, Np, To) mem0;
+            let (m, panel) = buffer.alloc (1, Np, To) m;
             con at_block (pref: «r; I32», m: mem.M 0, u: U, k: Cn [mem.M 0, U]) =
-                con fill (pref2: «r; I32», memf: mem.M 0, uf: U, kf: Cn [mem.M 0, U]) =
-                    let (memf2, panel2) = buffer.write (1, Np, To) (memf, panel, vi_of pref2, init);
-                    kf (memf2, uf);
-                con at_point (pref2: «r; I32», memp: mem.M 0, up: U, kp: Cn [mem.M 0, U]) =
-                    let (memp1, acc0) = buffer.read (1, Np, To) (memp, panel, vi_of pref2);
-                    con after_win (memp2: mem.M 0, accn: To) =
-                        let (memp3, panel3) = buffer.write (1, Np, To) (memp2, panel, vi_of pref2, accn);
-                        kp (memp3, up);
-                    win (pref2, memp1, acc0, after_win);
-                con wb_cell (pref2: «r; I32», memw: mem.M 0, uw: U, kw: Cn [mem.M 0, U]) =
-                    let (memw1, v) = buffer.read (1, Np, To) (memw, panel, vi_of pref2);
-                    wb (memw1, uw, v, pref2, kw);
-                con s2 (memB: mem.M 0, uB: U) =
+                con fill (pref: «r; I32», m: mem.M 0, uf: U, kf: Cn [mem.M 0, U]) =
+                    let (m, _) = buffer.write (1, Np, To) (m, panel, vi_of pref, init);
+                    kf (m, uf);
+                con at_point (pref: «r; I32», m: mem.M 0, up: U, kp: Cn [mem.M 0, U]) =
+                    let (m, acc) = buffer.read (1, Np, To) (m, panel, vi_of pref);
+                    con after_win (m: mem.M 0, acc: To) =
+                        let (m, _) = buffer.write (1, Np, To) (m, panel, vi_of pref, acc);
+                        kp (m, up);
+                    win (pref, m, acc, after_win);
+                con wb_cell (pref: «r; I32», m: mem.M 0, uw: U, kw: Cn [mem.M 0, U]) =
+                    let (m, v) = buffer.read (1, Np, To) (m, panel, vi_of pref);
+                    wb (m, uw, v, pref, kw);
+                con s2 (m: mem.M 0, u: U) =
                     (range_nest (r, Sr) U (novec_for @U, pd_c, sd_c)
-                        (range_nest (r, Sr) U (vec_for @U, sd_c, ro) wb_cell)) (pref, memB, uB, k);
-                con s1 (memA: mem.M 0, uA: U) =
+                        (range_nest (r, Sr) U (vec_for @U, sd_c, ro) wb_cell)) (pref, m, u, k);
+                con s1 (m: mem.M 0, u: U) =
                     (range_nest (r, Sr) U (novec_for @U, ro, u_lo)
                         (range_nest (r, Sr) U (vec_for @U, sd_c, sd_c + 1)
                             (range_unroll (r, Sr) U (pd_c, pd_c + 1) at_point)))
-                        (pref, memA, uA, s2);
+                        (pref, m, u, s2);
                 (range_nest (r, Sr) U (novec_for @U, pd_c, sd_c)
                     (range_nest (r, Sr) U (vec_for @U, sd_c, ro) fill)) (pref, m, u, s1);
-            (range_nest (r, Sr) U (novec_for @U, 0, pd_c) at_block) (‹r; 0I32›, mem1, u0, done);
+            (range_nest (r, Sr) U (novec_for @U, 0, pd_c) at_block) (‹r; 0I32›, m, u, done);
 
         // REDUCTION-VECTORIZED (`ro ≤ vdim < r`: the schedule names the innermost REDUCTION dim):
         // the contraction itself runs as the innermost (vector) loop. For a contraction whose
@@ -511,7 +510,7 @@ anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
         let rv_ds = ‹i: rv_j; rv_bd + core.bitcast Nat i›;
         let Sb    = vec.fold.r @(Nat, Nat) @rv_j rv_mul (rv_ds, 1);
 
-        con redvec (mem0: mem.M 0, u0: U, done: Cn [mem.M 0, U])@tt =
+        con redvec (m: mem.M 0, u: U, done: Cn [mem.M 0, U])@tt =
             // Flatten a loop vector's jam coordinates into the panel (any per-dim-bounded
             // linearization is a bijection into «Sb»; the exact order is internal to the panel).
             lam rv_lin (pref: «r; I32») (d: Nat, acc: I32): I32 =
@@ -519,33 +518,33 @@ anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
                                   pref#(core.idx 0 r d));
             let bi_of = lm (pref: «r; I32»): Idx Sb =
                 core.conv.u Sb (vec.fold.r @(I32, Nat) @rv_j (rv_lin pref) (rv_ds, 0I32));
-            let (mem1, panel) = buffer.alloc (1, Sb, To) mem0;
+            let (m, panel) = buffer.alloc (1, Sb, To) m;
             con at_block (pref: «r; I32», m: mem.M 0, u: U, k: Cn [mem.M 0, U]) =
-                con fill (pref2: «r; I32», memf: mem.M 0, uf: U, kf: Cn [mem.M 0, U]) =
-                    let (memf2, panel2) = buffer.write (1, Sb, To) (memf, panel, bi_of pref2, init);
-                    kf (memf2, uf);
-                con at_point (pref2: «r; I32», memp: mem.M 0, up: U, kp: Cn [mem.M 0, U]) =
-                    let (memp1, acc0) = buffer.read (1, Sb, To) (memp, panel, bi_of pref2);
-                    con after_cell (memp2: mem.M 0, accn: To) =
-                        let (memp3, panel3) = buffer.write (1, Sb, To) (memp2, panel, bi_of pref2, accn);
-                        kp (memp3, up);
+                con fill (pref: «r; I32», m: mem.M 0, uf: U, kf: Cn [mem.M 0, U]) =
+                    let (m, _) = buffer.write (1, Sb, To) (m, panel, bi_of pref, init);
+                    kf (m, uf);
+                con at_point (pref: «r; I32», m: mem.M 0, up: U, kp: Cn [mem.M 0, U]) =
+                    let (m, acc) = buffer.read (1, Sb, To) (m, panel, bi_of pref);
+                    con after_cell (m: mem.M 0, acc: To) =
+                        let (m, _) = buffer.write (1, Sb, To) (m, panel, bi_of pref, acc);
+                        kp (m, up);
                     // `cell` directly — `unroll` names the jam width here, not a trailing window.
-                    cell (memp1, acc0, pref2, after_cell);
-                con wb_cell (pref2: «r; I32», memw: mem.M 0, uw: U, kw: Cn [mem.M 0, U]) =
-                    let (memw1, v) = buffer.read (1, Sb, To) (memw, panel, bi_of pref2);
-                    wb (memw1, uw, v, pref2, kw);
-                con s2 (memB: mem.M 0, uB: U) =
-                    (range_unroll (r, Sr_rv) U (rv_bd, ro) wb_cell) (pref, memB, uB, k);
-                con s1 (memA: mem.M 0, uA: U) =
+                    cell (m, acc, pref, after_cell);
+                con wb_cell (pref: «r; I32», m: mem.M 0, uw: U, kw: Cn [mem.M 0, U]) =
+                    let (m, v) = buffer.read (1, Sb, To) (m, panel, bi_of pref);
+                    wb (m, uw, v, pref, kw);
+                con s2 (m: mem.M 0, u: U) =
+                    (range_unroll (r, Sr_rv) U (rv_bd, ro) wb_cell) (pref, m, u, k);
+                con s1 (m: mem.M 0, u: U) =
                     (range_nest (r, Sr) U (novec_for @U, ro, rv_vd)
                         (range_nest (r, Sr) U (vec_for @U, rv_vd, rv_vd + 1)
                             (range_unroll (r, Sr_rv) U (rv_bd, ro) at_point)))
-                        (pref, memA, uA, s2);
+                        (pref, m, u, s2);
                 (range_unroll (r, Sr_rv) U (rv_bd, ro) fill) (pref, m, u, s1);
-            (range_nest (r, Sr) U (novec_for @U, 0, rv_bd) at_block) (‹r; 0I32›, mem1, u0, done);
+            (range_nest (r, Sr) U (novec_for @U, 0, rv_bd) at_block) (‹r; 0I32›, m, u, done);
 
-        con run (mem0: mem.M 0, u0: U, done: Cn [mem.M 0, U])@tt =
-            ((((classic, vectorized)#vec_ok, blocked)#block_ok, redvec)#redvec_ok) (mem0, u0, done);
+        con run (m: mem.M 0, u: U, done: Cn [mem.M 0, U])@tt =
+            ((((classic, vectorized)#vec_ok, blocked)#block_ok, redvec)#redvec_ok) (m, u, done);
         run;
     nest;
 ///

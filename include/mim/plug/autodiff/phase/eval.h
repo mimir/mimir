@@ -9,8 +9,7 @@ namespace mim::plug::autodiff::phase {
 /// We replace an `autodiff fun` call with the differentiated function.
 class Eval : public RWPhase {
 public:
-    Eval(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
     /// Detect autodiff calls.
     const Def* rewrite_imm_App(const App*) final;

@@ -1,3 +1,4 @@
+include(CMakeDependentOption)
 include(GNUInstallDirs)
 
 option(MIM_BUILD_LL_RUNTIME "Compile the ll backend's C runtime wrappers to LLVM IR (requires clang)." ON)
@@ -10,32 +11,6 @@ cmake_dependent_option(
 set(MIM_NATIVE_MIM "" CACHE FILEPATH "Native mim executable that bootstraps the plugins.")
 # Where a plugin's `.mim` half is staged, so an uninstalled tree can load it.
 set(MIM_PLUGIN_DIR "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim")
-# The tour examples of `lit/docs`; used by the docs.
-set(MIM_DOC_EXAMPLES sq count dep iter)
-# The playground picker's examples, relative to `lit/`; order is the picker's.
-# Only `-p opt -p ll` is available, so an example must not need further plugins.
-set(MIM_PLAYGROUND_EXAMPLES
-    docs/tutorial
-    docs/sq
-    docs/count
-    docs/dep
-    docs/iter
-    hello_world
-    fib
-    ackermann
-    main_loop
-    mem/seo/gvn
-    mem/seo/click
-    mem/seo/phi-var-combis
-    mem/seo/higher-order
-    mem/seo/ptr_indirect
-    mem/seo/contify_fluet_weeks
-    ord/fold
-    ord/loop
-    ord/poly
-    tensor/attn_exec
-    tensor/fc_exec
-)
 find_program(MIM_CLANG NAMES clang)
 if(MIM_BUILD_LL_RUNTIME AND NOT MIM_CLANG)
     message(STATUS
@@ -96,9 +71,9 @@ endfunction()
 ##   `<plugin-name>/autogen.h` for the C++ interface used to identify annexes,
 ##   `<plugin-name>.md` for the documentation, and copies `<plugin-name>.mim`
 ##   into the build tree.
-## - `mim_<plugin-name>` builds the actual `MODULE` library that contains
-##   normalizers, passes, and backends. One of the listed source files must
-##   export `mim_get_plugin`.
+## - `mim_<plugin-name>` builds the actual `MODULE` library (`STATIC` with
+##   `MIM_STATIC_PLUGINS`) that contains normalizers, phases/stages, and
+##   backends. One of the listed source files must export `mim_get_plugin`.
 ##
 ## `SOURCES` lists the source files that are compiled into the loadable plugin.
 ## `PRIVATE` lists additional private link dependencies.
@@ -176,6 +151,7 @@ function(add_mim_plugin)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PLUGIN_MIM} ${OUT_PLUGIN_MIM}
         DEPENDS ${PLUGIN_MIM}
         COMMENT "Copy '${PLUGIN_MIM}' to '${OUT_PLUGIN_MIM}'"
+        VERBATIM
     )
 
     add_custom_target(mim_internal_${PLUGIN}

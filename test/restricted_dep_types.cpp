@@ -56,11 +56,10 @@ TEST_CASE("restricted dependent types") {
         CHECK_NOTHROW(app(i64_t, R, i32_t));
         CHECK_NOTHROW(app(i64_t, W, i32_t));
 
-        // Nothing rejects these yet; vel type checking must turn each into a CHECK_THROWS_AS.
-        CHECK_NOTHROW(app(f32_t, R, i32_t)); // f32 is not in DT
-        CHECK_NOTHROW(app(f32_t, W, i32_t));
-        CHECK_NOTHROW(app(i32_t, i32_t, i32_t)); // i32 is not in RW
-        CHECK_NOTHROW(app(i64_t, i64_t, i32_t));
+        CHECK_THROWS(app(f32_t, R, i32_t)); // f32 is not in DT
+        CHECK_THROWS(app(f32_t, W, i32_t));
+        CHECK_THROWS(app(i32_t, i32_t, i32_t)); // i32 is not in RW
+        CHECK_THROWS(app(i64_t, i64_t, i32_t));
     }
 
     SUBCASE("the mode is fixed to R") {
@@ -79,9 +78,7 @@ TEST_CASE("restricted dependent types") {
         CHECK_NOTHROW(app(i32_t, R, i32_t));
         CHECK_NOTHROW(app(i64_t, R, i64_t));
 
-        // Nothing rejects this yet; vel type checking must turn it into a CHECK_THROWS_AS.
-        CHECK_NOTHROW(app(f32_t, R, i32_t)); // f32 is not in DT
-
+        CHECK_THROWS(app(f32_t, R, i32_t)); // f32 is not in DT
         CHECK_THROWS(app(i32_t, W, i32_t)); // the lam only accepts R
         CHECK_THROWS(app(i64_t, W, i32_t));
         CHECK_THROWS(app(f32_t, W, f32_t));

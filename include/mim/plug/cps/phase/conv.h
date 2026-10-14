@@ -34,8 +34,7 @@ namespace mim::plug::cps {
 /// re-derived - and thus re-lifted - in sibling scopes.
 class Conv : public RWPhase {
 public:
-    Conv(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     /// A lifted call `callee (arg, cont)` waiting to be wired into the body of the enclosing Lam.

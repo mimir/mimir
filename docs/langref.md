@@ -36,7 +36,7 @@ The rules below don't spell this out.
 Mim source files are [UTF-8](https://en.wikipedia.org/wiki/UTF-8) encoded and are [lexed](https://en.wikipedia.org/wiki/Lexical_analysis) from left to right.
 The lexer uses [maximal munch](https://en.wikipedia.org/wiki/Maximal_munch), so ambiguities are resolved by taking the longest matching token.
 For example, `>>=` is tokenized as `>>` followed by `=`.
-@note `<-` is therefore a single token: `x <- 1` is an insert, and a comparison against a negative literal has to be written `x < (-1)`.
+@note `<-` is therefore a single token: `x <- 1` is an insert, and a comparison against a negative literal needs a space, as in `x < -1`.
 
 ### Terminals {#terminals}
 
@@ -131,7 +131,7 @@ S      ::= "\"" (ascii_string_char | esc)* "\""
 ```
 
 Here `I` is an identifier, `L` is a numeric literal, `X_n` is an index literal of type `Idx n`, `C` is a character literal, and `S` is a string literal.
-The third form of `X_n` spells a bit width instead of `n` itself, so `23I32` is `23:I32`.
+The third form of `X_n` spells a bit width instead of `n` itself, so `23I32` is `23:I32`; its integer may also carry a `0b`/`0o`/`0x` prefix, as in `0xFFI8`.
 A literal never carries a sign; `-23` is the [signed literal](@ref lit) expression instead.
 `` ` `` escapes an [infix operator](@ref infix) into an ordinary identifier, e.g. `` `+ ``.
 
@@ -154,7 +154,7 @@ esc    ::= "\'" | "\\" | "\"" | "\0" | "\a" | "\b"
         |  "\f" | "\n" | "\r" | "\t" | "\v"
 ```
 
-`ascii_char` is any ASCII character except `\`, `ascii_string_char` is any ASCII character except `\` and `"`, and a non-ASCII payload character is an error.
+`ascii_char` is any ASCII character except `\` and `'`, `ascii_string_char` is any ASCII character except `\` and `"`, and a non-ASCII payload character is an error.
 
 ### Comments
 
@@ -168,8 +168,8 @@ Supported comments:
 
 - `/* ... */` comments do not nest.
 - doc-comments are forwarded to generated [Markdown](https://www.doxygen.nl/manual/markdown.html) output.
-  A line of the form `/// text` contributes `text` directly to the Markdown output.
-  Other `///` forms are emitted verbatim inside a [fenced code block](https://www.doxygen.nl/manual/markdown.html#md_fenced).
+  Each line starting with `///` contributes its remainder, minus one leading space, directly to the Markdown output.
+  All other source lines are emitted verbatim inside a [fenced code block](https://www.doxygen.nl/manual/markdown.html#md_fenced).
 
 ## Grammar {#grammar}
 
@@ -249,8 +249,8 @@ d      ::= vis? import (I | S) ("as" (I | "*"))? ";"
 import ::= "import" | "plugin"
 vis    ::= "priv" | "pub"
 lam    ::= "lam" | "con" | "fun"
-dom    ::= p ("@" e)?
-fwd    ::= (p | t) ("@" e)?
+dom    ::= (p | "{" plist? "}") ("@" e)?
+fwd    ::= (p | t | "{" tlist? "}") ("@" e)?
 axm    ::= I ":" e tail
         |  (I ".")? "(" (tag ("," tag)*)? ")" ":" e tail
 tag    ::= I ("=" I)*
@@ -360,7 +360,7 @@ This binds `a`, `b`, and `c` to the tuple elements and `abc` to the whole tuple.
 
 ```mim
 let (m, ptr) = mem.alloc (I32, 0) m;
-let m        = mem.store (m, ptr, 23:I32);
+let m        = mem.store (m, ptr, 23I32);
 let (m, val) = mem.load (m, ptr);
 ```
 
@@ -420,6 +420,7 @@ e   ::= sign? L (":" e)?
 ```ebnf
 e   ::= e "→" e
      |  t "→" e
+     |  "{" tlist? "}" "→" e
      |  "Cn" t
      |  "Fn" t "→" e
      |  "λ" p+ (":" e)? "=" e
@@ -435,6 +436,7 @@ e   ::= e "→" e
 - `λ`, `cn`, and `fn` are the expression forms corresponding to `lam`, `con`, and `fun`.
   They are anonymous, so they cannot call themselves; use a `lam`/`con`/`fun` [declaration](@ref decl) to recurse.
 - Application is written by juxtaposition.
+- `{...}` declares implicit domains: an application inserts a `Hole` for each, and `e @ e` passes one explicitly.
 - `e @ e` passes an explicit implicit argument.
 - `ret p = callee $ arg; body` binds the result of a continuation-style call and continues with `body`.
 
@@ -514,7 +516,9 @@ lam g (t: «2; One»): One = t#(1₂, 0₁); // the `0₁` axis folds away, so t
 ```ebnf
 e   ::= e "∪" e
      |  e "inj" e
-     |  "match" e "with" "|"? p "=>" e ("|" p "=>" e)*
+     |  "match" e "with" "|"? arm ("|" arm)*
+arm ::= p "=>" e
+     |  (I | L) p? "=>" e
 ```
 
 - `e ∪ e` forms a union type.
@@ -525,7 +529,6 @@ e   ::= e "∪" e
 
 ```ebnf
 e   ::= "|" (I (":" e)? ("|" I (":" e)?)*)?
-arm ::= (I | L) p? "=>" e
 ```
 
 - `| I₀: e₀ | ... | Iₙ₋₁: eₙ₋₁` forms a variant type: a sum whose cases are _positional_.
@@ -711,9 +714,9 @@ fun test2 (): Nat =
 The following types are equivalent and describe the type of `f` above:
 
 ```mim
-let _ = [T: *] →    [[T, T], T → ⊥] → ⊥
-let _ = [T: *] → Cn [[T, T], Cn T]
-let _ = [T: *] → Fn  [T, T] → T
+let _ = [T: *] →    [[T, T], T → ⊥] → ⊥;
+let _ = [T: *] → Cn [[T, T], Cn T];
+let _ = [T: *] → Fn  [T, T] → T;
 ```
 
 ## Scoping
@@ -770,6 +773,7 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 - `(e, e, e)` -> `‹3; e›`, `[T, T, T]` -> `«3; T»` - uniform elements compress into a pack/array
 - `(t#0, t#1, t#2)` -> `t` - η for tuples, provided `t` has the ascribed type
 - `⊥:[T, U]` -> `(⊥:T, ⊥:U)`, `⊥:«n; T»` -> `‹n; ⊥:T›` - `⊥`/`⊤` are pushed into aggregates
+- `‹i: 3; e›` -> `(e[i ↦ 0₃], e[i ↦ 1₃], e[i ↦ 2₃])` - only for a literal arity below `--scalarize-threshold` and a body that depends on `i`
 
 ### Shapes
 
@@ -782,7 +786,7 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 - `d#(i, 0₁, k)` -> `d#(i, k)` - a literal size-1 axis folds out of an index, mirroring the shape rule
 - `d#i` -> `d` if `i: Idx 1` and `d`'s type is not a mutable sigma of one component
 - `d#()` -> `d` - an index that folded away entirely
-- `‹i: n; e›#j` -> `[i ↦ j]e`, `(a, b, c)#1` -> `b`
+- `‹i: n; e›#j` -> `[i ↦ j]e` for a pack that is not expanded into a tuple (see Aggregates), `(a, b, c)#1` -> `b`
 - `t#i#j` -> `t#(i, j)` - the maximal-rank fused Extract is the normal form, as far as `t`'s own shape reaches
 - `t#(i, j)` -> `t#i#j` - conversely, for an index reaching past `t`'s own shape into its element type
 - `(d#i ← v)#i` -> `v`
@@ -804,7 +808,7 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 - `f x` -> body of `f` if `x` is `f`'s own var - substituting a var by itself is the identity
 - `f x` -> `[var ↦ x]`body of `f` if `f`'s [filter](@ref decl) evaluates to `tt` for `x`; nothing is reduced if the filter is `ff`
 - an application of an [axiom](@ref decl) runs its normalizer once the curry counter hits `0`
-- an application of a `[T: *] → e` with implicit domains inserts a `Hole` per implicit argument
+- an application of a `{T: *} → e` inserts a `Hole` per implicit argument
 
 ### Unions
 

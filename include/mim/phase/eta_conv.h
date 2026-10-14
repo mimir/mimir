@@ -20,8 +20,7 @@ class EtaConv : public RWPhase {
 public:
     EtaConv(World& world)
         : RWPhase(world, "EtaConv") {}
-    EtaConv(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     /// Known and Unknown_* are independent bits; both set means "both positions".
@@ -61,7 +60,7 @@ private:
     const Def* rewrite_imm_App(const App*) final;
     const Def* rewrite_imm_Var(const Var*) final;
     /// η-reduce wrappers but never η-expand - used for callee (Known) positions, where expansion must not happen
-    /// but a wrapper `λx.f x` should still collapse to `f` (just as the standalone EtaRed did everywhere).
+    /// but a wrapper `λx.f x` should still collapse to `f`.
     const Def* rewrite_no_exp(const Def* old_def);
     const Def* rewrite_no_eta(const Def* old_def) { return RWPhase::rewrite(old_def); }
 

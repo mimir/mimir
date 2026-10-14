@@ -117,9 +117,10 @@ def commit_and_push(site_dir: Path, what: str) -> None:
     for attempt in range(3):
         if git(site_dir, 'push', 'origin', 'master', check=False).returncode == 0:
             return
-        git(site_dir, 'pull', '--rebase', 'origin', 'master')
         if attempt < 2:
-            continue
+            r = git(site_dir, 'pull', '--rebase', 'origin', 'master', check=False)
+            if r.returncode != 0:
+                raise RuntimeError(f'rebase failed:\n{r.stdout}{r.stderr}')
 
     raise RuntimeError('failed to push deployed docs after 3 attempts')
 

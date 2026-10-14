@@ -16,8 +16,7 @@ plugin core;
 ///
 /// The option type: `[] ∪ T`.
 ///
-///
-anx lam Opt (T: *) : * = [] ∪ T;
+anx lam Opt (T: *): * = [] ∪ T;
 ///
 /// ## Constructors
 ///
@@ -25,19 +24,19 @@ anx lam Opt (T: *) : * = [] ∪ T;
 ///
 /// Wraps a value into an option.
 ///
-anx lam some {T: *} (v: T) : Opt T = v inj Opt T;
+anx lam some {T: *} (v: T): Opt T = v inj Opt T;
 ///
 /// ### none
 ///
 /// The empty option.
 ///
-anx lam none (T: *) : Opt T = () inj Opt T;
+anx lam none (T: *): Opt T = () inj Opt T;
 ///
 /// ### some_if
 ///
 /// Wraps `v` into an option iff `b` holds.
 ///
-anx lam some_if {T: *} (b: Bool, v: T) : Opt T = (none T, some v)#b;
+anx lam some_if {T: *} (b: Bool, v: T): Opt T = (none T, some v)#b;
 ///
 /// ## Operations
 ///
@@ -45,7 +44,7 @@ anx lam some_if {T: *} (b: Bool, v: T) : Opt T = (none T, some v)#b;
 ///
 /// Returns `tt` if the option contains a value.
 ///
-anx lam is_some {T: *} (o: Opt T) : Bool =
+anx lam is_some {T: *} (o: Opt T): Bool =
     match o with
         | _: T  => tt
         | _: [] => ff;
@@ -60,7 +59,7 @@ axm unwrap_unsafe: {T: *} → Opt T → T, normalize_unwrap_unsafe;
 ///
 /// Extracts the value or returns `default`.
 ///
-anx lam unwrap_or {T: *} (o: Opt T) (default: T) : T =
+anx lam unwrap_or {T: *} (o: Opt T) (default: T): T =
     match o with
         | x: T  => x
         | _: [] => default;

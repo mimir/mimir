@@ -101,8 +101,8 @@ std::string pick_name(Ctx* ctx, const Def* def) {
 /// The projection of the aliased Var that @p def - a projection of a Pi's Var - stands for; see Ctx::aliases.
 const Def* alias_proj(Ctx* ctx, const Def* def) {
     if (auto ex = def->isa<Extract>())
-        if (auto i = ctx->aliases.find(ex->tuple()); i != ctx->aliases.end() && !ctx->opaque.contains(i->second))
-            if (auto l = Lit::isa(ex->index())) return live_proj(ctx, i->second, ex->tuple()->num_tprojs(), *l);
+        if (auto var = fe::lookup(ctx->aliases, ex->tuple()); var && !ctx->opaque.contains(var))
+            if (auto l = Lit::isa(ex->index())) return live_proj(ctx, var, ex->tuple()->num_tprojs(), *l);
     return nullptr;
 }
 
@@ -121,15 +121,14 @@ bool by_name(Ctx* ctx, const Extract* ex) {
 /// @p ctx is `nullptr` outside a running dump: there are no dump-bound names to consult then.
 std::string name(Ctx* ctx, const Def* def) {
     if (ctx) {
-        if (auto i = ctx->names.find(def); i != ctx->names.end()) return i->second;
-        if (auto i = ctx->aliases.find(def); i != ctx->aliases.end()) return name(ctx, i->second);
+        if (auto n = fe::lookup(ctx->names, def)) return *n;
+        if (auto alias = fe::lookup(ctx->aliases, def)) return name(ctx, alias);
         if (auto proj = alias_proj(ctx, def)) {
             auto res = name(ctx, proj);
             return ctx->names.emplace(def, std::move(res)).first->second;
         }
         if (auto ex = def->isa<Extract>())
-            if (auto i = ctx->ret_projs.find(ex->tuple()); i != ctx->ret_projs.end())
-                if (Lit::isa(ex->index()) == i->second) return "return"s;
+            if (auto i = fe::lookup(ctx->ret_projs, ex->tuple()); i && Lit::isa(ex->index()) == *i) return "return"s;
         if (ctx->plain) return pick_name(ctx, def);
     }
     if (auto sym = def->sym(); sym && sym != '_' && PlainNames::claim(def->world().driver(), sym, def->gid()))
@@ -250,10 +249,7 @@ public:
             if (ctx->inlined.contains(def())) return true;
             if (ctx->in_header && ctx->header.contains(def())) return true;
         }
-        if (auto mut = def()->isa_mut()) {
-            if (isa_decl(mut)) return false;
-            return true;
-        }
+        if (auto mut = def()->isa_mut()) return !isa_decl(mut);
 
         if (def()->is_closed()) return true;
 
@@ -401,11 +397,6 @@ void dom_ptrn(std::ostream& os, Ctx* ctx, const Def* var, const Def* type, bool 
     std::print(os, "{} as {}", r, name(ctx, var));
 }
 
-void bndr(std::ostream& os, Ctx* ctx, const Def* def, const Def* type) {
-    if (def) return ptrn(os, ctx, def, def->type());
-    std::print(os, "_: {}", Op(ctx, type));
-}
-
 /// @p num is how many binders the domain has; @p limit how many of them to print - a returning Lam hides its last.
 void curry(std::ostream& os,
            Ctx* ctx,
@@ -429,7 +420,7 @@ void curry(std::ostream& os,
     for (auto sep = ""; auto i : std::views::iota(size_t(0), limit)) {
         os << sep;
         auto proj = def ? live_proj(ctx, def, num, i) : nullptr;
-        bndr(os, ctx, proj, proj ? proj->type() : type->proj(num, i));
+        ptrn(os, ctx, proj, proj ? proj->type() : type->proj(num, i));
         sep = ", ";
     }
     os << r;
@@ -554,17 +545,13 @@ void full(std::ostream& os, Full d) {
                     case             0_n: return std::print(os, "{}I64", lit->get());
                     default: {
                         std::print(os, "{}", lit->get());
-                        std::vector<uint8_t> digits;
-                        for (auto z = *s; z; z /= 10) digits.emplace_back(z % 10);
-
-                        // Raw UTF-8 units of a subscript - bytes to stream, not numbers to format.
+                        auto digits = std::to_string(*s);
                         if (ascii) {
-                            os << '_';
-                            for (auto d : digits | std::views::reverse)
-                                os << char('0' + d);
+                            os << '_' << digits;
                         } else {
-                            for (auto d : digits | std::views::reverse)
-                                os << uint8_t(0xE2) << uint8_t(0x82) << (uint8_t(0x80 + d));
+                            // Raw UTF-8 units of a subscript - bytes to stream, not numbers to format.
+                            for (auto d : digits)
+                                os << "\xE2\x82" << char(0x80 + d - '0');
                         }
                         return;
                     }
@@ -811,12 +798,12 @@ public:
                 std::println(os_, "{}mutual", ctx_.tab);
                 ++ctx_.tab;
                 for (auto member : *cycle)
-                    emit_anx_nom(names[member], member->as<Nom>());
+                    emit_nom("anx nom", names[member], member->as<Nom>());
                 std::println(os_, "{}end", --ctx_.tab);
                 continue;
             }
             if (auto nom = def->isa<Nom>()) {
-                emit_anx_nom(name, nom);
+                emit_nom("anx nom", name, nom);
                 continue;
             }
             auto axm = def->as<Axm>();
@@ -901,7 +888,7 @@ private:
             return;
         }
 
-        // Nest::Node::topo breaks ties by gid, which a re-read dump need not reproduce.
+        // Nest::Node::topo_ breaks ties by gid, which a re-read dump need not reproduce.
         auto roots = fe::Vector<Def*>();
         for (auto mut : todo) {
             if (!mut->is_closed() || ctx_.arms.contains(mut)) continue;
@@ -943,8 +930,6 @@ private:
         printed_deps(def, typed_let_, [&](const Def* op) { local_muts(op, seen, muts); });
     }
 
-    /// @name schedule
-    ///@{
     void note_vars(const Def* def) {
         auto ex = def->isa<Extract>();
         for (auto op : def->ops())
@@ -1091,8 +1076,8 @@ private:
     Def* owner(const Nest::Node* node) const {
         if (!node) return nullptr;
         auto mut = node->mut();
-        if (!mut) return nullptr;                                                 // a *virtual* root is the top level
-        if (auto i = absorbed_.find(mut); i != absorbed_.end()) return i->second; // a curried chain shares a block
+        if (!mut) return nullptr;                                  // a *virtual* root is the top level
+        if (auto outer = fe::lookup(absorbed_, mut)) return outer; // a curried chain shares a block
         return mut;
     }
     ///@}
@@ -1122,10 +1107,10 @@ private:
     }
 
     // Only a bare variant may refer back to the `nom`.
-    void emit_anx_nom(std::string_view name, const Nom* nom) {
+    void emit_nom(std::string_view kw, std::string_view name, const Nom* nom) {
         if (auto variant = nom->op()->isa<Variant>())
-            return std::println(os_, "{}anx nom {} = {};", ctx_.tab, name, ctors(&ctx_, variant));
-        std::println(os_, "{}anx nom {} = {};", ctx_.tab, name, Op(&ctx_, nom->op()));
+            return std::println(os_, "{}{} {} = {};", ctx_.tab, kw, name, ctors(&ctx_, variant));
+        std::println(os_, "{}{} {} = {};", ctx_.tab, kw, name, Op(&ctx_, nom->op()));
     }
 
     /// The Nom%s among @p defs on a cycle, each mapped to its whole cycle in the order of @p defs.
@@ -1197,12 +1182,7 @@ private:
     }
 
     void emit_let(const Def* def) {
-        if (auto nom = def->isa<Nom>()) {
-            // Only a bare variant may refer back to the `nom`.
-            if (auto variant = nom->op()->isa<Variant>())
-                return std::println(os_, "{}nom {} = {};", ctx_.tab, name(&ctx_, nom), ctors(&ctx_, variant));
-            return std::println(os_, "{}nom {} = {};", ctx_.tab, name(&ctx_, nom), Op(&ctx_, nom->op()));
-        }
+        if (auto nom = def->isa<Nom>()) return emit_nom("nom", name(&ctx_, nom), nom);
         auto type = typed_let_ ? std::format(": {}", Op(&ctx_, def->type())) : std::string();
         std::println(os_, "{}let {}{} = {};", ctx_.tab, name(&ctx_, def), type, Full(&ctx_, def));
     }
@@ -1290,12 +1270,7 @@ private:
         std::print(os_, "{}extern {} {}", ctx_.tab, fun ? "fun" : con ? "con" : "lam", id(&ctx_, lam));
         auto num = num_binders(dom);
         if (fun) {
-            os_ << '[';
-            for (auto sep = ""; auto i : std::views::iota(size_t(0), num - 1)) {
-                std::print(os_, "{}{}", sep, Op(&ctx_, dom->proj(num, i)));
-                sep = ", ";
-            }
-            std::println(os_, "]: {};", Op(&ctx_, last->ret_dom()));
+            std::println(os_, "[{}]: {};", Op(&ctx_, dom->proj(num, 0)), Op(&ctx_, last->ret_dom()));
         } else {
             std::println(os_, "[{}]{};", Op::map(&ctx_, dom->projs(num)),
                          con ? std::string() : std::format(": {}", Op(&ctx_, last->type()->codom())));
@@ -1379,13 +1354,12 @@ void Def::write(Dump mode) const {
 static std::string file_stem(World& world) { return (world.name() ? world.name() : world.sym("_default")).str(); }
 
 void World::dump(std::ostream& os) {
-    auto _       = freeze();
-    auto old_gid = curr_gid();
-    auto srcs    = Srcs();
-    for (const auto& import : driver().imports())
-        srcs.emplace(import.src);
+    auto _        = freeze();
+    auto old_gid  = curr_gid();
+    auto srcs     = Srcs();
     auto reserved = fe::Vector<std::string>{"return"};
     for (const auto& import : driver().imports()) {
+        srcs.emplace(import.src);
         auto kw     = import.tag == ast::Tok::Tag::K_plugin ? "plugin" : "import";
         auto module = import.src->path().stem().string();
         // A stem that is no identifier names no module, so the file has to be spliced instead.
