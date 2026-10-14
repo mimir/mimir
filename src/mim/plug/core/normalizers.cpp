@@ -130,8 +130,8 @@ constexpr bool idx_mul_nsw(u64 size, u64 a, u64 b) {
     const s64 min_val = size == 0 ? std::numeric_limits<s64>::min() : -static_cast<s64>(size / 2);
     const s64 max_val = size == 0 ? std::numeric_limits<s64>::max() : static_cast<s64>((size - 1) / 2);
 
-    if (x == -1) return y == min_val;
-    if (y == -1) return x == min_val;
+    if (x == -1) return size % 2 == 0 && y == min_val;
+    if (y == -1) return size % 2 == 0 && x == min_val;
 
     if (x > 0)
         if (y > 0)
@@ -177,7 +177,7 @@ constexpr bool idx_sdivrem_ub(u64 size, u64 a, u64 b) {
         return -static_cast<s64>(size / 2);
     }();
 
-    return x == min_val && y == -1;
+    return size % 2 == 0 && x == min_val && y == -1;
 }
 
 constexpr u64 idx_sdiv(u64 size, u64 a, u64 b) {
@@ -804,10 +804,10 @@ const Def* normalize_wrap(const Def* type, const Def* c, const Def* arg) {
     if (auto lb = Lit::isa(b)) {
         if (*lb == 0) {
             switch (id) {
+                case wrap::add: return a;    // a  + 0 -> a
                 case wrap::sub: return a;    // a  - 0 -> a
+                case wrap::mul: return b;    // a  * 0 -> 0
                 case wrap::shl: return a;    // a << 0 -> a
-                default: std::unreachable();
-                // add, mul are commutative, the literal has been normalized to the left
             }
         }
 
@@ -926,7 +926,10 @@ const Def* normalize_bitcast(const Def* dst_t, const Def*, const Def* src) {
 
     if (auto l = Lit::isa(src)) {
         if (dst_t->isa<Nat>()) return world.lit(dst_t, *l);
-        if (Idx::isa(dst_t)) return world.lit(dst_t, *l);
+        if (auto size = Idx::isa(dst_t)) {
+            if (auto s = Lit::isa(size)) return world.lit_idx_mod(*s, *l);
+            return world.lit(dst_t, *l);
+        }
     }
 
     return {};

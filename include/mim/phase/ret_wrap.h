@@ -6,8 +6,7 @@ namespace mim {
 
 class RetWrap : public RWPhase {
 public:
-    RetWrap(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     enum Lattice : u8 { Bot, Single, Eta };

@@ -28,8 +28,7 @@ namespace mim::plug::tensor::phase {
 /// function boundaries, never as a global type rewrite.
 class LowerToMem : public RWPhase {
 public:
-    LowerToMem(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     void start() override;
@@ -81,10 +80,6 @@ private:
     /// monolithic `mem.store` of a giant literal array (which the LLVM backend cannot digest).
     /// Used for constant splats `‹s; c›` and scalar `tensor.broadcast`s.
     const Def* splat_buffer(const Def* arr_ty, const Def* scalar);
-
-    /// Buffer-reuse policy. `false` (the initial *always-allocate-and-copy* policy) is always sound.
-    /// A future liveness-based policy may return `true` to write into the source buffer in place.
-    bool reuse_in_place(const Def*) const { return false; }
 
     /// Pre-pass: records every array type used as a tensor operand/result and the set of bufferized
     /// functions; hard-errors on program shapes the conversion cannot handle (there is no value-semantics

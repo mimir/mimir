@@ -15,8 +15,7 @@ namespace mim {
 /// §7](https://theses.gla.ac.uk/74568/1/10992188.pdf)
 class StaticArgOpt : public RWPhase {
 public:
-    StaticArgOpt(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     bool analyze() final;

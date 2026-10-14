@@ -1,7 +1,5 @@
-// RUN: rm -f %{s:stem}.ll ; \
-// RUN: %mim -p opt %s -p ll -o -
-
-// TODO: add filecheck
+// RUN: %mim -p opt %s -p ll -X ll:o=%t.ll
+// RUN: %FileCheck %s < %t.ll
 
 plugin core;
 plugin mem;
@@ -64,3 +62,17 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
 
     // extern con cont_f1 (mem:mem.M 0, v:I32) = f1 ();
     return (m, argc);
+
+// CHECK-DAG: define i32 @e1(i32 %{{[^,]+}})
+// CHECK-DAG: define i32 @e2(i32 %{{[^,]+}})
+// CHECK-DAG: define i32 @e3(i32 %{{[^,]+}})
+// CHECK-DAG: define i32 @f1(i32 %{{[^,]+}})
+// CHECK-DAG: define i32 @f2(i32 %{{[^,]+}})
+// CHECK-DAG: define i32 @g1(i32 %{{[^,]+}}, i32 %{{[^,]+}})
+// CHECK-DAG: define i32 @g2(i32 %{{[^,]+}}, i32 %{{[^,]+}})
+// CHECK-DAG: define i32 @g3(i32 %{{[^,]+}}, i32 %{{[^,]+}})
+// CHECK-DAG: define i32 @g4(i32 %{{[^,]+}}, i32 %{{[^,]+}})
+// CHECK-DAG: define i32 @h1(i32 %{{[^,]+}}, i32 addrspace(0)* %{{[^,]+}})
+// CHECK-DAG: define i32 @h2(i32 %{{[^,]+}}, i32 addrspace(0)* %{{[^,]+}})
+// CHECK-DAG: define i32 @h3(i32 %{{[^,]+}}, i32 addrspace(0)* %{{[^,]+}})
+// CHECK-DAG: define i32 @h4(i32 %{{[^,]+}}, i32 addrspace(0)* %{{[^,]+}})

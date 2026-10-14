@@ -79,11 +79,12 @@ target_link_libraries(libmim
 
 install(
     FILES "${CMAKE_BINARY_DIR}/include/mim/config.h"
-    DESTINATION include/mim
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mim
 )
 install(
     DIRECTORY ${PROJECT_SOURCE_DIR}/include/mim
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    PATTERN "*.in" EXCLUDE
 )
 
 add_subdirectory(cli)

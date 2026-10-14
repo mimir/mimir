@@ -7,8 +7,7 @@ namespace mim::plug::regex {
 /// Lowers a regex axm application to a DFA matcher function.
 class LowerRegex : public RWPhase {
 public:
-    LowerRegex(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
     const Def* rewrite_imm_App(const App*) final;
 };

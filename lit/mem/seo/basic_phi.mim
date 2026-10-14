@@ -1,4 +1,4 @@
-// RUN: %mim %s -p opt -o - | %FileCheck %s
+// RUN: %mim %s -p opt -o - | %FileCheck %s --implicit-check-not=mem.slot --implicit-check-not=mem.load
 plugin mem;
 
 extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
@@ -27,3 +27,5 @@ extern fun test1(m: mem.M 0): [mem.M 0, I64] =
     end;
 
 // CHECK: test1
+// CHECK-DAG: return (m{{.*}}, 1I64)
+// CHECK-DAG: return (m{{.*}}, 2I64)

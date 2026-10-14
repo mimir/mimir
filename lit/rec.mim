@@ -9,4 +9,4 @@ mutual
 end
 
 extern fun f(): Bool = return (is_even 4);
-// CHECK-DAG: return{{.*}}tt
+// CHECK-DAG: return_{{[0-9]+}} tt

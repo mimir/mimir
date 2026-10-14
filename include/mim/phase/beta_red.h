@@ -9,8 +9,7 @@ class BetaRed : public RWPhase {
 public:
     BetaRed(World& world)
         : RWPhase(world, "BetaRed") {}
-    BetaRed(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     bool analyze() final;

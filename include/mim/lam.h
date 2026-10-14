@@ -24,8 +24,6 @@ public:
     /// @name Get/Set implicit
     ///@{
     bool is_implicit() const { return flags(); }
-    Pi* make_implicit() { return flags_ = (flags_t) true, this; }
-    Pi* make_explicit() { return flags_ = (flags_t) false, this; }
     /// Is @p d an Pi::is_implicit Pi?
     static const Pi* isa_implicit(const Def* d) {
         if (auto pi = d->isa<Pi>(); pi && pi->is_implicit()) return pi;

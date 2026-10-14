@@ -31,8 +31,7 @@ namespace mim::plug::mem::phase {
 ///   (e.g. the combiner slot of `btensor.map_reduce_post`), so mem-extending them would be ill-typed.
 class AddMem : public RWPhase {
 public:
-    AddMem(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     bool analyze() final;

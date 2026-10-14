@@ -1,5 +1,6 @@
 #include <cstdlib>
 
+#include <sstream>
 #include <string>
 
 #include <fe/cli.h>
@@ -86,35 +87,39 @@ int compile(Driver& driver, Opts& opts) {
 
         auto ast    = ast::AST(world);
         auto parser = ast::Parser(ast);
-        auto file   = parser.import_main(opts.input, opts.plugins, outs[Md].os());
+        // Outputs are buffered until binding succeeded, so an error leaves no partial file behind.
+        auto md   = std::ostringstream();
+        auto file = parser.import_main(opts.input, opts.plugins, outs[Md].name().empty() ? nullptr : &md);
 
         if (!file) {
             ast.error().ack(); // prefer the parser's own diagnostic, if it recorded one
             fe::throwf("could not read file `{}`", opts.input);
         }
 
-        if (auto s = outs[AST].os()) {
+        auto ast_out = std::ostringstream();
+        if (!outs[AST].name().empty()) {
             auto tab = fe::Tab::spaces();
-            file->stream(tab, *s);
+            file->stream(tab, ast_out);
+        }
 
-            // Md is emitted while parsing, so nothing else needs a World; binding still catches scoping errors.
+        file->bind(ast);
+        ast.error().ack();
+        if (auto s = outs[Md].os()) *s << md.str();
+
+        if (auto s = outs[AST].os()) {
+            *s << ast_out.str();
+            // Md is emitted while parsing, so nothing else needs a World.
             auto only_parse
                 = opts.plugin_args.empty() && std::ranges::none_of(std::views::iota(0, int(Num_Emits)), [&](int i) {
                       return i != AST && i != Md && !outs[i].name().empty();
                   });
-            if (only_parse) {
-                file->bind(ast);
-                ast.error().ack();
-                return EXIT_SUCCESS;
-            }
+            if (only_parse) return EXIT_SUCCESS;
         }
 
-        if (auto h = outs[H].os(), py = outs[PY].os(); h || py) {
-            file->bind(ast);
-            ast.error().ack();
+        if (!outs[H].name().empty() || !outs[PY].name().empty()) {
             auto plugin = world.sym(name);
-            if (h) ast.bootstrap(plugin, *h);
-            if (py) ast.bootstrap_py(plugin, *py);
+            if (auto h = outs[H].os()) ast.bootstrap(plugin, *h);
+            if (auto py = outs[PY].os()) ast.bootstrap_py(plugin, *py);
             return EXIT_SUCCESS;
         }
 
@@ -255,7 +260,7 @@ int main(int argc, char** argv) {
             .epilog(R"(Every output option accepts "-" to write to stdout.)");
         // clang-format on
 
-        if (auto err = cli.parse(argc, argv)) throw std::invalid_argument(*err);
+        if (auto err = cli.parse(argc, argv)) fe::throwf<std::invalid_argument>("{}", *err);
 
         // Resolved here and not in the handlers, so that the order of the two profiling options does not matter.
         auto& profile_file = opts.outs[Profile].name();
@@ -284,7 +289,7 @@ int main(int argc, char** argv) {
         for (auto&& pa : opts.plugin_args) {
             auto pos = pa.find(':');
             if (pos == std::string::npos)
-                throw std::invalid_argument("error: --plugin-arg expects <plugin>:<arg>, got '" + pa + "'");
+                fe::throwf<std::invalid_argument>("`--plugin-arg` expects `<plugin>:<arg>`, got `{}`", pa);
             driver.add_arg(std::string_view(pa).substr(0, pos), pa.substr(pos + 1));
         }
 
@@ -310,13 +315,15 @@ int main(int argc, char** argv) {
             driver.world().watchpoint(w);
 #endif
 
-        if (opts.input.empty()) throw std::invalid_argument("error: no input given");
+        if (opts.input.empty()) fe::throwf<std::invalid_argument>("no input given");
 
         return compile(driver, opts);
     } catch (const std::exception& e) {
+        driver.error().report();
         std::println(std::cerr, "{}", e.what());
         return EXIT_FAILURE;
     } catch (...) {
+        driver.error().report();
         std::println(std::cerr, "error: unknown exception");
         return EXIT_FAILURE;
     }

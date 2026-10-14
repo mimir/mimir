@@ -41,12 +41,11 @@ const Def* normalize_read(const Def* type, const Def*, const Def* arg) {
 
 const Def* normalize_write(const Def*, const Def*, const Def*) { return {}; }
 
-/// `shape buf i` ↦ the `i`-th size, read off the buffer's type.
-const Def* normalize_shape(const Def* type, const Def*, const Def* arg) {
-    auto& world       = type->world();
-    auto [buf, index] = arg->projs<2>();
-    auto [r, s, T]    = Axm::isa<Buf, false>(buf->type())->args<3>();
-    return world.extract(s, index);
+/// `shape (r, s, T) (buf, i)` ↦ `s#i`; the logical shape, since the type of `buf` has its size-1 axes folded away.
+const Def* normalize_shape(const Def* type, const Def* callee, const Def* arg) {
+    auto index     = arg->proj(2, 1);
+    auto [r, s, T] = callee->as<App>()->args<3>();
+    return type->world().extract(s, index);
 }
 
 MIM_buffer_NORMALIZER_IMPL

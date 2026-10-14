@@ -1,6 +1,7 @@
 import difflib
 import itertools
 import os
+import re
 import shlex
 
 import lit.formats
@@ -24,6 +25,9 @@ class MimRoundTripTest(lit.formats.FileBasedTest):
     def execute(self, test, litConfig):
         if test.config.unsupported:
             return lit.Test.Result(lit.Test.UNSUPPORTED, "test is unsupported")
+        script = lit.TestRunner.parseIntegratedTestScript(test, require_script=False)
+        if isinstance(script, lit.Test.Result):
+            return script
 
         # lit 23 moved the per-test timeout to the suite config; see lit.site.cfg.py.in.
         timeout = getattr(test.config, "maxIndividualTestTime", None) or litConfig.maxIndividualTestTime or 0
@@ -38,7 +42,11 @@ class MimRoundTripTest(lit.formats.FileBasedTest):
 
         _, err, code = self.run(mim + [src] + self.flags + [outs[0]], os.path.dirname(src), timeout)
         if code != 0:
-            return lit.Test.Result(lit.Test.UNSUPPORTED, "input does not compile on its own:\n" + err)
+            # Only a diagnostic (exit code 1) of an expected-error test may stop here; anything else is a crash.
+            commands = [getattr(line, "command", line) for line in script]
+            if code == 1 and any(re.search(r"(?<![\w%])(!|not)\s+%mim\b", c) for c in commands):
+                return lit.Test.Result(lit.Test.UNSUPPORTED, "input is an expected-error test")
+            return lit.Test.Result(lit.Test.FAIL, f"emitting {name} failed with exit code {code}:\n{err}")
 
         # The copy lives elsewhere, so relative imports must still resolve against the input's directory.
         _, err, code = self.run(mim + ["-I", os.path.dirname(src), outs[0]] + self.flags + [outs[1]], base, timeout)

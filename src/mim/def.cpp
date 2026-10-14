@@ -47,7 +47,6 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     , mut_(false)
     , external_(false)
     , annex_(false)
-    , dirty_(false)
     , num_ops_(ops.size())
     , type_(type) {
     auto dep = node2dep(node, false);
@@ -59,11 +58,8 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     }
 
     // A gid is a u32, so two of them - or a Node and one - share a single hash step.
-    auto h    = fe::hash_combine(0, u64(node) << 32 | (type ? type->gid() : 0));
-    h         = fe::hash_combine(h, flags_);
-    auto vars = Vars();
-    auto muts = Muts();
-    World* w  = nullptr;
+    auto h = fe::hash_combine(0, u64(node) << 32 | (type ? type->gid() : 0));
+    h      = fe::hash_combine(h, flags_);
 
     auto collect = [&](const Def* d, bool with_vars = true, bool with_muts = true) {
         if (!with_vars && !with_muts) return;
@@ -71,18 +67,6 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
         if (!with_vars) mask &= ~fe::to_underlying(Dep::Var);
         if (!with_muts) mask &= ~fe::to_underlying(Dep::Mut);
         dep |= d->dep_ & mask;
-        // A Def without Dep::Var and Dep::Mut has neither local Vars nor local Muts.
-        if (!(d->dep_ & (fe::to_underlying(Dep::Var) | fe::to_underlying(Dep::Mut)))) return;
-        auto dvars = with_vars ? d->local_vars() : Vars();
-        auto dmuts = with_muts ? d->local_muts() : Muts();
-        if ((vars && dvars) || (muts && dmuts)) {
-            if (!w) w = &d->world();
-            vars = w->vars().merge(vars, dvars);
-            muts = w->muts().merge(muts, dmuts);
-        } else {
-            if (dvars) vars = dvars;
-            if (dmuts) muts = dmuts;
-        }
     };
 
     if (type) collect(type);
@@ -103,6 +87,33 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
 
     dep_  = dep;
     hash_ = h;
+}
+
+void Def::collect_locals() {
+    if (!(dep_ & (fe::to_underlying(Dep::Var) | fe::to_underlying(Dep::Mut)))) return;
+
+    auto vars    = Vars();
+    auto muts    = Muts();
+    auto collect = [&](const Def* d, bool with_vars = true, bool with_muts = true) {
+        if (!(d->dep_ & (fe::to_underlying(Dep::Var) | fe::to_underlying(Dep::Mut)))) return;
+        auto dvars = with_vars ? d->local_vars() : Vars();
+        auto dmuts = with_muts ? d->local_muts() : Muts();
+        if ((vars && dvars) || (muts && dmuts)) {
+            vars = world().vars().merge(vars, dvars);
+            muts = world().muts().merge(muts, dmuts);
+        } else {
+            if (dvars) vars = dvars;
+            if (dmuts) muts = dmuts;
+        }
+    };
+
+    if (type()) collect(type());
+    for (auto op : ops())
+        if (node() == Node::Proxy)
+            collect(op, flags_ & Proxy::Vars_Bit, flags_ & Proxy::Muts_Bit);
+        else
+            collect(op);
+
     vars_ = vars;
     muts_ = muts;
 }
@@ -116,7 +127,6 @@ Def::Def(Node node, const Def* type, size_t num_ops, flags_t flags)
     , mut_(true)
     , external_(false)
     , annex_(false)
-    , dirty_(false)
     , dep_(node2dep(node, true))
     , num_ops_(num_ops)
     , type_(type) {
@@ -131,7 +141,6 @@ Def::Def(Node node, Def* binder)
     , mut_(false)
     , external_(false)
     , annex_(false)
-    , dirty_(false)
     , dep_(node2dep(node, false))
     , num_ops_(0)
     , type_(nullptr) {

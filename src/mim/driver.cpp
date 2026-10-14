@@ -146,7 +146,7 @@ void Driver::move_to_library(World& world) {
 
 void Driver::add_static_plugin(const char* name, Plugin (*get_plugin)()) { static_plugins()[name] = get_plugin; }
 
-void Driver::load(std::string_view spec) {
+void Driver::load(std::string_view spec, Loc loc) {
     auto name = plugin_name(spec);
     log().i("💾 load plugin `{}`", spec);
 
@@ -185,18 +185,19 @@ void Driver::load(std::string_view spec) {
             dir = path.parent_path();
         if (!handle) dir = find(std::format("libmim_{}{}", name, ext), open);
 
-        if (!handle) fe::throwf("cannot open plugin `{}`", spec);
+        if (!handle) error().e(loc, "cannot open plugin `{}`", spec).bail();
         get_info = reinterpret_cast<decltype(&mim_get_plugin)>(fe::dl::get(handle.get(), "mim_get_plugin"));
     }
 
     auto plugin = get_info();
     if (version() != plugin.version) {
-        auto msg = std::format("plugin {} has version {} while MimIR has version {}", plugin.name, plugin.version,
-                               version());
-        if (flags().force_load)
-            std::println(std::cerr, "warning: {}", msg);
-        else
-            throw std::logic_error(msg);
+        if (!flags().force_load)
+            error()
+                .e(loc, "plugin `{}` has version {} while MimIR has version {}", plugin.name, plugin.version, version())
+                .n("use `--force-load` to load it anyway")
+                .bail();
+        std::println(std::cerr, "warning: plugin {} has version {} while MimIR has version {}", plugin.name,
+                     plugin.version, version());
     }
     fe::assert_emplace(plugins_, name,
                        Loaded{std::move(handle), std::move(dir), fe::View<PluginSym>(plugin.syms, plugin.num_syms)});

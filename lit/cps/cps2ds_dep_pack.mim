@@ -15,4 +15,4 @@ extern fun main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0)): [me
     let xs = cps.cps2ds_dep U f 3;
     return (m, core.bitcast I32 (xs#1₃));
 
-// CHECK-DAG: return{{.*}}1I32
+// CHECK-DAG: return_{{[0-9]+}} ({{.*}}, 1I32)

@@ -23,4 +23,4 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr ((I8), 0), 0), re
     let (tx, ty) = autodiff.add (a#tt, b#1₂);
     return (m, 430000I32 + ty + 100I32 * tx);
 
-// CHECK-DAG: return{{.*}}430001
+// CHECK-DAG: return_{{[0-9]+}} ({{.*}}, 430001I32)

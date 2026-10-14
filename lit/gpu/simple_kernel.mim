@@ -1,4 +1,3 @@
-// RUN: rm -f %t.ll
 // RUN: %mim %s -p opt
 
 plugin core;

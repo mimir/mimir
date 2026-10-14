@@ -244,7 +244,7 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         switch (semiop.id()) {
             case affine::semiop::mul: {
                 if (Axm::isa<refly::check>(c))
-                    fe::throwf("`affine.semiop.mul` called with non-constant second argument");
+                    app->blame("`affine.semiop.mul` called with non-constant second argument").bail();
                 // `c` is a `Nat` constant; reinterpret it on the `Idx 0` carrier.
                 return w.call(core::wrap::mul, core::Mode::none, Defs{x, w.call<core::bitcast>(w.type_i64(), c)});
             }

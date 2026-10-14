@@ -61,11 +61,9 @@ def catch_mim_errors(
 CallArg: TypeAlias = Def | list[Def] | tuple[Def, ...]
 
 
-def call(self: World, callee: Def | Sym | str | IntEnum, *args: CallArg) -> Def:
+def call(self: World, callee: Def | IntEnum, *args: CallArg) -> Def:
     if isinstance(callee, IntEnum):
         callee = self.annex(callee.value)
-    else:
-        assert False
 
     for arg in args:
         operands = list(arg) if isinstance(arg, (list, tuple)) else [arg]

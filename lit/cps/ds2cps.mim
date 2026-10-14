@@ -13,4 +13,4 @@ extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0)): [mem
     let c = f 40I32;
     return (m, c);
 
-// CHECK-DAG: return{{.*}}42
+// CHECK-DAG: return_{{[0-9]+}} ({{.*}}, 42I32)

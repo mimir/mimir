@@ -24,7 +24,7 @@ jobs:
 
       - name: Install dependencies
         shell: cmd
-        run: python -m pip install lit psutil
+        run: python -m pip install "lit<24" psutil
 
       - name: Install FileCheck
         uses: i3h/download-release-asset@v1
@@ -83,9 +83,7 @@ jobs:
                 -DBUILD_TESTING=ON                        ^
                 -DMIM_BUILD_EXAMPLES=ON                   ^
                 -DMIM_TEST_ROUNDTRIP=${{matrix.build-type == 'Release' && 'ON' || 'OFF'}} ^
-                -DPython3_EXECUTABLE=%PYTHON_EXE%         ^
                 -DPython_EXECUTABLE=%PYTHON_EXE%          ^
-                -DPYTHON_EXECUTABLE=%PYTHON_EXE%          ^
                 -DMIM_LIT_TIMEOUT=300                     ^
                 -DMIM_FILECHECK=${{github.workspace}}/bin/FileCheck-x86_64-win.exe
 

@@ -21,7 +21,7 @@ axm M: Nat → *;
 /// At the moment, the *address space* is not really used and serves as a placeholder for future work.
 axm Ptr: [*, Nat] → *;
 
-anx lam Ptr0(T: *): * = Ptr (T, 0);
+anx lam Ptr0 (T: *): * = Ptr (T, 0);
 ///
 /// ## Operations w/ Side Effects
 ///
@@ -94,8 +94,7 @@ axm add_mem: compile.Phase;
 ///
 /// ### seo
 ///
-/// Symbolic Expression Optimization — SSA construction, expression propagation, and GVN in one fixed
-/// point (see mim::plug::mem::phase::SEO).
+/// Symbolic Expression Optimization — SSA construction, expression propagation, and GVN in one fixed point (see mim::plug::mem::phase::SEO).
 ///
 axm seo: compile.Phase;
 ///

@@ -1,5 +1,4 @@
-// RUN: rm -f %t.ll
-// RUN: %mim -p opt -o - %s
+// RUN: %mim -p opt -o - %s | %FileCheck %s
 
 plugin core;
 plugin btensor;

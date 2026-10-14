@@ -68,8 +68,7 @@ bool holds_buf(const Def* d) {
 /// @p buf, or its sole element if @p app's result has been folded to a scalar.
 const Def* scalar_result(const App* app, const Def* mem, const Def* buf) {
     if (app->type()->isa<Arr>()) return buf;
-    auto [r, s, T] = Axm::isa<buffer::Buf>(buf->type())->args<3>();
-    return buffer::op_read(r, s, T, mem, buf, buf->world().tuple())->proj(2, 1);
+    return buffer::op_read(mem, buf, buf->world().tuple())->proj(2, 1);
 }
 
 } // namespace
@@ -119,21 +118,17 @@ void LowerToMem::collect_tensor_types() {
             } else if (Axm::isa<tensor::map_reduce_post>(app)) {
                 // result and each of the `nis` inputs / `nps` epilogue inputs are tensors.
                 add_tensor_ty(app->type());
-                auto [nis_nps, meta, shapes, in_tys, comb_init, acc_out, accs]
-                    = app->callee()->as<App>()->uncurry_args<7>();
-                auto [nis, nps]                     = nis_nps->projs<2>();
-                auto [To, Tp, Ro, Rn, TSched]       = meta->projs<5>();
-                auto [Tis, Ris, Sis, Tps, Rps, Sps] = in_tys->projs<6>();
-                auto [is, post_is]                  = app->arg()->projs<2>();
-                elem(To), elem(Tp);
-                if (auto nis_l = Lit::isa<u64>(nis))
+                auto mr            = btensor::MapRedPost::of(app->callee()->as<App>());
+                auto [is, post_is] = app->arg()->projs<2>();
+                elem(mr.To), elem(mr.Tp);
+                if (auto nis_l = Lit::isa<u64>(mr.nis))
                     for (u64 i = 0; i < *nis_l; ++i) {
-                        elem(Tis->proj(*nis_l, i));
+                        elem(mr.Tis->proj(*nis_l, i));
                         add_tensor_ty(is->proj(*nis_l, i)->type());
                     }
-                if (auto nps_l = Lit::isa<u64>(nps))
+                if (auto nps_l = Lit::isa<u64>(mr.nps))
                     for (u64 j = 0; j < *nps_l; ++j) {
-                        elem(Tps->proj(*nps_l, j));
+                        elem(mr.Tps->proj(*nps_l, j));
                         add_tensor_ty(post_is->proj(*nps_l, j)->type());
                     }
             } else if (Axm::isa<tensor::broadcast>(app)) {
@@ -321,7 +316,7 @@ const Def* LowerToMem::rewrite(const Def* old_def) {
     auto app = old_def->isa<App>();
     auto ins = old_def->isa<Insert>(); // allocates the copy it writes into
     if ((app && wants_fresh_mem(app)) || (ins && tensor_ty_.contains(ins->tuple()->type()))) {
-        if (auto i = fresh_memo_.find(old_def); i != fresh_memo_.end()) return i->second;
+        if (auto new_def = fe::lookup(fresh_memo_, old_def)) return new_def;
         auto new_def = app ? rewrite_imm_App(app) : rewrite_imm_Insert(ins);
         fresh_memo_.emplace(old_def, new_def);
         return new_def;
@@ -520,12 +515,9 @@ const Def* LowerToMem::rewrite_imm_Extract(const Extract* extract) {
     // Only read through a tensor that *is* a buffer already - materializing one here would bufferize a plain
     // value tuple whose type merely coincides with some tensor's.
     auto arr = rewrite(old_arr);
-    auto buf = Axm::isa<buffer::Buf>(arr->type());
-    if (!buf) return RWPhase::rewrite_imm_Extract(extract);
-    auto [br, bs, bT] = buf->args<3>(); // actual (folded) buffer metadata
+    if (!Axm::isa<buffer::Buf>(arr->type())) return RWPhase::rewrite_imm_Extract(extract);
 
-    auto [m, v] = buffer::op_read(br, bs, bT, bot_mem(), arr, index)->projs<2>();
-    return v; // the loaded value
+    return buffer::op_read(bot_mem(), arr, index)->proj(2, 1); // the loaded value
 }
 
 const Def* LowerToMem::rewrite_imm_Insert(const Insert* insert) {
@@ -538,17 +530,11 @@ const Def* LowerToMem::rewrite_imm_Insert(const Insert* insert) {
     auto x            = rewrite(insert->value());
     auto idx          = rewrite(insert->index()); // one write, every axis
 
-    if (reuse_in_place(insert)) {
-        auto [m, buf2] = buffer::op_write(br, bs, bT, fresh_mem(), arr, idx, x)->projs<2>();
-        return buf2;
-    }
-
     // AlwaysAllocate policy: allocate a fresh buffer, copy the source in, then write the element.
     // This local chain is properly threaded; AddMem splices its placeholder root into the global chain.
-    auto [m1, q]   = buffer::op_alloc(br, bs, bT, fresh_mem())->projs<2>();
-    auto m2        = buffer::op_copy(br, bs, bT, m1, q, arr);
-    auto [m3, out] = buffer::op_write(br, bs, bT, m2, q, idx, x)->projs<2>();
-    return out;
+    auto [m1, q] = buffer::op_alloc(br, bs, bT, fresh_mem())->projs<2>();
+    auto m2      = buffer::op_copy(m1, q, arr);
+    return buffer::op_write(m2, q, idx, x)->proj(2, 1);
 }
 
 const Def* LowerToMem::lower_splat(const App* app) {
@@ -577,31 +563,11 @@ const Def* LowerToMem::lower_generate(const App* app) {
         return w.call(body, w.tuple(zeros));
     }
 
-    auto out_ty             = buf_of(app->type());
-    auto [br, bs, bT]       = Axm::isa<buffer::Buf>(out_ty)->args<3>();
-    auto mem_ty             = w.call<mem::M>(0);
-    auto result_ty          = w.sigma({mem_ty, out_ty});
-    auto unit               = w.tuple();
-    auto fun                = w.mut_fun(w.sigma({mem_ty, w.sigma()}), result_ty)->set("tensor_generate");
-    auto call               = w.app(cps::op_cps2ds_dep(fun), w.tuple({fresh_mem(), unit}));
-    auto [args, cont]       = fun->vars<2>();
-    auto [fun_mem, ignored] = args->projs<2>();
-
-    auto [alloc_mem, out] = buffer::op_alloc(br, bs, bT, fun_mem)->projs<2>();
-    const Def* acc        = w.tuple({alloc_mem, out});
-    auto current          = fun;
-    auto iters            = affine::counting_nest(current, cont, acc, s_out->projs(rn), "generate");
-
-    auto [loop_mem, loop_out] = acc->projs<2>();
-    auto elem                 = w.call(body, w.tuple(iters));
-    DefVec coords(rn);
-    for (u64 d = 0; d < rn; ++d)
-        coords[d] = w.call(core::conv::u, s_out->proj(rn, d), iters[d]);
-    auto folded               = *Shape(w, coords).fold(s_out);
-    auto [write_mem, written] = buffer::op_write(br, bs, bT, loop_mem, loop_out, folded, elem)->projs<2>();
-    current->app(true, cont, w.tuple({write_mem, written}));
-    auto [call_mem, call_out] = call->projs<2>();
-    return call_out;
+    auto result_ty = w.sigma({w.call<mem::M>(0), buf_of(app->type())});
+    auto compute   = [&](const DefVec& iters, const Def*, const Def* m) -> std::pair<const Def*, const Def*> {
+        return {m, w.call(body, w.tuple(iters))};
+    };
+    return btensor::build_pointwise(result_ty, fresh_mem(), w.tuple(), s_out, rn, "generate", compute)->proj(2, 1);
 }
 
 const Def* LowerToMem::lower_broadcast(const App* app) {
@@ -644,53 +610,51 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     auto args          = rewrite(app->arg()); // (is, post_is): the (bufferized) input buffers
     auto [is, post_is] = args->projs<2>();
 
-    auto [nis_nps, meta, shapes, in_tys, comb_init, acc_out, accs] = c->uncurry_args<7>();
-    auto [nis, nps]                                                = nis_nps->projs<2>();
-    auto [comb, init, post]                                        = comb_init->projs<3>();
+    auto mr = btensor::MapRedPost::of(c);
 
     // The generic rewrite rebuilds the argument tuple with its stale value-array type even when its
     // elements were converted to buffers, which would not be assignable to the op's
     // `«nis; buffer.Buf …»` domain - hence the re-tupling in `buffer_list`.
     auto [old_is, old_post_is] = app->arg()->projs<2>();
-    is                         = buffer_list(is, old_is, nis);
-    post_is                    = buffer_list(post_is, old_post_is, nps);
+    is                         = buffer_list(is, old_is, mr.nis);
+    post_is                    = buffer_list(post_is, old_post_is, mr.nps);
     if (!is || !post_is) return RWPhase::rewrite_imm_App(app); // leave it alone
 
     // Wrap the pure tensor combiner `Fn [To, «nis; Tis»] → To` into the mem-threaded combiner
     // `Fn [mem.M 0, To, «nis; Tis»] → [mem.M 0, To]` that `btensor.map_reduce_post` expects.
     auto mem_ty           = w.call<mem::M>(0);
-    auto inner            = comb->type()->as<Pi>()->dom()->proj(2, 0); // [To, «nis; Tis»]
+    auto inner            = mr.comb->type()->as<Pi>()->dom()->proj(2, 0); // [To, «nis; Tis»]
     auto [cTo, ins_ty]    = inner->projs<2>();
     auto memcomb          = w.mut_fun(w.sigma({mem_ty, cTo, ins_ty}), w.sigma({mem_ty, cTo}))->set("memComb");
     auto [cdata, cret]    = memcomb->vars<2>();
     auto [cm, cacc, cins] = cdata->projs<3>();
     auto after            = w.mut_con(cTo)->set("afterComb");
     after->app(true, cret, w.tuple({cm, after->var()}));
-    memcomb->set(true, w.app(comb, w.tuple({w.tuple({cacc, cins}), after})));
+    memcomb->set(true, w.app(mr.comb, w.tuple({w.tuple({cacc, cins}), after})));
 
     // Likewise wrap the pure epilogue `Fn [To, «nps; Tps»] → Tp` into
     // `Fn [mem.M 0, To, «nps; Tps»] → [mem.M 0, Tp]`.
-    auto pTp               = meta->proj(5, 1);
-    auto pin               = post->type()->as<Pi>()->dom()->proj(2, 0); // [To, «nps; Tps»]
+    auto pTp               = mr.Tp;
+    auto pin               = mr.post->type()->as<Pi>()->dom()->proj(2, 0); // [To, «nps; Tps»]
     auto [pTo, pexts_ty]   = pin->projs<2>();
     auto mempost           = w.mut_fun(w.sigma({mem_ty, pTo, pexts_ty}), w.sigma({mem_ty, pTp}))->set("memPost");
     auto [pdata, pret]     = mempost->vars<2>();
     auto [pm, pacc, pexts] = pdata->projs<3>();
     auto pafter            = w.mut_con(pTp)->set("afterPost");
     pafter->app(true, pret, w.tuple({pm, pafter->var()}));
-    mempost->set(true, w.app(post, w.tuple({w.tuple({pacc, pexts}), pafter})));
+    mempost->set(true, w.app(mr.post, w.tuple({w.tuple({pacc, pexts}), pafter})));
 
     // NB: no `w.call` here — the meta groups are *forwarded* from the tensor op on purpose. Leaving them to
     // inference would re-derive `{Tis, Ris, Sis}` from the `buffer.Buf` operands, whose literal size-1 axes are
     // already folded away, so they would no longer agree with the logical shapes the loop generation iterates.
     auto op       = w.annex<btensor::map_reduce_post>();
-    op            = w.app(op, nis_nps);
-    op            = w.app(op, meta);
-    op            = w.app(op, shapes);
-    op            = w.app(op, in_tys);
-    op            = w.app(op, w.tuple({memcomb, init, mempost}));
-    op            = w.app(op, acc_out);
-    op            = w.app(op, accs);
+    op            = w.app(op, mr.nis_nps);
+    op            = w.app(op, mr.meta);
+    op            = w.app(op, mr.shapes);
+    op            = w.app(op, mr.in_tys);
+    op            = w.app(op, w.tuple({memcomb, mr.init, mempost}));
+    op            = w.app(op, mr.map_out);
+    op            = w.app(op, mr.maps_all);
     auto [m, out] = w.app(op, w.tuple({fresh_mem(), is, post_is}))->projs<2>();
     return scalar_result(app, m, out);
 }
@@ -780,7 +744,7 @@ const Def* LowerToMem::lower_gather(const App* app) {
     auto [Tr, shapes, dim] = c->uncurry_args<3>();
     auto [T, r]            = Tr->projs<2>();
     auto [s_src, s_idx]    = shapes->projs<2>();
-    if (!check_gather_shape_constraints(r, dim, s_src, s_idx)) return RWPhase::rewrite_imm_App(app);
+    if (!check_gather_shape_constraints(app, r, dim, s_src, s_idx)) return RWPhase::rewrite_imm_App(app);
     auto [old_input, old_index] = app->args<2>();
     auto input                  = make_buffer(old_input, r, s_src);
     auto index                  = make_buffer(old_index, r, s_idx);
@@ -797,7 +761,7 @@ const Def* LowerToMem::lower_scatter(const App* app) {
     auto [Tr, shapes, dim]         = c->uncurry_args<3>();
     auto [T, r]                    = Tr->projs<2>();
     auto [s_src, s_idx, s_updates] = shapes->projs<3>();
-    if (!check_scatter_shape_constraints(r, dim, s_src, s_idx, s_updates)) return RWPhase::rewrite_imm_App(app);
+    if (!check_scatter_shape_constraints(app, r, dim, s_src, s_idx, s_updates)) return RWPhase::rewrite_imm_App(app);
     auto [old_input, old_index, old_updates] = app->args<3>();
     auto input                               = make_buffer(old_input, r, s_src);
     auto index                               = make_buffer(old_index, r, s_idx);

@@ -38,17 +38,24 @@ std::optional<char> unescape(char32_t c) {
 bool is_id_head(char32_t c) { return c == '_' || utf8::isalpha(c); }
 bool is_id_tail(char32_t c) { return c == '_' || utf8::isalnum(c); }
 
-/// std::from_chars leaves @p res alone on overflow, where the widest literal is what Mim means.
-u64 to_u64(std::string_view sv, int base) {
+/// `std::nullopt` on overflow.
+std::optional<u64> parse_u64(std::string_view sv, int base) {
     u64 res = 0;
     auto ec = std::from_chars(sv.data(), sv.data() + sv.size(), res, base).ec;
-    return ec == std::errc::result_out_of_range ? std::numeric_limits<u64>::max() : res;
+    if (ec == std::errc::result_out_of_range) return {};
+    return res;
 }
 
-f64 to_f64(std::string_view sv, int base) {
+/// Saturates on overflow, where the widest literal is what Mim means.
+u64 to_u64(std::string_view sv, int base) { return parse_u64(sv, base).value_or(std::numeric_limits<u64>::max()); }
+
+/// `std::nullopt` if @p sv is out of range.
+std::optional<f64> to_f64(std::string_view sv, int base) {
     f64 res = 0.;
-    std::from_chars(sv.data(), sv.data() + sv.size(), res,
-                    base == 16 ? std::chars_format::hex : std::chars_format::general);
+    auto ec = std::from_chars(sv.data(), sv.data() + sv.size(), res,
+                              base == 16 ? std::chars_format::hex : std::chars_format::general)
+                  .ec;
+    if (ec == std::errc::result_out_of_range) return {};
     return res;
 }
 
@@ -143,7 +150,7 @@ Tok Lexer::lex() {
             if (accept(utf8::isdigit)) {
                 lex_digits();
                 lex_exp();
-                return {loc_, to_f64(view(), 10)};
+                return {loc_, lex_f64(view(), 10)};
             }
 
             return tok(Tag::T_dot);
@@ -168,6 +175,16 @@ Tok Lexer::lex() {
         if (accept('\'')) {
             auto c = lex_char();
             if (accept('\'')) return {loc_, c};
+            // Within the lookahead, a too-long literal is consumed whole so that its tail doesn't cascade.
+            for (size_t i = 1; i != 3; ++i) {
+                if (ahead(i - 1) == utf8::EoF || utf8::isspace(ahead(i - 1)) || ahead(i - 1) == '\'') break;
+                if (ahead(i) == '\'') {
+                    for (size_t j = 0; j <= i; ++j)
+                        next();
+                    error().e(loc_, "character literal must contain exactly one character");
+                    return {loc_, c};
+                }
+            }
             error().e(loc_, "invalid character literal `{}`", view());
             continue;
         }
@@ -260,6 +277,8 @@ Tok Lexer::lex_lit() {
 
     lex_digits(base);
     auto end = loc_.end.off;
+    if (base != 10 && end == begin && ahead() != '.')
+        error().e(loc_, "expected digits after `0{}`", base == 16 ? 'x' : base == 8 ? 'o' : 'b');
 
     if (accept(utf8::any('i', 'I'))) {
         auto val   = to_u64(body(end), base);
@@ -305,8 +324,11 @@ Tok Lexer::lex_lit() {
         is_float |= has_exp;
     }
 
-    if (is_float) return Tok{loc_, to_f64(body(loc_.end.off), base)};
-    else          return Tok{loc_, to_u64(body(end),          base)};
+    if (is_float) return Tok{loc_, lex_f64(body(loc_.end.off), base)};
+
+    auto val = parse_u64(body(end), base);
+    if (!val) error().w(loc_, "integer literal saturates to `⊤:Nat`");
+    return Tok{loc_, val.value_or(std::numeric_limits<u64>::max())};
 }
 
 void Lexer::lex_digits(int base /*= 10*/) {
@@ -319,6 +341,12 @@ void Lexer::lex_digits(int base /*= 10*/) {
         // clang-format on
         default: std::unreachable();
     }
+}
+
+f64 Lexer::lex_f64(std::string_view sv, int base) {
+    auto res = to_f64(sv, base);
+    if (!res) error().e(loc_, "floating-point literal is out of range");
+    return res.value_or(0.);
 }
 
 bool Lexer::lex_exp(int base /*= 10*/) {

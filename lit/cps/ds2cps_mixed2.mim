@@ -21,4 +21,4 @@ con g (m: mem.M 0, a: I32, return: Cn [mem.M 0, I32]) =
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
     g (m, 40I32, return);
 
-// CHECK-DAG: return{{.*}}45
+// CHECK-DAG: return_{{[0-9]+}} ({{.*}}, 45I32)

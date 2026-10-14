@@ -24,8 +24,7 @@ namespace vecp = mim::plug::vec;
 /// The runtime-wrapper linking mode is selected via `-X ll:rt=embed` (default) or `-X ll:rt=extern`.
 class Emit : public Phase {
 public:
-    Emit(World& world, flags_t annex)
-        : Phase(world, annex) {}
+    using Phase::Phase;
 
     void start() override {
         world().log().d("ll backend args: {}", fe::Join(args()));
@@ -33,7 +32,7 @@ public:
         auto name = world().name() ? world().name().str() : "a"s;
         auto path = name + ".ll"s;
         if (auto o = arg_value(args(), "o", "output")) path = *o;
-        auto rt = arg_value(args(), "rt") == "extern" ? Emitter::Rt::ext : Emitter::Rt::embed;
+        auto rt = arg_rt(args());
 
         auto out     = Out(path);
         auto emitter = Emitter(world(), "llvm_emitter", *out.os());
@@ -120,7 +119,7 @@ static const char* fcmp_pred(math::cmp id) {
 }
 
 std::string Emitter::convert_impl(const Def* type, bool simd) {
-    if (auto i = types_.find(type); i != types_.end()) return i->second;
+    if (auto s = fe::lookup(types_, type)) return *s;
 
     if (Axm::isa<mem::M>(type)) type->blame(MIM_LL_BE "cannot convert a `mem.M` type").bail();
     std::ostringstream s;

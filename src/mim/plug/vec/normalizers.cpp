@@ -93,10 +93,12 @@ const Def* normalize_scan(const Def*, const Def* c, const Def* vec) {
     return nullptr;
 }
 
-const Def* normalize_is_unique(const Def*, const Def*, const Def* vec) {
+const Def* normalize_is_unique(const Def*, const Def* callee, const Def* vec) {
     auto& w = vec->world();
+    auto n  = Lit::isa(callee->as<App>()->arg());
+    if (n && *n <= 1) return w.lit_tt();
 
-    if (auto tuple = vec->isa<Tuple>()) {
+    if (auto tuple = vec->isa<Tuple>(); tuple && n) {
         auto seen = DefSet();
         for (auto op : tuple->ops()) {
             auto [_, ins] = seen.emplace(op);

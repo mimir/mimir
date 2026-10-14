@@ -20,8 +20,7 @@ class EtaConv : public RWPhase {
 public:
     EtaConv(World& world)
         : RWPhase(world, "EtaConv") {}
-    EtaConv(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     /// Known and Unknown_* are independent bits; both set means "both positions".

@@ -11,6 +11,7 @@
 #include <mim/util/types.h>
 
 #include <mim/plug/affine/affine.h>
+#include <mim/plug/btensor/btensor.h>
 #include <mim/plug/core/core.h>
 #include <mim/plug/cps/cps.h>
 
@@ -183,24 +184,15 @@ static std::optional<PureRead> read_through(World& w, const Def* value, const De
 // its own init — and finally invokes `f_o`, threading inner results into the corresponding outer
 // input slots.
 const Def* Fuse::fuse_map_reduce(const App* app) {
-    auto outer_callee = rewrite(app->callee())->as<App>();
+    auto mr            = btensor::MapRedPost::of(rewrite(app->callee())->as<App>());
+    auto [is, post_is] = rewrite(app->arg())->projs<2>();
 
-    auto [nis_nps, meta, shapes, in_tys, comb_init, map_out, maps_all] = outer_callee->uncurry_args<7>();
-
-    auto [nis, nps]                     = nis_nps->projs<2>();
-    auto [To, Tp, Ro, Rn, TSched]       = meta->projs<5>();
-    auto [comb, init, post]             = comb_init->projs<3>();
-    auto [Tis, Ris, Sis, Tps, Rps, Sps] = in_tys->projs<6>();
-    auto [maps, post_maps]              = maps_all->projs<2>();
-    auto is_all                         = rewrite(app->arg());
-    auto [is, post_is]                  = is_all->projs<2>();
-
-    log().d("consider for fusion: comb = {}, init = {}, To = {}, Ro = {}", comb, init, To, Ro);
-    log().d("    inputs: nis = {}, Tis = {}, Ris = {}, Sis = {}, is = {}", nis, Tis, Ris, Sis, is);
+    log().d("consider for fusion: comb = {}, init = {}, To = {}, Ro = {}", mr.comb, mr.init, mr.To, mr.Ro);
+    log().d("    inputs: nis = {}, Tis = {}, Ris = {}, Sis = {}, is = {}", mr.nis, mr.Tis, mr.Ris, mr.Sis, is);
 
     auto& w = new_world();
 
-    auto nis_lit = Lit::isa<u64>(nis);
+    auto nis_lit = Lit::isa<u64>(mr.nis);
     if (!nis_lit) return nullptr;
     auto nis_nat = *nis_lit;
 
@@ -222,23 +214,15 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         auto inner = Axm::isa<tensor::map_reduce_post>(is->proj(nis_nat, k));
         if (!inner) continue;
 
-        auto [inner_nis_nps, inner_meta, inner_shapes, inner_in_tys, inner_comb_init, inner_map_out, inner_maps_all,
-              inner_is_all]
-            = inner->uncurry_args<8>();
-        auto [inner_nis, inner_nps]                                             = inner_nis_nps->projs<2>();
-        auto [inner_To, inner_Tp, inner_Ro, inner_Rn, inner_TSched]             = inner_meta->projs<5>();
-        auto [inner_So, inner_Sr, inner_sched]                                  = inner_shapes->projs<3>();
-        auto [inner_comb, inner_init, inner_post]                               = inner_comb_init->projs<3>();
-        auto [inner_Tis, inner_Ris, inner_Sis, inner_Tps, inner_Rps, inner_Sps] = inner_in_tys->projs<6>();
-        auto [inner_maps, inner_post_maps]                                      = inner_maps_all->projs<2>();
-        auto [inner_is, inner_post_is]                                          = inner_is_all->projs<2>();
+        auto im       = btensor::MapRedPost::of(inner->callee()->as<App>());
+        auto inner_is = inner->arg()->proj(2, 0);
 
-        auto inner_nis_nat = Lit::isa<u64>(inner_nis);
-        if (!inner_nis_nat || inner_So != Sis->proj(nis_nat, k)) continue; // see reads_as_produced
+        auto inner_nis_nat = Lit::isa<u64>(im.nis);
+        if (!inner_nis_nat || im.So != mr.Sis->proj(nis_nat, k)) continue; // see reads_as_produced
 
         // Epilogue inputs on the inner would have to be re-read inside the fused combiner; only
         // epilogue-free inners fuse (their identity post is checked below).
-        auto inner_nps_nat = Lit::isa<u64>(inner_nps);
+        auto inner_nps_nat = Lit::isa<u64>(im.nps);
         if (!inner_nps_nat || *inner_nps_nat != 0) continue;
 
         // We can only fuse when the inner has no reduction loops and writes every cell of its full
@@ -246,30 +230,30 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
         // position is just a single call of `inner_comb` at that position.
         // The identity map (`affine.id`) is recognized structurally (a lam returning its own var),
         // since the rewrite into this phase's world rebuilds mutables and breaks pointer equality.
-        auto inner_ro = Lit::isa<u64>(inner_Ro);
-        auto inner_rn = Lit::isa<u64>(inner_Rn);
+        auto inner_ro = Lit::isa<u64>(im.Ro);
+        auto inner_rn = Lit::isa<u64>(im.Rn);
         if (!inner_ro || !inner_rn || *inner_ro != *inner_rn) continue;
-        if (inner_Sr != inner_So) continue;
-        if (!is_identity_map(inner_map_out)) continue;
+        if (im.Sr != im.So) continue;
+        if (!is_identity_map(im.map_out)) continue;
 
         // A non-identity inner epilogue cannot be dropped when the inner combiner is inlined;
         // threading it through the fused combiner chain is future work.
-        if (!is_identity_post(inner_post)) continue;
+        if (!is_identity_post(im.post)) continue;
 
         // Fusing inlines the inner combiner once per iteration of the outer's *full* loop nest.
         // Unless the outer reads input k injectively, the same inner element is recomputed once
         // for every iteration of each loop its access map ignores — e.g. a matrix product reads
         // its first input at `(i, k)`, so a fused producer would be recomputed for every `j`.
         // In that case keep the producer materialized instead.
-        if (!reads_injectively(maps->proj(nis_nat, k))) continue;
+        if (!reads_injectively(mr.maps->proj(nis_nat, k))) continue;
 
-        infos[k] = InnerInfo{.comb = inner_comb,
-                             .init = inner_init,
-                             .Tis  = inner_Tis,
-                             .Ris  = inner_Ris,
-                             .Sis  = inner_Sis,
-                             .To   = inner_To,
-                             .maps = inner_maps,
+        infos[k] = InnerInfo{.comb = im.comb,
+                             .init = im.init,
+                             .Tis  = im.Tis,
+                             .Ris  = im.Ris,
+                             .Sis  = im.Sis,
+                             .To   = im.To,
+                             .maps = im.maps,
                              .nis  = *inner_nis_nat,
                              .is   = inner_is};
     }
@@ -289,7 +273,7 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     auto slots = Slots();
     for (u64 i = 0; i < nis_nat; ++i) {
         if (auto& info = infos[i]) {
-            auto outer_map_i = maps->proj(nis_nat, i);
+            auto outer_map_i = mr.maps->proj(nis_nat, i);
             // Inlining a shared inner forwards its consumers to its inputs: they are no longer
             // sole-consumed for the epilogue guard.
             bool shared = !sole_consumer(is->proj(nis_nat, i));
@@ -302,8 +286,8 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
                            compose_map(w, info->maps->proj(info->nis, l), outer_map_i), v);
             }
         } else {
-            slots.push(Tis->proj(nis_nat, i), Ris->proj(nis_nat, i), Sis->proj(nis_nat, i), maps->proj(nis_nat, i),
-                       is->proj(nis_nat, i));
+            slots.push(mr.Tis->proj(nis_nat, i), mr.Ris->proj(nis_nat, i), mr.Sis->proj(nis_nat, i),
+                       mr.maps->proj(nis_nat, i), is->proj(nis_nat, i));
         }
     }
 
@@ -331,8 +315,8 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     // corresponding `new_in` slot otherwise. Each `inner_ret_<r>` closes over the prior
     // `value_<j>`s as free variables — those are bound by the dynamic call chain.
     auto inputs_sigma        = w.sigma(slots.T);
-    auto data_sigma          = w.sigma({To, inputs_sigma});
-    auto ret_cn_type         = w.cn(To);
+    auto data_sigma          = w.sigma({mr.To, inputs_sigma});
+    auto ret_cn_type         = w.cn(mr.To);
     auto new_comb            = w.mut_con({data_sigma, ret_cn_type})->set("fused_comb");
     auto [new_data, new_ret] = new_comb->vars<2>();
     auto [new_acc, new_in]   = new_data->projs<2>();
@@ -359,21 +343,21 @@ const Def* Fuse::fuse_map_reduce(const App* app) {
     }
 
     // After every inner combiner has produced its value, call the outer combiner.
-    inner_rets.back()->app(true, comb, {w.tuple({new_acc, w.tuple(outer_inputs_vec)}), new_ret});
+    inner_rets.back()->app(true, mr.comb, {w.tuple({new_acc, w.tuple(outer_inputs_vec)}), new_ret});
 
     // Construct the fused map_reduce; the loop domain, output map, init and epilogue (including the
     // epilogue inputs) are the outer's.
-    auto mr = w.annex<tensor::map_reduce_post>();
-    mr      = w.app(mr, {new_nis_def, nps});
-    mr      = w.app(mr, meta);
-    mr      = w.app(mr, shapes);
-    mr      = w.app(mr, {new_Tis, new_Ris, new_Sis, Tps, Rps, Sps});
-    mr      = w.app(mr, {new_comb, init, post});
-    mr      = w.app(mr, map_out);
-    mr      = w.app(mr, {new_maps, post_maps});
-    mr      = w.app(mr, {new_is, post_is});
+    auto res = w.annex<tensor::map_reduce_post>();
+    res      = w.app(res, {new_nis_def, mr.nps});
+    res      = w.app(res, mr.meta);
+    res      = w.app(res, mr.shapes);
+    res      = w.app(res, {new_Tis, new_Ris, new_Sis, mr.Tps, mr.Rps, mr.Sps});
+    res      = w.app(res, {new_comb, mr.init, mr.post});
+    res      = w.app(res, mr.map_out);
+    res      = w.app(res, {new_maps, mr.post_maps});
+    res      = w.app(res, {new_is, post_is});
 
-    return mr;
+    return res;
 }
 
 /// Is `map` the row-major reshape read `tensor.reshape_map (s_in, s_out)` — the map that reads a
@@ -425,32 +409,25 @@ bool Fuse::sole_consumer(const Def* d) const {
 //
 // `callee`/`arg` are new-world (already rewritten): the caller iterates this on freshly fused apps.
 const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
-    auto [nis_nps, meta, shapes, in_tys, comb_init, map_out, maps_all] = callee->uncurry_args<7>();
-
-    auto [nis, nps]                     = nis_nps->projs<2>();
-    auto [To, Tp, Ro, Rn, TSched]       = meta->projs<5>();
-    auto [So, Sr, sched]                = shapes->projs<3>();
-    auto [comb, init, post]             = comb_init->projs<3>();
-    auto [Tis, Ris, Sis, Tps, Rps, Sps] = in_tys->projs<6>();
-    auto [maps, post_maps]              = maps_all->projs<2>();
+    auto mr = btensor::MapRedPost::of(callee);
 
     auto& w = new_world();
 
-    auto nis_lit = Lit::isa<u64>(nis);
-    auto nps_lit = Lit::isa<u64>(nps);
-    auto ro_lit  = Lit::isa<u64>(Ro);
-    auto rn_lit  = Lit::isa<u64>(Rn);
+    auto nis_lit = Lit::isa<u64>(mr.nis);
+    auto nps_lit = Lit::isa<u64>(mr.nps);
+    auto ro_lit  = Lit::isa<u64>(mr.Ro);
+    auto rn_lit  = Lit::isa<u64>(mr.Rn);
     if (!nis_lit || !nps_lit || !ro_lit || !rn_lit || *ro_lit != *rn_lit) return nullptr;
     auto nis_nat = *nis_lit;
     auto nps_nat = *nps_lit;
     if (nis_nat == 0) return nullptr;
-    if (Sr != So) return nullptr;
+    if (mr.Sr != mr.So) return nullptr;
 
-    if (!is_identity_map(map_out)) return nullptr;
+    if (!is_identity_map(mr.map_out)) return nullptr;
 
     // A consumer that computes nothing (a pure re-indexed read) is read-through's job — sinking it
     // would re-wrap the producer forever (the unpack path below emits exactly such a copy on top).
-    if (nis_nat == 1 && nps_nat == 0 && is_copy_comb(comb) && is_identity_post(post)) return nullptr;
+    if (nis_nat == 1 && nps_nat == 0 && is_copy_comb(mr.comb) && is_identity_post(mr.post)) return nullptr;
 
     auto [is, ps] = arg->projs<2>();
 
@@ -462,14 +439,14 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     bool unpack          = false;
     for (u64 k = 0; k < nis_nat && !inner_def; ++k) {
         auto cand = Axm::isa<tensor::map_reduce_post>(is->proj(nis_nat, k));
-        if (!cand || !sole_consumer(cand) || !reads_as_produced(cand, Sis->proj(nis_nat, k))) continue;
+        if (!cand || !sole_consumer(cand) || !reads_as_produced(cand, mr.Sis->proj(nis_nat, k))) continue;
 
-        auto m = maps->proj(nis_nat, k);
-        if (is_identity_map(m) && Sis->proj(nis_nat, k) == So) {
+        auto m = mr.maps->proj(nis_nat, k);
+        if (is_identity_map(m) && mr.Sis->proj(nis_nat, k) == mr.So) {
             k0        = k;
             inner_def = cand;
-        } else if (Sis->proj(nis_nat, k) != So
-                   && is_unpack_read(w, m, Ris->proj(nis_nat, k), Sis->proj(nis_nat, k), Ro, So)) {
+        } else if (mr.Sis->proj(nis_nat, k) != mr.So
+                   && is_unpack_read(w, m, mr.Ris->proj(nis_nat, k), mr.Sis->proj(nis_nat, k), mr.Ro, mr.So)) {
             k0        = k;
             inner_def = cand;
             unpack    = true;
@@ -483,20 +460,14 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     // inverse reshape (packed cell → unpacked cell).
     const Def* to_cells = nullptr;
     if (unpack)
-        to_cells
-            = w.app(w.app(w.annex<tensor::reshape_map>(), {Ro, Ris->proj(nis_nat, k0)}), {So, Sis->proj(nis_nat, k0)});
+        to_cells = w.app(w.app(w.annex<tensor::reshape_map>(), {mr.Ro, mr.Ris->proj(nis_nat, k0)}),
+                         {mr.So, mr.Sis->proj(nis_nat, k0)});
     auto inner = Axm::isa<tensor::map_reduce_post>(inner_def);
 
-    auto [i_nis_nps, i_meta, i_shapes, i_in_tys, i_comb_init, i_map_out, i_maps_all, i_is_all]
-        = inner->uncurry_args<8>();
-    auto [i_nis, i_nps]                             = i_nis_nps->projs<2>();
-    auto [i_To, i_Tp, i_Ro, i_Rn, i_TSched]         = i_meta->projs<5>();
-    auto [i_Tis, i_Ris, i_Sis, i_Tps, i_Rps, i_Sps] = i_in_tys->projs<6>();
-    auto [i_comb, i_init, i_post]                   = i_comb_init->projs<3>();
-    auto [i_maps, i_post_maps]                      = i_maps_all->projs<2>();
-    auto [i_is, i_ps]                               = i_is_all->projs<2>();
+    auto im           = btensor::MapRedPost::of(inner->callee()->as<App>());
+    auto [i_is, i_ps] = inner->arg()->projs<2>();
 
-    auto i_nps_lit = Lit::isa<u64>(i_nps);
+    auto i_nps_lit = Lit::isa<u64>(im.nps);
     if (!i_nps_lit) return nullptr;
     auto i_nps_nat = *i_nps_lit;
 
@@ -509,46 +480,46 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
     auto to_cell = [&](const Def* m) { return to_cells ? compose_map(w, m, to_cells) : m; };
     auto eps     = Slots();
     for (u64 j = 0; j < i_nps_nat; ++j)
-        eps.push(i_Tps->proj(i_nps_nat, j), i_Rps->proj(i_nps_nat, j), i_Sps->proj(i_nps_nat, j),
-                 i_post_maps->proj(i_nps_nat, j), i_ps->proj(i_nps_nat, j));
+        eps.push(im.Tps->proj(i_nps_nat, j), im.Rps->proj(i_nps_nat, j), im.Sps->proj(i_nps_nat, j),
+                 im.post_maps->proj(i_nps_nat, j), i_ps->proj(i_nps_nat, j));
     for (u64 i = 0; i < nis_nat; ++i)
         if (i != k0)
-            eps.push(Tis->proj(nis_nat, i), Ris->proj(nis_nat, i), Sis->proj(nis_nat, i),
-                     to_cell(maps->proj(nis_nat, i)), is->proj(nis_nat, i));
+            eps.push(mr.Tis->proj(nis_nat, i), mr.Ris->proj(nis_nat, i), mr.Sis->proj(nis_nat, i),
+                     to_cell(mr.maps->proj(nis_nat, i)), is->proj(nis_nat, i));
     for (u64 j = 0; j < nps_nat; ++j)
-        eps.push(Tps->proj(nps_nat, j), Rps->proj(nps_nat, j), Sps->proj(nps_nat, j),
-                 to_cell(post_maps->proj(nps_nat, j)), ps->proj(nps_nat, j));
+        eps.push(mr.Tps->proj(nps_nat, j), mr.Rps->proj(nps_nat, j), mr.Sps->proj(nps_nat, j),
+                 to_cell(mr.post_maps->proj(nps_nat, j)), ps->proj(nps_nat, j));
 
     // The composed epilogue as a CPS chain: inner post → map combiner → map post. Identity hops are
     // called through anyway — their always-true filters inline them.
-    auto fused_post              = w.mut_con({w.sigma({i_To, w.sigma(eps.T)}), w.cn(Tp)})->set("fused_post");
-    auto after_ip                = w.mut_con(i_Tp)->set("afterInnerPost");
-    auto after_comb              = w.mut_con(To)->set("afterComb");
+    auto fused_post              = w.mut_con({w.sigma({im.To, w.sigma(eps.T)}), w.cn(mr.Tp)})->set("fused_post");
+    auto after_ip                = w.mut_con(im.Tp)->set("afterInnerPost");
+    auto after_comb              = w.mut_con(mr.To)->set("afterComb");
     auto [fused_data, fused_ret] = fused_post->vars<2>();
     auto [x, extras]             = fused_data->projs<2>();
 
     DefVec i_extras(i_nps_nat, [&](size_t j) { return extras->proj(new_nps, j); });
-    fused_post->app(true, i_post, {w.tuple({x, w.tuple(i_extras)}), after_ip});
+    fused_post->app(true, im.post, {w.tuple({x, w.tuple(i_extras)}), after_ip});
 
     DefVec comb_inputs(nis_nat);
     for (u64 i = 0, r = 0; i < nis_nat; ++i)
         comb_inputs[i] = i == k0 ? after_ip->var() : extras->proj(new_nps, i_nps_nat + r++);
-    after_ip->app(true, comb, {w.tuple({init, w.tuple(comb_inputs)}), after_comb});
+    after_ip->app(true, mr.comb, {w.tuple({mr.init, w.tuple(comb_inputs)}), after_comb});
 
     DefVec o_extras(nps_nat, [&](size_t j) { return extras->proj(new_nps, i_nps_nat + (nis_nat - 1) + j); });
-    after_comb->app(true, post, {w.tuple({after_comb->var(), w.tuple(o_extras)}), fused_ret});
+    after_comb->app(true, mr.post, {w.tuple({after_comb->var(), w.tuple(o_extras)}), fused_ret});
 
     // The producer, keeping its loop nest untouched; only the epilogue (inputs) and the out-element
     // type change.
-    auto mr = w.annex<tensor::map_reduce_post>();
-    mr      = w.app(mr, {i_nis, w.lit_nat(new_nps)});
-    mr      = w.app(mr, {i_To, Tp, i_Ro, i_Rn, i_TSched});
-    mr      = w.app(mr, i_shapes);
-    mr      = w.app(mr, {i_Tis, i_Ris, i_Sis, w.tuple(eps.T), w.tuple(eps.R), w.tuple(eps.S)});
-    mr      = w.app(mr, {i_comb, i_init, fused_post});
-    mr      = w.app(mr, i_map_out);
-    mr      = w.app(mr, {i_maps, w.tuple(eps.maps)});
-    mr      = w.app(mr, {i_is, w.tuple(eps.is)});
+    auto res = w.annex<tensor::map_reduce_post>();
+    res      = w.app(res, {im.nis, w.lit_nat(new_nps)});
+    res      = w.app(res, {im.To, mr.Tp, im.Ro, im.Rn, im.TSched});
+    res      = w.app(res, im.shapes);
+    res      = w.app(res, {im.Tis, im.Ris, im.Sis, w.tuple(eps.T), w.tuple(eps.R), w.tuple(eps.S)});
+    res      = w.app(res, {im.comb, im.init, fused_post});
+    res      = w.app(res, im.map_out);
+    res      = w.app(res, {im.maps, w.tuple(eps.maps)});
+    res      = w.app(res, {i_is, w.tuple(eps.is)});
 
     if (unpack) {
         // The fused op still materializes PACKED; re-wrap it in the unpacking reshape — expanded
@@ -556,13 +527,13 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
         // plain copy at a graph boundary). The copy-consumer guard above keeps this wrapper from
         // being sunk right back.
         auto impl = w.annex<tensor::reshape_impl>();
-        impl      = w.app(impl, {Tp, Ris->proj(nis_nat, k0), Ro});
-        impl      = w.app(impl, Sis->proj(nis_nat, k0));
-        impl      = w.app(impl, So);
-        mr        = w.app(impl, mr);
+        impl      = w.app(impl, {mr.Tp, mr.Ris->proj(nis_nat, k0), mr.Ro});
+        impl      = w.app(impl, mr.Sis->proj(nis_nat, k0));
+        impl      = w.app(impl, mr.So);
+        res       = w.app(impl, res);
     }
 
-    return mr;
+    return res;
 }
 
 // Rewires every input slot — combiner and epilogue alike — that is a pure re-indexed read
@@ -572,14 +543,10 @@ const Def* Fuse::fuse_epilogue(const App* callee, const Def* arg) {
 // map_reduce, so they never materialize; the bypassed op dies with cleanup unless someone else
 // still reads it (in which case the rewiring is still free — it removes no sharing, only a copy).
 const Def* Fuse::fuse_read_through(const App* callee, const Def* arg) {
-    auto [nis_nps, meta, shapes, in_tys, comb_init, map_out, maps_all] = callee->uncurry_args<7>();
+    auto mr = btensor::MapRedPost::of(callee);
 
-    auto [nis, nps]                     = nis_nps->projs<2>();
-    auto [Tis, Ris, Sis, Tps, Rps, Sps] = in_tys->projs<6>();
-    auto [maps, post_maps]              = maps_all->projs<2>();
-
-    auto nis_lit = Lit::isa<u64>(nis);
-    auto nps_lit = Lit::isa<u64>(nps);
+    auto nis_lit = Lit::isa<u64>(mr.nis);
+    auto nps_lit = Lit::isa<u64>(mr.nps);
     if (!nis_lit || !nps_lit) return nullptr;
     auto nis_nat = *nis_lit;
     auto nps_nat = *nps_lit;
@@ -607,21 +574,21 @@ const Def* Fuse::fuse_read_through(const App* callee, const Def* arg) {
         return slots;
     };
 
-    auto ins = rewire(nis_nat, Tis, Ris, Sis, maps, is);
-    auto eps = rewire(nps_nat, Tps, Rps, Sps, post_maps, ps);
+    auto ins = rewire(nis_nat, mr.Tis, mr.Ris, mr.Sis, mr.maps, is);
+    auto eps = rewire(nps_nat, mr.Tps, mr.Rps, mr.Sps, mr.post_maps, ps);
     if (!changed) return nullptr;
 
-    auto mr = w.annex<tensor::map_reduce_post>();
-    mr      = w.app(mr, nis_nps);
-    mr      = w.app(mr, meta);
-    mr      = w.app(mr, shapes);
-    mr = w.app(mr, {w.tuple(ins.T), w.tuple(ins.R), w.tuple(ins.S), w.tuple(eps.T), w.tuple(eps.R), w.tuple(eps.S)});
-    mr = w.app(mr, comb_init);
-    mr = w.app(mr, map_out);
-    mr = w.app(mr, {w.tuple(ins.maps), w.tuple(eps.maps)});
-    mr = w.app(mr, {w.tuple(ins.is), w.tuple(eps.is)});
+    auto res = w.annex<tensor::map_reduce_post>();
+    res      = w.app(res, mr.nis_nps);
+    res      = w.app(res, mr.meta);
+    res      = w.app(res, mr.shapes);
+    res = w.app(res, {w.tuple(ins.T), w.tuple(ins.R), w.tuple(ins.S), w.tuple(eps.T), w.tuple(eps.R), w.tuple(eps.S)});
+    res = w.app(res, mr.comb_init);
+    res = w.app(res, mr.map_out);
+    res = w.app(res, {w.tuple(ins.maps), w.tuple(eps.maps)});
+    res = w.app(res, {w.tuple(ins.is), w.tuple(eps.is)});
 
-    return mr;
+    return res;
 }
 
 namespace {

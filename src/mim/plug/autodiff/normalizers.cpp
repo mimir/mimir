@@ -2,6 +2,7 @@
 #include <mim/world.h>
 
 #include <mim/plug/core/core.h>
+#include <mim/plug/math/math.h>
 #include <mim/plug/mem/mem.h>
 
 #include "mim/plug/autodiff/autodiff.h"
@@ -58,8 +59,8 @@ const Def* normalize_add(const Def* type, const Def* callee, const Def* arg) {
     } else if (Axm::isa<mem::M>(type)) {
         // TODO: mem stays here (only resolved after direct simplification)
         return {};
-    } else if (T->isa<App>()) {
-        assert(0 && "not handled");
+    } else if (Axm::isa<math::F>(T)) {
+        return world.call(math::arith::add, 0_n, Defs{a, b});
     }
 
     return {};
@@ -80,7 +81,6 @@ const Def* normalize_sum(const Def* type, const Def* callee, const Def* arg) {
             sum = world.app(world.app(world.annex<add>(), T), {sum, args[i]});
         return sum;
     }
-    assert(0);
     return {};
 }
 

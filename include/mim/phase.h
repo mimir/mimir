@@ -170,9 +170,6 @@ public:
 
     /// @name Sparse Fixed-Point Iteration
     ///@{
-    bool is_sparse() const {
-        return curr_sparse_;
-    } ///< Does the current round only re-drain last round's dirty mutables?
     void make_dense() { dense_ = true; } ///< Forces whole-World rounds unconditionally.
     /// Bumped on every observable lattice change; snapshot it around a code region to detect changes.
     size_t version() const { return version_; }
@@ -272,11 +269,36 @@ protected:
     /// @returns whether @p app applies an Axm.
     bool pin_axm(const App* app, DefPred auto pinnable) {
         if (!app->uncurry_callee()->isa<Axm>()) return false;
+
+        auto cands   = DefVec();
         auto visited = DefSet();
+        auto collect = [&](this auto& self, const Def* def) -> void {
+            if (!visited.emplace(def).second) return;
+            if (pinnable(def)) cands.emplace_back(def);
+            if (def->isa_mut()) return;
+            for (auto d : def->deps())
+                self(d);
+        };
+        collect(app->callee_type()->dom());
+        collect(app->type());
+        if (cands.empty()) return true;
+
+        // The args' subgraph is downward-closed, so exempting it only needs to find the candidates therein.
+        auto todo   = DefSet(cands.begin(), cands.end());
+        auto seen   = DefSet();
+        auto exempt = [&](this auto& self, const Def* def) -> bool {
+            if (!seen.emplace(def).second) return false;
+            if (todo.erase(def) && todo.empty()) return true;
+            if (def->isa_mut()) return false;
+            for (auto d : def->deps())
+                if (self(d)) return true;
+            return false;
+        };
         for (const Def* d = app; auto a = d->isa<App>(); d = a->callee())
-            pin_imm(visited, a->arg(), [](const Def*) { return false; });
-        pin_imm(visited, app->callee_type()->dom(), pinnable);
-        pin_imm(visited, app->type(), pinnable);
+            if (exempt(a->arg())) break;
+
+        for (auto cand : cands)
+            if (todo.contains(cand)) pin(cand);
         return true;
     }
 
@@ -439,8 +461,7 @@ private:
 /// Implement the replace() hook - or use the MIM_REPL macro for an inline definition.
 class Repl : public RWPhase {
 public:
-    Repl(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
     /// replace() inspects and builds Def%s of the **old** world; the RWPhase machinery carries the result over.
     World& world() { return old_world(); }
@@ -479,8 +500,7 @@ class Cleanup : public RWPhase {
 public:
     Cleanup(World& world)
         : RWPhase(world, "cleanup") {}
-    Cleanup(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 };
 
 /// Organizes several Phase%s into a pipeline.

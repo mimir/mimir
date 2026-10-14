@@ -69,6 +69,7 @@ void Analysis::start() {
         // except for mutables, whose map entry doubles as the per-round "already scheduled" marker and would
         // suppress their drain. Pruning skips rewrite hooks, which is why only a sparse round does it: the
         // full round that certifies the fixed point always re-derives from the program.
+        old2news_.back().reserve(lattice_.size());
         for (auto [concr, abstr] : lattice_)
             if (!concr->isa_mut()) map(concr, abstr);
 

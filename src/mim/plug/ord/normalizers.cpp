@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include <fe/assert.h>
 
 #include <mim/world.h>
@@ -10,8 +12,18 @@ namespace mim::plug::ord {
 
 template<init id>
 const Def* normalize_init(const Def* type, const Def* callee, const Def* arg) {
-    auto& world = type->world();
-    return world.raw_app(type, callee, arg);
+    auto& w = type->world();
+    if (auto n = Lit::isa(callee->as<App>()->arg())) {
+        auto key = [](const Def* kv) { return id == init::map ? kv->proj(2, 0) : kv; };
+        auto kvs = DefVec();
+        for (auto kv : arg->projs(*n))
+            if (auto i = std::ranges::find_if(kvs, [&](const Def* cur) { return key(cur) == key(kv); }); i != kvs.end())
+                *i = kv;
+            else
+                kvs.emplace_back(kv);
+        if (kvs.size() != *n) return w.app(w.app(callee->as<App>()->callee(), w.lit_nat(kvs.size())), kvs);
+    }
+    return w.raw_app(type, callee, arg);
 }
 
 template<size>

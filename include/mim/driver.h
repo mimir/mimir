@@ -183,8 +183,9 @@ public:
     /// @p name may be a bare name (`bar`), a path (`foo/bar`), or a path to the shared object itself.
     /// Its directory part - if any - is prepended to every Driver::plugin_paths() entry,
     /// where `libmim_<bar>.so` (`.dll` on Windows) is searched for.
+    /// A failure is reported at @p loc and bails.
     ///@{
-    void load(std::string_view name);
+    void load(std::string_view name, Loc loc = {});
     /// Makes a Plugin linked into this binary available to Driver::load under @p name; see `cmake/Mim.cmake`.
     static void add_static_plugin(const char* name, Plugin (*get_plugin)());
     /// Bare plugin name of a possibly path-qualified @p name: `foo/libmim_bar.so` &rarr; `bar`.

@@ -42,6 +42,7 @@ private:
     Tok lex_lit();
     void lex_digits(int base = 10);
     bool lex_exp(int base = 10);
+    f64 lex_f64(std::string_view, int base);
     void eat_comments();
 
     /// Interns the string literal occupying `[begin, end)` of Lexer::buf_; @p esc resolves its escapes first.

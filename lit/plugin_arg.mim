@@ -10,4 +10,4 @@ extern fun test(cond: Bool, a b: «3; I32», i: Idx 3): «3; I32» =
     con nx(phi: «3; I32») = return (phi#i ← 23I32);
     (cn () = nx a, cn () = nx b)#cond ();
 
-// CHECK: define
+// CHECK: define [3 x i32] @test(

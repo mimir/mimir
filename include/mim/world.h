@@ -177,10 +177,8 @@ public:
 
     class Externals {
     public:
-        ///@name Get syms/muts
+        ///@name Get muts
         ///@{
-        const auto& sym2mut() const { return sym2mut_; }
-        auto syms() const { return sym2mut_ | std::views::keys; }
         auto muts() const { return sym2mut_ | std::views::values; }
         /// Returns a copy of @p muts() in a fe::Vector; this allows you to modify the Externals while iterating.
         /// @note The iteration will see all old externals, of course.
@@ -335,14 +333,6 @@ public:
     Hole* mut_hole(const Def* type) { return insert<Hole>(type); }
     Hole* mut_hole_univ() { return mut_hole(univ()); }
     Hole* mut_hole_type() { return mut_hole(type_infer_univ()); }
-
-    /// Either a value `?:?:Type ?` or a type `?:Type ?:Type ?`.
-    Hole* mut_hole_infer_entity() {
-        auto t   = type_infer_univ();
-        auto res = mut_hole(mut_hole(t));
-        assert(this == &res->world());
-        return res;
-    }
     ///@}
 
     /// @name Axm
@@ -470,8 +460,6 @@ public:
     const Def* pack(fe::View<u64> shape, const Def* body) { return seq(true , shape, body); }
     const Def* arr (u64               n, const Def* body) { return seq(false,     n, body); }
     const Def* pack(u64               n, const Def* body) { return seq(true ,     n, body); }
-    const Def*  arr_unsafe(              const Def* body) { return seq_unsafe(false, body); }
-    const Def* pack_unsafe(              const Def* body) { return seq_unsafe(true , body); }
     // clang-format on
     ///@}
 
@@ -493,7 +481,6 @@ public:
     const Def* seq(bool is_pack, fe::View<u64> shape, const Def* body) {
         return seq(is_pack, DefVec(shape, [this](u64 n) { return lit_nat(n); }), body);
     }
-    const Def* seq_unsafe(bool is_pack, const Def* body) { return seq(is_pack, top_nat(), body); }
 
     /// @p s without its leading @p k axes - its body once @p k covers all of them; `nullptr` if that isn't a type.
     const Def* drop(const Seq* s, nat_t k);
@@ -567,8 +554,6 @@ public:
     /// `val = 64` will be automatically converted to size `0` - the encoding for 2^64.
     const Lit* lit_int(nat_t width, u64 val) { return lit_idx(Idx::bitwidth2size(width), val); }
     const Lit* lit_i1 (bool val) { return lit_int( 1, u64(val)); }
-    const Lit* lit_i2 (u8   val) { return lit_int( 2, u64(val)); }
-    const Lit* lit_i4 (u8   val) { return lit_int( 4, u64(val)); }
     const Lit* lit_i8 (u8   val) { return lit_int( 8, u64(val)); }
     const Lit* lit_i16(u16  val) { return lit_int(16, u64(val)); }
     const Lit* lit_i32(u32  val) { return lit_int(32, u64(val)); }
@@ -621,8 +606,6 @@ public:
     // clang-format off
     const Def* type_bool() { return data_.type_bool; }
     const Def* type_i1()   { return data_.type_bool; }
-    const Def* type_i2()   { return type_int( 2);    }
-    const Def* type_i4()   { return type_int( 4);    }
     const Def* type_i8()   { return type_int( 8);    }
     const Def* type_i16()  { return type_int(16);    }
     const Def* type_i32()  { return type_int(32);    }
@@ -755,6 +738,7 @@ public:
 
 private:
     const Def* annex_miss(flags_t);
+    const Def* tuple(const Def* type, Defs ops, bool may_be_uniform);
 
     Shape check_index(const Def* index); ///< Validates @p index and folds its size-1 axes away.
     /// Type-checks a *scalar* @p index of `Idx size`; `true` if the axis has folded out of @p type.
@@ -803,6 +787,8 @@ private:
             deallocate<T>(state, def);
             return static_cast<const T*>(*i);
         }
+        // Most constructions are hash-cons hits, so only a fresh node pays for its local Vars and Muts.
+        if constexpr (!std::is_same_v<T, Var>) def->collect_locals();
 
 #ifdef MIM_ENABLE_CHECKS
         if (!flags().reeval_breakpoints && breakpoints().contains(def->gid())) fe::breakpoint();
@@ -833,6 +819,8 @@ private:
         if (breakpoints().contains(def->gid())) fe::breakpoint();
 #endif
         fe::assert_emplace(move_.sea, def);
+        if constexpr (!std::is_same_v<T, Var>)
+            if (!def->mut_) def->collect_locals();
         return def;
     }
 

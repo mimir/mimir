@@ -27,8 +27,7 @@ namespace mim::plug::affine::phase {
 /// returned alongside the result.
 class LowerIndex : public RWPhase {
 public:
-    LowerIndex(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
     const Def* rewrite(const Def*) final;
     const Def* rewrite_imm_App(const App*) final;

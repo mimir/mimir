@@ -15,4 +15,4 @@ extern con main (mm: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), ret
     let (mm, d) = buffer.read MT (mm, m, idx);
     return (mm, d);
 
-// CHECK-DAG: return{{.*}}5
+// CHECK-DAG: return_{{[0-9]+}} ({{.*}}, 5I32)

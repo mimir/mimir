@@ -28,7 +28,7 @@ jobs:
             cc: gcc-15
             cxx: g++-15
             packages: g++-15 valgrind
-            test-target: lit test-roundtrip
+            test-target: lit test-roundtrip test-py
             cmake-args: -DMIM_LIT_WITH_VALGRIND=ON
     env:
       ASAN_OPTIONS: "halt_on_error=1:abort_on_error=1:exitcode=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:detect_leaks=1"
@@ -44,7 +44,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang llvm-20-tools ninja-build ${{matrix.packages}}
-          sudo pip install lit psutil
+          sudo pip install "lit<24" psutil
 
       # ccache hooks the compiler through its /usr/lib/ccache/<name> symlinks, which the action
       # prepends to PATH -- so CC/CXX below must stay *bare names*; an absolute path would bypass

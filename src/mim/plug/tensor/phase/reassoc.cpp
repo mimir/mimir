@@ -322,8 +322,8 @@ Reassoc::dispatch(const Def* head, const Def* res_ty, fe::View<Leaf> mats, Defs 
             best = thunk, best_cost = cost;
         } else {
             auto cheaper = w.app(w.annex(core::ncmp::l), {cost, best_cost});
-            best         = w.extract(w.tuple({best, (const Def*)thunk}), cheaper);
-            best_cost    = w.extract(w.tuple({best_cost, cost}), cheaper);
+            best         = w.select(cheaper, thunk, best);
+            best_cost    = w.select(cheaper, cost, best_cost);
         }
     }
 

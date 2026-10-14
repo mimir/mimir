@@ -327,18 +327,23 @@ const Def* World::app(const Def* callee, const Def* arg) {
     callee = callee->zonk();
     arg    = arg->zonk();
 
+    // Any other hash-consed callee keeps the Loc of wherever it was first built, if any.
+    auto declared_here = [callee](fe::Error& err) -> fe::Error& {
+        if (callee->isa_mut() || callee->isa<Var>() || callee->isa<Lam>() || callee->isa<Axm>())
+            err.n(callee->loc(), "callee `{}` declared here", callee);
+        return err;
+    };
+
     auto pi = callee->isa_type<Pi>();
     if (!pi)
-        callee->blame("callee is not of function type")
-            .n("callee `{}` has type `{}`", callee, type_of(callee))
-            .n(callee->loc(), "callee `{}` declared here", callee)
+        declared_here(
+            callee->blame("callee is not of function type").n("callee `{}` has type `{}`", callee, type_of(callee)))
             .bail();
 
     auto new_arg = Checker::assignable(pi->dom(), arg);
     if (!new_arg)
-        arg->blame("argument is not assignable to callee's domain")
-            .n("expected `{}`, got `{}`", pi->dom(), type_of(arg))
-            .n(callee->loc(), "callee `{}` declared here", callee)
+        declared_here(arg->blame("argument is not assignable to callee's domain")
+                          .n("expected `{}`, got `{}`", pi->dom(), type_of(arg)))
             .bail();
 
     // re-zonk after assignable check above - we might have inferred new stuff
@@ -421,16 +426,21 @@ const Def* World::tuple(Defs ops) {
     if (n == 0) return tuple();
     if (n == 1) return ops[0]->zonk();
 
-    auto zops  = Def::zonk(ops);
+    auto zops = Def::zonk(ops);
+    for (auto op : zops)
+        if (!op->type()) op->blame("`Univ` has no type and cannot be a tuple element").bail();
     auto sigma = Tuple::infer(*this, zops);
-    auto t     = tuple(sigma, zops);
+    // An immutable Sigma means the ops' types differ, so the ops can't be uniform either.
+    auto t     = tuple(sigma, zops, !sigma->isa_imm<Sigma>());
     auto new_t = Checker::assignable(sigma, t);
     if (!new_t) t->blame("tuple of type `{}` is not assignable to inferred type `{}`", type_of(t), sigma).bail();
 
     return new_t;
 }
 
-const Def* World::tuple(const Def* type, Defs ops_) {
+const Def* World::tuple(const Def* type, Defs ops) { return tuple(type, ops, true); }
+
+const Def* World::tuple(const Def* type, Defs ops_, bool may_be_uniform) {
     // TODO type-check type vs inferred type
     type     = type->zonk();
     auto ops = Def::zonk(ops_);
@@ -439,7 +449,8 @@ const Def* World::tuple(const Def* type, Defs ops_) {
     if (!type->isa_mut<Sigma>()) {
         if (n == 0) return tuple();
         if (n == 1) return ops[0];
-        if (auto uni = Checker::is_uniform(ops)) return pack(n, uni);
+        if (may_be_uniform)
+            if (auto uni = Checker::is_uniform(ops)) return pack(n, uni);
     }
 
     // eta rule for tuples: (extract(tup, 0), extract(tup, 1), extract(tup, 2)) -> tup
@@ -491,8 +502,13 @@ const Def* World::extract(const Def* d, const Def* index_) {
 Shape World::check_index(const Def* index) {
     auto type = index->unfold_type(); // nullptr for Univ, which the diagnostic below reports
     if (type && Idx::isa(type)) return index;
-    if (!type || !Shape::isa_indices(type))
-        index->blame("index must be of `Idx` type but is of type `{}`", type_of(index)).bail();
+    if (!type || !Shape::isa_indices(type)) {
+        auto& err = index->blame("index must be of `Idx` type but is of type `{}`", type_of(index));
+        if (auto l = Lit::isa(index); l && type == type_nat())
+            err.n("a bare literal is a `Nat`; an index literal carries its arity, e.g. `{}_{}` for an `Idx {}`", *l,
+                  *l + 1, *l + 1);
+        err.bail();
+    }
     return Shape(index).fold();
 }
 
@@ -582,6 +598,7 @@ const Def* World::extract1(const Def* d, const Def* index) {
     auto size     = Idx::isa(index_ty);
     auto lidx     = Lit::isa(index);
     auto type     = d->unfold_type();
+    if (!type) d->blame("`Univ` has no type and hence no elements to extract").bail();
 
     if (is_folded_axis(type, index, size)) return d;
 

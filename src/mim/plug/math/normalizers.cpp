@@ -201,10 +201,9 @@ std::optional<u64> fold_binary_lit(u64 a, u64 b) {
     } else if constexpr (std::is_same_v<Id, math::extrema>) {
         T result;
 
-        if (x == T(-0.0) && y == T(+0.0)) {
-            result = (id == extrema::fmin || id == extrema::ieee754min) ? x : y;
-        } else if (x == T(+0.0) && y == T(-0.0)) {
-            result = (id == extrema::fmin || id == extrema::ieee754min) ? y : x;
+        if (x == T(0) && y == T(0) && std::signbit(x) != std::signbit(y)) {
+            bool min = id == extrema::fmin || id == extrema::ieee754min;
+            result   = min == std::signbit(x) ? x : y;
         } else if constexpr (id == extrema::fmin || id == extrema::fmax) {
             result = id == extrema::fmin ? std::fmin(x, y) : std::fmax(x, y);
         } else if constexpr (id == extrema::ieee754min || id == extrema::ieee754max) {

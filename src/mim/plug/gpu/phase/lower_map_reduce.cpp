@@ -30,18 +30,6 @@ bool contains_gpu_init(const Def* def, DefSet& seen) {
     return false;
 }
 
-/// Mirrors `btensor::phase::LowerMapReduce`'s `affine_map` lambda
-std::pair<const Def*, const Def*>
-affine_map(const Def* f, const Def* m, const Def* n, const Def* sin, const Def* sout, const Def* idxs, const Def* mem) {
-    auto& w = mem->world();
-    auto a  = w.app(w.annex<affine::map>(), Defs{m, n});
-    a       = w.app(a, Defs{sin, sout});
-    a       = w.app(a, f);
-    a       = w.app(a, idxs);
-    a       = w.app(a, mem->type()->as<App>()->arg());
-    return w.app(a, mem)->projs<2>();
-}
-
 /// Scalarize may flatten an escaped `comb`/`post` from `Cn [[mem, T, ins], Cn ret]` to `Cn [mem, T, ins, Cn ret]`.
 Lam* rebuild_lam_global_mem(Lam* lam, const Def* Tout, Sym name) {
     auto& w        = lam->world();
@@ -59,17 +47,6 @@ Lam* rebuild_lam_global_mem(Lam* lam, const Def* Tout, Sym name) {
     }
     new_lam->set(true, lam->reduce_body(new_lam->var()));
     return new_lam;
-}
-
-/// Mirrors `btensor::phase::LowerMapReduce`'s helper of the same name.
-void apply_cps(World& w, Lam* mut, const Def* f, DefVec parts, const Def* k) {
-    auto dom = f->type()->as<Pi>()->dom();
-    if (dom->num_projs() == parts.size() + 1) {
-        parts.emplace_back(k);
-        mut->app(true, f, parts);
-    } else {
-        mut->app(true, f, Defs{w.tuple(parts), k});
-    }
 }
 
 Vector<nat_t> row_major_strides(const Vector<nat_t>& dims) {
@@ -95,16 +72,16 @@ std::pair<const Def*, DefVec> unflatten_index(World& w, const Def* flat, const V
 }
 
 struct InputDesc {
-    DefVec rs, ss, ts, accs;
+    DefVec rs, ss, ts, maps;
 };
 
-InputDesc extract_input_desc(nat_t n, const Def* Rs, const Def* Ss, const Def* Ts, const Def* accs) {
+InputDesc extract_input_desc(nat_t n, const Def* Rs, const Def* Ss, const Def* Ts, const Def* maps) {
     InputDesc desc{DefVec(n), DefVec(n), DefVec(n), DefVec(n)};
     for (nat_t i = 0; i != n; ++i) {
         desc.rs[i]   = Rs->proj(n, i);
         desc.ss[i]   = Ss->proj(n, i);
         desc.ts[i]   = Ts->proj(n, i);
-        desc.accs[i] = accs->proj(n, i);
+        desc.maps[i] = maps->proj(n, i);
     }
     return desc;
 }
@@ -147,7 +124,7 @@ Grid grid_layout(const Vector<nat_t>& out_dims) {
 
 /// Per-input state for `build_kernel`: `InputDesc`'s shapes/access-functions plus `alloc_copy_inputs`'s pointers.
 struct Mapped {
-    DefVec rs, ss, dptrs, accs;
+    DefVec rs, ss, dptrs, maps;
     nat_t n() const { return dptrs.size(); }
 };
 
@@ -160,7 +137,7 @@ Lam* build_kernel(World& w,
                   const Def* So,
                   const Mapped& ins,
                   const Def* To,
-                  const Def* acc_out,
+                  const Def* map_out,
                   const Def* init,
                   Lam* global_comb,
                   const Mapped& post_ins,
@@ -210,7 +187,7 @@ Lam* build_kernel(World& w,
     auto early_return = w.mut_con(w.sigma(Defs{}))->set("outOfRange");
     early_return->app(true, k_ret, Defs{k_global, k_shared, k_const, k_local});
     auto body = w.mut_con(w.sigma(Defs{}))->set("inRange");
-    kernel->set(true, w.app(w.extract(w.tuple({early_return, body}), in_range), w.tuple()));
+    kernel->branch(true, in_range, body, early_return);
 
     auto write_back           = w.mut_con(Defs{global_ty, To})->set("writeBack");
     auto [wb_mem, acc_final]  = write_back->vars<2>();
@@ -218,13 +195,14 @@ Lam* build_kernel(World& w,
     DefVec wb_idx             = wb_coords;
     for (size_t j = 0; j != rr; ++j)
         wb_idx.push_back(w.call(core::conv::u, Sr->proj(nloops_nat, ro + j), w.lit_i64(0)));
-    auto [wc_mem, write_coords] = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_idx), wb_mem2);
+    auto [wc_mem, write_coords] = btensor::op_affine_map(map_out, Ro, n, Sr, So, w.tuple(wb_idx), wb_mem2)->projs<2>();
 
     auto pcur = wc_mem;
     DefVec post_elems(nps);
     for (size_t j = 0; j != nps; ++j) {
         auto [pc_mem, pcoords]
-            = affine_map(post_ins.accs[j], post_ins.rs[j], Ro, So, post_ins.ss[j], write_coords, pcur);
+            = btensor::op_affine_map(post_ins.maps[j], post_ins.rs[j], Ro, So, post_ins.ss[j], write_coords, pcur)
+                  ->projs<2>();
         pcur = pc_mem;
         auto [rd_mem, rd_val]
             = w.call<mem::load>(Defs{pcur, mem::op_lea_tuple(k_post_dptrs[j], *Shape(pcoords).fold(post_ins.ss[j]))})
@@ -238,14 +216,14 @@ Lam* build_kernel(World& w,
     auto final_mem
         = w.call<mem::store>(Defs{post_mem, mem::op_lea_tuple(k_out_dptr, *Shape(write_coords).fold(So)), elem_post});
     after_post->app(true, k_ret, Defs{final_mem, k_shared, k_const, k_local});
-    apply_cps(w, write_back, global_post, {pcur, acc_final, w.tuple(post_elems)}, after_post);
+    btensor::app_cps(write_back, global_post, {pcur, acc_final, w.tuple(post_elems)}, after_post);
 
-    const Def* acc   = w.tuple({k_global, init});
-    const Def* cont  = write_back;
-    Lam* current_mut = body;
-    auto sr          = Sr->projs(nloops_nat);
-    auto raw         = affine::counting_nest(current_mut, cont, acc, Defs(sr).subspan(ro, rr), "forRed");
-    DefVec red_iters(rr, [&](size_t j) { return w.call(core::conv::u, sr[ro + j], raw[j]); });
+    const Def* acc           = w.tuple({k_global, init});
+    const Def* cont          = write_back;
+    Lam* current_mut         = body;
+    auto sr                  = Sr->projs(nloops_nat);
+    auto raw                 = affine::counting_nest(current_mut, cont, acc, Defs(sr).subspan(ro, rr), "forRed");
+    auto red_iters           = btensor::to_idxs(w, Defs(sr).subspan(ro, rr), raw);
     auto [red_mem, elem_acc] = acc->projs<2>();
 
     auto [body_mem, body_coords] = unflatten_index(w, flat, out_dims, red_mem);
@@ -256,15 +234,16 @@ Lam* build_kernel(World& w,
     auto cur = body_mem;
     DefVec input_elems(nis);
     for (size_t i = 0; i != nis; ++i) {
-        auto [mc_mem, coords] = affine_map(ins.accs[i], ins.rs[i], n, Sr, ins.ss[i], iters, cur);
-        cur                   = mc_mem;
+        auto [mc_mem, coords]
+            = btensor::op_affine_map(ins.maps[i], ins.rs[i], n, Sr, ins.ss[i], iters, cur)->projs<2>();
+        cur = mc_mem;
         auto [rd_mem, rd_val]
             = w.call<mem::load>(Defs{cur, mem::op_lea_tuple(k_dptrs[i], *Shape(coords).fold(ins.ss[i]))})->projs<2>();
         cur            = rd_mem;
         input_elems[i] = rd_val;
     }
 
-    apply_cps(w, current_mut, global_comb, {cur, elem_acc, w.tuple(input_elems)}, cont);
+    btensor::app_cps(current_mut, global_comb, {cur, elem_acc, w.tuple(input_elems)}, cont);
 
     return kernel;
 }
@@ -320,28 +299,17 @@ const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
 }
 
 const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
-    auto& w = new_world();
-    auto c  = rewrite(app->callee())->as<App>();
+    auto& w        = new_world();
+    auto mr        = btensor::MapRedPost::of(rewrite(app->callee())->as<App>());
+    auto Sr        = mr.Sr;
+    auto result_ty = rewrite(app->type());
 
-    auto [nis_nps, meta, shapes, in_tys, comb_init, acc_out, accs_all] = c->uncurry_args<7>();
-    auto [nis, nps]                     = nis_nps->projs<2>([](auto d) { return Lit::isa(d); });
-    auto [To, Tp, Ro, Rn, sched_ty]     = meta->projs<5>();
-    auto [So, Sr, sched]                = shapes->projs<3>();
-    auto [Tis, Ris, Sis, Tps, Rps, Sps] = in_tys->projs<6>();
-    auto [comb, init, post]             = comb_init->projs<3>();
-    auto [accs, post_accs]              = accs_all->projs<2>();
-    auto result_ty                      = rewrite(app->type());
-
-    auto ro_l = Lit::isa<nat_t>(Ro);
-    auto rn_l = Lit::isa<nat_t>(Rn);
-    if (!nis || !nps || !ro_l || !rn_l || *rn_l < *ro_l) {
+    auto ranks = mr.ranks();
+    if (!ranks) {
         log().w("{} doesn't have lowering-time known rank counts (nis/nps/Ro/Rn)", app);
         return Super::rewrite_imm_App(app);
     }
-    auto nis_n = *nis;
-    auto nps_n = *nps;
-    auto ro    = *ro_l;
-    auto rr    = *rn_l - *ro_l;
+    auto [nis_n, nps_n, ro, rr] = *ranks;
 
     Vector<nat_t> out_dims(ro);
     nat_t out_total = 1;
@@ -359,42 +327,37 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
         return Super::rewrite_imm_App(app);
     }
 
-    auto comb_lam = comb->isa_mut<Lam>();
-    auto post_lam = post->isa_mut<Lam>();
+    auto comb_lam = mr.comb->isa_mut<Lam>();
+    auto post_lam = mr.post->isa_mut<Lam>();
     if (!comb_lam || !post_lam) {
         log().w("{} doesn't have a lowering-time known combiner/epilogue", app);
         return Super::rewrite_imm_App(app);
     }
 
-    auto mem_ty                                    = w.call<mem::M>(0);
-    auto rewritten_arg                             = rewrite(app->arg());
-    auto [_, rewritten_inputs, rewritten_post_ins] = rewritten_arg->projs<3>();
-    auto fun = w.mut_fun(w.sigma({mem_ty, rewritten_inputs->type(), rewritten_post_ins->type()}), result_ty)
-                   ->set("mapReduceAffGpu");
-    auto call                                = w.app(cps::op_cps2ds_dep(fun), rewritten_arg);
+    auto [fun, call]                         = btensor::ds_splice(rewrite(app->arg()), result_ty, "mapReduceAffGpu");
     auto [fun_mem, new_inputs, new_post_ins] = fun->var(2, 0)->projs<3>();
     auto cont                                = fun->var(2, 1);
 
     auto [h_mem, h_global, h_const] = w.app(w.annex<gpu::auto_init>(), fun_mem)->projs<3>();
 
-    auto in_desc = extract_input_desc(nis_n, Ris, Sis, Tis, accs);
+    auto in_desc = extract_input_desc(nis_n, mr.Ris, mr.Sis, mr.Tis, mr.maps);
     auto inputs  = alloc_copy_inputs(w, h_mem, h_global, in_desc.rs, in_desc.ss, in_desc.ts, new_inputs);
 
-    auto post_desc = extract_input_desc(nps_n, Rps, Sps, Tps, post_accs);
+    auto post_desc = extract_input_desc(nps_n, mr.Rps, mr.Sps, mr.Tps, mr.post_maps);
     auto post_inputs
         = alloc_copy_inputs(w, inputs.mem, inputs.global, post_desc.rs, post_desc.ss, post_desc.ts, new_post_ins);
 
-    auto [out_global, out_dptr] = alloc_output(w, post_inputs.global, Tp, So);
+    auto [out_global, out_dptr] = alloc_output(w, post_inputs.global, mr.Tp, mr.So);
 
-    auto global_comb = rebuild_lam_global_mem(comb_lam, To, w.sym("combGlobal"));
-    auto global_post = rebuild_lam_global_mem(post_lam, Tp, w.sym("postGlobal"));
+    auto global_comb = rebuild_lam_global_mem(comb_lam, mr.To, w.sym("combGlobal"));
+    auto global_post = rebuild_lam_global_mem(post_lam, mr.Tp, w.sym("postGlobal"));
 
     auto grid = grid_layout(out_dims);
 
-    auto kernel = build_kernel(w, Ro, rr, out_dims, Sr, So, Mapped{in_desc.rs, in_desc.ss, inputs.dptrs, in_desc.accs},
-                               To, acc_out, init, global_comb,
-                               Mapped{post_desc.rs, post_desc.ss, post_inputs.dptrs, post_desc.accs}, global_post, Tp,
-                               out_dptr, grid);
+    auto kernel = build_kernel(w, mr.Ro, rr, out_dims, Sr, mr.So,
+                               Mapped{in_desc.rs, in_desc.ss, inputs.dptrs, in_desc.maps}, mr.To, mr.map_out, mr.init,
+                               global_comb, Mapped{post_desc.rs, post_desc.ss, post_inputs.dptrs, post_desc.maps},
+                               global_post, mr.Tp, out_dptr, grid);
 
     DefVec kernel_args = inputs.dptrs;
     kernel_args.insert(kernel_args.end(), post_inputs.dptrs.begin(), post_inputs.dptrs.end());
@@ -407,7 +370,7 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     launch      = w.app(launch, kernel);
     launch      = w.app(launch, kernel_args);
 
-    auto after_launch = build_teardown(w, Ro, So, Tp, inputs.dptrs, post_inputs.dptrs, out_dptr, cont);
+    auto after_launch = build_teardown(w, mr.Ro, mr.So, mr.Tp, inputs.dptrs, post_inputs.dptrs, out_dptr, cont);
     auto launch_call  = w.app(launch, Defs{w.tuple({post_inputs.mem, out_global, h_const}), after_launch});
     fun->set(true, launch_call);
 

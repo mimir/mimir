@@ -254,6 +254,7 @@ public:
         if (def()->is_closed()) return true;
 
         if (auto app = def()->isa<App>()) {
+            if (!ctx()) return true;                 // a diagnostic has no declarations to refer to
             if (app->type()->isa<Pi>()) return true; // a curried App prints Full
             if (app->type()->isa<Type>()) return true;
             if (app->callee()->isa<Axm>()) return app->callee_type()->num_doms() <= 1;
@@ -888,7 +889,7 @@ private:
             return;
         }
 
-        // Nest::Node::topo breaks ties by gid, which a re-read dump need not reproduce.
+        // Nest::Node::topo_ breaks ties by gid, which a re-read dump need not reproduce.
         auto roots = fe::Vector<Def*>();
         for (auto mut : todo) {
             if (!mut->is_closed() || ctx_.arms.contains(mut)) continue;

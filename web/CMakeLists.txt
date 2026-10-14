@@ -12,6 +12,14 @@ target_link_options(mim
         -sEXPORTED_RUNTIME_METHODS=callMain,FS
 )
 add_dependencies(mim mim_all_plugins) # --preload-file needs the `.mim` halves staged first
+# The preload is baked in at link time, so a changed `.mim` half has to relink.
+set(MIM_PRELOADED ${MIM_PLUGIN_LIST})
+list(TRANSFORM MIM_PRELOADED PREPEND "${MIM_PLUGIN_DIR}/")
+list(TRANSFORM MIM_PRELOADED APPEND ".mim")
+if(TARGET mim_runtime_ll)
+    list(APPEND MIM_PRELOADED "${MIM_PLUGIN_DIR}/rt/ll_rt.ll")
+endif()
+set_property(TARGET mim APPEND PROPERTY LINK_DEPENDS ${MIM_PRELOADED})
 
 # Page and Emscripten artifacts side by side: serving this directory over HTTP runs the playground.
 set(PLAYGROUND_DIR ${CMAKE_BINARY_DIR}/playground)
@@ -52,6 +60,31 @@ mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/code.css code.css)
 mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/mim.js mim-code.js)
 mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/llvm.js llvm-code.js)
 mim_stage_playground(${PROJECT_SOURCE_DIR}/docs/share-link.js share-link.js)
+
+# The playground picker's examples, relative to `lit/`; order is the picker's.
+# Only `-p opt -p ll` is available, so an example must not need further plugins.
+set(MIM_PLAYGROUND_EXAMPLES
+    docs/tutorial
+    docs/sq
+    docs/count
+    docs/dep
+    docs/iter
+    hello_world
+    fib
+    ackermann
+    main_loop
+    mem/seo/gvn
+    mem/seo/click
+    mem/seo/phi-var-combis
+    mem/seo/higher-order
+    mem/seo/ptr_indirect
+    mem/seo/contify_fluet_weeks
+    ord/fold
+    ord/loop
+    ord/poly
+    tensor/attn_exec
+    tensor/fc_exec
+)
 
 # The examples are the lit suite's, so they cannot rot.
 foreach(EXAMPLE IN LISTS MIM_PLAYGROUND_EXAMPLES)

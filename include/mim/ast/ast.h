@@ -403,7 +403,6 @@ public:
 
     Tok::Tag delim_l() const { return delim_l_; }
     Tok::Tag delim_r() const { return Tok::delim_l2r(delim_l()); }
-    bool is_paren() const { return delim_l() == Tok::Tag::D_paren_l; }
     bool is_brckt() const { return delim_l() == Tok::Tag::D_brckt_l; }
     bool is_implicit() const override { return delim_l_ == Tok::Tag::D_brace_l; }
 

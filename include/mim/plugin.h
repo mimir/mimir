@@ -59,24 +59,14 @@ struct PluginSym {
 /// Picks the `-X <plugin>:<arg>` strings of Driver::args / Phase::args apart.
 /// Each helper matches any of @p keys - `arg_value(args(), "o", "output")` - and the last occurrence wins.
 ///@{
-namespace detail {
-/// `<key>` ↦ `""`, `<key>=<value>` ↦ `<value>`, anything else ↦ `std::nullopt`.
-inline std::optional<std::string_view> arg_split(std::string_view arg, std::string_view key) {
-    if (!arg.starts_with(key)) return {};
-    auto val = arg.substr(key.size());
-    if (val.empty()) return val;
-    if (val.front() == '=') return val.substr(1);
-    return {};
-}
-} // namespace detail
-
 /// Value of `<key>=<value>`; `std::nullopt` if none of @p keys carries one.
 template<class... Keys>
 std::optional<std::string_view> arg_value(fe::View<std::string> args, Keys... keys) {
     std::optional<std::string_view> res;
     for (std::string_view arg : args)
         for (std::string_view key : {std::string_view(keys)...})
-            if (auto val = detail::arg_split(arg, key); val && !val->empty()) res = val;
+            if (arg.starts_with(key) && arg.size() > key.size() + 1 && arg[key.size()] == '=')
+                res = arg.substr(key.size() + 1);
     return res;
 }
 

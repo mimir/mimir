@@ -61,7 +61,7 @@ const Def* normalize_conj(const Def* type, const Def* callee, const Def* arg) {
 
     if (auto a = Lit::isa(arg->arity())) {
         switch (*a) {
-            case 0: return world.lit_tt();
+            case 0: return world.annex<empty>();
             case 1: return arg;
             default:
                 if (auto args = detail::flatten_in_arg<conj>(arg); !args.empty())
@@ -74,9 +74,14 @@ const Def* normalize_conj(const Def* type, const Def* callee, const Def* arg) {
     return {};
 }
 
+const App* lit_range(const Def* d) {
+    if (auto r = Axm::isa<range>(d); r && r->arg(2, 0)->isa<Lit>() && r->arg(2, 1)->isa<Lit>()) return r;
+    return nullptr;
+}
+
 bool compare_re(const Def* lhs, const Def* rhs) {
-    auto lhs_range = Axm::isa<range>(lhs);
-    auto rhs_range = Axm::isa<range>(rhs);
+    auto lhs_range = lit_range(lhs);
+    auto rhs_range = lit_range(rhs);
     // sort ranges by increasing lower bound
     if (lhs_range && rhs_range) return Lit::as(lhs_range->arg(2, 0)) < Lit::as(rhs_range->arg(2, 0));
     // ranges to the end
@@ -106,7 +111,7 @@ struct app_range {
 
 void merge_ranges(DefVec& args) {
     auto ranges_begin = args.begin();
-    while (ranges_begin != args.end() && !Axm::isa<range>(*ranges_begin))
+    while (ranges_begin != args.end() && !lit_range(*ranges_begin))
         ranges_begin++;
     if (ranges_begin == args.end()) return;
 
@@ -137,8 +142,7 @@ bool equals_any(const Def* lhs, const Def* rhs) {
 }
 
 bool equals_any(Defs lhs, Defs negated_rhs) {
-    auto is_range = [](const Def* d) { return Axm::isa<range>(d); };
-    auto to_range = std::views::filter(is_range) | std::views::transform(get_range);
+    auto to_range = std::views::filter(lit_range) | std::views::transform(get_range);
     auto rhs_view = negated_rhs | to_range;
 
     if (std::ranges::distance(rhs_view) != std::ranges::distance(negated_rhs)) return false;
@@ -150,40 +154,35 @@ const Def* normalize_disj(const Def* type, const Def*, const Def* arg) {
     auto& world = type->world();
     if (auto a = Lit::isa(arg->arity())) {
         switch (*a) {
-            case 0: return world.lit_ff();
+            case 0: return {};
             case 1: return arg;
             default:
                 auto new_args = detail::flatten_in_arg<disj>(arg);
 
-                const bool contains_any
-                    = std::ranges::find_if(new_args, [](const Def* ax) -> bool { return Axm::isa<any>(ax); })
-                   != new_args.end();
-                const bool contains_empty
-                    = std::ranges::find_if(new_args, [](const Def* ax) -> bool { return Axm::isa<empty>(ax); })
-                   != new_args.end();
-
-                auto make_any = [&world, contains_empty]() {
-                    if (contains_empty)
-                        // (any|) matches everything, including empty string
-                        // don't normalize again, as we'd just run into this normalizer again..
-                        return world.call<disj, false>(Defs{world.annex<any>(), world.annex<empty>()});
-                    else
-                        return world.annex<any>();
+                // any only subsumes the single-character alternatives.
+                auto make_any = [&world](DefVec args) {
+                    std::erase_if(
+                        args, [](const Def* d) { return Axm::isa<range>(d) || Axm::isa<not_>(d) || Axm::isa<any>(d); });
+                    args.emplace_back(world.annex<any>());
+                    if (args.size() == 1) return args.front();
+                    make_vector_unique(args);
+                    return make_binary_tree<disj>(args);
                 };
 
-                if (contains_any) return make_any();
+                if (std::ranges::any_of(new_args, [](const Def* d) { return Axm::isa<any>(d); }))
+                    return make_any(new_args);
                 make_vector_unique(new_args);
                 merge_ranges(new_args);
 
                 for (const auto* cls0 : new_args) {
                     for (const auto* cls1 : new_args)
-                        if (equals_any(cls0, cls1)) return make_any();
+                        if (equals_any(cls0, cls1)) return make_any(new_args);
 
                     if (auto not_rhs = Axm::isa<not_>(cls0)) {
                         if (auto disj_rhs = Axm::isa<disj>(not_rhs->arg())) {
                             auto rngs = detail::flatten_in_arg<disj>(disj_rhs->arg());
                             make_vector_unique(rngs);
-                            if (equals_any(new_args, rngs)) return make_any();
+                            if (equals_any(new_args, rngs)) return make_any(new_args);
                         }
                     }
                 }

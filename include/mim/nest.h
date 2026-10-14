@@ -37,8 +37,7 @@ public:
         const Nest& nest() const { return nest_; }
         const Node* inest() const { return inest_; } ///< Immediate nester/parent of this Node.
         /// [Immediate Dominator](https://en.wikipedia.org/wiki/Dominator_(graph_theory)) for children in connected
-        /// components. This is used to transform first order programs into structured form in the
-        /// [sflow](mim::plug::sflow) plugin and for late code placement in [Nest::lca].
+        /// components; used for late code placement in [Nest::lca].
         auto idom() const { return calc_dominance()->idom_; }
         bool is_root() const { return inest_ == nullptr; }
         /// The *mutable* capsulated in this Node or `nullptr`, if it's a *virtual root* comprising several Node%s.
@@ -59,7 +58,6 @@ public:
             ///@name Get children as muts and/or nodes.
             ///@{
             // clang-format off
-            auto mut2node() const { return mut2node_ | std::views::transform([](auto p) { return std::pair{p.first, const_cast<const Node*>(p.second)}; }); }
             auto muts()     const { return mut2node_ | std::views::keys; }
             auto nodes()    const { return mut2node_ | std::views::transform([](auto p) { return const_cast<const Node*>(p.second); }); }
             // clang-format on
@@ -79,7 +77,6 @@ public:
             ///@}
 
         private:
-            const auto& mut2node() { return mut2node_; }
             auto nodes() { return mut2node_ | std::views::values; }
             auto muts() { return mut2node_ | std::views::keys; }
             auto begin() { return mut2node_.begin(); }
@@ -152,8 +149,6 @@ public:
         /// @note The Nest::root() cannot be is_mutually_recursive() by definition.
         /// If you have a set of mutually recursive Def%s as "root", include them all by using a *virtual root*.
         ///@{
-        const auto& SCCs() { return sccs().SCCs_; }
-        const auto& topo() const { return sccs().topo_; } ///< Topological sorting of all SCCs.
         bool is_recursive() const { return sccs().recursive_; }
         bool is_mutually_recursive() const { return is_recursive() && !is_root() && scc().size() > 1; }
         bool is_directly_recursive() const { return is_recursive() && (is_root() || scc().size() == 1); }
@@ -235,7 +230,6 @@ public:
 
     /// @name Nodes
     ///@{
-    size_t num_nodes() const { return mut2node_.size(); }
     // clang-format off
     auto muts()  const { return mut2node_ | std::views::keys; }
     auto nodes() const { return mut2node_ | std::views::transform([](const auto& p) { return (const Node*)p.second.get(); }); }

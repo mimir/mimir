@@ -51,12 +51,11 @@ const Def* normalize_zip(const Def* type, const Def* c, const Def* arg) {
 
     // TODO commute
     // TODO reassociate
-    // TODO more than one Os
     // TODO select which Is/Os to zip
 
     if (lr && ls && *lr == 1 && *ls == 1) return w.app(f, arg);
 
-    if (auto l_in = Lit::isa(n_i)) {
+    if (auto l_in = Lit::isa(n_i), l_o = Lit::isa(n_o); l_in && l_o) {
         auto args = arg->projs(*l_in);
 
         if (lr && std::ranges::all_of(args, [](const Def* arg) { return arg->isa<Prod>(); })) {
@@ -73,7 +72,9 @@ const Def* normalize_zip(const Def* type, const Def* c, const Def* arg) {
                         return w.app(w.app(app_zip, is_os), inner_args);
                     }
                 });
-                return w.tuple(elems);
+                return w.tuple(DefVec(*l_o, [&](size_t o) {
+                    return w.tuple(DefVec(*s_n, [&](size_t s_i) { return elems[s_i]->proj(*l_o, o); }));
+                }));
             }
         }
     }

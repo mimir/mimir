@@ -11,7 +11,6 @@ plugin cps;
 
 use core.ops.u;
 
-let Top = ⊤:Nat;
 
 let re = regex.quant.optional regex.cls.w;
 
@@ -21,7 +20,7 @@ extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:
         con match_argument(m: mem.M 0, _: I32) =
             let arg1 = mem.lea (argv, core.idx_unsafe 1);
             let (m, to_match) = mem.load (m, arg1);
-            let (m, matched, pos) = re (m, to_match, 0:(Idx Top));
+            let (m, matched, pos) = re (m, to_match, 0:(Idx ⊤:Nat));
             exit (m, core.conv.u i32 matched);
     end;
 

@@ -7,7 +7,7 @@ General C++ guidelines for this repository.
 - `.clang-format` is the source of truth for formatting (indentation, spacing, alignment, wrapping, braces).
   Don't hand-format what it already governs.
 - Containers, in order of preference:
-  1. MimIR types/aliases (`mim::Vector`, `DefVec`, `GIDMap`, `GIDSet`, `GIDNodeMap`, `GIDNodeSet`, `LamMap`, `LamSet`, `DefMap`, `DefSet`, `MutMap`, `MutSet`, `VarMap`, `VarSet`, `Muts`, `Vars`, plus aliases defined near the code at hand),
+  1. MimIR types/aliases (`mim::Vector`, `DefVec`, `GIDMap`, `GIDSet`, `GIDNodeMap`, `LamMap`, `LamSet`, `DefMap`, `DefSet`, `MutMap`, `MutSet`, `VarMap`, `VarSet`, `Muts`, `Vars`, plus aliases defined near the code at hand),
   2. `ankerl::unordered_dense` containers,
   3. `std::*` only when nothing above fits, or for value types like `std::array`, `std::span`, `std::string`, `std::tuple`, `std::pair`.
 - Unpack a fixed number of projections with a single `projs<N>()` plus a structured binding — `auto [x, y] = def->projs<2>();`, not repeated `def->proj(2, i)`.

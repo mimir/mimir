@@ -56,12 +56,12 @@ static const Def* compose_cn(const Def* f, const Def* g) {
 
 // TODO: maybe use template (https://codereview.stackexchange.com/questions/141961/memoization-via-template) to memoize
 const Def* Eval::augment(const Def* def, Lam* f, Lam* f_diff) {
-    if (auto i = augmented.find(def); i != augmented.end()) return i->second;
+    if (auto res = fe::lookup(augmented, def)) return res;
     return augmented[def] = augment_(def, f, f_diff);
 }
 
 const Def* Eval::derive(const Def* def) {
-    if (auto i = derived.find(def); i != derived.end()) return i->second;
+    if (auto res = fe::lookup(derived, def)) return res;
     return derived[def] = derive_(def);
 }
 

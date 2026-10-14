@@ -270,12 +270,12 @@ const Def* Rewriter::seal(Def* old_mut, Def* new_mut) {
  */
 
 const Def* VarRewriter::rewrite(const Def* old_def) {
+    // Only Vars, mutables and non-ground immutables are ever mapped, so a ground immutable needs no lookup.
+    if (!old_def->isa_mut() && old_def->local_vars().empty() && old_def->local_muts().empty()) return old_def;
     if (auto new_def = lookup(old_def)) return new_def;
 
     if (auto old_mut = old_def->isa_mut())
         return has_intersection(old_mut) ? rewrite_mut(old_mut)->set(old_mut->dbg_key()) : old_mut;
-
-    if (old_def->local_vars().empty() && old_def->local_muts().empty()) return old_def; // safe to skip
 
     return has_intersection(old_def) ? rewrite_imm(old_def)->set(old_def->dbg_key()) : old_def;
 }

@@ -31,7 +31,8 @@ Ptr<File> Parser::parse_file() {
 const File* Parser::import(Dbg dbg, bool is_path, Tok::Tag tag, std::ostream* md, bool record) {
     auto name   = dbg.sym();
     auto plugin = tag == Tag::K_plugin ? Driver::plugin_name(name.view()) : std::string();
-    if (tag == Tag::K_plugin && !driver().is_loaded(plugin) && !driver().flags().bootstrap) driver().load(name.view());
+    if (tag == Tag::K_plugin && !driver().is_loaded(plugin) && !driver().flags().bootstrap)
+        driver().load(name.view(), dbg.loc());
 
     driver().log().v("📥 import `{}`", name);
 
@@ -61,7 +62,10 @@ const File* Parser::import(Dbg dbg, bool is_path, Tok::Tag tag, std::ostream* md
     }
 
     if (path.empty()) {
-        error().e(dbg.loc(), "cannot find `{}` in the search paths", name);
+        if (std::error_code ec; fs::is_directory(fs::path(name.view()), ec))
+            error().e(dbg.loc(), "`{}` is a directory, not a Mim file", name);
+        else
+            error().e(dbg.loc(), "cannot find `{}` in the search paths", name);
         return {};
     }
 
@@ -838,6 +842,12 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
         default: std::unreachable();
     }
     // clang-format on
+
+    if (decl)
+        if (auto late = parse_modifiers(); late.any()) {
+            error().e(curr_, "modifiers must precede the keyword of a {}", entity);
+            mods = late.inherit(mods);
+        }
 
     auto dbg = decl ? parse_id(entity) : Dbg();
     Ptrs<LamDecl::Dom> doms;

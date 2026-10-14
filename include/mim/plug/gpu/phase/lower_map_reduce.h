@@ -10,8 +10,7 @@ class LowerMapReduce : public RWPhase {
 public:
     using Super = RWPhase;
 
-    LowerMapReduce(World& world, flags_t annex)
-        : Super(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     /// Skips the whole phase if the program already contains an explicit `gpu.init`.
