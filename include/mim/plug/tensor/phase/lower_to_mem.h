@@ -9,7 +9,7 @@ namespace mim::plug::tensor::phase {
 /// Bufferizes the low-level tensor axioms onto the shared `buffer` layer.
 /// `Extract` / `Insert` become `buffer.read` / `buffer.write`, `generate` becomes an allocating fill loop,
 /// `map_reduce` / `broadcast` / `pad` / `concat` /
-/// `gather` / `scatter` become their buffer-world `btensor.*` counterparts,
+/// `gather` / `scatter` become their buffer-world `btensor.*` counterparts writing into a `buffer.alloc`ed destination,
 /// and tensor array values `«s; T»` become `buffer.Buf (r, s, T)` handles.
 /// Afterwards `buffer.lower_ptr` lowers the buffer layer to `mem.Ptr` + `mem.lea` / `mem.load` / `mem.store`.
 ///

@@ -19,7 +19,7 @@ const Def* normalize_map_reduce(const Def*, const Def* c, const Def* arg) {
     auto [So, Sr]                                                 = shapes->projs<2>();
     auto [Tis, Ris, Sis]                                          = TisRisSis->projs<3>();
     auto [comb, init]                                             = comb_init->projs<2>();
-    auto [mem, is]                                                = arg->projs<2>();
+    auto [mem, dst, is]                                           = arg->projs<3>();
 
     auto sched = w.app(w.annex<btensor::mk_sched>(), {Rn, w.lit_nat_0()});
     auto post  = w.app(w.annex<btensor::id>(), To);
@@ -33,7 +33,7 @@ const Def* normalize_map_reduce(const Def*, const Def* c, const Def* arg) {
     op      = w.app(op, {comb, init, post});
     op      = w.app(op, map_out);
     op      = w.app(op, {maps, unit});
-    return w.app(op, {mem, is, unit});
+    return w.app(op, {mem, dst, is, unit});
 }
 
 MIM_btensor_NORMALIZER_IMPL

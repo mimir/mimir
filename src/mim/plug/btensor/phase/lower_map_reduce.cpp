@@ -34,11 +34,13 @@ const Def* LowerMapReduce::lower_buffer_lit(const App* app) {
     auto rn        = Lit::isa<u64>(rewrite(r));
     if (!rn) return RWPhase::rewrite_imm_App(app);
 
-    auto [mem, val] = rewrite(app->arg())->projs<2>();
-    auto result_ty  = rewrite(app->type()); // [mem.M 0, buffer.Buf (r, s, T)]
+    auto [mem, val]      = rewrite(app->arg())->projs<2>();
+    auto result_ty       = rewrite(app->type()); // [mem.M 0, buffer.Buf (r, s, T)]
+    auto [obr, obs, obT] = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
+    auto [a_mem, buf]    = buffer::op_alloc(obr, obs, obT, mem)->projs<2>();
     // `compute` ignores the loop counters and writes the (loop-invariant) scalar `ins` everywhere.
     return build_pointwise(
-        result_ty, mem, val, s_out, *rn, "constant_fill",
+        result_ty, a_mem, buf, val, s_out, *rn, "constant_fill",
         [](const DefVec&, const Def* ins, const Def* m) -> std::pair<const Def*, const Def*> { return {m, ins}; });
 }
 
@@ -46,9 +48,9 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     auto& w = new_world();
     auto mr = MapRedPost::of(rewrite(app->callee())->as<App>());
 
-    // The final argument is `[mem, is, post_is]`; the result is `[mem, Buf]`.
-    auto [op_mem, op_is, op_post_is] = rewrite(app->arg())->projs<3>();
-    auto result_ty                   = rewrite(app->type()); // [mem.M 0, buffer.Buf (Ro, So, Tp)]
+    // The final argument is `[mem, dst, is, post_is]`; the result is `[mem, Buf]`.
+    auto [op_mem, op_dst, op_is, op_post_is] = rewrite(app->arg())->projs<4>();
+    auto result_ty                           = rewrite(app->type()); // [mem.M 0, buffer.Buf (Ro, So, Tp)]
 
     auto ranks = mr.ranks();
     if (!ranks) {
@@ -59,10 +61,10 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     auto nloops                     = ranks->nloops();
     auto n                          = w.lit_nat(nloops);
 
-    // `[mem, is, post_is] → [mem, Buf]`, spliced via cps.cps2ds and applied to the op's (mem, is, post_is).
-    auto [fun, call]                        = ds_splice(w.tuple({op_mem, op_is, op_post_is}), result_ty, "mapRedAff");
-    auto [fun_mem, new_inputs, new_post_is] = fun->var(2, 0)->projs<3>();
-    auto cont                               = fun->var(2, 1);
+    // `[mem, dst, is, post_is] → [mem, Buf]`, spliced via cps.cps2ds and applied to the op's operands.
+    auto [fun, call] = ds_splice(w.tuple({op_mem, op_dst, op_is, op_post_is}), result_ty, "mapRedAff");
+    auto [fun_mem, out_buf, new_inputs, new_post_is] = fun->var(2, 0)->projs<4>();
+    auto cont                                        = fun->var(2, 1);
 
     // The op's SCHEDULE `sched` is a target-agnostic chooser over a loop-nest builder (canonically
     // a `tensor.mk_sched` value, selected in the frontend). This is the tensor→btensor boundary,
@@ -73,9 +75,7 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     // builder: plain IR, not lowering behavior.
     auto i32 = w.type_i32();
 
-    // Allocate the output buffer.
-    auto [obr, obs, obT]  = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
-    auto [a_mem, out_buf] = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
+    auto [obr, obs, obT] = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
 
     auto nest_args = w.tuple({mr.Ro, w.lit_nat(rr), mr.Sr, mr.To, result_ty->proj(2, 1)});
     auto nest      = w.app(w.app(mr.sched, w.app(w.annex<btensor::NestT>(), nest_args)),
@@ -164,17 +164,17 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
 
     // Apply the nest; the output buffer is threaded through as the nest's write-back target and
     // yielded straight to the op's continuation.
-    fun->app(true, w.app(nest, w.tuple({mr.init, cell, wb})), w.tuple({a_mem, out_buf, cont}));
+    fun->app(true, w.app(nest, w.tuple({mr.init, cell, wb})), w.tuple({fun_mem, out_buf, cont}));
 
     return call;
 }
 
 const Def* LowerMapReduce::lower_broadcast(const App* app) {
-    auto& w              = new_world();
-    auto callee          = app->callee()->as<App>(); // (broadcast {impl}) (s_in, s_out)
-    auto [s_in, s_out]   = rewrite(callee->arg())->projs<2>();
-    auto [op_mem, input] = rewrite(app->arg())->projs<2>();
-    auto result_ty       = rewrite(app->type()); // [mem.M 0, buffer.Buf (ro, so, T)]
+    auto& w                   = new_world();
+    auto callee               = app->callee()->as<App>(); // (broadcast {impl}) (s_in, s_out)
+    auto [s_in, s_out]        = rewrite(callee->arg())->projs<2>();
+    auto [op_mem, dst, input] = rewrite(app->arg())->projs<3>();
+    auto result_ty            = rewrite(app->type()); // [mem.M 0, buffer.Buf (ro, so, T)]
 
     auto r_l = Lit::isa(s_out->arity());
     if (!r_l) {
@@ -189,7 +189,7 @@ const Def* LowerMapReduce::lower_broadcast(const App* app) {
         return {rd_mem, rd_val};
     };
 
-    return build_pointwise(result_ty, op_mem, input, s_out, *r_l, "broadcast", compute);
+    return build_pointwise(result_ty, op_mem, dst, input, s_out, *r_l, "broadcast", compute);
 }
 
 const Def* LowerMapReduce::lower_pad(const App* app) {
@@ -200,7 +200,7 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
     // writes fold size-1 axes (the `Buf` handles are normalized), while the loops cover all logical dims.
     auto [Tr, s_in, params, s_out] = c->uncurry_args<4>();
     auto [mode, lo, hi]            = params->projs<3>();
-    auto [op_mem, input, val]      = rewrite(app->arg())->projs<3>();
+    auto [op_mem, dst, input, val] = rewrite(app->arg())->projs<4>();
     auto result_ty                 = rewrite(app->type()); // [mem.M 0, buffer.Buf (r, s_out, T)]
 
     auto r_l    = Lit::isa<u64>(Tr->proj(2, 1));
@@ -217,7 +217,7 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
         return {rd_mem, valid ? w.select(valid, elem, fill) : elem}; // constant: fill out-of-region cells with `val`
     };
 
-    return build_pointwise(result_ty, op_mem, w.tuple({input, val}), s_out, *r_l, "pad", compute);
+    return build_pointwise(result_ty, op_mem, dst, w.tuple({input, val}), s_out, *r_l, "pad", compute);
 }
 
 const Def* LowerMapReduce::lower_concat(const App* app) {
@@ -227,7 +227,7 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
     // writes fold size-1 axes (the `Buf` handles are normalized), while the loops cover all logical dims.
     auto [TnisR, ax, Sis, s_out] = c->uncurry_args<4>();
     auto [T, nis, r]             = TnisR->projs<3>();
-    auto [op_mem, op_is]         = rewrite(app->arg())->projs<2>();
+    auto [op_mem, dst, op_is]    = rewrite(app->arg())->projs<3>();
     auto result_ty               = rewrite(app->type()); // [mem.M 0, buffer.Buf (r, s_out, T)]
 
     auto nis_l = Lit::isa<u64>(nis);
@@ -259,18 +259,18 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
         return {cur, result};
     };
 
-    return build_pointwise(result_ty, op_mem, op_is, s_out, rn, "concat", compute);
+    return build_pointwise(result_ty, op_mem, dst, op_is, s_out, rn, "concat", compute);
 }
 
 const Def* LowerMapReduce::lower_gather(const App* app) {
     auto& w = new_world();
     auto c  = rewrite(app->callee())->as<App>();
 
-    auto [Tr, shapes, dim]    = c->uncurry_args<3>();
-    auto [T, r]               = Tr->projs<2>();
-    auto [s_src, s_idx]       = shapes->projs<2>();
-    auto [op_mem, input, idx] = rewrite(app->arg())->projs<3>();
-    auto result_ty            = rewrite(app->type());
+    auto [Tr, shapes, dim]         = c->uncurry_args<3>();
+    auto [T, r]                    = Tr->projs<2>();
+    auto [s_src, s_idx]            = shapes->projs<2>();
+    auto [op_mem, dst, input, idx] = rewrite(app->arg())->projs<4>();
+    auto result_ty                 = rewrite(app->type());
 
     auto r_l   = Lit::isa<u64>(r);
     auto dim_l = Lit::isa<u64>(dim);
@@ -287,18 +287,18 @@ const Def* LowerMapReduce::lower_gather(const App* app) {
         auto [read_mem, val]     = buffer::op_read(idx_mem, in_buf, folded_idx(s_src, src))->projs<2>();
         return {read_mem, val};
     };
-    return build_pointwise(result_ty, op_mem, w.tuple({input, idx}), s_idx, *r_l, "gather", compute);
+    return build_pointwise(result_ty, op_mem, dst, w.tuple({input, idx}), s_idx, *r_l, "gather", compute);
 }
 
 const Def* LowerMapReduce::lower_scatter(const App* app) {
     auto& w = new_world();
     auto c  = rewrite(app->callee())->as<App>();
 
-    auto [Tr, shapes, dim]             = c->uncurry_args<3>();
-    auto [T, r]                        = Tr->projs<2>();
-    auto [s_src, s_idx, s_updates]     = shapes->projs<3>();
-    auto [op_mem, input, idx, updates] = rewrite(app->arg())->projs<4>();
-    auto result_ty                     = rewrite(app->type());
+    auto [Tr, shapes, dim]                     = c->uncurry_args<3>();
+    auto [T, r]                                = Tr->projs<2>();
+    auto [s_src, s_idx, s_updates]             = shapes->projs<3>();
+    auto [op_mem, op_dst, input, idx, updates] = rewrite(app->arg())->projs<5>();
+    auto result_ty                             = rewrite(app->type());
 
     auto r_l   = Lit::isa<u64>(r);
     auto dim_l = Lit::isa<u64>(dim);
@@ -307,13 +307,11 @@ const Def* LowerMapReduce::lower_scatter(const App* app) {
         return RWPhase::rewrite_imm_App(app);
     }
 
-    auto [fun, call] = ds_splice(w.tuple({op_mem, input, idx, updates}), result_ty, "scatter");
-    auto [fun_mem, in_buf, idx_buf, update_buf] = fun->var(2, 0)->projs<4>();
-    const Def* cont                             = fun->var(2, 1);
+    auto [fun, call] = ds_splice(w.tuple({op_mem, op_dst, input, idx, updates}), result_ty, "scatter");
+    auto [fun_mem, out_buf, in_buf, idx_buf, update_buf] = fun->var(2, 0)->projs<5>();
+    const Def* cont                                      = fun->var(2, 1);
 
-    auto [obr, obs, obT]      = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
-    auto [a_mem, out_buf]     = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
-    const Def* acc            = w.tuple({buffer::op_copy(a_mem, out_buf, in_buf), out_buf});
+    const Def* acc            = w.tuple({buffer::op_copy(fun_mem, out_buf, in_buf), out_buf});
     auto current              = fun;
     auto iters                = affine::counting_nest(current, cont, acc, s_idx->projs(*r_l), "scatter");
     auto [loop_mem, loop_buf] = acc->projs<2>();

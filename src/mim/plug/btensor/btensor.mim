@@ -10,6 +10,10 @@
 ///
 /// This is the bufferized mirror of the `tensor` plugin: every op here is the `buffer.Buf` counterpart of a
 /// `tensor.*` op, takes the same groups in the same order, and threads `mem.M` on top.
+/// Every op is in destination-passing style: it takes the output buffer `dst` right after the memory,
+/// writes into it, and returns it.
+/// Allocation is thus explicit and belongs to the caller (`buffer.alloc`), and an in-place update is a mere
+/// choice of `dst`.
 /// `tensor.lower_to_mem` bufferizes the SSA-world `tensor.*` ops onto these.
 /// Only the differences from that counterpart are documented below, and shapes are stated as the
 /// *logical* ones — `buffer.Buf` normalizes literal size-1 axes away and the loop generation folds its
@@ -79,7 +83,7 @@ axm map_reduce: {nis: Nat}
               → [f: Fn [mem.M 0, To, «i: nis; Tis#i»] → [mem.M 0, To], init: To]
               → [map_out: «Rn; affine.Index» → «Ro; affine.Index»]
               → [maps: «i: nis; («Rn; affine.Index» → «Ris#i; affine.Index»)»]
-              → [mem.M 0, is: «i: nis; buffer.Buf (Ris#i, Sis#i, Tis#i)»]
+              → [mem.M 0, dst: buffer.Buf (Ro, So, To), is: «i: nis; buffer.Buf (Ris#i, Sis#i, Tis#i)»]
               → [mem.M 0, buffer.Buf (Ro, So, To)], normalize_map_reduce;
 ///
 /// ### map_reduce_post
@@ -89,6 +93,7 @@ axm map_reduce: {nis: Nat}
 /// `mem.M`.
 /// Same groups in the same order as there, so only the differences:
 ///
+/// - `dst` is the output buffer: the op writes into it and returns it.
 /// - `f` and the `post` epilogue are mem-threaded.
 /// - `sched` **is** the op's schedule — a chooser over the target's loop-nest builder (canonically a
 ///   `tensor.mk_sched` value) selected in the frontend; `lower_map_reduce` binds it to `mr_nest` and
@@ -105,7 +110,8 @@ axm map_reduce_post: {nis nps: Nat}
                    → [map_out: «Rn; affine.Index» → «Ro; affine.Index»]
                    → [maps: «i: nis; («Rn; affine.Index» → «Ris#i; affine.Index»)»,
                       post_maps: «j: nps; («Ro; affine.Index» → «Rps#j; affine.Index»)»]
-                   → [mem.M 0, is: «i: nis; buffer.Buf (Ris#i, Sis#i, Tis#i)»,
+                   → [mem.M 0, dst: buffer.Buf (Ro, So, Tp),
+                      is: «i: nis; buffer.Buf (Ris#i, Sis#i, Tis#i)»,
                       post_is: «j: nps; buffer.Buf (Rps#j, Sps#j, Tps#j)»]
                    → [mem.M 0, buffer.Buf (Ro, So, Tp)];
 ///
@@ -143,7 +149,7 @@ anx lam proj_map {n r: Nat} (subs: «r; Nat») (o: «n; affine.Index»): «r; af
 ///
 axm broadcast: {T: *, ri: Nat, si: «ri; Nat», ro: Nat, so: «ro; Nat», r: Nat}
              → [s_in s_out: «r; Nat»]
-             → [mem.M 0, input: buffer.Buf (ri, si, T)]
+             → [mem.M 0, dst: buffer.Buf (ro, so, T), input: buffer.Buf (ri, si, T)]
              → [mem.M 0, buffer.Buf (ro, so, T)];
 ///
 /// ### concat
@@ -158,7 +164,7 @@ axm concat: {T: *, nis r: Nat}
           → [ax: Idx r]
           → {Sis: «i: nis; «r; Nat»»}
           → [s_out: «r; Nat»]
-          → [mem.M 0, is: «i: nis; buffer.Buf (r, Sis#i, T)»]
+          → [mem.M 0, dst: buffer.Buf (r, s_out, T), is: «i: nis; buffer.Buf (r, Sis#i, T)»]
           → [mem.M 0, buffer.Buf (r, s_out, T)];
 ///
 /// ### pad
@@ -172,7 +178,7 @@ axm pad: {T: *, r: Nat}
        → [s_in: «r; Nat»]
        → [mode: Nat, lo hi: «r; Nat»]
        → [s_out: «r; Nat»]
-       → [mem.M 0, input: buffer.Buf (r, s_in, T), value: T]
+       → [mem.M 0, dst: buffer.Buf (r, s_out, T), input: buffer.Buf (r, s_in, T), value: T]
        → [mem.M 0, buffer.Buf (r, s_out, T)];
 ///
 /// ### btensor_copy
@@ -191,11 +197,12 @@ anx lam transpose_2d {T: *} {s: «2; Nat»}
                      (m: mem.M 0, input: buffer.Buf (2, s, T))
                    : [mem.M 0, buffer.Buf (2, (s#tt, s#ff), T)] =
     let s_out = (s#tt, s#ff);
+    let (m, dst) = buffer.alloc (2, s_out, T) m;
     map_reduce (s_out, s_out)
         (btensor_copy, ⊥:T)
         affine.id
         (proj_map (1, 0),)
-        (m, input);
+        (m, dst, input);
 ///
 /// ## Reductions
 ///
@@ -224,11 +231,12 @@ fun product_2d_fun (R: Ring) (m: mem.M 0, acc: R#T, (x y: R#T))@tt: [mem.M 0, R#
 anx lam product_2d (R: Ring) {m k l: Nat}
                        (mm: mem.M 0, t1: buffer.Buf (2, (m, k), R#T), t2: buffer.Buf (2, (k, l), R#T))
                      : [mem.M 0, buffer.Buf (2, (m, l), R#T)] =
+    let (mm, dst) = buffer.alloc (2, (m, l), R#T) mm;
     map_reduce ((m, l), (m, l, k))
         (product_2d_fun R, R#_0)
         (proj_map (0, 1))
         (proj_map (0, 2), proj_map (2, 1))
-        (mm, (t1, t2));
+        (mm, dst, (t1, t2));
 ///
 /// ## Indexing
 ///
@@ -243,19 +251,21 @@ axm gather: {T: *, r: Nat}
           → [s_src s_idx: «r; Nat»]
           → [dim: Idx r]
           → [mem.M 0,
+             dst: buffer.Buf (r, s_idx, T),
              input: buffer.Buf (r, s_src, T),
              index: buffer.Buf (r, s_idx, Idx (s_src#dim))]
           → [mem.M 0, buffer.Buf (r, s_idx, T)];
 ///
 /// ### scatter
 ///
-/// Starts with a copy of `input`, then applies updates in row-major index order; for duplicate
+/// Copies `input` into `dst`, then applies updates in row-major index order; for duplicate
 /// destinations, the last update wins.
 ///
 axm scatter: {T: *, r: Nat}
            → [s_src s_idx s_updates: «r; Nat»]
            → [dim: Idx r]
            → [mem.M 0,
+              dst: buffer.Buf (r, s_src, T),
               input: buffer.Buf (r, s_src, T),
               index: buffer.Buf (r, s_idx, Idx (s_src#dim)),
               updates: buffer.Buf (r, s_updates, T)]
