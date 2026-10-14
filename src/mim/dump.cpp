@@ -254,7 +254,6 @@ public:
         if (def()->is_closed()) return true;
 
         if (auto app = def()->isa<App>()) {
-            if (!ctx()) return true;                 // a diagnostic has no declarations to refer to
             if (app->type()->isa<Pi>()) return true; // a curried App prints Full
             if (app->type()->isa<Type>()) return true;
             if (app->callee()->isa<Axm>()) return app->callee_type()->num_doms() <= 1;
