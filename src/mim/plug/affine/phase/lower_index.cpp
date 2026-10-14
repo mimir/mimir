@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <functional>
 #include <ranges>
 
 #include <mim/def.h>
@@ -163,6 +164,27 @@ LowerIndex::Split LowerIndex::split(const Def* x, int64_t c) {
     return split;
 }
 
+/// Splits x at the largest proper divisor k of c its addends do not carry across: x floordiv c = q floordiv (c/k).
+std::optional<LowerIndex::Peel> LowerIndex::peel(const Def* x, int64_t c) {
+    auto& w = new_world();
+    if (c <= 1) return {};
+    auto r = range_of(x);
+    if (!r || r->lo < 0) return {};
+
+    fe::Vector<int64_t> divisors;
+    for (int64_t d = 2; d * d <= c; ++d)
+        if (c % d == 0) divisors.emplace_back(d), divisors.emplace_back(c / d);
+    std::ranges::sort(divisors, std::greater{});
+
+    for (auto k : divisors) {
+        auto s = split(x, k);
+        if (s.even.empty() || s.carries) continue;
+        auto q = sum(w, DefVec(s.even.size(), [&](size_t i) { return exact_div(w, s.even[i], k); }));
+        return Peel{q, sum(w, s.rest), k};
+    }
+    return {};
+}
+
 /// x floordiv c without a division, or nullptr when the range analysis cannot justify one.
 const Def* LowerIndex::fold_udiv(const Def* x, int64_t c) {
     auto& w = new_world();
@@ -212,6 +234,26 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         return v;
     };
 
+    // The carry-free low part of a peeled dividend stays out of the division.
+    auto udiv = [&](this auto&& udiv, const Def* x, const Def* c) -> const Def* {
+        if (auto k = const_val(c)) {
+            if (auto folded = fold_udiv(x, *k)) return folded;
+            if (auto p = peel(x, *k)) return udiv(p->q, w.lit_i64(u64(*k / p->k)));
+        }
+        return div(core::div::udiv, x, c);
+    };
+    auto urem = [&](this auto&& urem, const Def* x, const Def* c) -> const Def* {
+        if (auto k = const_val(c)) {
+            if (auto folded = fold_urem(x, *k)) return folded;
+            if (auto p = peel(x, *k)) {
+                auto hi = urem(p->q, w.lit_i64(u64(*k / p->k)));
+                hi      = w.call(core::wrap::mul, core::Mode::none, Defs{hi, w.lit_i64(u64(p->k))});
+                return w.call(core::wrap::add, core::Mode::none, Defs{hi, p->r});
+            }
+        }
+        return div(core::div::urem, x, c);
+    };
+
     // The affine index algebra is computed on the wide `Idx 0` carrier with wrap-around (`Mode::none`) arithmetic, so
     // that negation/subtraction are correct via two's complement; the boundary `affine.map` casts in/out with
     // `core.conv.u`.
@@ -249,16 +291,10 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
                 return w.call(core::wrap::mul, core::Mode::none, Defs{x, w.call<core::bitcast>(w.type_i64(), c)});
             }
             case affine::semiop::floordiv: {
-                auto c_idx = w.call<core::bitcast>(w.type_i64(), c);
-                if (auto k = const_val(c_idx))
-                    if (auto folded = fold_udiv(x, *k)) return folded;
-                return div(core::div::udiv, x, c_idx);
+                return udiv(x, w.call<core::bitcast>(w.type_i64(), c));
             }
             case affine::semiop::rem: {
-                auto c_idx = w.call<core::bitcast>(w.type_i64(), c);
-                if (auto k = const_val(c_idx))
-                    if (auto folded = fold_urem(x, *k)) return folded;
-                return div(core::div::urem, x, c_idx);
+                return urem(x, w.call<core::bitcast>(w.type_i64(), c));
             }
             case affine::semiop::ceildiv: {
                 auto c_idx = w.call<core::bitcast>(w.type_i64(), c);
@@ -299,16 +335,8 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         auto [lin, s] = rewrite(app->arg())->projs<2>();
         auto m        = s->num_projs();
         auto str      = strides(s, m);
-        return w.tuple(DefVec(m, [&](size_t d) {
-            const Def* q = nullptr;
-            if (auto k = const_val(str[d])) q = fold_udiv(lin, *k);
-            if (!q) q = div(core::div::udiv, lin, str[d]);
-
-            auto ext = w.call<core::bitcast>(w.type_i64(), s->proj(m, d));
-            if (auto k = const_val(ext))
-                if (auto folded = fold_urem(q, *k)) return folded;
-            return div(core::div::urem, q, ext);
-        }));
+        return w.tuple(DefVec(
+            m, [&](size_t d) { return urem(udiv(lin, str[d]), w.call<core::bitcast>(w.type_i64(), s->proj(m, d))); }));
     }
 
     // affine.map f idxs mem ↦ widen idxs to `Idx 0`, inline f (advancing the threaded mem through any div), and narrow
