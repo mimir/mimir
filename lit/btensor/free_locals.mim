@@ -1,0 +1,88 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+// `btensor.free_locals` frees a buffer a function allocates but neither returns nor otherwise lets escape,
+// right after its last use.
+
+plugin core;
+plugin btensor;
+plugin buffer;
+plugin mem;
+plugin affine;
+plugin compile;
+
+use core.ops.u.w;
+
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.named "btensor.free_locals",
+    );
+
+fun add ((m: mem.M 0, acc: I32, (a b: I32)))@tt: [mem.M 0, I32] = return (m, acc + a * b);
+
+// The arm reading the buffer frees it after the read; on the edge into the other arm it dies unread,
+// so a trampoline frees it on the way there.
+// CHECK-LABEL: extern con branch
+// CHECK: con free_then{{(_[0-9]+)?}} (
+// CHECK-NEXT: let [[M:[a-z_0-9]+]] = buffer.free (2, ‹2; 2›, I32) ({{.*}}, [[B:[a-z_0-9#]+]])
+// CHECK-NEXT: no [[M]]
+// CHECK: con yes
+// CHECK: buffer.read (2, ‹2; 2›, I32) ({{.*}}, [[B]], ‹2; tt›)
+// CHECK: buffer.free (2, ‹2; 2›, I32) ({{.*}}, [[B]])
+// CHECK: (free_then, yes)#c
+extern con branch (m: mem.M 0, c: Bool, return: Cn [mem.M 0, I32]) =
+    let (m, b) = buffer.alloc (2, (2, 2), I32) m;
+    con yes (m: mem.M 0) =
+        let (m, x) = buffer.read (2, (2, 2), I32) (m, b, (1₂, 1₂));
+        return (m, x);
+    con no (m: mem.M 0) = return (m, 0I32);
+    (no, yes)#c m;
+
+// The intermediate product is dead once the second product has consumed it; the result is returned.
+// The free names the allocation, not the op that wrote into it.
+// CHECK-LABEL: extern con chain
+// CHECK: let [[A1:[a-z_0-9]+]] = buffer.alloc (2, ‹2; 2›, I32)
+// CHECK: let [[P1:[a-z_0-9]+]] = btensor.map_reduce_post {{.*}}([[A1]]#ff, [[A1]]#tt, (a, b), ())
+// CHECK: let [[A2:[a-z_0-9]+]] = buffer.alloc (2, ‹2; 2›, I32) [[P1]]#ff
+// CHECK: let [[P2:[a-z_0-9]+]] = btensor.map_reduce_post {{.*}}([[A2]]#ff, [[A2]]#tt, ([[P1]]#tt, b), ())
+// CHECK-NEXT: let [[M:[a-z_0-9]+]] = buffer.free (2, ‹2; 2›, I32) ([[P2]]#ff, [[A1]]#tt)
+// CHECK-NEXT: return{{.*}} ([[M]], [[P2]]#tt)
+extern con chain (m: mem.M 0, a b: buffer.Buf (2, (2, 2), I32), return: Cn [mem.M 0, buffer.Buf (2, (2, 2), I32)]) =
+    let (m, ab)  = buffer.alloc (2, (2, 2), I32) m;
+    let (m, ab)  = btensor.map_reduce ((2, 2), (2, 2, 2)) (add, 0I32) (btensor.proj_map (0, 1)) (btensor.proj_map (0, 2), btensor.proj_map (2, 1)) (m, ab, (a, b));
+    let (m, abb) = buffer.alloc (2, (2, 2), I32) m;
+    let (m, abb) = btensor.map_reduce ((2, 2), (2, 2, 2)) (add, 0I32) (btensor.proj_map (0, 1)) (btensor.proj_map (0, 2), btensor.proj_map (2, 1)) (m, abb, (ab, b));
+    return (m, abb);
+
+// Passed to a callee, the buffer may be retained: it is not freed, and neither is what comes back.
+// CHECK-LABEL: extern con callee
+// CHECK-NOT: buffer.free
+// CHECK: chain (
+extern con callee (m: mem.M 0, a: buffer.Buf (2, (2, 2), I32), return: Cn [mem.M 0, I32]) =
+    let (m, b) = buffer.alloc (2, (2, 2), I32) m;
+    con done (m: mem.M 0, r: buffer.Buf (2, (2, 2), I32)) =
+        let (m, x) = buffer.read (2, (2, 2), I32) (m, r, (1₂, 1₂));
+        return (m, x);
+    chain (m, a, b, done);
+
+// A buffer nobody reads is freed right after its allocation.
+// CHECK-LABEL: extern con dead
+// CHECK: let [[A:[a-z_0-9]+]] = buffer.alloc (2, {{.*}}, I32)
+// CHECK-NEXT: let [[M:[a-z_0-9]+]] = buffer.free (2, {{.*}}, I32) [[A]]
+// CHECK-NEXT: return{{.*}} [[M]]
+extern con dead (m: mem.M 0, (k l: Nat), return: Cn [mem.M 0]) =
+    let (m, M) = buffer.alloc (2, (k, l), I32) m;
+    return m;
+
+// A buffer read inside a loop stays alive across the iterations and is freed on the way out.
+// CHECK-LABEL: extern con loop
+// CHECK: con free_then{{(_[0-9]+)?}} (
+// CHECK-NEXT: let [[M:[a-z_0-9]+]] = buffer.free (2, ‹2; 2›, I32)
+// CHECK-NEXT: exit ([[M]],
+// CHECK: affine.For {{.*}} body free_then
+extern con loop (m: mem.M 0, n: I64, return: Cn [mem.M 0, I32]) =
+    let (m, b) = buffer.alloc (2, (2, 2), I32) m;
+    con exit (m: mem.M 0, s: I32) = return (m, s);
+    con body (i: I64, (m: mem.M 0, s: I32), yield: Cn [mem.M 0, I32]) =
+        let (m, x) = buffer.read (2, (2, 2), I32) (m, b, (1₂, 1₂));
+        yield (m, s + x);
+    affine.For body exit (0I64, n, 1I64, (m, 0I32));

@@ -3,12 +3,14 @@
 #include <mim/phase.h>
 #include <mim/plugin.h>
 
+#include "mim/plug/btensor/phase/free_locals.h"
 #include "mim/plug/btensor/phase/lower_map_reduce.h"
 
 using namespace mim;
 using namespace mim::plug;
 
 static void reg_phases(Flags2Phases& phases) {
+    Phase::hook<btensor::free_locals, btensor::phase::FreeLocals>(phases);
     Phase::hook<btensor::lower_map_reduce, btensor::phase::LowerMapReduce>(phases);
 }
 

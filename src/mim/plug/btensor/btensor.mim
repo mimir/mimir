@@ -511,6 +511,17 @@ anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
 ///
 /// ## Phases
 ///
+/// ### free_locals
+///
+/// Frees the buffers a function allocates but neither returns nor otherwise lets escape, right after their
+/// last use.
+/// Runs on the mem-threaded buffer world, where every allocation is a `buffer.alloc` / `buffer.init` /
+/// `buffer.lit` and the operations of this plugin merely write into their `dst`.
+/// A buffer that flows into any tail call - returned, passed to a callee, handed to a join point, carried
+/// through a loop - escapes and is never freed.
+///
+axm free_locals: compile.Phase;
+///
 /// ### lower_map_reduce
 ///
 /// Lowers every operation of this plugin to `affine.For` loops over `buffer` element operations,
