@@ -119,7 +119,6 @@ public:
     Sym sym(const char* s) { return driver().sym(s); }
     Sym sym(std::string_view s) { return driver().sym(s); }
     Sym sym(const std::string& s) { return driver().sym(s); }
-    Sym sym_anon() { return sym("_"); }        ///< `"_"`.
     Sym sym_return() { return sym("return"); } ///< `"return"`.
     Sym sym_error() { return sym("_error_"); } ///< `"_error_"`.
     ///@}
@@ -352,15 +351,17 @@ public:
 private:
     Dbg dbg_;
     Ptr<Expr> type_;
-    mutable AnnexInfo* annex_ = nullptr;
-    mutable sub_t sub_        = 0;
-    mutable Vis vis_          = Vis::Priv;
-    mutable bool anx_         = false;
+    mutable const Def* emitted_type_ = nullptr;
+    mutable AnnexInfo* annex_        = nullptr;
+    mutable sub_t sub_               = 0;
+    mutable Vis vis_                 = Vis::Priv;
+    mutable bool anx_                = false;
 
     friend class LetDecl;
+    friend class GrpPtrn;
 };
 
-/// `dbg` of a group `dbg_0 ... dbg_n-1: type` that refers to the trailing IdPtrn::id.
+/// `dbg_i` of a group `dbg_0 ... dbg_n-1: type` for `i > 0`; the leading IdPtrn::id owns `type`.
 class GrpPtrn : public Ptrn {
 public:
     GrpPtrn(Dbg dbg, const IdPtrn* id)
@@ -670,24 +671,22 @@ private:
 /// `match scrutinee with | arm_0 | ... | arm_n-1`
 class MatchExpr : public Expr, public fe::VLA<MatchExpr> {
 public:
-    /// `ptrn => body` of a MatchExpr, or `ctor payload => body` for a constructor with a payload.
+    /// `ptrn => body`, `ctor ptrn => body`, or `index [ptrn] => body` of a MatchExpr.
     class Arm : public Node {
     public:
-        Arm(Loc loc, std::optional<nat_t> index, Ptr<Ptrn> ptrn, Ptr<Ptrn> payload, Ptr<Expr> body)
+        Arm(Loc loc, std::optional<nat_t> index, Dbg ctor, Ptr<Ptrn> ptrn, Ptr<Expr> body)
             : Node(loc)
             , index_(index)
+            , ctor_(ctor)
             , ptrn_(ptrn)
-            , payload_(payload)
             , body_(body) {}
 
         const Ptrn* ptrn() const { return ptrn_.get(); }
-        /// The pattern after a constructor, as in `Cons (h, t)`; `nullptr` otherwise.
-        const Ptrn* payload() const { return payload_.get(); }
         const Expr* body() const { return body_.get(); }
-        /// The case this arm selects by literal index, as in `1 (h, t)`; `{}` if it names a constructor instead.
+        /// The case this arm selects by literal index, as in `1 (h, t)`.
         std::optional<nat_t> index() const { return index_; }
-        /// The constructor this arm names if it may name one: an unannotated identifier.
-        const IdPtrn* ctor() const;
+        /// The constructor in `Cons (h, t)`; a bare `Nil` is an unannotated IdPtrn instead.
+        Dbg ctor() const { return ctor_; }
 
         virtual void bind(Scopes&) const;
         /// @p dom is the case's payload type if the scrutinee is a Variant; otherwise ptrn() determines the domain.
@@ -696,8 +695,8 @@ public:
 
     private:
         std::optional<nat_t> index_;
+        Dbg ctor_;
         Ptr<Ptrn> ptrn_;
-        Ptr<Ptrn> payload_;
         Ptr<Expr> body_;
     };
 
@@ -770,19 +769,14 @@ public:
     /// One `dom` of a PiExpr: `ptrn` with an optional `-> ret` type.
     class Dom : public Node {
     public:
-        Dom(Loc loc, Ptr<Ptrn> ptrn)
+        Dom(Loc loc, Ptr<Ptrn> ptrn, Ptr<Expr> ret_type)
             : Node(loc)
-            , ptrn_(ptrn) {}
+            , ptrn_(ptrn)
+            , ret_type_(ret_type) {}
 
         bool is_implicit() const { return ptrn_->is_implicit(); }
         const Ptrn* ptrn() const { return ptrn_.get(); }
-        const IdDecl* ret() const { return ret_.get(); }
         const Expr* ret_type() const { return ret_type_.get(); }
-
-        void add_ret(AST& ast, Ptr<Expr> type) const {
-            ret_      = ast.ptr<IdDecl>(Dbg(type->loc(), ast.sym_return()));
-            ret_type_ = type;
-        }
 
         virtual void bind(Scopes&, bool quiet = false) const;
         virtual void emit_type(Emitter&) const;
@@ -794,8 +788,7 @@ public:
 
     private:
         Ptr<Ptrn> ptrn_;
-        mutable Ptr<IdDecl> ret_;
-        mutable Ptr<Expr> ret_type_;
+        Ptr<Expr> ret_type_;
 
         friend class PiExpr;
     };
@@ -1180,11 +1173,13 @@ public:
     /// One `dom` of a LamDecl: `ptrn@(filter)` with an optional `: ret` type.
     class Dom : public PiExpr::Dom {
     public:
-        Dom(Loc loc, Ptr<Ptrn> ptrn, Ptr<Expr> filter)
-            : PiExpr::Dom(loc, ptrn)
-            , filter_(filter) {}
+        Dom(Loc loc, Ptr<Ptrn> ptrn, Ptr<Expr> filter, Ptr<Expr> ret_type, Ptr<IdDecl> ret)
+            : PiExpr::Dom(loc, ptrn, ret_type)
+            , filter_(filter)
+            , ret_(ret) {}
 
         const Expr* filter() const { return filter_.get(); }
+        const IdDecl* ret() const { return ret_.get(); }
 
         void bind(Scopes&, bool quiet = false) const override;
         Lam* emit_value(Emitter&) const;
@@ -1192,6 +1187,7 @@ public:
 
     private:
         Ptr<Expr> filter_;
+        Ptr<IdDecl> ret_;
         mutable Lam* lam_;
 
         friend class LamDecl;

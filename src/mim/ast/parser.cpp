@@ -281,21 +281,22 @@ Ptr<Expr> Parser::parse_match_expr() {
     do {
         auto track   = tracker();
         auto index   = std::optional<nat_t>();
+        auto ctor    = Dbg();
         auto ptrn    = Ptr<Ptrn>();
-        auto is_ctor = false;
+        auto payload = [&] { return parse_ptrn({}, "payload of a constructor in a match-arm", Prec::Bot); };
         if (auto lit = accept(Tag::L_u)) {
-            index   = lit.lit_u();
-            ptrn    = ptr<IdPtrn>(lit.loc(), Dbg(lit.loc(), ast().sym_anon()), nullptr);
-            is_ctor = !ahead().isa(Tag::T_fat_arrow);
+            index = lit.lit_u();
+            if (!ahead().isa(Tag::T_fat_arrow)) ptrn = payload();
         } else {
-            ptrn    = parse_ptrn({}, "right-hand side of a match-arm", Prec::Bot);
-            auto id = ptrn->isa<IdPtrn>();
-            is_ctor = id && !id->type() && !ahead().isa(Tag::T_fat_arrow);
+            ptrn = parse_ptrn({}, "right-hand side of a match-arm", Prec::Bot);
+            if (auto id = ptrn->isa<IdPtrn>(); id && !id->type() && !ahead().isa(Tag::T_fat_arrow)) {
+                ctor = id->dbg();
+                ptrn = payload();
+            }
         }
-        auto payload = is_ctor ? parse_ptrn({}, "payload of a constructor in a match-arm", Prec::Bot) : nullptr;
         expect(Tag::T_fat_arrow, "arm of a match-expression");
         auto body = parse_expr("arm of a match-expression");
-        arms.emplace_back(ptr<MatchExpr::Arm>(track, index, ptrn, payload, body));
+        arms.emplace_back(ptr<MatchExpr::Arm>(track, index, ctor, ptrn, body));
     } while (accept(Tag::T_pipe));
 
     return ptr<MatchExpr>(track, scrutinee, arms);
@@ -474,22 +475,20 @@ Ptr<Expr> Parser::parse_pi_expr() {
     auto domt = tracker();
     auto prec = ISA(tag, C_CN) ? Prec::Bot : Prec::Pi;
     auto ptrn = parse_ptrn({.brckt = true, .implicit = true}, prec, "domain of a {}", entity);
-    auto dom  = ptr<PiExpr::Dom>(domt, ptrn);
+    auto dloc = Loc(domt);
 
     auto codom = ISA(tag, C_CN) ? nullptr
                                 : (expect(Tag::T_arrow_r, entity), parse_expr(Prec::Arrow, "codomain of a {}", entity));
 
-    if (ISA(tag, C_FN)) {
-        dom->add_ret(ast(), codom ? codom : ptr<HoleExpr>(missing()));
-        codom = nullptr; // the `ret` continuation is where it went
-    }
-    return ptr<PiExpr>(track, tag, dom, codom);
+    // A `Fn`'s codomain is the type of its `return` continuation.
+    auto fn = ISA(tag, C_FN);
+    return ptr<PiExpr>(track, tag, ptr<PiExpr::Dom>(dloc, ptrn, fn ? codom : nullptr), fn ? nullptr : codom);
 }
 
 Ptr<Expr> Parser::parse_pi_expr(Ptr<Ptrn> ptrn) {
     auto track      = tracker(ptrn->loc());
     fe::Cite entity = "dependent function type";
-    auto dom        = ptr<PiExpr::Dom>(ptrn->loc(), ptrn);
+    auto dom        = ptr<PiExpr::Dom>(ptrn->loc(), ptrn, nullptr);
     expect(Tag::T_arrow_r, entity);
     auto codom = parse_expr(Prec::Arrow, "codomain of a {}", entity);
     return ptr<PiExpr>(track, Tag::Nil, dom, codom);
@@ -566,13 +565,12 @@ Ptr<TuplePtrn> Parser::parse_tuple_ptrn(PtrnStyle style) {
                 dbgs.emplace_back(tok.dbg());
 
             if (accept(Tag::T_colon)) { // identifier group: x y z: T
-                auto dbg  = dbgs.back();
                 auto type = parse_expr("type of an identifier group within a tuple pattern");
-                auto id   = ptr<IdPtrn>(dbg.loc() + type->loc().end, dbg, type);
+                auto id   = ptr<IdPtrn>(dbgs.front().loc() + type->loc().end, dbgs.front(), type);
 
-                for (auto dbg : dbgs | std::views::take(dbgs.size() - 1))
-                    ptrns.emplace_back(ptr<GrpPtrn>(dbg, id.get()));
                 ptrns.emplace_back(id);
+                for (auto dbg : dbgs | std::views::drop(1))
+                    ptrns.emplace_back(ptr<GrpPtrn>(dbg, id.get()));
                 return;
             }
 
@@ -850,24 +848,33 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
         }
 
     auto dbg = decl ? parse_id(entity) : Dbg();
+    // The last Dom is built after the codomain, which a `fn`/`fun` turns into its `return` type.
     Ptrs<LamDecl::Dom> doms;
+    Loc loc;
+    Ptr<Ptrn> ptrn;
+    Ptr<Expr> filter;
     while (true) {
         auto track = tracker();
         // A domain spelled with brackets is a telescope; the check after the body rejects that where names must bind.
-        auto style  = ahead().isa(Tag::D_brckt_l) ? PtrnStyle{.brckt = true} : PtrnStyle{.implicit = true};
-        auto ptrn   = parse_ptrn(style, prec, "domain pattern of a {}", entity);
-        auto filter = accept(Tag::T_at) ? parse_expr("filter") : nullptr;
-        doms.emplace_back(ptr<LamDecl::Dom>(track, ptrn, filter));
+        auto style = ahead().isa(Tag::D_brckt_l) ? PtrnStyle{.brckt = true} : PtrnStyle{.implicit = true};
+        ptrn       = parse_ptrn(style, prec, "domain pattern of a {}", entity);
+        filter     = accept(Tag::T_at) ? parse_expr("filter") : nullptr;
+        loc        = Loc(track);
 
         if (!ISA(ahead().tag(), C_CURRIED_P)) break;
+        doms.emplace_back(ptr<LamDecl::Dom>(loc, ptrn, filter, nullptr, nullptr));
     }
 
     // The `: codom` slot ends at `=`, so it takes everything short of a `where`.
     auto codom = accept(Tag::T_colon) ? parse_expr(Prec(int(Prec::Where) + 1), "codomain of a {}", entity) : nullptr;
+    Ptr<Expr> ret_type;
+    Ptr<IdDecl> ret;
     if (ISA(tag, C_FN)) {
-        doms.back()->add_ret(ast(), codom ? codom : ptr<HoleExpr>(missing()));
-        codom = nullptr; // the `ret` continuation is where it went
+        ret_type = codom ? codom : ptr<HoleExpr>(missing());
+        ret      = ptr<IdDecl>(Dbg(ret_type->loc(), ast().sym_return()));
+        codom    = nullptr; // the `ret` continuation is where it went
     }
+    doms.emplace_back(ptr<LamDecl::Dom>(loc, ptrn, filter, ret_type, ret));
 
     Ptr<Expr> body;
     if (decl && mods.is_extern && ahead().isa(Tag::T_semicolon)) {

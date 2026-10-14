@@ -261,8 +261,7 @@ void InfixExpr::bind(Scopes& s) const {
 
 void MatchExpr::Arm::bind(Scopes& s) const {
     s.push();
-    // The constructor of `Cons (h, t)` is resolved against the scrutinee's type, not bound.
-    (payload() ? payload() : ptrn())->bind(s, false, false);
+    if (ptrn()) ptrn()->bind(s, false, false);
     body()->bind(s);
     s.pop();
 }
@@ -280,10 +279,7 @@ void MatchExpr::bind(Scopes& s) const {
 
 void PiExpr::Dom::bind(Scopes& s, bool quiet) const {
     ptrn()->bind(s, false, quiet);
-    if (ret()) {
-        if (!quiet) ret_type()->bind(s);
-        ret()->bind(s, quiet);
-    }
+    if (ret_type() && !quiet) ret_type()->bind(s);
 }
 
 void PiExpr::bind(Scopes& s) const {
@@ -507,6 +503,7 @@ void RecDecl::bind_body(Scopes& s) const { body()->bind(s); }
 
 void LamDecl::Dom::bind(Scopes& s, bool quiet) const {
     PiExpr::Dom::bind(s, quiet);
+    if (ret()) ret()->bind(s, quiet);
     if (filter() && !quiet) filter()->bind(s);
 }
 

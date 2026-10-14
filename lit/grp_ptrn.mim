@@ -1,0 +1,7 @@
+// RUN: %mim %s -o -
+// A group's type sees the binders before the group, not the group's own names.
+
+let n = 3;
+let T = [n m: Idx n];
+let z: T = (0_3, 2_3);
+let (a b c: Nat, d e: Bool) = (1, 2, 3, tt, ff);

@@ -215,22 +215,22 @@ static bool is_wildcard(const Ptrn* ptrn) {
 
 const Def* ErrorPtrn::emit_value(Emitter&, const Def* def) const { return def; }
 
-const Def* IdPtrn::emit_value(Emitter& e, const Def* def) const {
-    if (!type()) return def_ = def->set(dbg());
-
-    auto id_ty = emit_type(e);
-
-    if (auto res = Checker::assignable(id_ty, def)) return def_ = res->set(dbg());
+static const Def* assign(Emitter& e, const Ptrn* ptrn, const Def* type, const Def* def) {
+    if (auto res = Checker::assignable(type, def)) return res->set(ptrn->dbg());
 
     e.error()
-        .e(loc(), "value bound to `{}` is not assignable to its annotated type", dbg().sym())
-        .n("expected `{}`, got `{}`", id_ty, type_of(def))
+        .e(ptrn->loc(), "value bound to `{}` is not assignable to its annotated type", ptrn->dbg().sym())
+        .n("expected `{}`, got `{}`", type, type_of(def))
         .bail();
+}
+
+const Def* IdPtrn::emit_value(Emitter& e, const Def* def) const {
+    return def_ = type() ? assign(e, this, emit_type(e), def) : def->set(dbg());
 }
 
 const Def* IdDecl::emit(const Def* def) const { return def_ = def->set(dbg()); }
 
-const Def* GrpPtrn::emit_value(Emitter&, const Def* def) const { return def_ = def->set(dbg()); }
+const Def* GrpPtrn::emit_value(Emitter& e, const Def* def) const { return def_ = assign(e, this, emit_type(e), def); }
 
 const Def* AliasPtrn::emit_value(Emitter& e, const Def* def) const {
     return def_ = ptrn()->emit_value(e, def)->set(dbg());
@@ -270,13 +270,14 @@ const Def* TuplePtrn::emit_value(Emitter& e, const Def* def) const {
 const Def* ErrorPtrn::emit_type(Emitter&) const { std::unreachable(); }
 
 const Def* IdPtrn::emit_type(Emitter& e) const {
-    auto _ = e.world().push(loc());
-    return type() ? type()->emit(e) : e.world().mut_hole_type();
+    auto _               = e.world().push(loc());
+    return emitted_type_ = type() ? type()->emit(e) : e.world().mut_hole_type();
 }
 
 const Def* AliasPtrn::emit_type(Emitter& e) const { return ptrn()->emit_type(e); }
 
-const Def* GrpPtrn::emit_type(Emitter& e) const { return id()->emit_type(e); }
+// The leading IdPtrn has just emitted the group's type.
+const Def* GrpPtrn::emit_type(Emitter&) const { return id()->emitted_type_; }
 
 const Def* TuplePtrn::emit_type(Emitter& e) const { return emit_body(e, {}); }
 
@@ -613,22 +614,18 @@ const Def* InfixExpr::emit_(Emitter& e) const {
     }
 }
 
-const IdPtrn* MatchExpr::Arm::ctor() const {
-    auto id = ptrn()->isa<IdPtrn>();
-    return id && !id->type() ? id : nullptr;
-}
-
 Lam* MatchExpr::Arm::emit(Emitter& e, const Def* dom) const {
-    auto _      = e.world().push(loc());
-    auto binder = dom && payload() ? payload() : ptrn();
-    auto dom_t  = binder->emit_type(e);
-    if (dom && !Checker::alpha<Checker::Check>(dom_t, dom))
-        e.error()
-            .e(binder->loc(), "pattern of type `{}` does not match the constructor's payload `{}`", dom_t, dom)
-            .bail();
-    auto pi  = e.world().pi(dom ? dom : dom_t, e.world().mut_hole_type());
-    auto lam = e.world().mut_lam(pi);
-    binder->emit_value(e, lam->var());
+    auto _ = e.world().push(loc());
+    if (ptrn()) {
+        auto dom_t = ptrn()->emit_type(e);
+        if (dom && !Checker::alpha<Checker::Check>(dom_t, dom))
+            e.error()
+                .e(ptrn()->loc(), "pattern of type `{}` does not match the constructor's payload `{}`", dom_t, dom)
+                .bail();
+        if (!dom) dom = dom_t;
+    }
+    auto lam = e.world().mut_lam(e.world().pi(dom, e.world().mut_hole_type()));
+    if (ptrn()) ptrn()->emit_value(e, lam->var());
     return lam->set(true, body()->emit(e));
 }
 
@@ -643,7 +640,9 @@ const Def* MatchExpr::emit_variant(Emitter& e, const Def* scrutinee, const Varia
                        variant->num_ops(), *index)
                     .bail();
             i = *index;
-        } else if (auto id = arm->ctor()) {
+        } else if (auto ctor = arm->ctor()) {
+            i = e.ctor(variant, ctor);
+        } else if (auto id = arm->ptrn()->isa<IdPtrn>(); id && !id->type()) {
             i = e.ctor(variant, id->dbg());
         } else {
             e.error()
@@ -675,7 +674,7 @@ const Def* MatchExpr::emit_(Emitter& e) const {
     if (auto variant = ops.front()->isa_type<Variant>()) return emit_variant(e, ops.front(), variant);
 
     for (auto arm : arms()) {
-        if (arm->payload() || arm->index())
+        if (arm->index() || arm->ctor())
             e.error()
                 .e(arm->loc(), "a constructor pattern needs a variant scrutinee")
                 .n("but the scrutinee has type `{}`", type_of(ops.front()))
@@ -700,7 +699,7 @@ void PiExpr::Dom::emit_type(Emitter& e) const {
     auto _     = e.world().push(loc());
     auto dom_t = ptrn()->emit_type(e);
 
-    if (ret()) {
+    if (ret_type()) {
         auto sigma = e.world().mut_sigma(2);
         auto var   = sigma->var();
         sigma->set(0, dom_t);
