@@ -125,13 +125,13 @@ L      ::= dec+
         |  "0" ("x" | "X") hex* "." hex+ pP sign? dec+
 X_n    ::= dec+ sub+
         |  dec+ "_" dec+
-        |  dec+ ("i" | "I") dec+
+        |  (dec+ | "0" ("b" | "B") bin+ | "0" ("o" | "O") oct+ | "0" ("x" | "X") hex+) ("i" | "I") dec+
 C      ::= "'" (ascii_char | esc) "'"
 S      ::= "\"" (ascii_string_char | esc)* "\""
 ```
 
 Here `I` is an identifier, `L` is a numeric literal, `X_n` is an index literal of type `Idx n`, `C` is a character literal, and `S` is a string literal.
-The third form of `X_n` spells a bit width instead of `n` itself, so `23I32` is `23:I32`; its integer may also carry a `0b`/`0o`/`0x` prefix, as in `0xFFI8`.
+The third form of `X_n` spells a bit width from 1 to 64 instead of `n` itself, so `23I32` is `23:I32` and `0xFFI8` is `255:I8`.
 A literal never carries a sign; `-23` is the [signed literal](@ref lit) expression instead.
 `` ` `` escapes an [infix operator](@ref infix) into an ordinary identifier, e.g. `` `+ ``.
 

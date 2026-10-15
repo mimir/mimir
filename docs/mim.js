@@ -18,7 +18,7 @@ class MimCode extends Code {
     static PLAYGROUND = "https://mimir.github.io/playground/"
     static RUN_TITLE = "Open in the playground"
     static RUN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path d="M5.5 3.5 20.5 12 5.5 20.5Z"/></svg>`
-    static TOKEN = /(\/\/.*)|(\/\*)|("(?:\\.|[^"\\])*")|('(?:\\.|[^'\\])*')|([_a-zA-Z][_0-9a-zA-Z]*|[λ⊥⊤])|(\d(?:[\w.\u2080-\u2089]|'(?=\w))*)|([«»‹›→←Π∀])|(\s+|[^])/uy
+    static TOKEN = /(\/\/.*)|(\/\*)|("(?:\\.|[^"\\])*")|('(?:\\.|[^'\\])')|([_a-zA-Z][_0-9a-zA-Z]*|[λ⊥⊤])|(0[xX](?:[\da-fA-F.]|[pP][+-]?)*\w*|\d(?:[\w.\u2080-\u2089]|(?<=[eE])[+-](?=\d))*)|([«»‹›→←Π∀])|(\s+|[^])/uy
     static KINDS = ["comment", "open", "string", "string", "word", "number", "operator", null]
     static CLASS = {...Code.CLASS, special: "token-special"}
 

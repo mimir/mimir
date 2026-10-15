@@ -34,6 +34,8 @@ let oct = 0o52;             // octal
 let hex = 0x2A;             // hexadecimal
 let flt = 4.2e1:math.F64;   // a floating-point literal needs its type
 let chr = 'A';              // I8
+let quo = '\'';             // a `'` payload must be escaped
+let byt = 0xFFI8;           // the `I8` suffix spells a bit width
 let str = "Mim";            // «3; I8»
 let neg = -42I32;           // the sign belongs to the expression, not to the token
 let nothing = ⊥;            // `bot`; defaults to `*`
@@ -43,6 +45,8 @@ let _ = refly.struc.e (⊥:[Nat, Bool], (⊥:Nat, ⊥:Bool)); // pushed into agg
 
 let _ = refly.struc.e (dec, bin);
 let _ = refly.struc.e (oct, hex);
+let _ = refly.struc.e (quo, 39I8);
+let _ = refly.struc.e (byt, 255I8);
 
 let tru = 1₂;               // an index literal spells its arity as a subscript …
 let alt = 1_2;              // … or after an `_`
