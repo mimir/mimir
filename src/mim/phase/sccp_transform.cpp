@@ -12,7 +12,7 @@ const Def* SCCP::rewrite_imm_App(const App* old_app) {
 
             auto new_lam = fe::lookup(lam2lam_, old_lam);
             if (!new_lam) {
-                auto new_doms     = rewrite(keep.gather(old_lam->doms(keep.num_old())));
+                auto new_doms     = rewrite(keep.gather(old_lam->tdoms()));
                 new_lam           = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
                 lam2lam_[old_lam] = new_lam;
 

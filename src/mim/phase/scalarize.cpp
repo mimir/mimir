@@ -54,16 +54,12 @@ void Scalarize::Analysis::keep(const Pi* pi, size_t dom) {
 }
 
 void Scalarize::Analysis::keep_param(const Def* def) {
-    if (auto var = def->isa<Var>()) {
-        if (auto pi = isa_flattenable(var->binder()->type())) pin(pi);
-    } else if (auto proj = def->isa<Extract>()) {
-        if (auto var = proj->tuple()->isa<Var>()) {
-            if (auto pi = isa_flattenable(var->binder()->type())) {
-                if (auto i = Lit::isa(proj->index()))
-                    keep(pi, *i);
-                else
-                    pin(pi);
-            }
+    if (auto [var, i] = Var::isa_tproj(def); var) {
+        if (auto pi = isa_flattenable(var->binder()->type())) {
+            if (i)
+                keep(pi, *i);
+            else
+                pin(pi);
         }
     }
 }

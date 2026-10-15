@@ -250,6 +250,21 @@ const Def* Def::var() {
     return world().var(this);
 }
 
+std::pair<const Var*, std::optional<nat_t>> Var::isa_tproj(const Def* def) {
+    if (auto var = def->isa<Var>()) {
+        if (var->num_tprojs() == 1 && var->proj(1, 0) == var) return {var, 0};
+        return {var, std::nullopt};
+    }
+    if (auto ex = def->isa<Extract>()) {
+        if (auto var = ex->tuple()->isa<Var>()) {
+            // A thresholded Var's only tproj is the Var itself.
+            if (auto i = Lit::isa(ex->index()); i && var->num_tprojs() == var->num_projs()) return {var, i};
+            return {var, std::nullopt};
+        }
+    }
+    return {};
+}
+
 // clang-format off
 const Def* Def::var_type() {
     switch (mut_node()) {

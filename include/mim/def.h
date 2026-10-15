@@ -891,6 +891,11 @@ public:
     Def* binder() const { return binder_; }
     const Def* type() const { return binder()->var_type(); }
 
+    /// Matches a Var `v` itself or an Extract `v#j` of it.
+    /// @returns `{v, i}` if @p def is `v->tproj(i)`, `{v, std::nullopt}` for any other match,
+    /// and `{nullptr, std::nullopt}` otherwise.
+    static std::pair<const Var*, std::optional<nat_t>> isa_tproj(const Def* def);
+
     static constexpr auto Node      = mim::Node::Var;
     static constexpr size_t Num_Ops = 0;
 

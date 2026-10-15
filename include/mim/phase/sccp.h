@@ -25,7 +25,7 @@ private:
             : mim::Analysis(world, "SCCP::Analyzer") {}
 
     private:
-        const Def* propagate(const Def* var, const Def* def);
+        const Def* propagate(Lam* lam, const Def* var, const Def* def);
         const Def* rewrite_imm_App(const App* app) final;
     };
 

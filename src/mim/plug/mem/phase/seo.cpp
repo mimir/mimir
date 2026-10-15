@@ -18,7 +18,12 @@ enum {
     Proxy_Phi,      // proxy(lam_var, sloxy)             <- phi we need at lam for sloxy
 };
 
+// vars are the tvars followed by the phis.
 static size_t idx_of(Defs vars, const Def* p) {
+    if (auto [_, i] = Var::isa_tproj(p); i) {
+        assert(vars[*i] == p);
+        return *i;
+    }
     auto i = std::ranges::find(vars, p);
     assert(i != vars.end());
     return i - vars.begin();
@@ -503,10 +508,8 @@ void SEO::Analysis::analyze(const Def* def) {
             analyze(app->type());
 
             // only analyze args that we keep
-            for (size_t i = 0, e = lam->num_tdoms(); i != e; ++i) {
-                auto old_var = lam->var(e, i);
-                if (keep(lam, old_var, lattice(old_var))) analyze(app->arg(e, i));
-            }
+            for (size_t i = 0, e = lam->num_tvars(); i != e; ++i)
+                if (auto old_var = lam->tvar(i); keep(lam, old_var, lattice(old_var))) analyze(app->targ(i));
 
             for (auto d : lam->deps())
                 analyze(d);
@@ -618,9 +621,8 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
 
             if (sig_of(old_lam).todo) {
                 log().d("needs seo: {}", old_lam);
-                size_t n      = old_lam->num_tvars();
                 auto new_lam  = build_lam(old_lam);
-                auto new_args = build_args(old_lam, old_app->args(n));
+                auto new_args = build_args(old_lam, old_app->targs());
                 return map(old_app, new_world().app(new_lam, new_args));
             }
         }
@@ -654,8 +656,8 @@ const Def* SEO::var_of(Lam* old_lam) {
     for (size_t i = 0; i != n; ++i)
         if (auto j = sig.sieve[i]; j != Sieve::Gone)
             elems[i] = new_lam->var(sig.sieve.num_new(), j);
-        else if (auto abstr = lattice(old_lam->var(n, i)); sloxy_path(abstr).first)
-            elems[i] = new_world().bot(rewrite(old_lam->dom(n, i))); // a promoted slot carries no value
+        else if (auto abstr = lattice(old_lam->tvar(i)); sloxy_path(abstr).first)
+            elems[i] = new_world().bot(rewrite(old_lam->tdom(i))); // a promoted slot carries no value
         else
             elems[i] = rewrite(abstr); // SCCP propagate
 
@@ -674,8 +676,8 @@ Lam* SEO::build_lam(Lam* old_lam) {
 
     for (size_t i = 0; i != n; ++i)
         if (sig.sieve[i] != Sieve::Gone)
-            new_doms.emplace_back(rewrite(old_lam->dom(n, i)));
-        else if (auto abstr = lattice(old_lam->var(n, i)); isa_bundle(abstr, old_lam))
+            new_doms.emplace_back(rewrite(old_lam->tdom(i)));
+        else if (auto abstr = lattice(old_lam->tvar(i)); isa_bundle(abstr, old_lam))
             profile_count("seo.gvn.vars_merged");
         else if (!sloxy_path(abstr).first)
             profile_count("seo.sccp.vars_eliminated");
@@ -691,7 +693,7 @@ Lam* SEO::build_lam(Lam* old_lam) {
     // map_root(), because a Var mapping is context-free and must outlive a scalarization scope.
     for (size_t i = 0; i != n; ++i)
         if (auto j = sig.sieve[i]; j != Sieve::Gone) {
-            auto old_var = old_lam->var(n, i);
+            auto old_var = old_lam->tvar(i);
             auto v       = new_lam->var(sig.sieve.num_new(), j)->set(old_var->dbg_key());
             map_root(old_var, v);
             if (auto bundle = isa_bundle(lattice(old_var), old_lam)) map_root(bundle, v); // GVN bundle
