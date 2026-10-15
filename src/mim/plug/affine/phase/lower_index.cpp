@@ -89,6 +89,13 @@ const Def* sum(World& w, Defs terms) {
     return acc ? acc : w.lit_i64(0);
 }
 
+/// Emits `core.div.<op> (mem, (x, c))` on the `Idx 0` carrier, advancing the threaded @p mem and yielding the value.
+const Def* emit_div(World& w, const Def*& mem, core::div op, const Def* x, const Def* c) {
+    auto [m, v] = w.call(op, Defs{mem, w.tuple({x, c})})->projs<2>();
+    mem         = m;
+    return v;
+}
+
 } // namespace
 
 std::optional<LowerIndex::Range> LowerIndex::range_of(const Def* d) const {
@@ -218,6 +225,29 @@ const Def* LowerIndex::fold_urem(const Def* x, int64_t c) {
     return s.even.empty() || s.carries ? nullptr : sum(w, s.rest);
 }
 
+/// The carry-free low part of a peeled dividend stays out of the division.
+const Def* LowerIndex::udiv(const Def* x, const Def* c) {
+    auto& w = new_world();
+    if (auto k = const_val(c)) {
+        if (auto folded = fold_udiv(x, *k)) return folded;
+        if (auto p = peel(x, *k)) return udiv(p->q, w.lit_i64(u64(*k / p->k)));
+    }
+    return emit_div(w, mem_, core::div::udiv, x, c);
+}
+
+const Def* LowerIndex::urem(const Def* x, const Def* c) {
+    auto& w = new_world();
+    if (auto k = const_val(c)) {
+        if (auto folded = fold_urem(x, *k)) return folded;
+        if (auto p = peel(x, *k)) {
+            auto hi = urem(p->q, w.lit_i64(u64(*k / p->k)));
+            hi      = w.call(core::wrap::mul, core::Mode::none, Defs{hi, w.lit_i64(u64(p->k))});
+            return w.call(core::wrap::add, core::Mode::none, Defs{hi, p->r});
+        }
+    }
+    return emit_div(w, mem_, core::div::urem, x, c);
+}
+
 const Def* LowerIndex::rewrite(const Def* def) {
     // The opaque affine index type lowers to the wide `Idx 0` (i64) carrier.
     if (Axm::isa<affine::Index>(def)) return new_world().type_i64();
@@ -226,33 +256,6 @@ const Def* LowerIndex::rewrite(const Def* def) {
 
 const Def* LowerIndex::rewrite_imm_App(const App* app) {
     auto& w = new_world();
-
-    // Emits `core.div.<op> (mem_, (x, c))` on the `Idx 0` carrier, advancing the threaded mem and yielding the value.
-    auto div = [&](core::div op, const Def* x, const Def* c) -> const Def* {
-        auto [m, v] = w.call(op, Defs{mem_, w.tuple({x, c})})->projs<2>();
-        mem_        = m;
-        return v;
-    };
-
-    // The carry-free low part of a peeled dividend stays out of the division.
-    auto udiv = [&](this auto&& udiv, const Def* x, const Def* c) -> const Def* {
-        if (auto k = const_val(c)) {
-            if (auto folded = fold_udiv(x, *k)) return folded;
-            if (auto p = peel(x, *k)) return udiv(p->q, w.lit_i64(u64(*k / p->k)));
-        }
-        return div(core::div::udiv, x, c);
-    };
-    auto urem = [&](this auto&& urem, const Def* x, const Def* c) -> const Def* {
-        if (auto k = const_val(c)) {
-            if (auto folded = fold_urem(x, *k)) return folded;
-            if (auto p = peel(x, *k)) {
-                auto hi = urem(p->q, w.lit_i64(u64(*k / p->k)));
-                hi      = w.call(core::wrap::mul, core::Mode::none, Defs{hi, w.lit_i64(u64(p->k))});
-                return w.call(core::wrap::add, core::Mode::none, Defs{hi, p->r});
-            }
-        }
-        return div(core::div::urem, x, c);
-    };
 
     // The affine index algebra is computed on the wide `Idx 0` carrier with wrap-around (`Mode::none`) arithmetic, so
     // that negation/subtraction are correct via two's complement; the boundary `affine.map` casts in/out with
@@ -300,7 +303,8 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
                 auto c_idx = w.call<core::bitcast>(w.type_i64(), c);
                 // ceildiv(x, c) = (x + (c - 1)) / c  (unsigned, on the Idx 0 carrier)
                 auto c_1 = w.call(core::wrap::sub, core::Mode::none, Defs{c_idx, w.lit(w.type_i64(), 1)});
-                return div(core::div::udiv, w.call(core::wrap::add, core::Mode::none, Defs{x, c_1}), c_idx);
+                return emit_div(w, mem_, core::div::udiv, w.call(core::wrap::add, core::Mode::none, Defs{x, c_1}),
+                                c_idx);
             }
         }
     }

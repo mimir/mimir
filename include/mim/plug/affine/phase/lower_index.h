@@ -61,6 +61,8 @@ private:
     std::optional<Peel> peel(const Def*, int64_t);
     const Def* fold_udiv(const Def*, int64_t);
     const Def* fold_urem(const Def*, int64_t);
+    const Def* udiv(const Def*, const Def*);
+    const Def* urem(const Def*, const Def*);
 
     const Def* mem_ = nullptr;
     Domain dom_;
