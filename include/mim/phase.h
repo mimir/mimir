@@ -434,8 +434,7 @@ private:
 // clang-format off
 #define MIM_REPL_IMPL(__phases, __annex, __id, ...)                         \
     struct MIM_CONCAT(Repl_, __id) : ::mim::Repl {                          \
-        MIM_CONCAT(Repl_, __id)(::mim::World & world, ::mim::flags_t annex) \
-            : Repl(world, annex) {}                                         \
+        using Repl::Repl;                                                   \
                                                                             \
         const ::mim::Def* replace(const ::mim::Def* def) final __VA_ARGS__  \
     };                                                                      \
@@ -446,8 +445,6 @@ private:
 /// @see @ref phases_rwphase
 class Cleanup : public RWPhase {
 public:
-    Cleanup(World& world)
-        : RWPhase(world, "cleanup") {}
     using RWPhase::RWPhase;
 };
 

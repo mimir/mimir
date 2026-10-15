@@ -7,8 +7,7 @@ namespace mim::plug::clos::phase {
 /// Flattens branches over closure literals back into a direct branch over Lam%s.
 class BranchClosElim : public RWPhase {
 public:
-    BranchClosElim(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     const Def* rewrite_imm_App(const App*) final;

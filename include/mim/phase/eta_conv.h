@@ -18,8 +18,6 @@ namespace mim {
 /// BetaRed and mem.seo without oscillating.
 class EtaConv : public RWPhase {
 public:
-    EtaConv(World& world)
-        : RWPhase(world, "EtaConv") {}
     using RWPhase::RWPhase;
 
 private:

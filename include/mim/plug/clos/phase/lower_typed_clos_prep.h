@@ -11,8 +11,7 @@ namespace mim::plug::clos::phase {
 /// depending on whether their environment escapes.
 class LowerTypedClosPrep : public RWPhase {
 public:
-    LowerTypedClosPrep(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     /// One escape-propagation round over the old world; RWPhase::start() iterates until fixpoint.

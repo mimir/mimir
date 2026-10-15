@@ -34,8 +34,7 @@ namespace mim::plug::clos::phase {
 /// A converted Lam's body is enqueued and rewritten later, seeded with that body's own initial mem token.
 class LowerTypedClos : public RWPhase {
 public:
-    LowerTypedClos(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     /// A pending body rewrite: the initial mem tokens (old @c lvm, new @c lcm) plus the old and new Lam.

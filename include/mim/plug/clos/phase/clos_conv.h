@@ -82,9 +82,7 @@ private:
 /// There is also no machinery for free variables in a Lam's type, which may break polymorphic functions.
 class ClosConv : public RWPhase {
 public:
-    ClosConv(World& world, flags_t annex)
-        : RWPhase(world, annex)
-        , fva_(world) {} // the FVA operates on the old world
+    using RWPhase::RWPhase;
 
 private:
     /// A closure-converted Lam: the code part @p fn capturing the free defs @p fvs of @p old_fn.
@@ -120,7 +118,7 @@ private:
     /// Rewrites a return continuation's type: stays a plain `Cn`, but its domains are closure-converted.
     const Pi* rewrite_ret_cn(const Pi*);
 
-    FreeDefAna fva_;
+    FreeDefAna fva_{old_world()};
     DefMap<Stub> closures_; ///< old_fn *and* new fn ↦ Stub.
 
     /// Closure types must be rewritten uniformly across the whole module.

@@ -10,8 +10,7 @@ namespace mim::plug::clos::phase {
 /// branches and continuations so that ClosConv sees a canonical program.
 class ClosConvPrep : public RWPhase {
 public:
-    ClosConvPrep(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     /// Fills lam2fscope_: assigns each basicblock Lam to its enclosing returning Lam.
