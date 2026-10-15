@@ -563,11 +563,14 @@ const Def* LowerToMem::lower_generate(const App* app) {
         return w.call(body, w.tuple(zeros));
     }
 
-    auto result_ty = w.sigma({w.call<mem::M>(0), buf_of(app->type())});
-    auto compute   = [&](const DefVec& iters, const Def*, const Def* m) -> std::pair<const Def*, const Def*> {
+    auto out_ty       = buf_of(app->type());
+    auto [br, bs, bT] = Axm::isa<buffer::Buf>(out_ty)->args<3>();
+    auto result_ty    = w.sigma({w.call<mem::M>(0), out_ty});
+    auto compute      = [&](const DefVec& iters, const Def*, const Def* m) -> std::pair<const Def*, const Def*> {
         return {m, w.call(body, w.tuple(iters))};
     };
-    return btensor::build_pointwise(result_ty, fresh_mem(), w.tuple(), s_out, rn, "generate", compute)->proj(2, 1);
+    auto [am, dst] = buffer::op_alloc(br, bs, bT, fresh_mem())->projs<2>();
+    return btensor::build_pointwise(result_ty, am, dst, w.tuple(), s_out, rn, "generate", compute)->proj(2, 1);
 }
 
 const Def* LowerToMem::lower_broadcast(const App* app) {
@@ -595,10 +598,11 @@ const Def* LowerToMem::lower_broadcast(const App* app) {
 
     // NB: no `w.call` here — `{ro, so}` (the *output* buffer shape) occur nowhere but in the result type, so
     // there is no argument for inference to read them off.
-    auto op       = w.annex<btensor::broadcast>();
-    op            = w.app(op, w.tuple({T, bri, bsi, bro, bso, r}));
-    op            = w.app(op, w.tuple({s_in, s_out}));
-    auto [m, out] = w.app(op, w.tuple({fresh_mem(), input}))->projs<2>();
+    auto op        = w.annex<btensor::broadcast>();
+    op             = w.app(op, w.tuple({T, bri, bsi, bro, bso, r}));
+    op             = w.app(op, w.tuple({s_in, s_out}));
+    auto [am, dst] = buffer::op_alloc(bro, bso, boT, fresh_mem())->projs<2>();
+    auto [m, out]  = w.app(op, w.tuple({am, dst, input}))->projs<2>();
     return out;
 }
 
@@ -647,15 +651,16 @@ const Def* LowerToMem::lower_map_reduce(const App* app) {
     // NB: no `w.call` here — the meta groups are *forwarded* from the tensor op on purpose. Leaving them to
     // inference would re-derive `{Tis, Ris, Sis}` from the `buffer.Buf` operands, whose literal size-1 axes are
     // already folded away, so they would no longer agree with the logical shapes the loop generation iterates.
-    auto op       = w.annex<btensor::map_reduce_post>();
-    op            = w.app(op, mr.nis_nps);
-    op            = w.app(op, mr.meta);
-    op            = w.app(op, mr.shapes);
-    op            = w.app(op, mr.in_tys);
-    op            = w.app(op, w.tuple({memcomb, mr.init, mempost}));
-    op            = w.app(op, mr.map_out);
-    op            = w.app(op, mr.maps_all);
-    auto [m, out] = w.app(op, w.tuple({fresh_mem(), is, post_is}))->projs<2>();
+    auto op        = w.annex<btensor::map_reduce_post>();
+    op             = w.app(op, mr.nis_nps);
+    op             = w.app(op, mr.meta);
+    op             = w.app(op, mr.shapes);
+    op             = w.app(op, mr.in_tys);
+    op             = w.app(op, w.tuple({memcomb, mr.init, mempost}));
+    op             = w.app(op, mr.map_out);
+    op             = w.app(op, mr.maps_all);
+    auto [am, dst] = buffer::op_alloc(mr.Ro, mr.So, mr.Tp, fresh_mem())->projs<2>();
+    auto [m, out]  = w.app(op, w.tuple({am, dst, is, post_is}))->projs<2>();
     return scalar_result(app, m, out);
 }
 
@@ -684,7 +689,8 @@ const Def* LowerToMem::lower_pad(const App* app) {
     auto s_out = w.tuple(so);
 
     // `{T, r}` is inferred: `s_in` pins `r`, and `input`'s `buffer.Buf (r, s_in, T)` pins `T`.
-    auto [m, out] = w.call<btensor::pad>(s_in, Defs{mode, lo, hi}, s_out, Defs{fresh_mem(), input, value})->projs<2>();
+    auto [am, dst] = buffer::op_alloc(r, s_out, T, fresh_mem())->projs<2>();
+    auto [m, out]  = w.call<btensor::pad>(s_in, Defs{mode, lo, hi}, s_out, Defs{am, dst, input, value})->projs<2>();
     return out;
 }
 
@@ -722,12 +728,13 @@ const Def* LowerToMem::lower_concat(const App* app) {
     // *logical* per-input shapes, but the operands are `buffer.Buf` handles with their literal size-1 axes
     // already folded away — unifying `buffer.Buf (r, Sis#i, T)` against a folded handle fails, because the
     // left-hand side only folds once `Sis#i` is known. Passing the logical shapes makes both sides fold alike.
-    auto op       = w.annex<btensor::concat>();
-    op            = w.app(op, w.tuple({T, nis, r}));
-    op            = w.app(op, ax);
-    op            = w.app(op, Sis);
-    op            = w.app(op, s_out);
-    auto [m, out] = w.app(op, w.tuple({fresh_mem(), inputs}))->projs<2>();
+    auto op        = w.annex<btensor::concat>();
+    op             = w.app(op, w.tuple({T, nis, r}));
+    op             = w.app(op, ax);
+    op             = w.app(op, Sis);
+    op             = w.app(op, s_out);
+    auto [am, dst] = buffer::op_alloc(r, s_out, T, fresh_mem())->projs<2>();
+    auto [m, out]  = w.app(op, w.tuple({am, dst, inputs}))->projs<2>();
     return out;
 }
 
@@ -750,7 +757,8 @@ const Def* LowerToMem::lower_gather(const App* app) {
     auto index                  = make_buffer(old_index, r, s_idx);
 
     auto op                 = w.app(w.annex<btensor::gather>(), {T, r});
-    auto [out_mem, out_buf] = w.call(op, Defs{s_src, s_idx}, dim, Defs{fresh_mem(), input, index})->projs<2>();
+    auto [am, dst]          = buffer::op_alloc(r, s_idx, T, fresh_mem())->projs<2>();
+    auto [out_mem, out_buf] = w.call(op, Defs{s_src, s_idx}, dim, Defs{am, dst, input, index})->projs<2>();
     return scalar_result(app, out_mem, out_buf);
 }
 
@@ -767,9 +775,10 @@ const Def* LowerToMem::lower_scatter(const App* app) {
     auto index                               = make_buffer(old_index, r, s_idx);
     auto updates                             = make_buffer(old_updates, r, s_updates);
 
-    auto op = w.app(w.annex<btensor::scatter>(), {T, r});
+    auto op        = w.app(w.annex<btensor::scatter>(), {T, r});
+    auto [am, dst] = buffer::op_alloc(r, s_src, T, fresh_mem())->projs<2>();
     auto [out_mem, out_buf]
-        = w.call(op, Defs{s_src, s_idx, s_updates}, dim, Defs{fresh_mem(), input, index, updates})->projs<2>();
+        = w.call(op, Defs{s_src, s_idx, s_updates}, dim, Defs{am, dst, input, index, updates})->projs<2>();
     return scalar_result(app, out_mem, out_buf);
 }
 

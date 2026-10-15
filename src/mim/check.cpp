@@ -467,7 +467,7 @@ const Def* Def::check(size_t i, const Def* def) {
     if (auto body = Checker::assignable(lam->codom(), def)) return body;
     auto codom = lam->codom();
     auto& err  = def->blame("function body is not assignable to its declared codomain")
-                    .n("expected `{}`, got `{}`", codom, type_of(def));
+                     .n("expected `{}`, got `{}`", codom, type_of(def));
     if (codom->isa_mut() || codom->isa<Var>()) err.n(codom->loc(), "codomain `{}` declared here", codom);
     err.bail();
 }

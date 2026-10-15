@@ -250,6 +250,7 @@ Lam* build_teardown(World& w,
                     Defs dptrs,
                     Defs post_dptrs,
                     const Def* out_dptr,
+                    const Def* host_buf,
                     const Def* cont) {
     auto global_ty = w.annex<gpu::GlobalM>();
     auto const_ty  = w.annex<gpu::ConstM>();
@@ -258,9 +259,8 @@ Lam* build_teardown(World& w,
     auto after_launch                        = w.mut_con(Defs{mem_ty, global_ty, const_ty})->set("afterLaunch");
     auto [post_mem, post_global, post_const] = after_launch->vars<3>();
 
-    auto [alloc_mem, host_buf] = buffer::op_alloc(Ro, So, Tp, post_mem)->projs<2>();
     auto copy_back
-        = w.app(w.app(w.annex<gpu::buf_copy_to_host>(), {Ro, So, Tp}), {alloc_mem, post_global, out_dptr, host_buf});
+        = w.app(w.app(w.annex<gpu::buf_copy_to_host>(), {Ro, So, Tp}), {post_mem, post_global, out_dptr, host_buf});
     auto [cb_mem, cb_global] = copy_back->projs<2>();
 
     auto cur_global = cb_global;
@@ -329,9 +329,9 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
         return Super::rewrite_imm_App(app);
     }
 
-    auto [fun, call]                         = btensor::ds_splice(rewrite(app->arg()), result_ty, "mapReduceAffGpu");
-    auto [fun_mem, new_inputs, new_post_ins] = fun->var(2, 0)->projs<3>();
-    auto cont                                = fun->var(2, 1);
+    auto [fun, call] = btensor::ds_splice(rewrite(app->arg()), result_ty, "mapReduceAffGpu");
+    auto [fun_mem, host_buf, new_inputs, new_post_ins] = fun->var(2, 0)->projs<4>();
+    auto cont                                          = fun->var(2, 1);
 
     auto [h_mem, h_global, h_const] = w.app(w.annex<gpu::auto_init>(), fun_mem)->projs<3>();
 
@@ -361,12 +361,13 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
 
     auto launch = w.app(w.annex<gpu::launch>(), Defs{w.lit_nat(nis_n + nps_n + 1), w.tuple(kernel_arg_tys)});
     launch      = w.app(launch, Defs{w.lit_nat(grid.n_groups), w.lit_nat(grid.n_items), w.annex<gpu::default_stream>(),
-                                w.lit_ff(), w.tuple()});
+                                     w.lit_ff(), w.tuple()});
     launch      = w.app(launch, kernel);
     launch      = w.app(launch, kernel_args);
 
-    auto after_launch = build_teardown(w, mr.Ro, mr.So, mr.Tp, inputs.dptrs, post_inputs.dptrs, out_dptr, cont);
-    auto launch_call  = w.app(launch, Defs{w.tuple({post_inputs.mem, out_global, h_const}), after_launch});
+    auto after_launch
+        = build_teardown(w, mr.Ro, mr.So, mr.Tp, inputs.dptrs, post_inputs.dptrs, out_dptr, host_buf, cont);
+    auto launch_call = w.app(launch, Defs{w.tuple({post_inputs.mem, out_global, h_const}), after_launch});
     fun->set(true, launch_call);
 
     return call;

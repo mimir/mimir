@@ -165,27 +165,26 @@ inline const Def* concat_select(const Def* o_ax, const fe::Vector<u64>& exts, au
     return result;
 }
 
-/// A `[mem, ins] → [mem, Buf]` fun spliced via `cps.cps2ds_dep` that allocates the output buffer, loops over
-/// @p s_out carrying `[mem, buf]`, and writes `compute`'s element at the loop's (identity) output coordinates.
+/// A `[mem, dst, ins] → [mem, Buf]` fun spliced via `cps.cps2ds_dep` that loops over @p s_out carrying
+/// `[mem, dst]` and writes `compute`'s element at the loop's (identity) output coordinates.
 /// `compute(iters, ins, mem)` receives the raw i64 loop counters, the fun's inputs var, and the current mem; it
 /// returns `{mem', elem}`.
 inline const Def* build_pointwise(const Def* result_ty, // [mem.M 0, buffer.Buf (r, s_out, T)]
                                   const Def* mem,
+                                  const Def* dst,
                                   const Def* ins,
                                   const Def* s_out,
                                   u64 rn,
                                   const std::string& name,
                                   auto compute) {
-    auto& w                   = mem->world();
-    auto [fun, call]          = ds_splice(w.tuple({mem, ins}), result_ty, name);
-    auto [fun_mem, fun_ins]   = fun->var(2, 0)->projs<2>();
-    const Def* cont           = fun->var(2, 1);
-    auto [obr, obs, obT]      = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
-    auto [a_mem, out_buf]     = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
-    const Def* acc            = w.tuple({a_mem, out_buf});
-    auto cur                  = fun;
-    auto iters                = affine::counting_nest(cur, cont, acc, s_out->projs(rn), name);
-    auto [loop_mem, loop_buf] = acc->projs<2>();
+    auto& w                          = mem->world();
+    auto [fun, call]                 = ds_splice(w.tuple({mem, dst, ins}), result_ty, name);
+    auto [fun_mem, out_buf, fun_ins] = fun->var(2, 0)->projs<3>();
+    const Def* cont                  = fun->var(2, 1);
+    const Def* acc                   = w.tuple({fun_mem, out_buf});
+    auto cur                         = fun;
+    auto iters                       = affine::counting_nest(cur, cont, acc, s_out->projs(rn), name);
+    auto [loop_mem, loop_buf]        = acc->projs<2>();
 
     std::pair<const Def*, const Def*> el = compute(iters, fun_ins, loop_mem);
     auto [el_mem, elem]                  = el;
