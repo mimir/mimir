@@ -73,12 +73,13 @@ set(MIM_PLAYGROUND_EXAMPLES
     fib
     ackermann
     main_loop
-    mem/seo/gvn
     mem/seo/click
-    mem/seo/phi-var-combis
-    mem/seo/higher-order
-    mem/seo/ptr_indirect
     mem/seo/contify_fluet_weeks
+    mem/seo/gvn
+    mem/seo/higher-order
+    mem/seo/lemerre
+    mem/seo/phi-var-combis
+    mem/seo/ptr_indirect
     ord/fold
     ord/loop
     ord/poly
