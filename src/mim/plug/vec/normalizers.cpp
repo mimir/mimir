@@ -30,7 +30,7 @@ const Def* normalize_fold(const Def* type, const Def* c, const Def* arg) {
     }
 
     if (auto seq = vec->isa<Seq>(); seq && !seq->shape().is_fused()) {
-        if (auto n = Lit::isa<u64>(seq->arity()); n && type->isa<Nat>()) {
+        if (auto n = Lit::isa<u64>(seq->arity())) {
             if constexpr (id == fold::l)
                 for (auto proj : seq->projs(*n))
                     acc = w.app(f, {acc, proj});
