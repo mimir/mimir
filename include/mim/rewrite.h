@@ -45,10 +45,10 @@ public:
 
     /// @name Push / Pop
     ///@{
-    /// Opens a scope for all mappings or - with @p vars - only for those whose old or new Def depends on @p vars.
-    virtual void push(std::optional<Vars> vars = {}) { scopes_.emplace_back(vars); }
+    /// Opens a scope for the mappings whose old or new Def depends on @p vars; the root scope takes all others.
+    virtual void push(Vars vars) { scopes_.emplace_back(vars); }
     virtual void pop() { scopes_.pop_back(); }
-    /// Adds @p var to the Vars of the innermost push() scope.
+    /// Adds @p var - if any - to the Vars of the innermost push() scope.
     void bind(const Var* var);
     ///@}
 
@@ -116,7 +116,7 @@ private:
 
 protected:
     struct Scope {
-        std::optional<Vars> vars; ///< Only Def%s depending on these are mapped here; all, if unset.
+        Vars vars;                ///< Only mappings depending on these go here - except for the root.
         fe::Vector<Def2Def> maps; ///< The map of each Ctx - allocated on demand.
     };
     fe::Vector<Scope> scopes_;
@@ -163,7 +163,7 @@ public:
 
     /// @name push / pop
     ///@{
-    void push(std::optional<Vars> vars = {}) final { Rewriter::push(vars), vars_.emplace_back(Vars()); }
+    void push(Vars vars) final { Rewriter::push(vars), vars_.emplace_back(Vars()); }
     void pop() final { vars_.pop_back(), Rewriter::pop(); }
     ///@}
 

@@ -119,19 +119,19 @@ const DefSet& FreeDefAna::run(Lam* lam) {
  * Closure Conversion
  */
 
-void ClosConv::rewrite_external(Def* old_mut) {
-    push(); // each external gets its own substitution scope
-    RWPhase::rewrite_external(old_mut);
-    pop();
-}
-
 void ClosConv::finalize() {
     // Rewrite the deferred closure bodies, each in isolation.
     while (!body_worklist_.empty()) {
         auto fn = body_worklist_.front();
         body_worklist_.pop();
-        push();
-        rewrite_body(closures_.at(fn));
+        auto& stub = closures_.at(fn);
+        auto& vs   = old_world().vars();
+        auto vars  = Vars();
+        for (auto fv : stub.fvs)
+            vars = vs.merge(vars, fv->free_vars());
+        if (auto var = stub.old_fn->has_var()) vars = vs.insert(vars, var);
+        push(vars);
+        rewrite_body(stub);
         pop();
     }
 }

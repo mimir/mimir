@@ -68,7 +68,7 @@ void Phase::profile_count(std::string_view key, uint64_t n) {
 void Analysis::reset() {
     scopes_.clear();
     worklist_.clear();
-    push();
+    push({});
     todo_ = false;
 }
 

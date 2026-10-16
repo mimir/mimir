@@ -168,7 +168,8 @@ std::pair<const Def*, const Def*> Clos2SJLJ::convert(Lam* lam, const Def* filter
     auto branch    = w.extract(w.tuple(branches), tag);
 
     // Finally, replace the exception closures (which now live in the branch envs) with throw closures.
-    push(); // cur_jbuf_/cur_rbuf_ are per-Lam, so the substitution must not outlive this convert()
+    push({}); // cur_jbuf_/cur_rbuf_ are per-Lam, so the substitution must not outlive this convert()
+    bind(lam->has_var());
     body = subst_exn_closures(clos_apply(branch, m1));
     pop();
     return {filter, body};

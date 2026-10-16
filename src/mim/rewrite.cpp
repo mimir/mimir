@@ -15,7 +15,7 @@ namespace mim {
 
 Rewriter::Rewriter(World& world)
     : world_(&world) {
-    push(); // create root map
+    push({}); // create root map
 }
 
 Rewriter::~Rewriter() = default;
@@ -23,24 +23,24 @@ Rewriter::~Rewriter() = default;
 void Rewriter::reset() {
     pop();
     assert(scopes_.empty());
-    push();
+    push({});
 }
 
 const Def* Rewriter::map(const Def* old_def, const Def* new_def) {
-    for (auto& scope : scopes_ | std::views::reverse)
-        if (!scope.vars || old_def->has_free_vars_in(*scope.vars) || new_def->has_free_vars_in(*scope.vars)) {
+    for (size_t i = scopes_.size(); i-- != 1;)
+        if (auto& scope = scopes_[i]; old_def->has_free_vars_in(scope.vars) || new_def->has_free_vars_in(scope.vars)) {
             // A binder rebuilt in here takes its Var - and what depends on it - along.
-            if (auto var = scope.vars ? old_def->has_var() : nullptr)
-                scope.vars = old_def->world().vars().insert(*scope.vars, var);
+            if (auto var = old_def->has_var()) scope.vars = old_def->world().vars().insert(scope.vars, var);
             return slot(scope)[old_def] = new_def;
         }
-    std::unreachable(); // the root scope takes everything
+    return slot(scopes_.front())[old_def] = new_def;
 }
 
 void Rewriter::bind(const Var* var) {
+    assert(scopes_.size() > 1 && "the root scope takes all mappings anyway");
+    if (!var) return;
     auto& vars = scopes_.back().vars;
-    assert(vars && "only a Var-scoped scope binds Vars");
-    vars = var->world().vars().insert(*vars, var);
+    vars       = var->world().vars().insert(vars, var);
 }
 
 const Def* Rewriter::map(const Def* old_def, Defs new_defs) {
