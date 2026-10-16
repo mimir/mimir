@@ -514,8 +514,8 @@ void full(std::ostream& os, Full d) {
         return std::print(os, "Type {}", d.r(type->level(), Prec::App));
     } else if (auto reform = d->isa<Reform>()) {
         return std::print(os, "Rule {}", d.r(reform->dom(), Prec::App));
-    } else if (d->isa<Univ>()) {
-        return std::print(os, "Univ");
+    } else if (d->isa<Level>()) {
+        return std::print(os, "Level");
     } else if (d->isa<Nat>()) {
         return std::print(os, "Nat");
     } else if (d->isa<Idx>()) {

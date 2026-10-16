@@ -16,7 +16,7 @@ def test_python_package_works(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     driver = mim.Driver()
-    builder = regex.RegBuilder(driver, "regex", mim.Level.Error)
+    builder = regex.RegBuilder(driver, "regex", mim.LogLevel.Error)
 
     alpha = builder.range("a", "z") | builder.range("A", "Z")  # [a-zA-Z]
     under_hyph = builder.lit("_") | builder.lit("-")  # [_\-]

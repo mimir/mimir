@@ -1,13 +1,13 @@
 from abc import ABC, abstractmethod
 
 from .jit import JIT
-from . import Driver, Level
+from . import Driver, LogLevel
 from .callable import MimCallable
 
 
 class MimPlugin(ABC):
 
-    def __init__(self, driver: Driver, log_level: Level, libname):
+    def __init__(self, driver: Driver, log_level: LogLevel, libname):
         self.driver = driver
         self.driver.log().set_stdout().set(log_level)
         self._registered_functions = {}

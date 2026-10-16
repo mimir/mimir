@@ -31,7 +31,7 @@
     X(Var,    Judge::Intro)                                                                                        \
     X(Proxy,  Judge::Intro)                                                                                        \
     X(Hole,   Judge::Hole )                                                                                        \
-    X(Type,   Judge::Meta ) X(Univ,  Judge::Meta ) X(UMax,    Judge::Meta) X(UInc,   (Judge::Meta               )) \
+    X(Type,   Judge::Meta ) X(Level, Judge::Meta ) X(LMax,    Judge::Meta) X(LSucc,  (Judge::Meta               )) \
     X(Pi,     Judge::Form ) X(Lam,   Judge::Intro) X(App,     Judge::Elim)                                         \
     X(Sigma,  Judge::Form ) X(Tuple, Judge::Intro) X(Extract, Judge::Elim) X(Insert, (Judge::Intro | Judge::Elim)) \
     X(Arr,    Judge::Form ) X(Pack,  Judge::Intro)                                                                 \
@@ -49,7 +49,7 @@
     X(Axm)                                                                                                         \
     X(Var)                                                                                                         \
     X(Proxy)                                                                                                       \
-    X(Type)   X(Univ)  X(UMax)    X(UInc)                                                                          \
+    X(Type)   X(Level) X(LMax)    X(LSucc)                                                                         \
     X(Pi)     X(Lam)   X(App)                                                                                      \
     X(Sigma)  X(Tuple) X(Extract) X(Insert)                                                                        \
     X(Arr)    X(Pack)                                                                                              \
@@ -165,7 +165,7 @@ enum class Judge : u32 {
     Form  = 1 << 0, ///< [Type Formation](https://ncatlab.org/nlab/show/type+formation) like `T -> T`.
     Intro = 1 << 1, ///< [Term Introduction](https://ncatlab.org/nlab/show/natural+deduction) like `λ(x: Nat): Nat = x`.
     Elim  = 1 << 2, ///< [Term Elimination](https://ncatlab.org/nlab/show/term+elimination) like `f a`.
-    Meta  = 1 << 3, ///< Meta rules for Univ%erse and Type levels.
+    Meta  = 1 << 3, ///< Meta rules for universe and Type levels.
     Hole  = 1 << 4, ///< Special rule for Hole.
     // clang-format on
 };
@@ -272,7 +272,7 @@ struct DotConfig {
 /// * Axm: To introduce new entities.
 /// * Proxy: Used for intermediate values during optimizations.
 /// * Hole: A metavariable filled in by the type inference (always mutable as holes are filled in later).
-/// * Type, Univ, UMax, UInc: To keep track of type levels.
+/// * Type, Level, LMax, LSucc: To keep track of type levels.
 ///
 /// The data layout (see World::alloc and Def::deps) looks like this:
 /// ```
@@ -356,9 +356,9 @@ public:
     /// Yields the "raw" type of this Def (maybe `nullptr`).
     /// @see Def::unfold_type.
     const Def* type() const noexcept;
-    /// Yields the type of this Def and builds a new `Type (UInc n)` if necessary.
+    /// Yields the type of this Def and builds a new `Type (LSucc n)` if necessary.
     const Def* unfold_type() const;
-    /// Is Def::unfold_type a @p T? Yields `nullptr` for Univ, which has no type at all.
+    /// Is Def::unfold_type a @p T? Yields `nullptr` for Level, which has no type at all.
     template<class T>
     const T* isa_type() const {
         auto t = unfold_type();
@@ -880,40 +880,38 @@ private:
     friend class World;
 };
 
-class Univ : public Def, public Setters<Univ> {
+class Level : public Def, public Setters<Level> {
 public:
-    using Setters<Univ>::set;
-    static constexpr auto Node      = mim::Node::Univ;
+    using Setters<Level>::set;
+    static constexpr auto Node      = mim::Node::Level;
     static constexpr size_t Num_Ops = 0;
 
 private:
-    Univ(World& world)
+    Level(World& world)
         : Def(&world, Node, nullptr, Defs{}, 0) {}
 
     friend class World;
 };
 
-class UMax : public Def, public Setters<UMax> {
+class LMax : public Def, public Setters<LMax> {
 public:
-    using Setters<UMax>::set;
-    static constexpr auto Node      = mim::Node::UMax;
+    using Setters<LMax>::set;
+    static constexpr auto Node      = mim::Node::LMax;
     static constexpr size_t Num_Ops = std::dynamic_extent;
 
-    enum Sort { Univ, Kind, Type, Term };
-
 private:
-    UMax(World&, Defs ops);
+    LMax(World&, Defs ops);
 
     friend class World;
 };
 
-class UInc : public Def, public Setters<UInc> {
+class LSucc : public Def, public Setters<LSucc> {
 private:
-    UInc(const Def* op, level_t offset)
-        : Def(Node, op->type()->as<Univ>(), {op}, offset) {}
+    LSucc(const Def* op, level_t offset)
+        : Def(Node, op->type()->as<Level>(), {op}, offset) {}
 
 public:
-    using Setters<UInc>::set;
+    using Setters<LSucc>::set;
 
     /// @name ops
     ///@{
@@ -921,7 +919,7 @@ public:
     level_t offset() const { return flags(); }
     ///@}
 
-    static constexpr auto Node      = mim::Node::UInc;
+    static constexpr auto Node      = mim::Node::LSucc;
     static constexpr size_t Num_Ops = 1;
 
 private:
@@ -1102,16 +1100,16 @@ private:
 };
 
 // Def - hot inline definitions
-// These need Univ, Type, Var, and Lit to be complete, so they live here rather than in the class body.
+// These need Level, Type, Var, and Lit to be complete, so they live here rather than in the class body.
 // They are tiny and called millions of times, and `libmim` is a shared object - out of line they would be
 // opaque PLT calls in every other TU.
 inline World& Def::world() const noexcept {
-    // Walks up the type chain till it bottoms out in Univ - the only node that actually stores its World.
+    // Walks up the type chain till it bottoms out in Level - the only node that actually stores its World.
     // clang-format off
     for (auto def = this;;) {
         switch (def->node_) {
-            case Node::Univ: return *def->world_;
-            case Node::Type: return *def->op(0)->type()->as<Univ>()->world_; // op(0) is Type::level
+            case Node::Level: return *def->world_;
+            case Node::Type: return *def->op(0)->type()->as<Level>()->world_; // op(0) is Type::level
             case Node::Var:  def = def->binder_; break;                      // a Var has no type_ of its own
             default:         def = def->type_;   break;
         }
@@ -1125,8 +1123,8 @@ inline const Def* Def::type() const noexcept {
 }
 
 inline bool Def::equal(const Def* other) const {
-    // Univ is a singleton and mutables are never hash-consed, so for those identity *is* equality.
-    if (mut_ || other->mut_ || node_ == Node::Univ) return this == other;
+    // Level is a singleton and mutables are never hash-consed, so for those identity *is* equality.
+    if (mut_ || other->mut_ || node_ == Node::Level) return this == other;
 
     // A Var carries no ops and flags == 0, so it is identified solely by its binder
     if (auto var = isa<Var>()) return other->isa<Var>() && var->binder() == other->as<Var>()->binder();
@@ -1142,7 +1140,7 @@ inline bool Def::equal(const Def* other) const {
 
 inline nat_t Def::num_projs() const { return Lit::isa(arity()).value_or(1); }
 
-/// Def::unfold_type of @p def for a diagnostic - Univ is the one Def that has no type at all.
+/// Def::unfold_type of @p def for a diagnostic - Level is the one Def that has no type at all.
 /// Streams lazily so that it still renders under the PlainNames guard Error::msg formats within.
 inline auto type_of(const Def* def) {
     return fe::StreamFn{[def](std::ostream& os) -> std::ostream& {

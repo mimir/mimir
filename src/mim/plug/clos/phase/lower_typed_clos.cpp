@@ -165,7 +165,7 @@ const Def* LowerTypedClos::rewrite_imm(const Def* def) {
         case Node::Bot:
         case Node::Top:
         case Node::Type:
-        case Node::Univ:
+        case Node::Level:
         case Node::Nat:
         case Node::Axm: return RWPhase::rewrite_imm(def);
         default: break;

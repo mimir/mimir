@@ -7,24 +7,24 @@
 /// The including file must provide `using Tag = Tok::Tag;`.
 
 // clang-format off
-#define C_PRIMARY     \
-              K_Univ: \
-    case Tag::K_Nat:  \
-    case Tag::K_Idx:  \
-    case Tag::K_Bool: \
-    case Tag::K_ff:   \
-    case Tag::K_tt:   \
-    case Tag::K_i1:   \
-    case Tag::K_i8:   \
-    case Tag::K_i16:  \
-    case Tag::K_i32:  \
-    case Tag::K_i64:  \
-    case Tag::K_I1:   \
-    case Tag::K_I8:   \
-    case Tag::K_I16:  \
-    case Tag::K_I32:  \
-    case Tag::K_I64:  \
-    case Tag::T_star: \
+#define C_PRIMARY      \
+              K_Level: \
+    case Tag::K_Nat:   \
+    case Tag::K_Idx:   \
+    case Tag::K_Bool:  \
+    case Tag::K_ff:    \
+    case Tag::K_tt:    \
+    case Tag::K_i1:    \
+    case Tag::K_i8:    \
+    case Tag::K_i16:   \
+    case Tag::K_i32:   \
+    case Tag::K_i64:   \
+    case Tag::K_I1:    \
+    case Tag::K_I8:    \
+    case Tag::K_I16:   \
+    case Tag::K_I32:   \
+    case Tag::K_I64:   \
+    case Tag::T_star:  \
     case Tag::T_box
 
 #define C_ID M_id

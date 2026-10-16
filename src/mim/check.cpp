@@ -127,7 +127,7 @@ const Def* Checker::is_uniform(Defs defs) {
 
 const Def* Checker::assignable_(const Def* type, const Def* val) {
     auto val_t = val->unfold_type();
-    if (!val_t) return fail(); // Univ has no type, so it is assignable to nothing
+    if (!val_t) return fail(); // Level has no type, so it is assignable to nothing
     auto val_ty = val_t->zonk();
     if (type == val_ty) return val;
 
@@ -199,7 +199,7 @@ static Hole* isa_flex_rank(const Def* def) {
 // These may be α-equivalent to a Def with a different Node or Def::flags(); see alpha_impl_.
 static bool is_flex(const Def* def) {
     auto n = def->node();
-    return n == Node::Hole || n == Node::Top || n == Node::UMax || Prod::isa_node(n) || Seq::isa_node(n);
+    return n == Node::Hole || n == Node::Top || Prod::isa_node(n) || Seq::isa_node(n);
 }
 
 template<Checker::Mode mode>
@@ -293,8 +293,10 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
     auto seq2 = d2->isa<Seq>();
 
     if constexpr (mode == Check) {
-        if (auto umax = d1->isa<UMax>(); umax && !d2->isa<UMax>()) return check(umax, d2);
-        if (auto umax = d2->isa<UMax>(); umax && !d1->isa<UMax>()) return check(umax, d1);
+        if (auto lmax = d1->isa<LMax>()) return check(lmax, d2);
+        if (auto lmax = d2->isa<LMax>()) return check(lmax, d1);
+        if (auto inc = d1->isa<LSucc>()) return check(inc, d2);
+        if (auto inc = d2->isa<LSucc>()) return check(inc, d1);
 
         if (seq1 && !seq1->shape().is_fused() && seq1->arity() == world().lit_nat_1() && !seq2) return check1(seq1, d2);
         if (seq2 && !seq2->shape().is_fused() && seq2->arity() == world().lit_nat_1() && !seq1) return check1(seq2, d1);
@@ -334,21 +336,21 @@ bool Checker::check(const Prod* prod, const Def* def) {
 
 // A recursive type yields `l = max(ops..., l)` for its level whose least solution is `max(ops...)`.
 static const Def* drop_self(Hole* hole, const Def* def) {
-    auto umax = def->isa<UMax>();
-    if (!umax) return def;
+    auto lmax = def->isa<LMax>();
+    if (!lmax) return def;
 
     DefVec ops;
-    for (auto op : umax->ops())
+    for (auto op : lmax->ops())
         if (op->zonk_mut() != hole) ops.emplace_back(op);
 
-    return ops.size() == umax->num_ops() ? def : hole->world().umax<UMax::Univ>(ops);
+    return ops.size() == lmax->num_ops() ? def : hole->world().lmax(ops);
 }
 
 // A Hole may only be solved with a Def its type accepts; this is what pins `r` down in `s: «r; Nat»`.
 bool Checker::check(Hole* hole, const Def* def) {
     def = drop_self(hole, def);
 
-    if (def->unfold_type()) { // Univ has no type and is assignable to nothing
+    if (def->unfold_type()) { // Level has no type and is assignable to nothing
         if (auto new_def = assignable_(hole->type(), def))
             def = new_def;
         else
@@ -419,10 +421,44 @@ bool Checker::check(Seq* mut_seq, const Seq* imm_seq) {
     return true;
 }
 
-bool Checker::check(const UMax* umax, const Def* def) {
-    for (auto op : umax->ops())
-        if (!alpha_<Check>(op, def)) return fail<Check>();
+// `max(xs, c) = l` determines the xs only if `l = 0` or a single x has to reach `l`; World::solve_levels does the rest.
+bool Checker::check(const LMax* lmax, const Def* def) {
+    if (auto l = Lit::isa(def)) {
+        auto c  = level_t(0);
+        auto xs = DefVec();
+        for (auto op : lmax->ops())
+            if (auto k = Lit::isa(op))
+                c = *k;
+            else
+                xs.emplace_back(op);
+
+        if (c > *l) return fail<Check>();
+        if (*l == 0 || (c < *l && xs.size() == 1)) {
+            for (auto x : xs)
+                if (!alpha_<Check>(x, def)) return fail<Check>();
+            return true;
+        }
+    }
+
+    deferred_.emplace_back(lmax, def);
     return true;
+}
+
+// `x + k = l` determines `x = l - k`; with `l = y + j` the smaller offset cancels.
+bool Checker::check(const LSucc* inc, const Def* def) {
+    auto k = inc->offset();
+    if (auto l = Lit::isa(def)) return *l >= k && alpha_<Check>(inc->op(), world().lit_level(*l - k));
+    if (auto other = def->isa<LSucc>()) {
+        auto j = other->offset();
+        return j >= k ? alpha_<Check>(inc->op(), world().lsucc(other->op(), j - k))
+                      : alpha_<Check>(world().lsucc(inc->op(), k - j), other->op());
+    }
+    return fail<Check>();
+}
+
+void Checker::commit() {
+    for (auto [lmax, level] : deferred_)
+        world().postpone(lmax, level);
 }
 
 #ifndef DOXYGEN
@@ -438,15 +474,13 @@ const Def* Tuple::infer(World& w, Defs ops) {
     return w.sigma(DefVec(ops, [](const Def* op) { return op->unfold_type(); }));
 }
 
-const Def* Sigma::infer(World& w, Defs ops) {
-    return w.umax<UMax::Kind>(DefVec(ops, [](const Def* op) { return op->unfold_type(); }));
-}
+const Def* Sigma::infer(World& w, Defs ops) { return w.type(w.level(ops)); }
 
 const Def* Variant::infer(World& w, Defs ops) { return Sigma::infer(w, ops); }
 
 const Def* Pi::infer(const Def* dom, const Def* codom) {
     auto& w = dom->world();
-    return w.umax<UMax::Kind>({dom->unfold_type(), codom->unfold_type()});
+    return w.type(w.level({dom, codom}));
 }
 
 const Def* Reform::infer(const Def* dom) { return dom->unfold_type(); }
@@ -473,25 +507,26 @@ const Def* Def::check(size_t i, const Def* def) {
 }
 
 const Def* Def::check() {
-    auto& w = world();
+    auto& w      = world();
+    bool pending = type() == w.type_pending();
 
     switch (mut_node()) {
         case MutNode::Pi: {
             auto pi = as<Pi>();
             auto t  = Pi::infer(pi->dom(), pi->codom());
-            if (!Checker::alpha<Checker::Check>(t, type()))
+            if (!pending && !Checker::alpha<Checker::Check>(t, type()))
                 type()->blame("declared sort of function type does not match inferred sort `{}`", t).bail();
             return t;
         }
         case MutNode::Arr: {
             auto t = as<Arr>()->body()->unfold_type();
-            if (!Checker::alpha<Checker::Check>(t, type()))
+            if (!pending && !Checker::alpha<Checker::Check>(t, type()))
                 type()->blame("declared sort of array does not match inferred sort `{}`", t).bail();
             return t;
         }
         case MutNode::Sigma: {
             auto t = Sigma::infer(w, ops());
-            if (Checker::alpha<Checker::Check>(t, type())) return t; // TODO HACK
+            if (pending || Checker::alpha<Checker::Check>(t, type())) return t; // TODO HACK
             w.log().w("expected type {} for {} but keeping the declared {} due to clos-conv bugs", t, this, type());
             return type();
         }

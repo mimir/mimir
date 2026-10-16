@@ -92,14 +92,20 @@ public:
     template<Mode mode>
     static bool alpha(const Def* d1, const Def* d2) {
         if (d1 == d2) return true;
-        return Checker(d1->world()).alpha_<mode>(d1, d2);
+        auto checker = Checker(d1->world());
+        if (!checker.alpha_<mode>(d1, d2)) return false;
+        checker.commit();
+        return true;
     }
 
     /// Can @p value be assigned to sth of @p type?
     /// @note This is different from `equiv(type, value->type())` since @p type may be dependent.
     [[nodiscard]] static const Def* assignable(const Def* type, const Def* value) {
         if (type == value->type()) return value;
-        return Checker(type->world()).assignable_(type, value);
+        auto checker = Checker(type->world());
+        auto res     = checker.assignable_(type, value);
+        if (res) checker.commit();
+        return res;
     }
 
     /// Yields `defs.front()`, if all @p defs are Check::alpha-equivalent (`Mode::Test`) and `nullptr` otherwise.
@@ -137,7 +143,9 @@ private:
     [[nodiscard]] bool check_rank(const Seq*, Hole* rank, const Def*);
     [[nodiscard]] bool check1(const Seq*, const Def*);
     [[nodiscard]] bool check(Seq*, const Seq*);
-    [[nodiscard]] bool check(const UMax*, const Def*);
+    [[nodiscard]] bool check(const LMax*, const Def*);
+    [[nodiscard]] bool check(const LSucc*, const Def*);
+    void commit(); ///< Hands deferred_ over to World::postpone once the whole check has succeeded.
 
     /// Symmetric key for the alpha_ memo: the two gids packed into one u64, smaller first.
     /// Canonicalizing by gid is what lets alpha_ get away with a single probe.
@@ -153,6 +161,7 @@ private:
     Binders binders_;
     Vars bound_; ///< Var%s of all binders_; these are the Var%s subject to renaming.
     std::array<ankerl::unordered_dense::set<u64>, 2> memo_;
+    fe::Vector<std::pair<const LMax*, const Def*>> deferred_;
 };
 
 } // namespace mim
