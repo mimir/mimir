@@ -45,128 +45,57 @@ const Def* LowerMapReduce::lower_buffer_lit(const App* app) {
 }
 
 const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
-    auto& w = new_world();
-    auto mr = MapRedPost::of(rewrite(app->callee())->as<App>());
-
-    // The final argument is `[mem, dst, is, post_is]`; the result is `[mem, Buf]`.
-    auto [op_mem, op_dst, op_is, op_post_is] = rewrite(app->arg())->projs<4>();
-    auto result_ty                           = rewrite(app->type()); // [mem.M 0, buffer.Buf (Ro, So, Tp)]
-
+    auto& w    = new_world();
+    auto mr    = MapRedPost::of(rewrite(app->callee())->as<App>());
     auto ranks = mr.ranks();
     if (!ranks) {
         log().w("rank counts (nis/nps/Ro/Rn) of {} are not known at lowering time", app);
         return RWPhase::rewrite_imm_App(app);
     }
-    auto [nis_nat, nps_nat, ro, rr] = *ranks;
-    auto nloops                     = ranks->nloops();
-    auto n                          = w.lit_nat(nloops);
 
-    // `[mem, dst, is, post_is] → [mem, Buf]`, spliced via cps.cps2ds and applied to the op's operands.
-    auto [fun, call] = ds_splice(w.tuple({op_mem, op_dst, op_is, op_post_is}), result_ty, "mapRedAff");
-    auto [fun_mem, out_buf, new_inputs, new_post_is] = fun->var(2, 0)->projs<4>();
-    auto cont                                        = fun->var(2, 1);
+    auto impl = rewrite(old_world().annex<btensor::map_reduce_post_impl>());
+    impl      = w.app(impl, mr.nis_nps);
+    impl      = w.app(impl, {mr.To, mr.Tp, mr.Ro, w.lit_nat(ranks->rr)});
+    impl      = w.app(impl, mr.shapes);
+    impl      = w.app(impl, {mr.Tis, mr.Tps});
+    impl      = w.app(impl, {mr.comb, mr.init, mr.post});
+    impl      = w.app(impl, mr.map_out);
 
-    // The op's SCHEDULE `sched` is a target-agnostic chooser over a loop-nest builder (canonically
-    // a `tensor.mk_sched` value, selected in the frontend). This is the tensor→btensor boundary,
-    // so bind it HERE to this target's algebra — `btensor.mr_nest` over the output buffer — then
-    // build only the decision-free pieces: the fold step `cell` (read one element per input, call
-    // the combiner) and the write-back `wb` (read the epilogue inputs, run `post`, store) — and
-    // APPLY the nest to them. Unrolling, interchange and the row accumulator are inside the
-    // builder: plain IR, not lowering behavior.
-    auto i32 = w.type_i32();
+    auto [mem, dst, inputs, post_inputs]                 = rewrite(app->arg())->projs<4>();
+    auto [read_inputs_ty, read_post_ty, write_output_ty] = impl->type()->as<Pi>()->dom()->projs<3>();
 
-    auto [obr, obs, obT] = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
-
-    auto nest_args = w.tuple({mr.Ro, w.lit_nat(rr), mr.Sr, mr.To, result_ty->proj(2, 1)});
-    auto nest      = w.app(w.app(mr.sched, w.app(w.annex<btensor::NestT>(), nest_args)),
-                           w.app(w.annex<btensor::mr_nest>(), nest_args));
-
-    // The bound nest dictates the exact `cell`/`wb` signatures (its [init, cell, wb] domain) —
-    // building them from the VALUE's own type sidesteps any Arr/Sigma normalization asymmetry.
-    auto sched_dom = nest->type()->as<Pi>()->dom();
-
-    // The nest value's loop-vector components may appear as one «r; I32» value or flattened into r
-    // separate I32 components (normalization decides) — index the domains verbatim either way.
-    auto load_ivs = [&](Lam* l, u64 ndom, u64 pos, u64 cnt) {
-        DefVec out(cnt);
-        if (ndom == pos + cnt + 1) // flattened: cnt I32 scalars, then the continuation
-            for (u64 d = 0; d < cnt; ++d)
-                out[d] = l->var(ndom, pos + d);
-        else
-            for (u64 d = 0; d < cnt; ++d)
-                out[d] = l->var(ndom, pos)->proj(cnt, d);
-        return out;
+    // A `buffer.Buf` has its literal size-1 axes folded away, so the indices fold alike.
+    auto reader = [&](const Def* type, const char* name, u64 num, const Def* rank, const Def* bounds, const Def* rs,
+                      const Def* ss, const Def* maps, const Def* buffers) {
+        auto fun          = w.mut_lam(type->as<Pi>())->set(name);
+        auto [args, ret]  = fun->vars<2>();
+        auto [m, indices] = args->projs<2>();
+        auto values       = DefVec(num);
+        for (u64 i = 0; i != num; ++i) {
+            auto si = ss->proj(num, i);
+            auto [mapped, coords]
+                = op_affine_map(maps->proj(num, i), rs->proj(num, i), rank, bounds, si, indices, m)->projs<2>();
+            auto [read, value] = buffer::op_read(mapped, buffers->proj(num, i), *Shape(coords).fold(si))->projs<2>();
+            m                  = read;
+            values[i]          = value;
+        }
+        fun->app(true, ret, {m, w.tuple(values)});
+        return fun;
     };
+    auto read_inputs = reader(read_inputs_ty, "readInputs", ranks->nis, mr.Rn, mr.Sr, mr.Ris, mr.Sis, mr.maps, inputs);
+    auto read_post
+        = reader(read_post_ty, "readPost", ranks->nps, mr.Ro, mr.So, mr.Rps, mr.Sps, mr.post_maps, post_inputs);
 
-    auto sr = mr.Sr->projs(nloops);
-
-    // cell: Cn [mem, To, «ro+rr; I32», Cn [mem, To]] — fold the elements at one loop vector.
-    auto cdom = sched_dom->proj(3, 1)->as<Pi>()->dom();
-    auto cn   = cdom->num_projs();
-    auto cell = w.mut_con(cdom)->set("cell");
+    auto write_output = w.mut_lam(write_output_ty->as<Pi>())->set("writeOutput");
     {
-        auto cm    = cell->var(cn, 0);
-        auto cacc  = cell->var(cn, 1);
-        auto ck    = cell->var(cn, cn - 1);
-        auto iters = w.tuple(to_idxs(w, sr, load_ivs(cell, cn, 2, nloops)));
-        auto cur   = cm;
-        DefVec input_elems(nis_nat);
-        for (u64 i = 0; i < nis_nat; ++i) {
-            auto sis_i = mr.Sis->proj(nis_nat, i);
-            auto [mc_mem, coords]
-                = op_affine_map(mr.maps->proj(nis_nat, i), mr.Ris->proj(nis_nat, i), n, mr.Sr, sis_i, iters, cur)
-                      ->projs<2>();
-            auto [rd_mem, rd_val]
-                = buffer::op_read(mc_mem, new_inputs->proj(nis_nat, i), *Shape(coords).fold(sis_i))->projs<2>();
-            cur            = rd_mem;
-            input_elems[i] = rd_val;
-        }
-        app_cps(cell, mr.comb, {cur, cacc, w.tuple(input_elems)}, ck);
+        auto [args, ret]                = write_output->vars<2>();
+        auto [m, output, coords, value] = args->projs<4>();
+        auto stored                     = buffer::op_write(m, output, *Shape(coords).fold(mr.So), value);
+        write_output->app(true, ret, stored->proj(2, 0));
     }
 
-    // wb: Cn [mem, Buf, To, «ro+rr; I32», Cn [mem, Buf]] — epilogue + store for one folded cell,
-    // threading the output buffer as the nest's write-back target. It receives the full loop
-    // vector; only the leading `ro` output coordinates are read (the trailing reduction slots are
-    // exhausted loop values and are replaced by zeros for `map_out`).
-    auto wdom = sched_dom->proj(3, 2)->as<Pi>()->dom();
-    auto wn   = wdom->num_projs();
-    auto wb   = w.mut_con(wdom)->set("wb");
-    {
-        auto wm       = wb->var(wn, 0);
-        auto wu       = wb->var(wn, 1);
-        auto wv       = wb->var(wn, 2);
-        auto wk       = wb->var(wn, wn - 1);
-        auto wovs     = load_ivs(wb, wn, 3, nloops);
-        auto wb_iters = to_idxs(w, Defs(sr).subspan(0, ro), Defs(wovs).subspan(0, ro));
-        for (u64 j = 0; j < rr; ++j)
-            wb_iters.emplace_back(w.call(core::conv::u, sr[ro + j], w.lit(i32, 0)));
-        auto [wc_mem, write_coords]
-            = op_affine_map(mr.map_out, mr.Ro, n, mr.Sr, mr.So, w.tuple(wb_iters), wm)->projs<2>();
-
-        auto pcur = wc_mem;
-        DefVec post_elems(nps_nat);
-        for (u64 j = 0; j < nps_nat; ++j) {
-            auto sps_j             = mr.Sps->proj(nps_nat, j);
-            auto [pc_mem, pcoords] = op_affine_map(mr.post_maps->proj(nps_nat, j), mr.Rps->proj(nps_nat, j), mr.Ro,
-                                                   mr.So, sps_j, write_coords, pcur)
-                                         ->projs<2>();
-            auto [prd_mem, p_val]
-                = buffer::op_read(pc_mem, new_post_is->proj(nps_nat, j), *Shape(pcoords).fold(sps_j))->projs<2>();
-            pcur          = prd_mem;
-            post_elems[j] = p_val;
-        }
-        auto after_post            = mem::mut_con(mr.Tp)->set("afterPost");
-        auto [post_mem, elem_post] = after_post->vars<2>();
-        auto stored = buffer::op_write(obr, obs, obT, post_mem, wu, *Shape(write_coords).fold(mr.So), elem_post);
-        after_post->app(true, wk, stored);
-        app_cps(wb, mr.post, {pcur, wv, w.tuple(post_elems)}, after_post);
-    }
-
-    // Apply the nest; the output buffer is threaded through as the nest's write-back target and
-    // yielded straight to the op's continuation.
-    fun->app(true, w.app(nest, w.tuple({mr.init, cell, wb})), w.tuple({fun_mem, out_buf, cont}));
-
-    return call;
+    impl = w.app(impl, {read_inputs, read_post, write_output});
+    return w.app(impl, {mem, dst});
 }
 
 const Def* LowerMapReduce::lower_broadcast(const App* app) {

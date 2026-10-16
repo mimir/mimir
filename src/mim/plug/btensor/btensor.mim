@@ -509,6 +509,41 @@ anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
         run;
     nest;
 ///
+/// ### map_reduce_post_impl
+///
+/// Destination-passing map-reduce: apply the selected nest to ordinary fold and write-back functions.
+priv anx lam map_reduce_post_impl {nis nps: Nat}
+    {To Tp: *, Ro Rr: Nat}
+    (So: «Ro; Nat», Sr: «Ro + Rr; Nat», sched: [N: *] → ([vdim unroll: Nat] → N) → N)
+    {Tis: «nis; *», Tps: «nps; *»}
+    (f: Fn [mem.M 0, To, «i: nis; Tis#i»] → [mem.M 0, To], init: To,
+     post: Fn [mem.M 0, To, «j: nps; Tps#j»] → [mem.M 0, Tp])
+    (map_out: «Ro + Rr; affine.Index» → «Ro; affine.Index»)
+    (read_inputs: Fn [mem.M 0, «d: Ro + Rr; Idx (Sr#d)»] → [mem.M 0, «i: nis; Tis#i»],
+     read_post: Fn [mem.M 0, «d: Ro; Idx (So#d)»] → [mem.M 0, «j: nps; Tps#j»],
+     write_output: Fn [mem.M 0, buffer.Buf (Ro, So, Tp), «d: Ro; Idx (So#d)», Tp]
+         → mem.M 0)
+    (m: mem.M 0, dst: buffer.Buf (Ro, So, Tp)): [mem.M 0, buffer.Buf (Ro, So, Tp)] =
+    let Rn = Ro + Rr;
+    let Output = buffer.Buf (Ro, So, Tp);
+    // Explicit runtime parameters keep upstream memory expressions outside the loop builders.
+    fun run (m: mem.M 0, dst: Output)@tt: [mem.M 0, Output] =
+        con cell (m: mem.M 0, acc: To, ivs: «Rn; I32», k: Cn [mem.M 0, To])@tt =
+            let indices = ‹d: Rn; core.conv.u (Sr#d) (ivs#d)›;
+            con combine (m: mem.M 0, values: «i: nis; Tis#i»)@tt = f ((m, acc, values), k);
+            read_inputs ((m, indices), combine);
+        con wb (m: mem.M 0, output: Output, acc: To, ivs: «Rn; I32», k: Cn [mem.M 0, Output])@tt =
+            let indices = ‹d: Rn; core.conv.u (Sr#d) (ivs#d, 0I32)#(Ro <= core.bitcast Nat d)›;
+            let (m, coords) = affine.map @(Ro, Rn) @(Sr, So) map_out indices @0 m;
+            con write (m: mem.M 0, value: Tp)@tt =
+                con written (m: mem.M 0)@tt = k (m, output);
+                write_output ((m, output, coords, value), written);
+            con epilogue (m: mem.M 0, values: «j: nps; Tps#j»)@tt = post ((m, acc, values), write);
+            read_post ((m, coords), epilogue);
+        let nest = sched (NestT (Ro, Rr, Sr, To, Output)) (mr_nest (Ro, Rr, Sr, To, Output));
+        nest (init, cell, wb) (m, dst, return);
+    cps.cps2ds run (m, dst);
+///
 /// ## Phases
 ///
 /// ### lower_map_reduce
