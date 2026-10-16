@@ -72,16 +72,14 @@ const Def* LowerFor::rewrite_imm_App(const App* app) {
             return new_world().tuple(elems);
         };
 
-        push({});
-        bind(old_body_lam->has_var());
+        push(Vars(old_body_lam->has_var()));
         map(old_body_lam->var(), {new_iter, acc_for(new_body), new_yield});
         auto new_body_filter = rewrite(old_body_lam->filter());
         auto new_body_value  = rewrite(old_body_lam->body());
         new_body->set({new_body_filter, new_body_value});
         pop();
 
-        push({});
-        bind(old_exit_lam->has_var());
+        push(Vars(old_exit_lam->has_var()));
         map(old_exit_lam->var(), acc_for(new_exit));
         auto new_exit_filter = rewrite(old_exit_lam->filter());
         auto new_exit_value  = rewrite(old_exit_lam->body());

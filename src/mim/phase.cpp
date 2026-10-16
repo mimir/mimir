@@ -261,7 +261,6 @@ const Def* ReprPhase::rewrite_stub(Def* old_mut, Def* new_mut) {
 }
 
 const Def* ReprPhase::coerce(const Def* val, const Def* type) {
-    if (auto res = Checker::assignable(type, val)) return res;
     auto todo = DefVec{val};
     auto res  = reshape(todo, type);
     while (!todo.empty() && new_world().inhabitant(todo.back()->type()))

@@ -45,8 +45,7 @@ private:
     };
 
     /// RAII guard for rewriting the body of one mutable Lam:
-    /// fences pending_, pushes a map scope for rewrites contaminated by its continuations, and tracks whether lifting
-    /// is legal here.
+    /// fences pending_, pushes a map scope for contaminated rewrites, and tracks whether lifting is legal here.
     class Scope {
     public:
         Scope(Conv& conv, bool liftable)

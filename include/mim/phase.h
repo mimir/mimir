@@ -213,7 +213,7 @@ protected:
     bool pin(const Def* def) { return lattice(def, def); }
 
     /// pin%s every def in @p def%'s immutable subgraph for which @p pinnable holds.
-    /// Mutables are visited but not descended into; defs already in @p visited are skipped - seed it to exempt them.
+    /// Mutables are visited but not descended into; defs already in @p visited are skipped.
     void pin_imm(DefSet& visited, const Def* def, DefPred auto pinnable) {
         if (!visited.emplace(def).second) return;
         if (pinnable(def)) pin(def);
@@ -401,12 +401,12 @@ protected:
     /// Both are matched leaf by leaf: tuples are exploded and reassembled, Pi%s are η-wrapped, and
     /// information-free components are dropped or filled in with their sole inhabitant.
     const Def* coerce(const Def* new_val, const Def* new_type);
-    /// η-wraps @p val into a Lam of @p type, coerce()ing its Var to @p val%'s domain and its result to the codomain.
-    /// @returns `nullptr` unless both @p val%'s type and @p type are Pi%s.
-    const Def* eta_coerce(const Def* val, const Def* type);
     ///@}
 
 private:
+    /// η-wraps @p val into a Lam of @p type, coerce()ing its Var to @p val%'s domain and its result to the codomain.
+    /// @returns `nullptr` unless both @p val%'s type and @p type are Pi%s.
+    const Def* eta_coerce(const Def* val, const Def* type);
     /// Builds a value of @p type from the top of the stack @p todo.
     const Def* reshape(DefVec& todo, const Def* type);
 };

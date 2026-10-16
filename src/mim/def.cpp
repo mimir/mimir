@@ -313,7 +313,7 @@ bool Def::has_free_vars() const {
 }
 
 bool Def::has_free_vars_in(Vars vars) const {
-    return any_free_vars(this, [vars](Vars fvs) { return vars.has_intersection(fvs); });
+    return vars && any_free_vars(this, [vars](Vars fvs) { return vars.has_intersection(fvs); });
 }
 
 Vars Def::free_vars() {

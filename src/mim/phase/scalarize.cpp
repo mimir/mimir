@@ -63,7 +63,7 @@ void Scalarize::Analysis::keep_param(const Def* def) {
 }
 
 void Scalarize::Analysis::inspect(const Def* def) {
-    if (auto app = def->isa<App>(); app && app->uncurry_callee()->isa<Axm>()) {
+    if (auto app = def->isa<App>(); app && app->axm()) {
         // An Axm calls a bare function argument (`autodiff.ad f`) by its own convention, even if polymorphic in it.
         if (auto lam = app->arg()->isa_mut<Lam>()) pin_imm(lam->type(), isa_flattenable);
 
