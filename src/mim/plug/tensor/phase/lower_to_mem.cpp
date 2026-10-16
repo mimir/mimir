@@ -65,6 +65,14 @@ bool holds_buf(const Def* d) {
     return false;
 }
 
+/// Does the type @p t contain a `buffer.Buf`?
+bool mentions_buf(const Def* t) {
+    if (Axm::isa<buffer::Buf>(t)) return true;
+    if (auto sigma = t->isa_imm<Sigma>()) return std::ranges::any_of(sigma->ops(), mentions_buf);
+    if (auto arr = t->isa_imm<Arr>()) return mentions_buf(arr->body());
+    return false;
+}
+
 /// @p buf, or its sole element if @p app's result has been folded to a scalar.
 const Def* scalar_result(const App* app, const Def* mem, const Def* buf) {
     if (app->type()->isa<Arr>()) return buf;
@@ -495,6 +503,19 @@ const Def* LowerToMem::buffer_list(const Def* list, const Def* old_list, const D
     for (auto in : ins)
         if (!Axm::isa<buffer::Buf>(in->type())) return nullptr;
     return new_world().tuple(ins);
+}
+
+const Def* LowerToMem::rewrite_imm_Tuple(const Tuple* tuple) {
+    auto& w   = new_world();
+    auto type = rewrite(tuple->type());
+    auto ops  = RWPhase::rewrite(tuple->ops());
+    // Types are converted only at boundaries, so a buffer element forces its tuple type to be re-inferred.
+    if (!type->isa_mut()) {
+        auto n = ops.size();
+        for (size_t i = 0; i != n; ++i)
+            if (auto t = ops[i]->type(); t != type->proj(n, i) && mentions_buf(t)) return w.tuple(ops);
+    }
+    return w.tuple(type, ops);
 }
 
 std::pair<const Def*, const Def*> LowerToMem::peel_tensor(const Def* d) {

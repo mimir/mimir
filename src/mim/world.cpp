@@ -534,8 +534,33 @@ const Def* World::tuple(const Def* type, Defs ops_, bool may_be_uniform) {
         if (eta) return tup;
     }
 
-    return unify<Tuple>(type, ops);
+    auto t = unify<Tuple>(type, ops);
+#ifdef MIM_ENABLE_CHECKS
+    if (flags().check_tuples) check_tuple(t);
+#endif
+    return t;
 }
+
+#ifdef MIM_ENABLE_CHECKS
+void World::check_tuple(const Tuple* t) {
+    auto type = t->type();
+    auto n    = t->num_ops();
+    if (!type->isa<Sigma>() && !type->isa<Arr>()) return;
+    if (Lit::isa(type->arity()) != n) {
+        log().w("arity mismatch: `{}`: `{}`", t, type);
+        return;
+    }
+
+    auto sigma = type->isa_mut<Sigma>();
+    auto red   = sigma ? sigma->reduce(t) : Defs{};
+    for (size_t i = 0; i != n; ++i) {
+        auto expected = sigma ? red[i] : type->proj(n, i);
+        auto op       = t->op(i);
+        if (!op->type() || !Checker::alpha<Checker::Test>(expected, op->type()))
+            log().w("op {} `{}`: `{}` expected `{}` in `{}`", i, op, op->type(), expected, type);
+    }
+}
+#endif
 
 const Def* World::tuple(Sym sym) {
     return tuple(DefVec(sym, [this](char c) { return lit_i8(c); }));
