@@ -141,25 +141,19 @@ bool Analysis::lattice(const Def* concr, const Def* abstr) {
     return touch(), true;
 }
 
-void Analysis::pin_outside_args(const App* app, const DefVec& cands) {
-    if (cands.empty()) return;
+const Def* Analysis::generic_type(const Def* callee) {
+    if (auto app = callee->isa<App>()) {
+        auto type = generic_type(app->callee());
+        if (auto pi = type->isa<Pi>()) return pi->codom();
+        return type;
+    }
+    return callee->type();
+}
 
-    // The args' subgraph is downward-closed, so exempting it only needs to find the candidates therein.
-    auto todo   = DefSet(cands.begin(), cands.end());
-    auto seen   = DefSet();
-    auto exempt = [&](this auto& self, const Def* def) -> bool {
-        if (!seen.emplace(def).second) return false;
-        if (todo.erase(def) && todo.empty()) return true;
-        if (def->isa_mut()) return false;
-        for (auto d : def->deps())
-            if (self(d)) return true;
-        return false;
-    };
-    for (const Def* d = app; auto a = d->isa<App>(); d = a->callee())
-        if (exempt(a->arg())) break;
-
-    for (auto cand : cands)
-        if (todo.contains(cand)) pin(cand);
+bool Analysis::is_binder(const Def* def) {
+    while (auto extract = def->isa<Extract>())
+        def = extract->tuple();
+    return def->isa<Var>();
 }
 
 bool Analysis::is_cyclic(const Def* def) const {

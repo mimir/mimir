@@ -227,25 +227,33 @@ protected:
         pin_imm(visited, def, pinnable);
     }
 
-    /// If @p app applies an Axm, pin_imm%s the shapes its signature dictates: what the Axm consumes and produces.
+    /// pin%s the shapes @p gen - a part of an Axm's generic type - dictates in its instance @p inst.
+    /// Subgraphs substituted in for the signature's binders impose no shape, though, and are exempt.
+    void pin_axm(DefSet& visited, const Def* gen, const Def* inst, DefPred auto pinnable) {
+        if (is_binder(gen)) return;
+        // A normalizer reshaped what the signature dictates, e.g. `autodiff.AD T` into a Pi.
+        if (gen->node() != inst->node() || gen->num_deps() != inst->num_deps()) return pin_imm(visited, inst, pinnable);
+        if (!visited.emplace(inst).second) return;
+        if (pinnable(inst)) pin(inst);
+        if (inst->isa_mut()) return;
+        for (size_t i = 0, e = gen->num_deps(); i != e; ++i)
+            pin_axm(visited, gen->dep(i), inst->dep(i), pinnable);
+    }
+
+    /// If @p app applies an Axm, pin%s the shapes its signature dictates: what the Axm consumes and produces.
     /// Rebuilding such an App re-derives them from the Axm's generic type instead of rewriting them.
-    /// Subgraphs merely substituted in via (type) arguments impose no shape, though, and are exempt.
     /// @returns whether @p app applies an Axm.
     bool pin_axm(const App* app, DefPred auto pinnable) {
         if (!app->uncurry_callee()->isa<Axm>()) return false;
 
-        auto cands   = DefVec();
         auto visited = DefSet();
-        auto collect = [&](this auto& self, const Def* def) -> void {
-            if (!visited.emplace(def).second) return;
-            if (pinnable(def)) cands.emplace_back(def);
-            if (def->isa_mut()) return;
-            for (auto d : def->deps())
-                self(d);
-        };
-        collect(app->callee_type()->dom());
-        collect(app->type());
-        pin_outside_args(app, cands);
+        if (auto pi = generic_type(app->callee())->isa<Pi>()) {
+            pin_axm(visited, pi->dom(), app->callee_type()->dom(), pinnable);
+            pin_axm(visited, pi->codom(), app->type(), pinnable);
+        } else {
+            pin_imm(visited, app->callee_type()->dom(), pinnable);
+            pin_imm(visited, app->type(), pinnable);
+        }
         return true;
     }
 
@@ -302,7 +310,8 @@ private:
     }
 
     bool is_cyclic(const Def* def) const;
-    void pin_outside_args(const App*, const DefVec& cands);
+    static const Def* generic_type(const Def* callee);
+    static bool is_binder(const Def*);
 
     /// Walks all enqueued mutables' dependencies - in BFS order - under each mutable's curr_mut() scope.
     void drain();
