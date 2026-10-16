@@ -98,10 +98,11 @@ std::string pick_name(Ctx* ctx, const Def* def) {
     auto sym  = def->sym();
     auto base = sym && sym != '_' && ast::Lexer::is_id(sym.view()) ? sym.str() : "_"s;
     // A numbered variant of an identifier is an identifier and never a keyword.
-    if (base == "_" || def->world().driver().keys().find(sym) || ctx->taken.contains(base))
-        return ctx->names.emplace(def, fresh_name(ctx, base)).first->second;
-    ctx->taken.emplace(base);
-    return ctx->names.emplace(def, base).first->second;
+    auto name = base == "_" || def->world().driver().keys().find(sym) || ctx->taken.contains(base)
+                  ? fresh_name(ctx, base)
+                  : base;
+    ctx->taken.emplace(name);
+    return ctx->names.emplace(def, name).first->second;
 }
 
 /// The projection of the aliased Var that @p def - a projection of a Pi's Var - stands for; see Ctx::aliases.

@@ -227,25 +227,13 @@ const Def* RWPhase::rewrite_imm_App(const App* app) {
     return coerce(res, rewrite(app->type()));
 }
 
-/// The type of component @p i of the @p n-ary @p type, whose preceding components are @p parts.
-static const Def* component(const Def* type, Defs parts, size_t n, size_t i) {
-    if (auto var = type->isa_binder<Sigma>().second) {
-        auto& w   = type->world();
-        auto args = DefVec(n, [&](size_t k) { return k < i ? parts[k] : var->proj(n, k); });
-        return w.reduce(var, w.tuple(args), i);
-    }
-    if (auto sigma = type->isa_imm<Sigma>()) return sigma->op(i);
-    if (auto arr = type->isa_imm<Arr>()) return arr->elem();
-    return type->proj(n, i);
-}
-
 const Def* RWPhase::rewrite_imm_Tuple(const Tuple* tuple) {
     auto type = rewrite(tuple->type());
     auto ops  = rewrite(tuple->ops());
     auto n    = ops.size();
     if (Lit::isa(type->arity()) != n) return coerce(new_world().tuple(ops), type);
     for (size_t i = 0; i != n; ++i)
-        ops[i] = coerce(ops[i], component(type, ops, n, i));
+        ops[i] = coerce(ops[i], new_world().component(type, Defs(ops).subspan(0, i), n, i));
     return new_world().tuple(type, ops);
 }
 
@@ -288,7 +276,7 @@ const Def* RWPhase::reshape(DefVec& todo, const Def* type) {
         auto n     = type->num_tprojs();
         auto parts = DefVec();
         for (size_t i = 0; i != n; ++i)
-            parts.emplace_back(reshape(todo, component(type, parts, n, i)));
+            parts.emplace_back(reshape(todo, w.component(type, parts, n, i)));
         return w.tuple(type, parts);
     }
 

@@ -19,7 +19,7 @@ namespace mim {
 /// An Axm handed a bare function (`autodiff.ad f`) is instantiated with the old shape, as its type may rely on it.
 /// A Pi is pinned where a coercion would be observable:
 /// * a `Cn` an interface Lam's signature reaches through a type coerce() cannot take apart (`mem.Ptr0 K`),
-/// * a value inside a dependently-typed aggregate (a typed closure), or
+/// * an argument whose callee accepts it only through a wildcard (`«⊤:Nat; I32»`), or
 /// * a parameter indexed non-constantly or consumed whole by an Axm - only this parameter is kept.
 ///
 /// Each run flattens one level; the fixed-point pipeline repeats it.

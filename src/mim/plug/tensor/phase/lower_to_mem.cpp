@@ -513,7 +513,7 @@ const Def* LowerToMem::rewrite_imm_Tuple(const Tuple* tuple) {
     if (!type->isa_mut()) {
         auto n = ops.size();
         for (size_t i = 0; i != n; ++i)
-            if (auto t = ops[i]->type(); t != type->proj(n, i) && mentions_buf(t)) return w.tuple(ops);
+            if (auto t = ops[i]->type(); t != w.component(type, ops, n, i) && mentions_buf(t)) return w.tuple(ops);
     }
     return w.tuple(type, ops);
 }

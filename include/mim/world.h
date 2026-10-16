@@ -706,6 +706,9 @@ public:
     /// A dependent Sigma is projected while it is still being built - its later ops do not exist yet - so reducing
     /// all of them is not an option there.
     const Def* reduce(const Var* var, const Def* arg, size_t i);
+
+    /// The type of component @p i of the @p n-ary @p type, given its leading components @p parts.
+    const Def* component(const Def* type, Defs parts, size_t n, size_t i);
     ///@}
 
     /// @name for_each

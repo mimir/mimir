@@ -548,18 +548,23 @@ void World::check_tuple(const Tuple* t) {
     if (auto a = Lit::isa(type->arity()); a && *a != n)
         t->blame("tuple has {} elements but its type `{}` has arity `{}`", n, type, type->arity()).bail();
 
-    auto sigma = type->isa<Sigma>();
-    auto dep   = sigma && sigma->has_var();
-    auto red   = dep ? sigma->reduce(t) : Defs{};
-    auto elem  = type->isa_imm<Arr>() ? type->as<Arr>()->elem() : nullptr;
     for (size_t i = 0; i != n; ++i) {
-        auto expected = dep ? red[i] : elem ? elem : sigma ? sigma->op(i) : type->proj(n, i);
+        auto expected = component(type, t->ops(), n, i);
         auto op       = t->op(i);
-        if (op->type() != expected && !Checker::assignable(expected, op))
+        if (!Checker::assignable(expected, op))
             op->blame("tuple element is not assignable to its type")
                 .n("expected `{}`, got `{}` in `{}`", expected, type_of(op), type)
                 .bail();
     }
+}
+
+const Def* World::component(const Def* type, Defs parts, size_t n, size_t i) {
+    if (auto var = type->isa_binder<Sigma>().second) {
+        auto args = DefVec(n, [&](size_t k) { return k < parts.size() ? parts[k] : var->proj(n, k); });
+        return reduce(var, tuple(args), i);
+    }
+    if (auto arr = type->isa_imm<Arr>()) return arr->elem();
+    return type->proj(n, i);
 }
 
 const Def* World::tuple(Sym sym) {
