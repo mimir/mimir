@@ -74,7 +74,7 @@ The interface's own `Pi` is still flattened, but everything it mentions is rewri
 Every node rewritten within `Iface` is memoized in `Iface`'s maps, so its results never leak into context `0` and vice versa.
 The maps of a context are allocated on demand; a rewrite that never leaves context `0` pays nothing.
 Contexts are orthogonal to scopes: [`push`](@ref mim::Rewriter::push)/[`pop`](@ref mim::Rewriter::pop) act on all contexts of a scope at once.
-Where values of the two contexts meet, a [`ReprPhase`](@ref phases_repr_phase) coerces between them.
+Where values of the two contexts meet, a [`CoercePhase`](@ref phases_coerce_phase) coerces between them.
 
 ### Mutable Rewrites
 
@@ -135,7 +135,7 @@ They extend the very same index space, so one `Sieve` still answers the whole ne
 Since an appended component has no old op to rewrite from, [`new2old`](@ref mim::Sieve::new2old) - and hence `rewrite_stub` - is unavailable once you append.
 
 @warning Dropping decides *per type*, but some shapes are not the phase's to change: an [`Axm`](@ref mim::Axm)'s signature, or the dependent domain an [`App`](@ref mim::App) instantiates (`[n: Nat, «n; *»]` vs `[Nat, []]`).
-Where a reshaped value meets such a shape, it must be converted back - this is what [`ReprPhase`](@ref phases_repr_phase) does; [`SingleErasure`](@ref mim::SingleErasure) builds on it.
+Where a reshaped value meets such a shape, it must be converted back - this is what [`CoercePhase`](@ref phases_coerce_phase) does; [`SingleErasure`](@ref mim::SingleErasure) builds on it.
 
 ### Preserving Metadata
 

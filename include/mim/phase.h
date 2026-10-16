@@ -385,7 +385,7 @@ private:
 /// An RWPhase that changes the representation of values, e.g. by flattening or erasing components.
 /// Every checking position - an App's argument and result, a Tuple's ops, a Lam's body - coerce()s such a value to a
 /// shape that is *not* changed (an Axm's signature, an interface's type, ...).
-class ReprPhase : public RWPhase {
+class CoercePhase : public RWPhase {
 public:
     using RWPhase::RWPhase;
 

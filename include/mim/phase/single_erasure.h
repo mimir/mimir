@@ -12,12 +12,12 @@ namespace mim {
 /// A singleton above `*` has no unit to erase to and degrades to the type of its inhabitant instead.
 /// Where an erased value meets a shape that still demands its components (e.g. an Axm's signature), it is coerce()d:
 /// dropped components are re-inserted as their sole inhabitants, and Cn%s are η-wrapped.
-class SingleErasure : public ReprPhase {
+class SingleErasure : public CoercePhase {
 public:
     SingleErasure(World& world, std::string name)
-        : ReprPhase(world, std::move(name)) {}
+        : CoercePhase(world, std::move(name)) {}
     SingleErasure(World& world, flags_t annex)
-        : ReprPhase(world, annex) {}
+        : CoercePhase(world, annex) {}
 
 private:
     /// @name Erasure

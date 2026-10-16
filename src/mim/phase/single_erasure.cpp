@@ -78,7 +78,7 @@ const Def* SingleErasure::rewrite_mut_Sigma(Sigma* old_sigma) {
 
 const Def* SingleErasure::rewrite_imm_Tuple(const Tuple* tuple) {
     if (old_world().inhabitant(tuple->type())) return inhabitant(tuple->type());
-    return ReprPhase::rewrite_imm_Tuple(tuple);
+    return CoercePhase::rewrite_imm_Tuple(tuple);
 }
 
 const Def* SingleErasure::rewrite_imm_Extract(const Extract* extract) {
