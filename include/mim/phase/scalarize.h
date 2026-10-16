@@ -16,8 +16,8 @@ namespace mim {
 /// ```
 /// It is type-directed: an immutable `Cn` is flattened along with all its Lam%s and App%s, even escaping ones.
 /// A flattened value is coerce()d where it meets an unflattened shape, e.g. an Axm's signature.
+/// An Axm handed a bare function (`autodiff.ad f`) is instantiated with the old shape, as its type may rely on it.
 /// A Pi is pinned where a coercion would be observable:
-/// * a bare function argument of an Axm (`autodiff.ad f`),
 /// * a `Cn` an interface Lam's signature reaches through a type coerce() cannot take apart (`mem.Ptr0 K`),
 /// * a value inside a dependently-typed aggregate (a typed closure), or
 /// * a parameter indexed non-constantly or consumed whole by an Axm - only this parameter is kept.
@@ -74,6 +74,7 @@ private:
     };
 
     const Def* rewrite_imm_Pi(const Pi*) final;
+    const Def* rewrite_imm_App(const App*) final;
     /// The new Lam for @p old; the old Var maps to its reassembly from the new one.
     Lam* stub(Lam* old, const fe::Bitset& mask);
     /// Flattens @p pi%'s domain one level according to @p mask and rewrites its components with @p rw.

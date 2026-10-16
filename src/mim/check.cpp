@@ -151,10 +151,13 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
         if (!alpha_<Check>(type->arity(), val_ty->arity())) return fail();
 
         size_t a     = sigma->num_ops();
-        auto red     = sigma->reduce(val);
+        auto var     = sigma->has_var();
         auto new_ops = DefVec(a);
         for (size_t i = 0; i != a; ++i) {
-            auto new_val = assignable_(red[i], val->proj(a, i));
+            // A telescope's component only depends on its predecessors, which must have been checked.
+            auto arg     = [&](size_t k) { return k < i ? new_ops[k] : val->proj(a, k); };
+            auto t       = var ? w.reduce(var, w.tuple(DefVec(a, arg)), i) : sigma->op(i);
+            auto new_val = assignable_(t, val->proj(a, i));
             if (!new_val) return fail();
             new_ops[i] = new_val;
         }

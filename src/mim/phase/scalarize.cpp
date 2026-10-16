@@ -76,17 +76,9 @@ void Scalarize::Analysis::inspect(const Def* def) {
     }
 
     if (auto app = def->isa<App>(); app && app->axm()) {
-        // An Axm calls a bare function argument (`autodiff.ad f`) by its own convention.
-        if (auto lam = app->arg()->isa_mut<Lam>()) pin_imm(lam->type(), isa_flattenable);
-
         // `tensor.buf x` nominates `x` itself.
         if (is_polymorphic_arg(app)) keep_param(app->arg());
     }
-
-    // A dependently-typed aggregate like a typed closure dictates its values' types.
-    if (auto tuple = def->isa<Tuple>(); tuple && tuple->type()->isa_mut())
-        for (auto op : tuple->ops())
-            pin_imm(op->type(), isa_flattenable);
 
     // Only the outermost index must be constant: `t#(0₂, i)` still splits.
     const Def* idx_tuple = nullptr;
@@ -149,6 +141,15 @@ bool Scalarize::Keep::has_cn(const Def* def) {
  */
 
 const Def* Scalarize::rewrite_imm_Pi(const Pi* pi) { return flatten(*this, pi, analysis_.plan(pi)); }
+
+const Def* Scalarize::rewrite_imm_App(const App* app) {
+    if (!app->axm() || !app->arg()->isa_mut<Lam>()) return RWPhase::rewrite_imm_App(app);
+
+    auto arg    = rewrite(app->arg());
+    auto keep   = Keep(*this);
+    auto callee = keep.rewrite(app->callee());
+    return new_world().app(callee, coerce(arg, callee->type()->as<Pi>()->dom()));
+}
 
 const Def* Scalarize::flatten(Rewriter& rw, const Pi* pi, const fe::Bitset& mask) {
     if (mask.none()) return RWPhase::rewrite_imm_Pi(pi);

@@ -314,11 +314,6 @@ const Def* RWPhase::eta_coerce(const Def* val, const Def* type) {
     auto arg   = coerce(eta->var(), src->dom());
     auto codom = dst->reduce(eta->var());
     log().d("coerce {}: {} → {}", val, src, dst);
-    // An Axm reduces a Lam it is handed, which must not merely find a call to the reshaped one.
-    if (auto lam = Lam::isa_rewritable(val)) {
-        auto ops = lam->reduce(arg);
-        return eta->set(ops[0], coerce(ops[1], codom));
-    }
     return eta->set(false, coerce(new_world().app(val, arg), codom));
 }
 
