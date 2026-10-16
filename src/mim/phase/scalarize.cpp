@@ -127,19 +127,35 @@ fe::Bitset Scalarize::Analysis::plan(const Def* type) const {
 }
 
 /*
+ * Keep
+ */
+
+const Def* Scalarize::Keep::rewrite(const Def* old_def) {
+    if (!has_cn(old_def) && !has_intersection(old_def)) return sca_.rewrite(old_def);
+    bind_old(old_def->has_var());
+    return Rewriter::rewrite(old_def);
+}
+
+bool Scalarize::Keep::has_cn(const Def* def) {
+    if (auto [i, ins] = has_cn_.emplace(def, false); !ins) return i->second;
+    auto res = isa_flattenable(def) != nullptr;
+    for (auto d : def->deps())
+        res |= has_cn(d);
+    return has_cn_[def] = res;
+}
+
+/*
  * Scalarize
  */
 
-const Def* Scalarize::rewrite_imm_Pi(const Pi* pi) {
-    return flatten(pi, ctx() == Iface ? fe::Bitset() : analysis_.plan(pi));
-}
+const Def* Scalarize::rewrite_imm_Pi(const Pi* pi) { return flatten(*this, pi, analysis_.plan(pi)); }
 
-const Def* Scalarize::flatten(const Pi* pi, const fe::Bitset& mask) {
+const Def* Scalarize::flatten(Rewriter& rw, const Pi* pi, const fe::Bitset& mask) {
     if (mask.none()) return RWPhase::rewrite_imm_Pi(pi);
 
     auto doms = DefVec();
     for (size_t i = 0, n = pi->num_tdoms(); i != n; ++i) {
-        auto t = rewrite(pi->tdom(i));
+        auto t = rw.rewrite(pi->tdom(i));
         if (mask[i]) {
             auto pieces = t->tprojs();
             doms.insert(doms.end(), pieces.begin(), pieces.end());
@@ -149,7 +165,7 @@ const Def* Scalarize::flatten(const Pi* pi, const fe::Bitset& mask) {
     }
 
     auto& w  = new_world();
-    auto sca = w.pi(w.sigma(doms), rewrite(pi->codom()), pi->is_implicit());
+    auto sca = w.pi(w.sigma(doms), rw.rewrite(pi->codom()), pi->is_implicit());
     log().d("scalarize {} → {}", pi, sca);
     invalidate();
     return sca;
@@ -158,15 +174,13 @@ const Def* Scalarize::flatten(const Pi* pi, const fe::Bitset& mask) {
 Lam* Scalarize::stub(Lam* old, const fe::Bitset& mask) {
     auto n     = old->num_tvars();
     auto types = DefVec(n);
-    const Def* type;
-    {
-        // An interface Lam's own Pi is flattened like any other, but what it mentions keeps its shape.
-        auto _ = enter_ctx(old->is_rewritable() ? ctx() : Iface);
-        type   = mask.any() ? flatten(old->type()->as<Pi>(), mask) : rewrite(old->type());
-        if (old->is_set())
-            for (size_t i = 0; i != n; ++i)
-                if (mask[i]) types[i] = rewrite(old->tvar(i)->type());
-    }
+    // An interface Lam's own Pi is flattened like any other, but what it mentions keeps its shape.
+    auto keep = Keep(*this);
+    auto& rw  = old->is_rewritable() ? static_cast<Rewriter&>(*this) : keep;
+    auto type = mask.any() ? flatten(rw, old->type()->as<Pi>(), mask) : rw.rewrite(old->type());
+    if (old->is_set())
+        for (size_t i = 0; i != n; ++i)
+            if (mask[i]) types[i] = rw.rewrite(old->tvar(i)->type());
 
     auto& w  = new_world();
     auto sca = w.mut_lam(type->as<Pi>())->set(old->dbg_key());

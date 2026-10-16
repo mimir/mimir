@@ -49,32 +49,24 @@ Dependencies propagate:
 
 [`lookup()`](@ref mim::Rewriter::lookup) searches the scopes from innermost to root.
 
-### Contexts {#rewriter_contexts}
+### Nested Rewriters {#rewriter_nested}
 
 Sometimes the *same* old node must be rewritten differently depending on where it occurs.
 [`Scalarize`](@ref mim::Scalarize), for example, flattens a function type `Cn [[A, B], C]` to `Cn [A, B, C]` everywhere - except in what the signature of an interface `Lam` (an external, an annex, or a foreign declaration) mentions, which must keep its shape.
 A single map cannot hold both results.
 
-Hence, each scope keeps one map per [context](@ref mim::Rewriter::Ctx) - a plain number, `0` by default.
-[`enter_ctx(ctx)`](@ref mim::Rewriter::enter_ctx) switches [`ctx()`](@ref mim::Rewriter::ctx) until the end of the C++ scope, and both [`map()`](@ref mim::Rewriter::map) and [`lookup()`](@ref mim::Rewriter::lookup) only consult the maps of the current context:
+Hence, such a rewrite runs a second Rewriter with a map of its own that rebuilds only what differs and hands everything else back to the outer one:
 
 ```cpp
-static constexpr Ctx Iface = 1;
-
-const Def* rewrite_imm_Pi(const Pi* pi) final {
-    return flatten(pi, ctx() == Iface ? fe::Bitset() : analysis_.plan(pi));
+const Def* Scalarize::Keep::rewrite(const Def* old_def) {
+    if (!has_cn(old_def) && !has_intersection(old_def)) return sca_.rewrite(old_def);
+    bind_old(old_def->has_var());
+    return Rewriter::rewrite(old_def); // rebuilds a Pi without flattening it
 }
-
-// in Scalarize::stub for an interface old_lam:
-auto _    = enter_ctx(Iface);
-auto type = flatten(old_lam->type()->as<Pi>(), mask);
 ```
 
-The interface's own `Pi` is still flattened, but everything it mentions is rewritten within `Iface`.
-Every node rewritten within `Iface` is memoized in `Iface`'s maps, so its results never leak into context `0` and vice versa.
-The maps of a context are allocated on demand; a rewrite that never leaves context `0` pays nothing.
-Contexts are orthogonal to scopes: [`push`](@ref mim::Rewriter::push)/[`pop`](@ref mim::Rewriter::pop) act on all contexts of a scope at once.
-Where values of the two contexts meet, a [`CoercePhase`](@ref phases_coerce_phase) coerces between them.
+Whatever does not mention a `Cn` - or the `Var` of a binder rebuilt in here - is thus rewritten once and shared, while the nested map dies with the nested Rewriter.
+Where values of the two shapes meet, a [`CoercePhase`](@ref phases_coerce_phase) coerces between them.
 
 ### Mutable Rewrites
 

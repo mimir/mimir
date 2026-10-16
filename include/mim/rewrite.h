@@ -33,16 +33,6 @@ public:
     World& world() { return *world_; }
     ///@}
 
-    /// @name Context
-    /// The same Def may need a different rewrite depending on where it occurs, e.g. in an interface's signature.
-    /// Hence, each Ctx other than the default `0` has a map of its own.
-    ///@{
-    using Ctx = u32;
-    Ctx ctx() const { return ctx_; }
-    /// Switches ctx() to @p ctx and restores it at the end of the scope.
-    [[nodiscard]] auto enter_ctx(Ctx ctx) { return fe::Restore(ctx_, ctx); }
-    ///@}
-
     /// @name Push / Pop
     ///@{
     /// Opens a scope for the mappings whose old Def depends on @p old_vars or whose new Def depends on @p new_vars.
@@ -53,6 +43,10 @@ public:
     void bind_old(const Var* var);
     /// Adds the new @p var - if any - to the innermost scope.
     void bind_new(const Var* var);
+    void bind(const Var* old_var, const Var* new_var) {
+        bind_old(old_var);
+        bind_new(new_var);
+    }
     ///@}
 
     /// @name Map / Lookup
@@ -71,8 +65,7 @@ public:
     /// @returns `nullptr` if nothing was found.
     virtual const Def* lookup(const Def* old_def) {
         for (const auto& scope : scopes_ | std::views::reverse)
-            if (ctx_ < scope.maps.size())
-                if (auto new_def = fe::lookup(scope.maps[ctx_], old_def)) return new_def;
+            if (auto new_def = fe::lookup(scope.old2new, old_def)) return new_def;
         return nullptr;
     }
     ///@}
@@ -115,18 +108,25 @@ public:
 private:
     World* world_;
     Def* curr_mut_ = nullptr;
-    Ctx ctx_       = 0;
 
 protected:
     struct Scope {
         Vars old_vars; ///< Only mappings depending on these go here; the root's are VarRewriter's substitutions.
         Vars new_vars;
-        fe::Vector<Def2Def> maps; ///< The map of each Ctx - allocated on demand.
+        Def2Def old2new;
     };
     fe::Vector<Scope> scopes_;
 
-    /// The map of the current ctx() in the innermost push() scope.
-    Def2Def& old2new() { return slot(scopes_.back()); }
+    /// The map of the innermost push() scope.
+    Def2Def& old2new() { return scopes_.back().old2new; }
+
+    /// Does @p old_def depend on the old Vars of any scope?
+    bool has_intersection(const Def* old_def) {
+        // Def::has_free_vars_in avoids materializing old_def's merged free_vars() - once per level, at that.
+        for (const auto& scope : scopes_ | std::views::reverse)
+            if (old_def->has_free_vars_in(scope.old_vars)) return true;
+        return false;
+    }
 
     /// Updates curr_mut() to @p new_mut and restores it at the end of the scope.
     [[nodiscard]] auto enter(Def* new_mut) { return fe::Restore(curr_mut_, new_mut); }
@@ -135,12 +135,6 @@ protected:
     /// A stub that already has users stays mutable, as the users captured it during its own rewrite.
     /// Only needed if you fill a stub yourself instead of going through rewrite_stub.
     const Def* seal(Def* old_mut, Def* new_mut);
-
-private:
-    Def2Def& slot(Scope& scope) {
-        if (scope.maps.size() <= ctx_) scope.maps.resize(ctx_ + 1);
-        return scope.maps[ctx_];
-    }
 };
 
 /// Extends Rewriter for variable substitution.
@@ -173,14 +167,6 @@ public:
     friend void swap(VarRewriter& vrw1, VarRewriter& vrw2) noexcept {
         using std::swap;
         swap(static_cast<Rewriter&>(vrw1), static_cast<Rewriter&>(vrw2));
-    }
-
-private:
-    bool has_intersection(const Def* old_def) {
-        // Def::has_free_vars_in avoids materializing old_def's merged free_vars() - once per level, at that.
-        for (const auto& scope : scopes_ | std::views::reverse)
-            if (old_def->has_free_vars_in(scope.old_vars)) return true;
-        return false;
     }
 };
 

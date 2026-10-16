@@ -248,8 +248,8 @@ Coercion matches value and type leaf by leaf: it explodes and reassembles tuples
 Where nothing was reshaped, value and type are already [assignable](@ref mim::Checker::assignable) and coercion is the identity.
 
 This lets the phase decide its representation *per type* instead of first pinning every shape that could meet a fixed one in an [`Analysis`](@ref mim::Analysis).
-To keep a shape fixed by its *position*, rewrite it in a dedicated [context](@ref rewriter_contexts):
-[`Scalarize`](@ref mim::Scalarize) rewrites everything an interface `Lam`'s signature mentions in its `Iface` context, where no `Pi` gets flattened.
+To keep a shape fixed by its *position*, rewrite it with a [nested Rewriter](@ref rewriter_nested):
+[`Scalarize`](@ref mim::Scalarize) rewrites everything an interface `Lam`'s signature mentions with its `Keep` rewriter, where no `Pi` gets flattened.
 The very same `Pi` elsewhere is flattened in context `0`, and coercion bridges both wherever they meet.
 
 ### Typical Shape

@@ -32,9 +32,9 @@ const Def* Rewriter::map(const Def* old_def, const Def* new_def) {
             old_def->has_free_vars_in(scope.old_vars) || new_def->has_free_vars_in(scope.new_vars)) {
             // A binder rebuilt in here takes its Var - and what depends on it - along.
             if (auto var = old_def->has_var()) scope.old_vars = old_def->world().vars().insert(scope.old_vars, var);
-            return slot(scope)[old_def] = new_def;
+            return scope.old2new[old_def] = new_def;
         }
-    return slot(scopes_.front())[old_def] = new_def;
+    return scopes_.front().old2new[old_def] = new_def;
 }
 
 void Rewriter::bind_old(const Var* var) {

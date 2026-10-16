@@ -57,14 +57,27 @@ public:
         , analysis_(world) {}
 
 private:
-    /// What an interface Lam's signature mentions keeps its shape.
-    static constexpr Ctx Iface = 1;
+    /// Rebuilds what an interface Lam's signature mentions in its old shape and leaves everything else to Scalarize.
+    class Keep : public Rewriter {
+    public:
+        Keep(Scalarize& sca)
+            : Rewriter(sca.new_world())
+            , sca_(sca) {}
+
+        const Def* rewrite(const Def*) final;
+
+    private:
+        bool has_cn(const Def*);
+
+        Scalarize& sca_;
+        DefMap<bool> has_cn_;
+    };
 
     const Def* rewrite_imm_Pi(const Pi*) final;
     /// The new Lam for @p old; the old Var maps to its reassembly from the new one.
     Lam* stub(Lam* old, const fe::Bitset& mask);
-    /// Flattens @p pi%'s domain one level according to @p mask.
-    const Def* flatten(const Pi* pi, const fe::Bitset& mask);
+    /// Flattens @p pi%'s domain one level according to @p mask and rewrites its components with @p rw.
+    const Def* flatten(Rewriter& rw, const Pi* pi, const fe::Bitset& mask);
     const Def* rewrite_mut_Lam(Lam*) final;
 
     Analysis analysis_;
