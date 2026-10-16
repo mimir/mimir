@@ -7,6 +7,8 @@
 
 #include <mim/driver.h>
 #include <mim/lam.h>
+#include <mim/nest.h>
+#include <mim/rewrite.h>
 
 #include <mim/plug/affine/affine.h>
 #include <mim/plug/btensor/btensor.h>
@@ -32,6 +34,26 @@ bool contains_gpu_init(const Def* def, DefSet& seen) {
     return false;
 }
 
+/// Substitutes the var of @p old_lam and moves every memory in its Nest to `gpu.GlobalM`.
+class GlobalMem : public Rewriter {
+public:
+    GlobalMem(Lam* old_lam, Lam* new_lam)
+        : Rewriter(old_lam->world())
+        , nest_(old_lam) {
+        auto& w = world();
+        map(old_lam->var(), new_lam->var());
+        map(w.call<mem::M>(0), w.annex<gpu::GlobalM>());
+    }
+
+    const Def* rewrite(const Def* old_def) final {
+        if (auto mut = old_def->isa_mut(); mut && !nest_.contains(mut)) return mut;
+        return Rewriter::rewrite(old_def);
+    }
+
+private:
+    Nest nest_;
+};
+
 /// Scalarize may flatten an escaped `comb`/`post` from `Cn [[mem, T, ins], Cn ret]` to `Cn [mem, T, ins, Cn ret]`.
 Lam* rebuild_lam_global_mem(Lam* lam, const Def* Tout, Sym name) {
     auto& w        = lam->world();
@@ -47,7 +69,7 @@ Lam* rebuild_lam_global_mem(Lam* lam, const Def* Tout, Sym name) {
         auto extra_ty = lam->var(nv, 2)->type();
         new_lam       = w.mut_con(Defs{global_ty, Tin, extra_ty, w.cn({global_ty, Tout})})->set(name);
     }
-    new_lam->set(true, lam->reduce_body(new_lam->var()));
+    new_lam->set(true, GlobalMem(lam, new_lam).rewrite(lam->body()));
     return new_lam;
 }
 

@@ -161,7 +161,14 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
         return w.tuple(new_ops);
     }
 
-    return alpha_<Check>(type, val_ty) ? val : fail();
+    auto num_deferred = deferred_.size();
+    if (alpha_<Check>(type, val_ty)) return val;
+    // Ex falso: a value of the empty type is dead code, e.g. an extract with an `Idx 0` index.
+    if (auto bot = val_ty->isa<Bot>(); bot && bot->type()->isa<Type>()) {
+        deferred_.resize(num_deferred);
+        return val;
+    }
+    return fail();
 }
 
 std::pair<Checker::Binders::iterator, bool> Checker::bind(Def* mut, const Def* d) {

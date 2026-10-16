@@ -188,7 +188,7 @@ const Def* Clos2SJLJ::subst_exn_closures(const Def* def) {
         auto tlam   = get_throw(c.fnc_as_lam()->dom());
         return map(def, clos_pack(w.tuple({cur_jbuf_, cur_rbuf_, w.lit_idx(i)}), tlam, c.type()));
     }
-    if (def->isa_mut() || !def->is_term()) return def;
+    if (def->isa_mut() || (!def->is_term() && def->is_closed())) return def; // a type may depend on a rewritten term
     if (def->isa<Var>()) return def; // atomic; binder is in binder_ and not descended into here
     return rewrite_imm(def)->set(def->dbg_key());
 }
