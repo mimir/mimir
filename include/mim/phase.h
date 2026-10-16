@@ -374,7 +374,7 @@ protected:
     /// Converts the *new* @p new_val into a value of the *new* @p new_type, where a checking position demands it.
     /// Both are matched leaf by leaf: tuples are exploded and reassembled, Pi%s are η-wrapped, and
     /// information-free components are dropped or filled in with their sole inhabitant.
-    const Def* coerce(const Def* new_val, const Def* new_type);
+    const Def* coerce(const Def* new_type, const Def* new_val);
     /// Does coerce() explode and reassemble values of @p type?
     static bool splittable(const Def* type) {
         return (type->isa<Sigma>() || type->isa_imm<Arr>()) && type->num_tprojs() != 1;
@@ -399,12 +399,12 @@ private:
 
     /// η-wraps @p val into a Lam of @p type, coerce()ing its Var to @p val%'s domain and its result to the codomain.
     /// @returns `nullptr` unless both @p val%'s type and @p type are Pi%s.
-    const Def* eta_coerce(const Def* val, const Def* type);
+    const Def* eta_coerce(const Def* type, const Def* val);
     /// Builds a value of @p type from the top of the stack @p todo.
     /// Greedy matching is sound as assignable types share their leaves - unless a wildcard like `⊤` interferes.
     const Def* reshape(DefVec& todo, const Def* type);
 
-    DefMap<Def2Def> etas_; ///< type ↦ val ↦ eta_coerce(val, type)
+    DefMap<Def2Def> etas_; ///< type ↦ val ↦ eta_coerce(type, val)
 
     Analysis* analysis_;
     std::unique_ptr<World> new_world_; ///< Owns Rewriter::world.

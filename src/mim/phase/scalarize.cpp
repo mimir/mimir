@@ -78,8 +78,7 @@ void Scalarize::Analysis::inspect(const Def* def) {
 
     if (auto app = def->isa<App>()) {
         // A wildcard like `«⊤; I32»` admits an argument with other leaves, which coerce() cannot reassemble.
-        if (auto pi = app->callee()->type()->isa<Pi>();
-            pi && !Checker::alpha<Checker::Test>(pi->dom(), app->arg()->type()))
+        if (auto pi = app->callee()->type()->isa<Pi>(); pi && !Check::test_alpha(pi->dom(), app->arg()->type()))
             pin_imm(app->arg()->type(), isa_flattenable);
         // `tensor.buf x` nominates `x` itself.
         if (app->axm() && is_polymorphic_arg(app)) keep_param(app->arg());
@@ -153,7 +152,7 @@ const Def* Scalarize::rewrite_imm_App(const App* app) {
     auto arg    = rewrite(app->arg());
     auto keep   = Keep(*this);
     auto callee = keep.rewrite(app->callee());
-    return new_world().app(callee, coerce(arg, callee->type()->as<Pi>()->dom()));
+    return new_world().app(callee, coerce(callee->type()->as<Pi>()->dom(), arg));
 }
 
 const Def* Scalarize::flatten(Rewriter& rw, const Pi* pi, const fe::Bitset& mask) {

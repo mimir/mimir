@@ -68,7 +68,7 @@ const Def* normalize_struc(const Def*, const Def*, const Def* arg) {
 template<alpha id>
 const Def* normalize_alpha(const Def*, const Def*, const Def* arg) {
     auto [a, b] = arg->projs<2>();
-    auto res    = Checker::alpha<Checker::Test>(a, b);
+    auto res    = Check::test_alpha(a, b);
     if (res ^ (id == alpha::e)) arg->blame("'{}' and '{}' {}alpha-equivalent", a, b, !res ? "not " : "").bail();
     return a;
 }

@@ -220,11 +220,11 @@ const Def* RWPhase::rewrite_imm_App(const App* app) {
     // The arg goes first for the same reason as in Rewriter::rewrite_imm_App.
     auto arg    = rewrite(app->arg());
     auto callee = rewrite(app->callee());
-    if (auto pi = callee->isa_type<Pi>()) arg = coerce(arg, pi->dom());
+    if (auto pi = callee->isa_type<Pi>()) arg = coerce(pi->dom(), arg);
     auto res = new_world().app(callee, arg);
     // A partially applied Axm must stay one, as its normalizer only fires once it is saturated.
     if (app->axm() && app->curry() != 0) return res;
-    return coerce(res, rewrite(app->type()));
+    return coerce(rewrite(app->type()), res);
 }
 
 /// Is @p tuple%'s type what World::tuple would infer from its ops?
@@ -240,9 +240,9 @@ const Def* RWPhase::rewrite_imm_Tuple(const Tuple* tuple) {
     auto type = rewrite(tuple->type());
     auto ops  = rewrite(tuple->ops());
     auto n    = ops.size();
-    if (Lit::isa(type->arity()) != n) return coerce(new_world().tuple(ops), type);
+    if (Lit::isa(type->arity()) != n) return coerce(type, new_world().tuple(ops));
     for (size_t i = 0; i != n; ++i)
-        ops[i] = coerce(ops[i], new_world().component(type, Defs(ops).subspan(0, i), n, i));
+        ops[i] = coerce(new_world().component(type, Defs(ops).subspan(0, i), n, i), ops[i]);
     return new_world().tuple(type, ops);
 }
 
@@ -256,11 +256,11 @@ const Def* RWPhase::rewrite_stub(Def* old_mut, Def* new_mut) {
     auto pi = new_lam->type();
     // Creating the Var just to reduce a non-dependent codomain would mark it as used.
     auto codom = pi->has_var() ? pi->reduce(new_lam->var()) : pi->codom();
-    new_lam->set(rewrite(old_lam->filter()), coerce(rewrite(old_lam->body()), codom));
+    new_lam->set(rewrite(old_lam->filter()), coerce(codom, rewrite(old_lam->body())));
     return seal(old_mut, new_mut);
 }
 
-const Def* RWPhase::coerce(const Def* val, const Def* type) {
+const Def* RWPhase::coerce(const Def* type, const Def* val) {
     if (val->type() == type) return val;
     auto todo = DefVec{val};
     auto res  = reshape(todo, type);
@@ -274,8 +274,8 @@ const Def* RWPhase::reshape(DefVec& todo, const Def* type) {
     auto& w    = new_world();
     auto front = todo.empty() ? nullptr : todo.back();
     if (front) {
-        if (auto res = Checker::assignable(type, front)) return todo.pop_back(), res;
-        if (auto res = eta_coerce(front, type)) return todo.pop_back(), res;
+        if (auto res = Check::coerce(type, front)) return todo.pop_back(), res;
+        if (auto res = eta_coerce(type, front)) return todo.pop_back(), res;
     }
 
     if (auto s = w.inhabitant(type)) return s;
@@ -299,7 +299,7 @@ const Def* RWPhase::reshape(DefVec& todo, const Def* type) {
     fe::throwf("cannot coerce to `{}`", type);
 }
 
-const Def* RWPhase::eta_coerce(const Def* val, const Def* type) {
+const Def* RWPhase::eta_coerce(const Def* type, const Def* val) {
     auto dst = type->isa<Pi>();
     auto src = val->type()->isa<Pi>();
     if (!dst || !src) return nullptr;
@@ -308,10 +308,10 @@ const Def* RWPhase::eta_coerce(const Def* val, const Def* type) {
 
     auto eta   = new_world().mut_lam(dst)->set(val->dbg_key());
     memo       = eta; // before the recursion below may rehash etas_
-    auto arg   = coerce(eta->var(), src->dom());
+    auto arg   = coerce(src->dom(), eta->var());
     auto codom = dst->reduce(eta->var());
     log().d("coerce {}: {} → {}", val, src, dst);
-    return eta->set(false, coerce(new_world().app(val, arg), codom));
+    return eta->set(false, coerce(codom, new_world().app(val, arg)));
 }
 
 /*

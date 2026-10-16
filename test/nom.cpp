@@ -20,9 +20,9 @@ TEST_CASE("Nom: each nom is a distinct type") {
     CHECK(meter == w.nom(1, i32));
     CHECK(meter != i32);
     CHECK(meter != foot);
-    CHECK(Checker::alpha<Checker::Check>(meter, meter));
-    CHECK(!Checker::alpha<Checker::Check>(meter, foot));
-    CHECK(!Checker::alpha<Checker::Check>(meter, i32));
+    CHECK(Check::alpha(meter, meter));
+    CHECK(!Check::alpha(meter, foot));
+    CHECK(!Check::alpha(meter, i32));
 }
 
 TEST_CASE("Nom: name and struc") {
@@ -69,9 +69,9 @@ TEST_CASE("Nom: instances of a generic nom") {
 
     auto pi = mk(1);
     CHECK(pi->reduce(w.type_nat()) == w.nom(1, w.type_nat()));
-    CHECK(Checker::alpha<Checker::Check>(pi, mk(1)));
-    CHECK(!Checker::alpha<Checker::Check>(pi, mk(2)));
-    CHECK(!Checker::alpha<Checker::Check>(w.nom(1, w.type_nat()), w.nom(1, w.type_bool())));
+    CHECK(Check::alpha(pi, mk(1)));
+    CHECK(!Check::alpha(pi, mk(2)));
+    CHECK(!Check::alpha(w.nom(1, w.type_nat()), w.nom(1, w.type_bool())));
 }
 
 TEST_CASE("NomErasure: nominals erase to what they wrap") {

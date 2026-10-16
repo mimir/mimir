@@ -216,7 +216,7 @@ static bool is_wildcard(const Ptrn* ptrn) {
 const Def* ErrorPtrn::emit_value(Emitter&, const Def* def) const { return def; }
 
 static const Def* assign(Emitter& e, const Ptrn* ptrn, const Def* type, const Def* def) {
-    if (auto res = Checker::assignable(type, def)) return res->set(ptrn->dbg());
+    if (auto res = Check::coerce(type, def)) return res->set(ptrn->dbg());
 
     e.error()
         .e(ptrn->loc(), "value bound to `{}` is not assignable to its annotated type", ptrn->dbg().sym())
@@ -616,7 +616,7 @@ Lam* MatchExpr::Arm::emit(Emitter& e, const Def* dom) const {
     auto _ = e.world().push(loc());
     if (ptrn()) {
         auto dom_t = ptrn()->emit_type(e);
-        if (dom && !Checker::alpha<Checker::Check>(dom_t, dom))
+        if (dom && !Check::alpha(dom_t, dom))
             e.error()
                 .e(ptrn()->loc(), "pattern of type `{}` does not match the constructor's payload `{}`", dom_t, dom)
                 .bail();

@@ -245,7 +245,7 @@ So wherever a type is *checked*, every [`RWPhase`](@ref mim::RWPhase) [`coerce()
 - a [`Lam`](@ref mim::Lam)'s body to its codomain.
 
 Coercion matches value and type leaf by leaf: it explodes and reassembles tuples, η-wraps a function whose `Pi` differs, and drops or fills in components that have a sole [`inhabitant`](@ref mim::World::inhabitant).
-Where nothing was reshaped, value and type are already [assignable](@ref mim::Checker::assignable) and coercion is the identity.
+Where nothing was reshaped, value and type are already [assignable](@ref mim::Check::coerce) and coercion is the identity.
 
 This lets the phase decide its representation *per type* instead of first pinning every shape that could meet a fixed one in an [`Analysis`](@ref mim::Analysis).
 To keep a shape fixed by its *position*, rewrite it with a [nested Rewriter](@ref rewriter_nested):

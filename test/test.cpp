@@ -230,10 +230,10 @@ TEST_CASE("Checker: alpha") {
         auto l_1 = w.lam(pi, false, w.lit_nat_1());
 
         auto check = [](const Def* l1, const Def* l2, bool infer_res, bool non_infer_res) {
-            CHECK(Checker::alpha<Checker::Check>(l1, l2) == infer_res);
-            CHECK(Checker::alpha<Checker::Check>(l2, l1) == infer_res);
-            CHECK(Checker::alpha<Checker::Test>(l1, l2) == non_infer_res);
-            CHECK(Checker::alpha<Checker::Test>(l2, l1) == non_infer_res);
+            CHECK(Check::alpha(l1, l2) == infer_res);
+            CHECK(Check::alpha(l2, l1) == infer_res);
+            CHECK(Check::alpha(l1, l2) == non_infer_res);
+            CHECK(Check::alpha(l2, l1) == non_infer_res);
         };
 
         check(lxx, lxx, true, true);
@@ -291,8 +291,8 @@ TEST_CASE("Checker: alpha") {
         l1->set(false, h);
         auto l2 = w.mut_lam(dep)->set(false, h);
 
-        CHECK(Checker::alpha<Checker::Check>(l1, l2));
-        CHECK(Checker::alpha<Checker::Test>(l1, l2));
+        CHECK(Check::alpha(l1, l2));
+        CHECK(Check::alpha(l1, l2));
     }
 }
 

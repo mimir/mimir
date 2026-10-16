@@ -32,7 +32,7 @@ public:
     bool operator()(const Def* def) {
         note_    = std::format("{}", def);
         auto got = parse(std::format("{}let _rt = {};", prelude_, note_));
-        if (!got || !Checker::alpha<Checker::Test>(def, got)) {
+        if (!got || !Check::test_alpha(def, got)) {
             note_ += std::format("   -->   {}", got);
             return false;
         }

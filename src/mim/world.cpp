@@ -55,7 +55,7 @@ Shape fused_index(const Def* t, Shape is, Shape js) {
 
 /// Coerces @p val to @p elem_type or bails out with the "not assignable" diagnostic.
 const Def* assign_or_bail(const Def* elem_type, const Def* val) {
-    auto res = Checker::assignable(elem_type, val);
+    auto res = Check::coerce(elem_type, val);
     if (!res)
         val->blame("value is not assignable to element type")
             .n("expected `{}`, got `{}`", elem_type, type_of(val))
@@ -73,7 +73,7 @@ const Def* nary_elem_type(const Def* d, Shape index) {
     auto ri    = index.rank();
     auto rt    = shape.rank();
     // A *partial* index peels only its own axes and yields a sub-array.
-    auto fit = ri && rt ? *ri <= *rt : Checker::alpha<Checker::Check>(index->arity(), shape->arity());
+    auto fit = ri && rt ? *ri <= *rt : Check::alpha(index->arity(), shape->arity());
     if (!fit)
         index->blame("index of rank `{}` does not fit shape `{}` of rank `{}`", index->arity(), *shape, shape->arity())
             .bail();
@@ -82,7 +82,7 @@ const Def* nary_elem_type(const Def* d, Shape index) {
     // need it here. A fused shape never binds the Arr's own var, so its extents compare as they stand.
     if (ri && rt)
         for (nat_t i = 0; i != *ri; ++i)
-            if (auto size = Idx::isa(index[i]->unfold_type()); size && !Checker::alpha<Checker::Check>(shape[i], size))
+            if (auto size = Idx::isa(index[i]->unfold_type()); size && !Check::alpha(shape[i], size))
                 index[i]->blame("index does not fit within arity `{}`", shape[i]).bail();
 
     return d->world().peel(arr, *index);
@@ -303,7 +303,7 @@ void World::solve_levels() {
     // Retry first: Hole%s solved in the meantime may have turned a constraint into one that determines the rest.
     for (auto eq : std::exchange(move_.levels, {})) {
         auto _ = push(eq.loc);
-        if (!Checker::alpha<Checker::Check>(eq.lmax, eq.level))
+        if (!Check::alpha(eq.lmax, eq.level))
             error().e(eq.loc, "universe level `{}` does not match `{}`", eq.lmax->zonk(), eq.level->zonk()).bail();
     }
 
@@ -329,7 +329,7 @@ static const Def* level_of(const Def* type) {
         if (auto hole = Hole::isa_unset(kind)) {
             auto& w    = type->world();
             auto level = w.mut_hole_level();
-            if (Checker::alpha<Checker::Check>(hole, w.type(level))) return level;
+            if (Check::alpha(hole, w.type(level))) return level;
         }
     }
     type->blame("`{}` is not a type", type).bail();
@@ -408,7 +408,7 @@ const Def* World::app(const Def* callee, const Def* arg) {
             callee->blame("callee is not of function type").n("callee `{}` has type `{}`", callee, type_of(callee)))
             .bail();
 
-    auto new_arg = Checker::assignable(pi->dom(), arg);
+    auto new_arg = Check::coerce(pi->dom(), arg);
     if (!new_arg)
         declared_here(arg->blame("argument is not assignable to callee's domain")
                           .n("expected `{}`, got `{}`", pi->dom(), type_of(arg)))
@@ -485,7 +485,7 @@ const Def* World::sigma(Defs ops) {
     if (n == 1) return ops[0]->zonk();
 
     auto zops = Def::zonk(ops);
-    if (auto uni = Checker::is_uniform(zops)) return arr(n, uni);
+    if (auto uni = Check::is_uniform(zops)) return arr(n, uni);
     return unify<Sigma>(Sigma::infer(*this, zops), zops);
 }
 
@@ -500,7 +500,7 @@ const Def* World::tuple(Defs ops) {
     auto sigma = Tuple::infer(*this, zops);
     // An immutable Sigma means the ops' types differ, so the ops can't be uniform either.
     auto t     = tuple(sigma, zops, !sigma->isa_imm<Sigma>());
-    auto new_t = Checker::assignable(sigma, t);
+    auto new_t = Check::coerce(sigma, t);
     if (!new_t) t->blame("tuple of type `{}` is not assignable to inferred type `{}`", type_of(t), sigma).bail();
 
     return new_t;
@@ -522,7 +522,7 @@ const Def* World::tuple(const Def* type, Defs ops_, bool may_be_uniform) {
         if (n == 0) return tuple();
         if (n == 1) return ops[0];
         if (may_be_uniform)
-            if (auto uni = Checker::is_uniform(ops)) return pack(n, uni);
+            if (auto uni = Check::is_uniform(ops)) return pack(n, uni);
     }
 
     // eta rule for tuples: (extract(tup, 0), extract(tup, 1), extract(tup, 2)) -> tup
@@ -551,7 +551,7 @@ void World::check_tuple(const Tuple* t) {
     for (size_t i = 0; i != n; ++i) {
         auto expected = component(type, t->ops(), n, i);
         auto op       = t->op(i);
-        if (!Checker::assignable(expected, op))
+        if (!Check::coerce(expected, op))
             op->blame("tuple element is not assignable to its type")
                 .n("expected `{}`, got `{}` in `{}`", expected, type_of(op), type)
                 .bail();
@@ -686,8 +686,7 @@ bool World::is_folded_axis(const Def* type, const Def* index, const Def* size) {
         if (!sigma || sigma->num_ops() != 1) return true;
     }
 
-    if (!Checker::alpha<Checker::Check>(type->arity(), size))
-        index->blame("index does not fit within arity `{}`", type->arity()).bail();
+    if (!Check::alpha(type->arity(), size)) index->blame("index does not fit within arity `{}`", type->arity()).bail();
     return false;
 }
 
@@ -960,9 +959,8 @@ const Def* World::inj(const Def* type, const Def* value) {
         auto value_t = value->unfold_type();
         // Hole%s are resolved only once no case matches outright, so a mere search never commits to one.
         auto is_case = [value, value_t](bool infer) {
-            auto alpha = [infer](const Def* a, const Def* b) {
-                return infer ? Checker::alpha<Checker::Check>(a, b) : Checker::alpha<Checker::Test>(a, b);
-            };
+            auto alpha
+                = [infer](const Def* a, const Def* b) { return infer ? Check::alpha(a, b) : Check::test_alpha(a, b); };
             return [=](const Def* c) {
                 // An open value may still turn out to be the singleton's inhabitant.
                 if (auto single = c->isa<Single>())
@@ -975,7 +973,7 @@ const Def* World::inj(const Def* type, const Def* value) {
             value->blame("value of type `{}` is not a case of union type `{}`", type_of(value), type).bail();
         return unify<Inj>(type, value, flags_t(0));
     }
-    if (auto v = Checker::assignable(type, value)) return v;
+    if (auto v = Check::coerce(type, value)) return v;
     value->blame("value is not assignable to `{}`", type)
         .n("`{}` is neither a union nor a nominal type, so `inj` into it is the identity", type)
         .n("expected `{}`, got `{}`", type, type_of(value))
@@ -991,7 +989,7 @@ const Def* World::inj(const Def* type, nat_t index, const Def* value) {
     if (index >= variant->num_ops())
         value->blame("variant type `{}` has {} cases but case {} was requested", type, variant->num_ops(), index)
             .bail();
-    if (auto v = Checker::assignable(variant->op(index), value)) return unify<Inj>(type, v, flags_t(index));
+    if (auto v = Check::coerce(variant->op(index), value)) return unify<Inj>(type, v, flags_t(index));
     value->blame("value is not assignable to case {} of variant type `{}`", index, type)
         .n("expected `{}`, got `{}`", variant->op(index), type_of(value))
         .bail();
@@ -1028,7 +1026,7 @@ const Def* World::match(Defs ops_) {
         const Def* type = nullptr;
         for (size_t i = 0, e = arms.size(); i != e; ++i) {
             auto pi = arms[i]->isa_type<Pi>();
-            if (!Checker::alpha<Checker::Check>(pi->dom(), variant->op(i)))
+            if (!Check::alpha(pi->dom(), variant->op(i)))
                 arms[i]
                     ->blame("domain type `{}` of match-expression arm does not match variant case `{}`", pi->dom(),
                             variant->op(i))
@@ -1081,7 +1079,7 @@ const Def* World::match(Defs ops_) {
     if (auto inj = scrutinee->isa<Inj>()) {
         auto value = inj->value();
         for (size_t i = 0, e = cases.size(); i != e; ++i)
-            if (Checker::alpha<Checker::Check>(value->unfold_type(), cases[i])) return dispatch(sel[i], value);
+            if (Check::alpha(value->unfold_type(), cases[i])) return dispatch(sel[i], value);
         scrutinee->blame("injected value type `{}` is not a case of union type `{}`", type_of(value), join).bail();
     }
 
@@ -1118,7 +1116,7 @@ const Def* World::name(const Def* n, const Def* value) {
     auto nom = n->zonk()->isa<Nom>();
     value    = value->zonk();
     if (!nom) value->blame("cannot inject into non-nominal type `{}`", n).bail();
-    if (auto v = Checker::assignable(nom->op(), value)) return unify<Name>(nom, v);
+    if (auto v = Check::coerce(nom->op(), value)) return unify<Name>(nom, v);
     value->blame("value is not assignable to nominal type `{}`", nom)
         .n("expected `{}`, got `{}`", nom->op(), type_of(value))
         .bail();
