@@ -245,7 +245,6 @@ int main(int argc, char** argv) {
             .opt(flags.break_on_alpha      , ""          , ""  , "--break-on-alpha"      , "Triggers a breakpoint as soon as two expressions turn out not to be alpha-equivalent.")
             .opt(flags.break_on_error      , ""          , ""  , "--break-on-error"      , "Triggers a breakpoint on an error log.")
             .opt(flags.break_on_warn       , ""          , ""  , "--break-on-warn"       , "Triggers a breakpoint on a warning log.")
-            .opt(flags.check_tuples        , ""          , ""  , "--check-tuples"        , "Reports each tuple whose elements are not assignable to its ascribed type.")
             .opt(flags.reeval_breakpoints  , ""          , ""  , "--reeval-breakpoints"  , "Triggers a breakpoint even upon unifying a node that has already been built.")
             .opt(flags.trace_gids          , ""          , ""  , "--trace-gids"          , "Outputs gids during `World::unify`/`insert`.")
             .opt(watchpoints               , "gid"       , "-w", "--watch"               , "Triggers a breakpoint when a node with this global id is set.")

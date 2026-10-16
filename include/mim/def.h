@@ -450,6 +450,8 @@ public:
     /// @note Keeps the one-arg form Def::proj lost: it only ever indexes a Pi domain, an App argument or a Lam
     /// var, where peeling a 1-tuple is the calling convention (`Cn [X]` ≡ `Cn X`) rather than an accident.
     const Def* tproj(nat_t i) const { return proj(num_tprojs(), i); }
+    /// Is this a Sigma or an immutable Arr that Def::tprojs splits into more than one component?
+    bool is_splittable() const;
 
     /// Splits this Def via Def::proj%ections into an Array (if `A == std::dynamic_extent`) or `std::array` (otherwise).
     /// Applies @p f to each element.

@@ -506,7 +506,13 @@ const Def* World::tuple(Defs ops) {
     return new_t;
 }
 
-const Def* World::tuple(const Def* type, Defs ops) { return tuple(type, ops, true); }
+const Def* World::tuple(const Def* type, Defs ops) {
+    auto t = tuple(type, ops, true);
+#ifdef MIM_ENABLE_CHECKS
+    if (auto tup = t->isa<Tuple>()) check_tuple(tup);
+#endif
+    return t;
+}
 
 const Def* World::tuple(const Def* type, Defs ops_, bool may_be_uniform) {
     // TODO type-check type vs inferred type
@@ -534,11 +540,7 @@ const Def* World::tuple(const Def* type, Defs ops_, bool may_be_uniform) {
         if (eta) return tup;
     }
 
-    auto t = unify<Tuple>(type, ops);
-#ifdef MIM_ENABLE_CHECKS
-    if (flags().check_tuples) check_tuple(t);
-#endif
-    return t;
+    return unify<Tuple>(type, ops);
 }
 
 #ifdef MIM_ENABLE_CHECKS
@@ -546,22 +548,18 @@ void World::check_tuple(const Tuple* t) {
     auto type = t->type();
     auto n    = t->num_ops();
     if (!type->isa<Sigma>() && !type->isa<Arr>()) return;
-    if (Lit::isa(type->arity()) != n) {
-        log().w("arity mismatch: `{}`: `{}`", t, type);
-        return;
-    }
+    if (auto a = Lit::isa(type->arity()); a && *a != n)
+        t->blame("tuple has {} elements but its type `{}` has arity `{}`", n, type, type->arity()).bail();
 
     auto sigma = type->isa_mut<Sigma>();
     auto red   = sigma ? sigma->reduce(t) : Defs{};
     for (size_t i = 0; i != n; ++i) {
         auto expected = sigma ? red[i] : type->proj(n, i);
         auto op       = t->op(i);
-        auto ty       = op->type();
-        // Checker::assignable is what World::app accepts, but it would also unify Hole%s.
-        auto ok = ty
-               && (expected->has_hole() || ty->has_hole() ? Checker::alpha<Checker::Test>(expected, ty)
-                                                          : Checker::assignable(expected, op) != nullptr);
-        if (!ok) log().w("op {} `{}`: `{}` expected `{}` in `{}`", i, op, ty, expected, type);
+        if (!Checker::assignable(expected, op))
+            op->blame("tuple element is not assignable to its type")
+                .n("expected `{}`, got `{}` in `{}`", expected, type_of(op), type)
+                .bail();
     }
 }
 #endif

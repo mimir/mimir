@@ -34,7 +34,6 @@ struct Flags {
     bool break_on_error     = false;
     bool break_on_warn      = false;
     bool break_on_alpha     = false;
-    bool check_tuples       = false;
 #endif
 };
 

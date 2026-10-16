@@ -216,7 +216,7 @@ void RWPhase::rewrite_external(Def* old_mut) {
     if (auto new_mut = rewrite(old_mut)->isa_mut(); new_mut && !new_mut->is_external()) new_mut->externalize();
 }
 
-const Def* CoercePhase::rewrite_imm_App(const App* app) {
+const Def* RWPhase::rewrite_imm_App(const App* app) {
     // The arg goes first for the same reason as in Rewriter::rewrite_imm_App.
     auto arg    = rewrite(app->arg());
     auto callee = rewrite(app->callee());
@@ -234,10 +234,12 @@ static const Def* component(const Def* type, Defs parts, size_t n, size_t i) {
         auto args = DefVec(n, [&](size_t k) { return k < i ? parts[k] : var->proj(n, k); });
         return w.reduce(var, w.tuple(args), i);
     }
+    if (auto sigma = type->isa_imm<Sigma>()) return sigma->op(i);
+    if (auto arr = type->isa_imm<Arr>()) return arr->elem();
     return type->proj(n, i);
 }
 
-const Def* CoercePhase::rewrite_imm_Tuple(const Tuple* tuple) {
+const Def* RWPhase::rewrite_imm_Tuple(const Tuple* tuple) {
     auto type = rewrite(tuple->type());
     auto ops  = rewrite(tuple->ops());
     auto n    = ops.size();
@@ -247,19 +249,22 @@ const Def* CoercePhase::rewrite_imm_Tuple(const Tuple* tuple) {
     return new_world().tuple(type, ops);
 }
 
-const Def* CoercePhase::rewrite_stub(Def* old_mut, Def* new_mut) {
+const Def* RWPhase::rewrite_stub(Def* old_mut, Def* new_mut) {
     auto old_lam = old_mut->isa<Lam>();
     auto new_lam = new_mut->isa<Lam>();
     if (!old_lam || !new_lam || !old_lam->is_set()) return Rewriter::rewrite_stub(old_mut, new_mut);
 
     map(old_mut, new_mut);
-    auto _     = enter(old_mut);
-    auto codom = new_lam->type()->reduce(new_lam->var());
+    auto _  = enter(old_mut);
+    auto pi = new_lam->type();
+    // Creating the Var just to reduce a non-dependent codomain would mark it as used.
+    auto codom = pi->has_var() ? pi->reduce(new_lam->var()) : pi->codom();
     new_lam->set(rewrite(old_lam->filter()), coerce(rewrite(old_lam->body()), codom));
     return seal(old_mut, new_mut);
 }
 
-const Def* CoercePhase::coerce(const Def* val, const Def* type) {
+const Def* RWPhase::coerce(const Def* val, const Def* type) {
+    if (val->type() == type) return val;
     auto todo = DefVec{val};
     auto res  = reshape(todo, type);
     while (!todo.empty() && new_world().inhabitant(todo.back()->type()))
@@ -268,7 +273,7 @@ const Def* CoercePhase::coerce(const Def* val, const Def* type) {
     return res;
 }
 
-const Def* CoercePhase::reshape(DefVec& todo, const Def* type) {
+const Def* RWPhase::reshape(DefVec& todo, const Def* type) {
     auto& w    = new_world();
     auto front = todo.empty() ? nullptr : todo.back();
     if (front) {
@@ -279,7 +284,7 @@ const Def* CoercePhase::reshape(DefVec& todo, const Def* type) {
     if (auto s = w.inhabitant(type)) return s;
     if (front && w.inhabitant(front->type())) return todo.pop_back(), reshape(todo, type);
 
-    if (splittable(type)) {
+    if (type->is_splittable()) {
         auto n     = type->num_tprojs();
         auto parts = DefVec();
         for (size_t i = 0; i != n; ++i)
@@ -297,7 +302,7 @@ const Def* CoercePhase::reshape(DefVec& todo, const Def* type) {
     fe::throwf("cannot coerce to `{}`", type);
 }
 
-const Def* CoercePhase::eta_coerce(const Def* val, const Def* type) {
+const Def* RWPhase::eta_coerce(const Def* val, const Def* type) {
     auto dst = type->isa<Pi>();
     auto src = val->type()->isa<Pi>();
     if (!dst || !src) return nullptr;

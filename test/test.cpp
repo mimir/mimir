@@ -29,7 +29,7 @@ TEST_CASE("World: one-tuples fold away") {
     type->set(Defs{w.type_nat(), w.type_nat()});
     CHECK(w.sigma({type}) == type);
 
-    auto v = w.tuple(type, {w.lit_idx(42), w.lit_idx(1337)});
+    auto v = w.tuple(type, {w.lit_nat(42), w.lit_nat(1337)});
     CHECK(w.tuple({v}) == v);
 }
 

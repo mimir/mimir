@@ -362,6 +362,24 @@ public:
 protected:
     void start() override;
 
+    /// @name Coercion
+    /// Every checking position - an App's argument and result, a Tuple's ops, a Lam's body - coerce()s its value.
+    /// This reconciles a representation the phase changed with one it did not, e.g. an Axm's signature.
+    ///@{
+    const Def* rewrite_imm_App(const App*) override;
+    const Def* rewrite_imm_Tuple(const Tuple*) override;
+    const Def* rewrite_stub(Def*, Def*) override;
+    using Rewriter::rewrite_stub;
+
+    /// Converts the *new* @p new_val into a value of the *new* @p new_type, where a checking position demands it.
+    /// Both are matched leaf by leaf: tuples are exploded and reassembled, Pi%s are η-wrapped, and
+    /// information-free components are dropped or filled in with their sole inhabitant.
+    const Def* coerce(const Def* new_val, const Def* new_type);
+    /// Does coerce() see through @p type, i.e. split it or η-wrap it?
+    /// An analysis must keep the shape of whatever lies below any other type.
+    static bool transparent(const Def* type) { return type->isa<Pi>() || type->is_splittable(); }
+    ///@}
+
     /// Run **after** all roots have been walked but still **before** the two worlds are swapped.
     /// This is where you drain a worklist of rewrites your hooks deferred (see e.g. clos::phase::ClosConv).
     virtual void finalize() {}
@@ -378,36 +396,6 @@ private:
         , analysis_(analysis)
         , new_world_(std::move(new_world)) {}
 
-    Analysis* analysis_;
-    std::unique_ptr<World> new_world_; ///< Owns Rewriter::world.
-};
-
-/// An RWPhase that changes the representation of values, e.g. by flattening or erasing components.
-/// Every checking position - an App's argument and result, a Tuple's ops, a Lam's body - coerce()s such a value to a
-/// shape that is *not* changed (an Axm's signature, an interface's type, ...).
-class CoercePhase : public RWPhase {
-public:
-    using RWPhase::RWPhase;
-
-protected:
-    const Def* rewrite_imm_App(const App*) override;
-    const Def* rewrite_imm_Tuple(const Tuple*) override;
-    const Def* rewrite_stub(Def*, Def*) override;
-    using RWPhase::rewrite_stub;
-
-    /// Converts the *new* @p new_val into a value of the *new* @p new_type, where a checking position demands it.
-    /// Both are matched leaf by leaf: tuples are exploded and reassembled, Pi%s are η-wrapped, and
-    /// information-free components are dropped or filled in with their sole inhabitant.
-    const Def* coerce(const Def* new_val, const Def* new_type);
-    /// Does coerce() explode and reassemble values of @p type?
-    static bool splittable(const Def* type) {
-        return (type->isa<Sigma>() || type->isa_imm<Arr>()) && type->num_tprojs() != 1;
-    }
-    /// Does coerce() see through @p type, i.e. split it or η-wrap it?
-    /// An analysis must keep the shape of whatever lies below any other type.
-    static bool transparent(const Def* type) { return type->isa<Pi>() || splittable(type); }
-
-private:
     /// η-wraps @p val into a Lam of @p type, coerce()ing its Var to @p val%'s domain and its result to the codomain.
     /// @returns `nullptr` unless both @p val%'s type and @p type are Pi%s.
     const Def* eta_coerce(const Def* val, const Def* type);
@@ -415,6 +403,9 @@ private:
     const Def* reshape(DefVec& todo, const Def* type);
 
     DefMap<Def2Def> etas_; ///< type ↦ val ↦ eta_coerce(val, type)
+
+    Analysis* analysis_;
+    std::unique_ptr<World> new_world_; ///< Owns Rewriter::world.
 };
 
 /// An RWPhase that searches for a pattern and replaces it.

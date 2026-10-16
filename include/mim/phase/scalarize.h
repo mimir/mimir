@@ -24,7 +24,7 @@ namespace mim {
 ///
 /// Each run flattens one level; the fixed-point pipeline repeats it.
 /// Flags::scalarize_threshold bounds which Arr%s are expanded.
-class Scalarize : public CoercePhase {
+class Scalarize : public RWPhase {
 private:
     /// Optimistic: every immutable `Cn` is flattenable until pinned.
     class Analysis : public mim::Analysis {
@@ -53,7 +53,7 @@ private:
 
 public:
     Scalarize(World& world, flags_t annex)
-        : CoercePhase(world, annex, &analysis_)
+        : RWPhase(world, annex, &analysis_)
         , analysis_(world) {}
 
 private:
