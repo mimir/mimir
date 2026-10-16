@@ -46,9 +46,9 @@ public:
     /// @name Push / Pop
     ///@{
     /// Opens a scope for the mappings whose old or new Def depends on @p vars; the root scope takes all others.
-    virtual void push(Vars vars) { scopes_.emplace_back(vars); }
-    virtual void pop() { scopes_.pop_back(); }
-    /// Adds @p var - if any - to the Vars of the innermost push() scope.
+    void push(Vars vars) { scopes_.emplace_back(vars); }
+    void pop() { scopes_.pop_back(); }
+    /// Adds @p var - if any - to the Vars of the innermost scope.
     void bind(const Var* var);
     ///@}
 
@@ -116,7 +116,7 @@ private:
 
 protected:
     struct Scope {
-        Vars vars;                ///< Only mappings depending on these go here - except for the root.
+        Vars vars; ///< Only mappings depending on these go here; the root's are VarRewriter's substitutions.
         fe::Vector<Def2Def> maps; ///< The map of each Ctx - allocated on demand.
     };
     fe::Vector<Scope> scopes_;
@@ -152,18 +152,12 @@ public:
         add(var, arg);
     }
 
-    // Add initial mapping from @pvar -> @p arg.
+    /// Substitutes @p arg for @p var.
     VarRewriter& add(const Var* var, const Def* arg) {
         map(var, arg);
-        vars_.emplace_back(Vars(var));
+        bind(var);
         return *this;
     }
-    ///@}
-
-    /// @name push / pop
-    ///@{
-    void push(Vars vars) final { Rewriter::push(vars), vars_.emplace_back(Vars()); }
-    void pop() final { vars_.pop_back(), Rewriter::pop(); }
     ///@}
 
     /// @name rewrite
@@ -175,18 +169,15 @@ public:
     friend void swap(VarRewriter& vrw1, VarRewriter& vrw2) noexcept {
         using std::swap;
         swap(static_cast<Rewriter&>(vrw1), static_cast<Rewriter&>(vrw2));
-        swap(vrw1.vars_, vrw2.vars_);
     }
 
 private:
     bool has_intersection(const Def* old_def) {
         // Def::has_free_vars_in avoids materializing old_def's merged free_vars() - once per level, at that.
-        for (const auto& vars : vars_ | std::views::reverse)
-            if (old_def->has_free_vars_in(vars)) return true;
+        for (const auto& scope : scopes_ | std::views::reverse)
+            if (old_def->has_free_vars_in(scope.vars)) return true;
         return false;
     }
-
-    fe::Vector<Vars> vars_;
 };
 
 class Zonker : public Rewriter {

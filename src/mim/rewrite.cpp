@@ -37,7 +37,6 @@ const Def* Rewriter::map(const Def* old_def, const Def* new_def) {
 }
 
 void Rewriter::bind(const Var* var) {
-    assert(scopes_.size() > 1 && "the root scope takes all mappings anyway");
     if (!var) return;
     auto& vars = scopes_.back().vars;
     vars       = var->world().vars().insert(vars, var);
@@ -298,11 +297,7 @@ const Def* VarRewriter::rewrite(const Def* old_def) {
 }
 
 const Def* VarRewriter::rewrite_mut(Def* mut) {
-    if (auto var = mut->has_var()) {
-        auto& vars = vars_.back();
-        vars       = world().vars().insert(vars, var);
-    }
-
+    bind(mut->has_var());
     return Rewriter::rewrite_mut(mut);
 }
 
