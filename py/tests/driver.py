@@ -10,7 +10,7 @@ def test_driver(driver):
     assert isinstance(mim.Driver(), mim.Driver)
     assert isinstance(driver.world(), mim.World)
     assert isinstance(driver.world(), mim.World)  # repeat call
-    chained = driver.log().set_stdout().set(mim.Level.Debug)
+    chained = driver.log().set_stdout().set(mim.LogLevel.Debug)
     assert chained is not None
     assert driver.sym("foo").str() == "foo"
 

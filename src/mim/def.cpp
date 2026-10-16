@@ -36,8 +36,8 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     , has_hole_(false)
     , num_ops_(ops.size())
     , type_(type) {
-    if (node == Node::Univ) {
-        hash_ = fe::hash_combine(0, node_t(Node::Univ));
+    if (node == Node::Level) {
+        hash_ = fe::hash_combine(0, node_t(Node::Level));
         return;
     }
 
@@ -121,8 +121,8 @@ Def::Def(Node node, Def* binder)
 Nat::Nat(World& world)
     : Def(Node, world.type(), Defs{}, 0) {}
 
-UMax::UMax(World& world, Defs ops)
-    : Def(Node, world.univ(), ops, 0) {}
+LMax::LMax(World& world, Defs ops)
+    : Def(Node, world.type_level(), ops, 0) {}
 
 /*
  * immutabilize
@@ -469,8 +469,8 @@ void Def::set_dbg_key_(DbgKey key, bool ow) const {
 const Def* Def::unfold_type() const {
     if (auto t = type()) return t;
     auto& w = world();
-    if (auto t = isa<Type>()) return w.type(w.uinc(t->level()));
-    assert(isa<Univ>());
+    if (auto t = isa<Type>()) return w.type(w.lsucc(t->level()));
+    assert(isa<Level>());
     return nullptr;
 }
 
@@ -484,9 +484,9 @@ std::string_view Def::node_name() const {
 }
 
 Defs Def::deps() const noexcept {
-    // Univ, Type, and Var are the only nodes built without a type - and none of them has deps.
+    // Level, Type, and Var are the only nodes built without a type - and none of them has deps.
     if (!type_) {
-        assert(isa<Univ>() || isa<Type>() || isa<Var>());
+        assert(isa<Level>() || isa<Type>() || isa<Var>());
         return Defs();
     }
 

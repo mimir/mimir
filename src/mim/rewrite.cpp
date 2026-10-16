@@ -103,14 +103,14 @@ DefVec Rewriter::rewrite(Defs ops) {
 // clang-format off
 const Def* Rewriter::rewrite_imm_Idx    (const Idx*      ) { return world().type_idx();                                   }
 const Def* Rewriter::rewrite_imm_Nat    (const Nat*      ) { return world().type_nat();                                   }
-const Def* Rewriter::rewrite_imm_Univ   (const Univ*     ) { return world().univ();                                       }
+const Def* Rewriter::rewrite_imm_Level  (const Level*    ) { return world().type_level();                                 }
 const Def* Rewriter::rewrite_imm_Lit    (const Lit*     d) { return world().lit    (rewrite(d->type()),   d->get());      }
 const Def* Rewriter::rewrite_imm_Match  (const Match*   d) { return world().match  (rewrite(d->ops()));                   }
 const Def* Rewriter::rewrite_imm_Reform (const Reform*  d) { return world().reform (rewrite(d->dom()));                   }
 const Def* Rewriter::rewrite_imm_Sigma  (const Sigma*   d) { return world().sigma  (rewrite(d->ops()));                   }
 const Def* Rewriter::rewrite_imm_Type   (const Type*    d) { return world().type   (rewrite(d->level()));                 }
-const Def* Rewriter::rewrite_imm_UInc   (const UInc*    d) { return world().uinc   (rewrite(d->op()),     d->offset());   }
-const Def* Rewriter::rewrite_imm_UMax   (const UMax*    d) { return world().umax   (rewrite(d->ops()));                   }
+const Def* Rewriter::rewrite_imm_LSucc  (const LSucc*   d) { return world().lsucc  (rewrite(d->op()),     d->offset());   }
+const Def* Rewriter::rewrite_imm_LMax   (const LMax*    d) { return world().lmax   (rewrite(d->ops()));                   }
 const Def* Rewriter::rewrite_imm_Single (const Single*  d) { return world().single (rewrite(d->op()));                    }
 const Def* Rewriter::rewrite_imm_Wrap   (const Wrap*    d) { return world().wrap   (rewrite(d->op()));                    }
 const Def* Rewriter::rewrite_imm_Nom    (const Nom*     d) { return world().nom    (d->key(),             rewrite(d->op())); }

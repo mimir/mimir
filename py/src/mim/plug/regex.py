@@ -3,7 +3,7 @@ from __future__ import annotations
 import ctypes
 from typing import List
 
-from .. import Def, Driver, Level
+from .. import Def, Driver, LogLevel
 from .._plugins.regex import regex
 from ..plugin import MimPlugin
 from .core import core
@@ -16,7 +16,7 @@ def __getattr__(name):
 
 class RegBuilder(MimPlugin):
 
-    def __init__(self, driver: Driver, libname: str, log_level=Level.Warn, initialize=True):
+    def __init__(self, driver: Driver, libname: str, log_level=LogLevel.Warn, initialize=True):
         super().__init__(driver, log_level, libname)
         self.lvl = log_level
         self.world = self.driver.world()

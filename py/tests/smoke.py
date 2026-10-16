@@ -23,7 +23,7 @@ def test_wrapper_symbol_present():
 def test_log_levels_exported():
     for level_name in ("Error", "Warn", "Info", "Verbose", "Debug"):
         level = getattr(mim, level_name)
-        assert isinstance(level, mim.Level)
+        assert isinstance(level, mim.LogLevel)
 
 
 def test_mim_error_is_exception():

@@ -4,7 +4,7 @@ import mim
 import mim.plug.regex as regex
 
 driver = mim.Driver()
-builder = regex.RegBuilder(driver, "regex_demo", mim.Level.Error)
+builder = regex.RegBuilder(driver, "regex_demo", mim.LogLevel.Error)
 pattern = (builder.lit("a") + builder.lit("b") + builder.lit("c"))["+"]
 library = pattern.jit()
 matcher = library["match_func"]

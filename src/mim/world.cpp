@@ -172,18 +172,18 @@ World::World(Driver* driver, const State& state)
     , state_(state)
     , importer_(*this)
     , move_(driver) {
-    data_.univ       = insert<Univ>(*this);
-    data_.lit_univ_0 = lit_univ(0);
-    data_.lit_univ_1 = lit_univ(1);
-    data_.type_0     = type(lit_univ_0());
-    data_.type_1     = type(lit_univ_1());
-    data_.type_bot   = insert<Bot>(type());
-    data_.type_top   = insert<Top>(type());
-    data_.sigma      = unify<Sigma>(type(), Defs{});
-    data_.tuple      = unify<Tuple>(sigma(), Defs{});
-    data_.type_nat   = insert<mim::Nat>(*this);
-    data_.type_idx   = insert<mim::Idx>(pi(type_nat(), type()));
-    data_.top_nat    = insert<Top>(type_nat());
+    data_.type_level  = insert<Level>(*this);
+    data_.lit_level_0 = lit(type_level(), 0);
+    data_.lit_level_1 = lit(type_level(), 1);
+    data_.type_0      = unify<Type>(lit_level_0());
+    data_.type_1      = unify<Type>(lit_level_1());
+    data_.type_bot    = insert<Bot>(type());
+    data_.type_top    = insert<Top>(type());
+    data_.sigma       = unify<Sigma>(type(), Defs{});
+    data_.tuple       = unify<Tuple>(sigma(), Defs{});
+    data_.type_nat    = insert<mim::Nat>(*this);
+    data_.type_idx    = insert<mim::Idx>(pi(type_nat(), type()));
+    data_.top_nat     = insert<Top>(type_nat());
     // A frozen World cannot create them on demand, but e.g. Def::num_tprojs needs them to compute an arity.
     for (nat_t i = 0; i != Num_Lit_Nats; ++i)
         data_.lit_nats[i] = lit(type_nat(), i);
@@ -225,71 +225,130 @@ const Type* World::type(const Def* level) {
     if (!level) return nullptr;
     level = level->zonk();
 
-    if (!level->isa_type<Univ>())
-        level->blame("argument to `Type` must be of type `Univ` but is of type `{}`", type_of(level)).bail();
+    if (!level->isa_type<Level>())
+        level->blame("argument to `Type` must be of type `Level` but is of type `{}`", type_of(level)).bail();
 
+    if (level == lit_level_0()) return data_.type_0;
+    if (level == lit_level_1()) return data_.type_1;
     return unify<Type>(level);
 }
 
-const Def* World::uinc(const Def* op, level_t offset) {
+const Def* World::lsucc(const Def* op, level_t offset) {
     op = op->zonk();
 
-    if (!op->isa_type<Univ>())
-        op->blame("operand of a universe increment must be of type `Univ` but is of type `{}`", type_of(op)).bail();
+    if (!op->isa_type<Level>())
+        op->blame("operand of a level successor must be of type `Level` but is of type `{}`", type_of(op)).bail();
 
-    if (auto l = Lit::isa(op)) return lit_univ(*l + offset);
-    return unify<UInc>(op, offset);
+    if (offset == 0) return op;
+    if (auto l = Lit::isa(op)) return lit_level(*l + offset);
+    if (auto inc = op->isa<LSucc>()) return lsucc(inc->op(), inc->offset() + offset);
+    if (auto max = op->isa<LMax>()) return lmax(DefVec(max->ops(), [&](const Def* op) { return lsucc(op, offset); }));
+    return unify<LSucc>(op, offset);
 }
 
-static void flatten_umax(DefVec& ops, const Def* def) {
-    if (auto umax = def->isa<UMax>())
-        for (auto op : umax->ops())
-            flatten_umax(ops, op);
-    else
-        ops.emplace_back(def);
-}
-
-template<int sort>
-const Def* World::umax(Defs ops_) {
-    DefVec ops;
-    ops.reserve(ops_.size());
-    for (auto op : ops_) {
-        op = op->zonk();
-
-        // Peel off as many layers as the sort of the incoming ops demands to arrive at a Univ level:
-        // a Univ level is already there, a Kind is a `Type lvl`, a Type needs one unfold, a term two.
-        if constexpr (sort >= UMax::Type) op = op->unfold_type();
-        if constexpr (sort == UMax::Term) op = op->unfold_type();
-        if constexpr (sort >= UMax::Kind) {
-            if (auto type = op->isa<Type>())
-                op = type->level();
-            else
-                op->blame("operand must be a `Type` of some universe level").bail();
-        }
-
-        flatten_umax(ops, op);
-    }
-
+const Def* World::lmax(Defs levels) {
     level_t lvl = 0;
-    DefVec res;
-    res.reserve(ops.size());
-    for (auto op : ops) {
-        if (!op->isa_type<Univ>())
-            op->blame("operand of a universe max must be of type `Univ` but is of type `{}`", type_of(op)).bail();
-
+    auto ops    = DefVec();
+    auto push   = [&](const Def* op) {
         if (auto l = Lit::isa(op))
             lvl = std::max(lvl, *l);
         else
-            res.emplace_back(op);
+            ops.emplace_back(op);
+    };
+
+    for (auto level : levels) {
+        level = level->zonk();
+        if (!level->isa_type<Level>())
+            level->blame("operand of a level max must be of type `Level` but is of type `{}`", type_of(level)).bail();
+
+        // A zonked LMax is already flat, so one level suffices.
+        if (auto max = level->isa<LMax>())
+            for (auto op : max->ops())
+                push(op);
+        else
+            push(level);
     }
 
-    const Def* l = lit_univ(lvl);
-    if (res.empty()) return sort == UMax::Univ ? l : type(l);
-    if (lvl > 0) res.emplace_back(l);
+    if (lvl > 0 || ops.empty()) ops.emplace_back(lit_level(lvl));
+    sort_unique(ops);
+    return ops.size() == 1 ? ops.front() : unify<LMax>(*this, ops);
+}
 
-    sort_unique(res);
-    const Def* umax = unify<UMax>(*this, res);
-    return sort == UMax::Univ ? umax : type(umax);
+static void default_level(const Def* level) {
+    if (auto hole = Hole::isa_unset(level))
+        hole->set(hole->world().lit_level(0));
+    else if (auto inc = level->isa<LSucc>())
+        default_level(inc->op()->zonk());
+    else if (auto max = level->isa<LMax>())
+        for (auto op : max->ops())
+            default_level(op->zonk());
+}
+
+// The value of @p level with all its unset Hole%s read as `0`.
+static level_t eval0(const Def* level) {
+    level = level->zonk();
+    if (auto l = Lit::isa(level)) return *l;
+    if (auto succ = level->isa<LSucc>()) return eval0(succ->op()) + succ->offset();
+    if (auto max = level->isa<LMax>()) {
+        auto res = level_t(0);
+        for (auto op : max->ops())
+            res = std::max(res, eval0(op));
+        return res;
+    }
+    assert(Hole::isa_unset(level));
+    return 0;
+}
+
+void World::solve_levels() {
+    // Retry first: Hole%s solved in the meantime may have turned a constraint into one that determines the rest.
+    for (auto eq : std::exchange(move_.levels, {})) {
+        auto _ = push(eq.loc);
+        if (!Checker::alpha<Checker::Check>(eq.lmax, eq.level))
+            error().e(eq.loc, "universe level `{}` does not match `{}`", eq.lmax->zonk(), eq.level->zonk()).bail();
+    }
+
+    auto eqs = std::exchange(move_.levels, {});
+    for (auto eq : eqs)
+        if (eval0(eq.lmax) != eval0(eq.level))
+            error()
+                .e(eq.loc, "ambiguous universe levels: `{}` = `{}` has no unique solution", eq.lmax->zonk(),
+                   eq.level->zonk())
+                .bail();
+
+    for (auto eq : eqs) {
+        default_level(eq.lmax->zonk());
+        default_level(eq.level->zonk());
+    }
+}
+
+// An untyped binder used as a type has a Hole as sort, which must be a Type of some yet unknown level.
+static const Def* level_of(const Def* type) {
+    if (auto kind = type->zonk()->unfold_type()) {
+        kind = kind->zonk();
+        if (auto t = kind->isa<Type>()) return t->level();
+        if (auto hole = Hole::isa_unset(kind)) {
+            auto& w    = type->world();
+            auto level = w.mut_hole_level();
+            if (Checker::alpha<Checker::Check>(hole, w.type(level))) return level;
+        }
+    }
+    type->blame("`{}` is not a type", type).bail();
+}
+
+const Def* World::level(Defs types) {
+    auto lvl    = level_t(0);
+    auto levels = DefVec();
+    for (auto type : types) {
+        auto level = level_of(type);
+        if (auto l = Lit::isa(level))
+            lvl = std::max(lvl, *l);
+        else
+            levels.emplace_back(level);
+    }
+
+    if (levels.empty()) return lit_level(lvl);
+    levels.emplace_back(lit_level(lvl));
+    return lmax(levels);
 }
 
 const Def* World::inhabitant(const Def* type) {
@@ -323,7 +382,7 @@ const Def* World::var(Def* mut) {
 
 template<bool Normalize>
 const Def* World::implicit_app(const Def* callee, const Def* arg) {
-    while (auto type = callee->unfold_type()) // Univ has no type at all and takes no implicit arguments
+    while (auto type = callee->unfold_type()) // Level has no type at all and takes no implicit arguments
         if (auto pi = Pi::isa_implicit(type))
             callee = app(callee, mut_hole(pi->dom()));
         else
@@ -437,7 +496,7 @@ const Def* World::tuple(Defs ops) {
 
     auto zops = Def::zonk(ops);
     for (auto op : zops)
-        if (!op->type()) op->blame("`Univ` has no type and cannot be a tuple element").bail();
+        if (!op->type()) op->blame("`Level` has no type and cannot be a tuple element").bail();
     auto sigma = Tuple::infer(*this, zops);
     // An immutable Sigma means the ops' types differ, so the ops can't be uniform either.
     auto t     = tuple(sigma, zops, !sigma->isa_imm<Sigma>());
@@ -509,7 +568,7 @@ const Def* World::extract(const Def* d, const Def* index_) {
 /// `d#(i, 0₁, k)` ≡ `d#(i, k)`. A *scalar* index is left alone - its `Idx 1` carve-out for mutable 1-tuples still
 /// applies - and so is a dynamic rank, which has no axes to inspect.
 Shape World::check_index(const Def* index) {
-    auto type = index->unfold_type(); // nullptr for Univ, which the diagnostic below reports
+    auto type = index->unfold_type(); // nullptr for Level, which the diagnostic below reports
     if (type && Idx::isa(type)) return index;
     if (!type || !Shape::isa_indices(type)) {
         auto& err = index->blame("index must be of `Idx` type but is of type `{}`", type_of(index));
@@ -607,7 +666,7 @@ const Def* World::extract1(const Def* d, const Def* index) {
     auto size     = Idx::isa(index_ty);
     auto lidx     = Lit::isa(index);
     auto type     = d->unfold_type();
-    if (!type) d->blame("`Univ` has no type and hence no elements to extract").bail();
+    if (!type) d->blame("`Level` has no type and hence no elements to extract").bail();
 
     if (is_folded_axis(type, index, size)) return d;
 
@@ -774,7 +833,7 @@ const Def* World::seq(bool is_pack, Shape shape, const Def* body) {
     shape = shape.zonk();
     body  = body->zonk();
 
-    auto shape_ty = shape->unfold_type(); // nullptr for Univ, which the diagnostic below reports
+    auto shape_ty = shape->unfold_type(); // nullptr for Level, which the diagnostic below reports
     if (!shape_ty || !Shape::isa_extents(shape_ty))
         shape->blame("expected a shape but got a value of type `{}`", type_of(*shape)).bail();
 
@@ -850,7 +909,7 @@ const Def* World::join(Defs ops_) {
             push(op);
     }
 
-    auto kind = umax<UMax::Type>(ops);
+    auto kind = type(level(ops));
     if (std::ranges::any_of(ops, [](const Def* op) { return op->isa<Top>(); })) return top(kind);
 
     sort_unique(ops);
@@ -1004,7 +1063,7 @@ const Def* World::single(const Def* op) {
     if (auto t = op->unfold_type())
         if (auto tt = t->unfold_type()) return unify<Single>(tt, op);
     op->blame("operand is too high in the universe hierarchy to inhabit a singleton type")
-        .n("a singleton type sits one level above its inhabitant, and nothing sits above `Univ`")
+        .n("a singleton type sits one level above its inhabitant, and nothing sits above `Level`")
         .bail();
 }
 
@@ -1022,7 +1081,7 @@ const Def* World::unwrap(const Def* op) {
 const Nom* World::nom(flags_t key, const Def* type) {
     type = type->zonk();
     if (auto t = type->unfold_type()) return unify<Nom>(t, type, key);
-    type->blame("`Univ` cannot be wrapped in a nominal newtype").bail();
+    type->blame("`Level` cannot be wrapped in a nominal newtype").bail();
 }
 
 const Def* World::name(const Def* n, const Def* value) {
@@ -1152,16 +1211,13 @@ World& World::verify() {
         assert(mut->is_closed() && mut->is_set());
     for (auto anx : annexes().defs())
         assert(anx->is_closed());
+    assert(move_.levels.empty() && "postponed universe constraints must be solved via solve_levels");
     return *this;
 }
 
 #endif
 
 #ifndef DOXYGEN
-template const Def* World::umax<UMax::Term>(Defs);
-template const Def* World::umax<UMax::Type>(Defs);
-template const Def* World::umax<UMax::Kind>(Defs);
-template const Def* World::umax<UMax::Univ>(Defs);
 template const Def* World::ext<true>(const Def*);
 template const Def* World::ext<false>(const Def*);
 template const Def* World::app<true>(const Def*, const Def*);

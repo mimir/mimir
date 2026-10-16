@@ -285,12 +285,10 @@ const Def* TuplePtrn::emit_body(Emitter& e, const Def* decl) const {
     auto _ = e.world().push(loc());
     auto n = num_ptrns();
     Sigma* sigma;
-    if (decl) {
+    if (decl)
         sigma = decl->as_mut<Sigma>();
-    } else {
-        auto type = e.world().type_infer_univ();
-        sigma     = e.world().mut_sigma(type, n);
-    }
+    else
+        sigma = e.world().mut_sigma(e.world().type_pending(), n);
     auto var     = sigma->var();
     auto sym2idx = fe::SymMap<size_t>();
 
@@ -310,7 +308,7 @@ const Def* TuplePtrn::emit_body(Emitter& e, const Def* decl) const {
 
 const Def* TuplePtrn::emit_decl(Emitter& e, const Def* type) const {
     auto _ = e.world().push(loc());
-    type   = type ? type : e.world().type_infer_univ();
+    type   = type ? type : e.world().type_infer_level();
     return e.world().mut_sigma(type, num_ptrns());
 }
 
@@ -362,7 +360,7 @@ const Def* RuleExpr::emit_(Emitter& e) const {
 const Def* PrimaryExpr ::emit_(Emitter& e) const {
     // clang-format off
     switch (tag()) {
-        case Tag::K_Univ: return e.world().univ();
+        case Tag::K_Level: return e.world().type_level();
         case Tag::K_Nat:  return e.world().type_nat();
         case Tag::K_Idx:  return e.world().type_idx();
         case Tag::K_Bool: return e.world().type_bool();
@@ -695,7 +693,7 @@ const Def* MatchExpr::emit_(Emitter& e) const {
 
 void PiExpr::Dom::emit_type(Emitter& e) const {
     // Created before the push: the Pi belongs to the whole function type, not just to this Dom.
-    pi_        = decl_ ? decl_ : e.world().mut_pi(e.world().type_infer_univ(), is_implicit());
+    pi_        = decl_ ? decl_ : e.world().mut_pi(e.world().type_pending(), is_implicit());
     auto _     = e.world().push(loc());
     auto dom_t = ptrn()->emit_type(e);
 
@@ -813,8 +811,7 @@ const Def* SeqExpr::emit_(Emitter& e) const {
         return e.world().seq(is_pack(), s, b);
     }
 
-    auto t = e.world().type_infer_univ();
-    auto a = e.world().mut_arr(t);
+    auto a = e.world().mut_arr(e.world().type_pending());
     a->set_shape(s);
 
     if (is_pack()) {
@@ -889,8 +886,10 @@ void AliasDecl::emit(Emitter& e) const {
 }
 
 void ModDecl::emit_decls(Emitter& e) const {
-    for (auto decl : decls())
+    for (auto decl : decls()) {
         decl->emit(e);
+        e.world().solve_levels();
+    }
 }
 
 void ModDecl::emit(Emitter& e) const {
@@ -920,7 +919,7 @@ void MutualDecl::emit(Emitter& e) const {
 
 void RecDecl::emit_decl(Emitter& e) const {
     auto _ = e.world().push(loc());
-    def_   = body()->emit_decl(e, e.world().type_infer_univ());
+    def_   = body()->emit_decl(e, e.world().type_infer_level());
     def_->set(dbg().sym());
 }
 
@@ -934,7 +933,7 @@ void RecDecl::emit_body(Emitter& e) const {
 void NomDecl::emit_decl(Emitter& e) const {
     if (!has_mut_body()) return;
     auto _ = e.world().push(loc());
-    emit_nom(e, body()->emit_decl(e, e.world().type_infer_univ()));
+    emit_nom(e, body()->emit_decl(e, e.world().type_infer_level()));
 }
 
 void NomDecl::emit_body(Emitter& e) const {

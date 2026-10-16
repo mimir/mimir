@@ -934,7 +934,8 @@ def _enum_qualified_name(cursor) -> str:
 
 def _gen_enum_binding(cursor, indent: str = "    ") -> str:
     name = _enum_qualified_name(cursor)
-    lines = [f'{indent}nb::enum_<{name}>(m, "{name.split("::")[-1]}")']
+    # Nested enums live at module scope, so the enclosing classes prefix them: `Log::Level` binds as `LogLevel`.
+    lines = [f'{indent}nb::enum_<{name}>(m, "{name.replace("::", "")}")']
     for child in cursor.get_children():
         if child.kind == CursorKind.ENUM_CONSTANT_DECL:
             lines.append(f'{indent}    .value("{child.spelling}", {name}::{child.spelling})')

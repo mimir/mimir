@@ -305,14 +305,20 @@ public:
     const Def* import(const Def* def) { return importer_.import(def); }
     ///@}
 
-    /// @name Univ, Type, Var, Proxy, Hole
+    /// @name Level, Type, Var, Proxy, Hole
     ///@{
-    const Univ* univ() { return data_.univ; }
-    const Def* uinc(const Def* op, level_t offset = 1);
-    template<int sort = UMax::Univ>
-    const Def* umax(Defs);
+    const Level* type_level() { return data_.type_level; }
+    const Def* lsucc(const Def* op, level_t offset = 1);
+    const Def* lmax(Defs levels);
+    const Def* level(Defs types); ///< The lmax of the levels of all @p types, each of which must be a `Type level`.
     const Type* type(const Def* level);
-    const Type* type_infer_univ() { return type(mut_hole_univ()); }
+    /// Placeholder type of a mutable whose sort Def::finalize infers from its ops.
+    const Level* type_pending() { return type_level(); }
+    const Type* type_infer_level() { return type(mut_hole_level()); }
+    /// Postpones `lmax = level` as it does not determine the level Hole%s of @p lmax yet.
+    void postpone(const LMax* lmax, const Def* level) { move_.levels.push_back({lmax, level, get_loc()}); }
+    /// Defaults the level Hole%s of all postponed constraints that are still unknown to `0` and checks them.
+    void solve_levels();
     template<level_t level = 0>
     const Type* type() {
         if constexpr (level == 0)
@@ -320,7 +326,7 @@ public:
         else if constexpr (level == 1)
             return data_.type_1;
         else
-            return type(lit_univ(level));
+            return type(lit_level(level));
     }
     const Def* var(Def* mut);
     const Def*
@@ -331,8 +337,8 @@ public:
     }
 
     Hole* mut_hole(const Def* type) { return insert<Hole>(type); }
-    Hole* mut_hole_univ() { return mut_hole(univ()); }
-    Hole* mut_hole_type() { return mut_hole(type_infer_univ()); }
+    Hole* mut_hole_level() { return mut_hole(type_level()); }
+    Hole* mut_hole_type() { return mut_hole(type_infer_level()); }
     ///@}
 
     /// @name Axm
@@ -525,9 +531,11 @@ public:
     /// @name Lit
     ///@{
     const Lit* lit(const Def* type, u64 val);
-    const Lit* lit_univ(u64 level) { return lit(univ(), level); }
-    const Lit* lit_univ_0() { return data_.lit_univ_0; }
-    const Lit* lit_univ_1() { return data_.lit_univ_1; }
+    const Lit* lit_level(u64 level) {
+        return level == 0 ? lit_level_0() : level == 1 ? lit_level_1() : lit(type_level(), level);
+    }
+    const Lit* lit_level_0() { return data_.lit_level_0; }
+    const Lit* lit_level_1() { return data_.lit_level_1; }
     /// Def::arity of a Sigma is `lit_nat(num_ops())` and Def::num_projs reads it straight back out, so a plain
     /// World::lit would hash-cons a Lit just to launder an integer. Worth ~4% of an `-Og` Debug compile.
     static constexpr nat_t Num_Lit_Nats = 64;
@@ -891,6 +899,12 @@ private:
     /// Unlike reduct() this never allocates and hence works on a frozen World.
     const Def* cached_reduct(const Var* var, const Def* arg, size_t i);
 
+    struct LevelEq {
+        const LMax* lmax;
+        const Def* level;
+        Loc loc;
+    };
+
     struct Move {
         Move(Driver* driver)
             : annexes(driver) {}
@@ -905,6 +919,7 @@ private:
         fe::Patricia<Def, DefKey> muts;
         fe::Patricia<const Var, DefKey> vars;
         ankerl::unordered_dense::map<std::pair<const Var*, const Def*>, Reduct*> substs;
+        fe::Vector<LevelEq> levels;
 
         friend void swap(Move& m1, Move& m2) noexcept {
             using std::swap;
@@ -917,12 +932,13 @@ private:
             swap(m1.muts,         m2.muts);
             swap(m1.externals,    m2.externals);
             swap(m1.annexes,      m2.annexes);
+            swap(m1.levels,       m2.levels);
             // clang-format on
         }
     } move_;
 
     struct {
-        const Univ* univ;
+        const Level* type_level;
         const Type* type_0;
         const Type* type_1;
         const Bot* type_bot;
@@ -933,8 +949,8 @@ private:
         const Tuple* tuple;
         const Nat* type_nat;
         const Idx* type_idx;
-        const Lit* lit_univ_0;
-        const Lit* lit_univ_1;
+        const Lit* lit_level_0;
+        const Lit* lit_level_1;
         const Lit* lit_nat_max;
         const Lit* lit_idx_1_0;
         std::array<const Lit*, 2> lit_bool;
@@ -954,9 +970,9 @@ private:
         swap(w1.move_,     w2.move_    );
         // clang-format on
 
-        swap(w1.data_.univ->world_, w2.data_.univ->world_);
-        assert(&w1.univ()->world() == &w1);
-        assert(&w2.univ()->world() == &w2);
+        swap(w1.data_.type_level->world_, w2.data_.type_level->world_);
+        assert(&w1.type_level()->world() == &w1);
+        assert(&w2.type_level()->world() == &w2);
     }
 };
 
