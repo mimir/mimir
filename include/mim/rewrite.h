@@ -45,18 +45,21 @@ public:
 
     /// @name Push / Pop
     ///@{
-    /// Opens a scope for the mappings whose old or new Def depends on @p vars; the root scope takes all others.
-    void push(Vars vars) { scopes_.emplace_back(vars); }
+    /// Opens a scope for the mappings whose old Def depends on @p old_vars or whose new Def depends on @p new_vars.
+    /// The root scope takes all others.
+    void push(Vars old_vars = {}, Vars new_vars = {}) { scopes_.emplace_back(old_vars, new_vars); }
     void pop() { scopes_.pop_back(); }
-    /// Adds @p var - if any - to the Vars of the innermost scope.
-    void bind(const Var* var);
+    /// Adds the old @p var - if any - to the innermost scope.
+    void bind_old(const Var* var);
+    /// Adds the new @p var - if any - to the innermost scope.
+    void bind_new(const Var* var);
     ///@}
 
     /// @name Map / Lookup
     /// Map @p old_def to @p new_def and returns @p new_def.
     ///@{
     /// Records the mapping in the innermost push() scope it depends on.
-    virtual const Def* map(const Def* old_def, const Def* new_def);
+    const Def* map(const Def* old_def, const Def* new_def);
 
     // clang-format off
     const Def* map(const Def* old_def ,       Defs new_defs);
@@ -116,7 +119,8 @@ private:
 
 protected:
     struct Scope {
-        Vars vars; ///< Only mappings depending on these go here; the root's are VarRewriter's substitutions.
+        Vars old_vars; ///< Only mappings depending on these go here; the root's are VarRewriter's substitutions.
+        Vars new_vars;
         fe::Vector<Def2Def> maps; ///< The map of each Ctx - allocated on demand.
     };
     fe::Vector<Scope> scopes_;
@@ -155,7 +159,7 @@ public:
     /// Substitutes @p arg for @p var.
     VarRewriter& add(const Var* var, const Def* arg) {
         map(var, arg);
-        bind(var);
+        bind_old(var);
         return *this;
     }
     ///@}
@@ -175,7 +179,7 @@ private:
     bool has_intersection(const Def* old_def) {
         // Def::has_free_vars_in avoids materializing old_def's merged free_vars() - once per level, at that.
         for (const auto& scope : scopes_ | std::views::reverse)
-            if (old_def->has_free_vars_in(scope.vars)) return true;
+            if (old_def->has_free_vars_in(scope.old_vars)) return true;
         return false;
     }
 };

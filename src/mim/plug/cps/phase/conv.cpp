@@ -35,7 +35,7 @@ const Def* Conv::convert(Lam* old_lam) {
         // dependent codom: bind it against a fresh mutable Sigma [a: A, Cn B[old_var → a]]
         auto sigma = w.mut_sigma(2);
         sigma->var();
-        push(Vars(sigma->has_var()));
+        push({}, Vars(sigma->has_var()));
         map(old_var, sigma->var(2, 0));
         auto new_codom = rewrite(old_pi->codom());
         pop();
@@ -76,7 +76,7 @@ const Def* Conv::lift(const Def* k, const Def* new_arg, const App* old_app) {
     auto cont = w.mut_con(rewrite(old_app->type()))->set_filter(false);
     auto res  = cont->var();
     cont->set(w.append_suffix(k->sym(), "_cont"));
-    bind(cont->has_var());
+    bind_new(cont->has_var());
     pending_.emplace_back(k, new_arg, cont);
 
     log().d("lift {} → {} ({}, {})", old_app, k, new_arg, cont);

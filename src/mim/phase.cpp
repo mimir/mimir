@@ -68,7 +68,7 @@ void Phase::profile_count(std::string_view key, uint64_t n) {
 void Analysis::reset() {
     scopes_.clear();
     worklist_.clear();
-    push({});
+    push();
     todo_ = false;
 }
 
@@ -279,7 +279,7 @@ const Def* CoercePhase::reshape(DefVec& todo, const Def* type) {
     if (auto s = w.inhabitant(type)) return s;
     if (front && w.inhabitant(front->type())) return todo.pop_back(), reshape(todo, type);
 
-    if ((type->isa<Sigma>() || type->isa_imm<Arr>()) && type->num_tprojs() != 1) {
+    if (splittable(type)) {
         auto n     = type->num_tprojs();
         auto parts = DefVec();
         for (size_t i = 0; i != n; ++i)

@@ -58,7 +58,23 @@ void Scalarize::Analysis::keep_param(const Def* def) {
     }
 }
 
+void Scalarize::Analysis::pin_opaque(DefSet& structural, const Def* type) {
+    if (type->isa<Pi>() || splittable(type)) {
+        if (structural.emplace(type).second)
+            for (auto op : type->ops())
+                pin_opaque(structural, op);
+    } else {
+        pin_imm(type, isa_flattenable);
+    }
+}
+
 void Scalarize::Analysis::inspect(const Def* def) {
+    // The interface's signature keeps its shape, which the body only meets via coerce().
+    if (auto lam = def->isa_mut<Lam>(); lam && !lam->is_rewritable()) {
+        auto structural = DefSet();
+        pin_opaque(structural, lam->type());
+    }
+
     if (auto app = def->isa<App>(); app && app->axm()) {
         // An Axm calls a bare function argument (`autodiff.ad f`) by its own convention.
         if (auto lam = app->arg()->isa_mut<Lam>()) pin_imm(lam->type(), isa_flattenable);
@@ -176,8 +192,7 @@ Lam* Scalarize::stub(Lam* old, const fe::Bitset& mask) {
 const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
     auto mask = analysis_.plan(old->type());
     if (mask.none() && old->is_rewritable()) return RWPhase::rewrite_mut_Lam(old);
-    auto sca = stub(old, mask);
-    return old->is_set() ? rewrite_stub(old, sca) : sca;
+    return rewrite_stub(old, stub(old, mask));
 }
 
 } // namespace mim

@@ -395,13 +395,14 @@ protected:
     const Def* rewrite_stub(Def*, Def*) override;
     using RWPhase::rewrite_stub;
 
-    /// @name Coercion
-    ///@{
     /// Converts the *new* @p new_val into a value of the *new* @p new_type, where a checking position demands it.
     /// Both are matched leaf by leaf: tuples are exploded and reassembled, Pi%s are η-wrapped, and
     /// information-free components are dropped or filled in with their sole inhabitant.
     const Def* coerce(const Def* new_val, const Def* new_type);
-    ///@}
+    /// Does coerce() explode and reassemble values of @p type?
+    static bool splittable(const Def* type) {
+        return (type->isa<Sigma>() || type->isa_imm<Arr>()) && type->num_tprojs() != 1;
+    }
 
 private:
     /// η-wraps @p val into a Lam of @p type, coerce()ing its Var to @p val%'s domain and its result to the codomain.

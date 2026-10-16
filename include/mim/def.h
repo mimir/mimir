@@ -812,7 +812,6 @@ private:
     bool external_      : 1;
     mutable bool annex_ : 1;
     bool has_hole_      : 1;
-    u8 padding_         : 4; // spare bits
     u32 mark_ = 0;
     u32 gid_;
     u32 num_ops_;

@@ -15,7 +15,7 @@ namespace mim {
 
 Rewriter::Rewriter(World& world)
     : world_(&world) {
-    push({}); // create root map
+    push(); // create root map
 }
 
 Rewriter::~Rewriter() = default;
@@ -23,23 +23,26 @@ Rewriter::~Rewriter() = default;
 void Rewriter::reset() {
     pop();
     assert(scopes_.empty());
-    push({});
+    push();
 }
 
 const Def* Rewriter::map(const Def* old_def, const Def* new_def) {
     for (size_t i = scopes_.size(); i-- != 1;)
-        if (auto& scope = scopes_[i]; old_def->has_free_vars_in(scope.vars) || new_def->has_free_vars_in(scope.vars)) {
+        if (auto& scope = scopes_[i];
+            old_def->has_free_vars_in(scope.old_vars) || new_def->has_free_vars_in(scope.new_vars)) {
             // A binder rebuilt in here takes its Var - and what depends on it - along.
-            if (auto var = old_def->has_var()) scope.vars = old_def->world().vars().insert(scope.vars, var);
+            if (auto var = old_def->has_var()) scope.old_vars = old_def->world().vars().insert(scope.old_vars, var);
             return slot(scope)[old_def] = new_def;
         }
     return slot(scopes_.front())[old_def] = new_def;
 }
 
-void Rewriter::bind(const Var* var) {
-    if (!var) return;
-    auto& vars = scopes_.back().vars;
-    vars       = var->world().vars().insert(vars, var);
+void Rewriter::bind_old(const Var* var) {
+    if (var) scopes_.back().old_vars = var->world().vars().insert(scopes_.back().old_vars, var);
+}
+
+void Rewriter::bind_new(const Var* var) {
+    if (var) scopes_.back().new_vars = var->world().vars().insert(scopes_.back().new_vars, var);
 }
 
 const Def* Rewriter::map(const Def* old_def, Defs new_defs) {
@@ -297,7 +300,7 @@ const Def* VarRewriter::rewrite(const Def* old_def) {
 }
 
 const Def* VarRewriter::rewrite_mut(Def* mut) {
-    bind(mut->has_var());
+    bind_old(mut->has_var());
     return Rewriter::rewrite_mut(mut);
 }
 

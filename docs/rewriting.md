@@ -24,11 +24,11 @@ auto new_def = rw.rewrite(old_def);
 
 A rewrite often has to map an old node to something that is only valid *locally*: a binder's [`Var`](@ref mim::Var) to a fresh representative, a loop index to one particular literal, and so on.
 For this, the map is a stack of [scopes](@ref mim::Rewriter::push).
-[`push(vars)`](@ref mim::Rewriter::push) opens a scope that owns the [`Vars`](@ref mim::Vars) `vars`, and [`pop()`](@ref mim::Rewriter::pop) discards it together with all of its mappings.
+[`push(old_vars, new_vars)`](@ref mim::Rewriter::push) opens a scope that owns two sets of [`Vars`](@ref mim::Vars) - one of the old world, one of the new - and [`pop()`](@ref mim::Rewriter::pop) discards it together with all of its mappings.
 The bottom scope - the *root* - is always there.
 
 A scope does not take *every* mapping recorded while it is open, though.
-[`map(old, new)`](@ref mim::Rewriter::map) files the mapping into the innermost scope whose `Vars` `old` or `new` mentions as free variables; any other mapping goes into the root.
+[`map(old, new)`](@ref mim::Rewriter::map) files the mapping into the innermost scope whose old `Vars` `old` mentions or whose new `Vars` `new` mentions as free variables; any other mapping goes into the root.
 So only what actually depends on the local binding dies with the scope, while everything context-free stays shared across sibling scopes and beyond.
 For instance, [`rewrite_mut_Seq`](@ref mim::Rewriter::rewrite_mut_Seq) scalarizes `«i: n; body»` by rewriting `body` once per `i`, each time under
 
@@ -43,9 +43,9 @@ Only those parts of `body` that mention `var` are rebuilt for every `i`; the res
 
 Dependencies propagate:
 
-- If a mutable binder is mapped into a scope, its own `Var` joins that scope's `Vars`, so whatever its body builds from that `Var` lands there, too.
-- [`bind(var)`](@ref mim::Rewriter::bind) adds a `Var` to the innermost scope by hand.
-  This is for a fresh binder of the *new* world whose `Var` should keep new nodes local - e.g. the continuation `cps::phase::Conv` introduces when lifting a call.
+- If a mutable binder is mapped into a scope, its own `Var` joins that scope's old `Vars`, so whatever its body builds from that `Var` lands there, too.
+- [`bind_old(var)`](@ref mim::Rewriter::bind_old) and [`bind_new(var)`](@ref mim::Rewriter::bind_new) add a `Var` to the innermost scope by hand.
+  The latter is for a fresh binder of the *new* world whose `Var` should keep new nodes local - e.g. the continuation `cps::phase::Conv` introduces when lifting a call.
 
 [`lookup()`](@ref mim::Rewriter::lookup) searches the scopes from innermost to root.
 
@@ -148,7 +148,7 @@ If you create a replacement node that should still be recognizable in dumps, dia
 ## VarRewriter {#varrewriter}
 
 [`VarRewriter`](@ref mim::VarRewriter) substitutes [`Var`](@ref mim::Var)s and is nothing but a [`Rewriter`](@ref mim::Rewriter) whose root [scope](@ref rewriter_scopes) owns the substituted `Var`s:
-[`add(var, arg)`](@ref mim::VarRewriter::add) maps `var ↦ arg` and [`bind`s](@ref mim::Rewriter::bind) `var`.
+[`add(var, arg)`](@ref mim::VarRewriter::add) maps `var ↦ arg` and [`bind_old`s](@ref mim::Rewriter::bind_old) `var`.
 
 On top of that, it only rebuilds what can change at all.
 A node without free variables in any scope's `Vars` is returned as is, so unaffected subgraphs are skipped entirely.

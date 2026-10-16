@@ -129,8 +129,8 @@ void ClosConv::finalize() {
         auto vars  = Vars();
         for (auto fv : stub.fvs)
             vars = vs.merge(vars, fv->free_vars());
-        if (auto var = stub.old_fn->has_var()) vars = vs.insert(vars, var);
         push(vars);
+        bind_old(stub.old_fn->has_var());
         rewrite_body(stub);
         pop();
     }
