@@ -159,17 +159,6 @@ static_assert(
     }(),
     "every Node must be in MIM_IMM_NODE, MIM_MUT_NODE, or both");
 
-/// Tracks whether a Def transitively depends - through its Def::deps() but only up to (and excluding) the next
-/// *mutable* - on certain kinds of Def%s.
-/// @see Def::has_dep
-enum class Dep : unsigned {
-    None  = 0,      ///< Depends on nothing of interest.
-    Mut   = 1 << 0, ///< Depends on a *mutable*.
-    Var   = 1 << 1, ///< Depends on a Var.
-    Hole  = 1 << 2, ///< Depends on a Hole.
-    Proxy = 1 << 3, ///< Depends on a Proxy.
-};
-
 /// [Judgement](https://ncatlab.org/nlab/show/judgment).
 enum class Judge : u32 {
     // clang-format off
@@ -186,7 +175,6 @@ enum class Judge : u32 {
 
 #ifndef DOXYGEN
 // clang-format off
-template<> struct fe::is_bit_enum<mim::Dep>   : std::true_type {};
 template<> struct fe::is_bit_enum<mim::Judge> : std::true_type {};
 // clang-format on
 #endif
@@ -432,20 +420,9 @@ public:
     size_t num_deps() const noexcept { return deps().size(); }
     ///@}
 
-    /// @name has_dep
-    /// Checks whether one Def::deps() contains specific elements defined in Dep.
-    /// This works up to the next *mutable*.
-    /// For example, consider the Tuple `tup`: `(?, lam (x: Nat) = y)`:
-    /// ```
-    /// bool has_hole = tup->has_dep(Dep::Hole); // true
-    /// bool has_mut  = tup->has_dep(Dep::Mut);  // true
-    /// bool has_var  = tup->has_dep(Dep::Var);  // false - y is contained in another mutable
-    /// ```
-    ///@{
-    Dep dep() const noexcept { return Dep(dep_); }
-    bool has_dep() const noexcept { return dep_ != 0; }
-    bool has_dep(Dep d) const noexcept { return fe::has_flag(dep(), d); }
-    ///@}
+    /// Is this a Hole or does it reach one through Def::deps() up to (and excluding) the next *mutable*?
+    /// E.g., `(?, lam (x: Nat) = ?)` has a Hole, while `(0, lam (x: Nat) = ?)` doesn't.
+    bool has_hole() const noexcept { return has_hole_; }
 
     /// @name proj
     /// @anchor proj
@@ -830,11 +807,12 @@ protected:
     u8 trip_  = 0;
 
 private:
-    Node node_; // node_t is u8; the three flags + dep_ below fill the remaining byte of this word
+    Node node_; // node_t is u8; the flags below fill the remaining byte of this word
     bool mut_           : 1;
     bool external_      : 1;
     mutable bool annex_ : 1;
-    unsigned dep_       : 4;
+    bool has_hole_      : 1;
+    u8 padding_         : 4; // spare bits
     u32 mark_ = 0;
     u32 gid_;
     u32 num_ops_;

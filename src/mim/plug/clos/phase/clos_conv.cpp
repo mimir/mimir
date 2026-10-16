@@ -60,7 +60,7 @@ void FreeDefAna::classify(Node* node, const Def* fd, bool& spawned_pred, NodeQue
             pnode->succs.emplace_back(node);
             spawned_pred |= inserted;
         }
-    } else if (fd->has_dep(Dep::Var) && !fd->isa<Tuple>()) {
+    } else if (fd->local_vars() && !fd->isa<Tuple>()) {
         // Note: a Var may still be closed if its type is a mut, so the isa_var_proj case above is not redundant.
         node->add_fvs(fd);
     } else if (is_memop_res(fd)) {
