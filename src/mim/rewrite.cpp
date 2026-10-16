@@ -22,8 +22,27 @@ Rewriter::~Rewriter() = default;
 
 void Rewriter::reset() {
     pop();
-    assert(old2news_.empty());
+    assert(scopes_.empty());
     push();
+}
+
+const Def* Rewriter::map(const Def* old_def, const Def* new_def) {
+    for (size_t i = scopes_.size(); i-- != 1;)
+        if (auto& scope = scopes_[i];
+            old_def->has_free_vars_in(scope.old_vars) || new_def->has_free_vars_in(scope.new_vars)) {
+            // A binder rebuilt in here takes its Var - and what depends on it - along.
+            if (auto var = old_def->has_var()) scope.old_vars = old_def->world().vars().insert(scope.old_vars, var);
+            return scope.old2new[old_def] = new_def;
+        }
+    return scopes_.front().old2new[old_def] = new_def;
+}
+
+void Rewriter::bind_old(const Var* var) {
+    if (var) scopes_.back().old_vars = var->world().vars().insert(scopes_.back().old_vars, var);
+}
+
+void Rewriter::bind_new(const Var* var) {
+    if (var) scopes_.back().new_vars = var->world().vars().insert(scopes_.back().new_vars, var);
 }
 
 const Def* Rewriter::map(const Def* old_def, Defs new_defs) {
@@ -224,7 +243,7 @@ const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
     if (auto var = seq->has_var(); var && l && *l < world().flags().scalarize_threshold) {
         auto new_ops = fe::Vector<const Def*, 32>(*l);
         for (size_t i = 0, e = *l; i != e; ++i) {
-            push();
+            push(Vars(var));
             map(var, world().lit_idx(e, i));
             new_ops[i] = rewrite(seq->body());
             pop();
@@ -281,11 +300,7 @@ const Def* VarRewriter::rewrite(const Def* old_def) {
 }
 
 const Def* VarRewriter::rewrite_mut(Def* mut) {
-    if (auto var = mut->has_var()) {
-        auto& vars = vars_.back();
-        vars       = world().vars().insert(vars, var);
-    }
-
+    bind_old(mut->has_var());
     return Rewriter::rewrite_mut(mut);
 }
 
@@ -296,7 +311,7 @@ const Def* VarRewriter::rewrite_mut(Def* mut) {
 const Def* Zonker::lookup(const Def* old_def) {
     // Holes only ever get set, so a cached result goes stale once a Hole within it got set since.
     // A self-map is a fixpoint, though: e.g. `binder#i` keeps a set Hole in its type until the binder is rewired.
-    if (auto new_def = fe::lookup(old2news_.back(), old_def);
+    if (auto new_def = fe::lookup(old2new(), old_def);
         new_def && (new_def == old_def || new_def->isa_mut() || !new_def->needs_zonk()))
         return new_def;
     return nullptr;

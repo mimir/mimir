@@ -20,6 +20,8 @@ General C++ guidelines for this repository.
   return false;
   ```
   not a sequence of `auto x = ...; if (!x) return false;`.
+- Don't write recursive lambdas (self-passing `auto&& self`, deducing `this`, or `std::function` that captures itself); some compilers choke on them.
+  Use a named member or free function instead, e.g. a recursive `visit(const Def*)` member.
 - Never check a `Def*` argument for `nullptr` inside a helper; that is the caller's responsibility.
   A helper such as `Pi::isa_cn` or `Idx::isa` dereferences its argument, and the caller guards wherever a
   `nullptr` can actually arise - `Def::unfold_type` of `Univ`, or a projection in a frozen `World`.

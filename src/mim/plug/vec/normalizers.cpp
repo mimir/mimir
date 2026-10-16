@@ -10,7 +10,7 @@
 namespace mim::plug::vec {
 
 template<fold id>
-const Def* normalize_fold(const Def* type, const Def* c, const Def* arg) {
+const Def* normalize_fold(const Def*, const Def* c, const Def* arg) {
     auto& w     = c->world();
     auto callee = c->as<App>();
     auto f      = callee->arg();

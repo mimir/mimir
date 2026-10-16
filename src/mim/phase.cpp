@@ -66,7 +66,7 @@ void Phase::profile_count(std::string_view key, uint64_t n) {
  */
 
 void Analysis::reset() {
-    old2news_.clear();
+    scopes_.clear();
     worklist_.clear();
     push();
     todo_ = false;
@@ -88,7 +88,7 @@ void Analysis::start() {
         // except for mutables, whose map entry doubles as the per-round "already scheduled" marker and would
         // suppress their drain. Pruning skips rewrite hooks, which is why only a sparse round does it: the
         // full round that certifies the fixed point always re-derives from the program.
-        old2news_.back().reserve(lattice_.size());
+        old2new().reserve(lattice_.size());
         for (auto [concr, abstr] : lattice_)
             if (!concr->isa_mut()) map(concr, abstr);
 
@@ -139,27 +139,6 @@ bool Analysis::lattice(const Def* concr, const Def* abstr) {
         return false;
     }
     return touch(), true;
-}
-
-void Analysis::pin_outside_args(const App* app, const DefVec& cands) {
-    if (cands.empty()) return;
-
-    // The args' subgraph is downward-closed, so exempting it only needs to find the candidates therein.
-    auto todo   = DefSet(cands.begin(), cands.end());
-    auto seen   = DefSet();
-    auto exempt = [&](this auto& self, const Def* def) -> bool {
-        if (!seen.emplace(def).second) return false;
-        if (todo.erase(def) && todo.empty()) return true;
-        if (def->isa_mut()) return false;
-        for (auto d : def->deps())
-            if (self(d)) return true;
-        return false;
-    };
-    for (const Def* d = app; auto a = d->isa<App>(); d = a->callee())
-        if (exempt(a->arg())) break;
-
-    for (auto cand : cands)
-        if (todo.contains(cand)) pin(cand);
 }
 
 bool Analysis::is_cyclic(const Def* def) const {
@@ -228,13 +207,114 @@ bool RWPhase::analyze() {
 
 const Def* RWPhase::lookup(const Def* old_def) {
     if (auto new_def = Rewriter::lookup(old_def)) return new_def;
-    if (auto flags = old_world().annexes().opaque(old_def)) return map_root(old_def, new_world().annex(*flags));
+    if (auto flags = old_world().annexes().opaque(old_def)) return map(old_def, new_world().annex(*flags));
     return nullptr;
 }
 
 void RWPhase::rewrite_external(Def* old_mut) {
     // A phase may have externalized the new mutable itself already, or replaced it by an immutable.
     if (auto new_mut = rewrite(old_mut)->isa_mut(); new_mut && !new_mut->is_external()) new_mut->externalize();
+}
+
+const Def* CoercePhase::rewrite_imm_App(const App* app) {
+    // The arg goes first for the same reason as in Rewriter::rewrite_imm_App.
+    auto arg    = rewrite(app->arg());
+    auto callee = rewrite(app->callee());
+    if (auto pi = callee->isa_type<Pi>()) arg = coerce(arg, pi->dom());
+    auto res = new_world().app(callee, arg);
+    // A partially applied Axm must stay one, as its normalizer only fires once it is saturated.
+    if (app->axm() && app->curry() != 0) return res;
+    return coerce(res, rewrite(app->type()));
+}
+
+/// The type of component @p i of the @p n-ary @p type, whose preceding components are @p parts.
+static const Def* component(const Def* type, Defs parts, size_t n, size_t i) {
+    if (auto var = type->isa_binder<Sigma>().second) {
+        auto& w   = type->world();
+        auto args = DefVec(n, [&](size_t k) { return k < i ? parts[k] : var->proj(n, k); });
+        return w.reduce(var, w.tuple(args), i);
+    }
+    return type->proj(n, i);
+}
+
+const Def* CoercePhase::rewrite_imm_Tuple(const Tuple* tuple) {
+    auto type = rewrite(tuple->type());
+    auto ops  = rewrite(tuple->ops());
+    auto n    = ops.size();
+    if (Lit::isa(type->arity()) != n) return coerce(new_world().tuple(ops), type);
+    for (size_t i = 0; i != n; ++i)
+        ops[i] = coerce(ops[i], component(type, ops, n, i));
+    return new_world().tuple(type, ops);
+}
+
+const Def* CoercePhase::rewrite_stub(Def* old_mut, Def* new_mut) {
+    auto old_lam = old_mut->isa<Lam>();
+    auto new_lam = new_mut->isa<Lam>();
+    if (!old_lam || !new_lam || !old_lam->is_set()) return Rewriter::rewrite_stub(old_mut, new_mut);
+
+    map(old_mut, new_mut);
+    auto _     = enter(old_mut);
+    auto codom = new_lam->type()->reduce(new_lam->var());
+    new_lam->set(rewrite(old_lam->filter()), coerce(rewrite(old_lam->body()), codom));
+    return seal(old_mut, new_mut);
+}
+
+const Def* CoercePhase::coerce(const Def* val, const Def* type) {
+    auto todo = DefVec{val};
+    auto res  = reshape(todo, type);
+    while (!todo.empty() && new_world().inhabitant(todo.back()->type()))
+        todo.pop_back();
+    if (!todo.empty()) fe::throwf("cannot coerce `{}` to `{}`", val, type);
+    return res;
+}
+
+const Def* CoercePhase::reshape(DefVec& todo, const Def* type) {
+    auto& w    = new_world();
+    auto front = todo.empty() ? nullptr : todo.back();
+    if (front) {
+        if (auto res = Checker::assignable(type, front)) return todo.pop_back(), res;
+        if (auto res = eta_coerce(front, type)) return todo.pop_back(), res;
+    }
+
+    if (auto s = w.inhabitant(type)) return s;
+    if (front && w.inhabitant(front->type())) return todo.pop_back(), reshape(todo, type);
+
+    if (splittable(type)) {
+        auto n     = type->num_tprojs();
+        auto parts = DefVec();
+        for (size_t i = 0; i != n; ++i)
+            parts.emplace_back(reshape(todo, component(type, parts, n, i)));
+        return w.tuple(type, parts);
+    }
+
+    if (front && front->type()->num_tprojs() != 1) {
+        todo.pop_back();
+        auto pieces = front->tprojs();
+        todo.insert(todo.end(), pieces.rbegin(), pieces.rend());
+        return reshape(todo, type);
+    }
+
+    fe::throwf("cannot coerce to `{}`", type);
+}
+
+const Def* CoercePhase::eta_coerce(const Def* val, const Def* type) {
+    auto dst = type->isa<Pi>();
+    auto src = val->type()->isa<Pi>();
+    if (!dst || !src) return nullptr;
+    auto& memo = etas_[type][val];
+    if (memo) return memo;
+
+    auto eta   = new_world().mut_lam(dst)->set(val->dbg_key());
+    memo       = eta; // before the recursion below may rehash etas_
+    auto arg   = coerce(eta->var(), src->dom());
+    auto codom = dst->reduce(eta->var());
+    log().d("coerce {}: {} → {}", val, src, dst);
+    // An Axm reduces a Lam it is handed, which must not merely find a call to the reshaped one.
+    if (auto lam = Lam::isa_rewritable(val)) {
+        auto ops = lam->reduce(arg);
+        return eta->set(ops[0], coerce(ops[1], codom));
+    }
+    return eta->set(false, coerce(new_world().app(val, arg), codom));
 }
 
 /*

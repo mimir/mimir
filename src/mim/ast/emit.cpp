@@ -1031,7 +1031,7 @@ void LamDecl::emit_body(Emitter& e) const {
             pi = cod->as_mut<Pi>();
         }
 
-        if (auto cod = pi->codom(); cod && cod->has_dep(Dep::Hole)) pi->set(pi->dom(), rw.rewrite(cod));
+        if (auto cod = pi->codom(); cod && cod->has_hole()) pi->set(pi->dom(), rw.rewrite(cod));
     }
 
     for (auto dom : doms() | std::views::reverse) {

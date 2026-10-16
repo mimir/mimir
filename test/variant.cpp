@@ -24,7 +24,7 @@ TEST_CASE("Variant: cases are positional and free") {
     CHECK(w.variant({nat, b}) != w.variant({b, nat}));
     CHECK(w.variant({nat, b}) == w.variant({nat, b}));
     CHECK(w.variant({nat})->isa<Variant>());
-    CHECK(w.variant({})->isa<Variant>());
+    CHECK(w.variant({}) == w.join({}));
 }
 
 TEST_CASE("Variant: Inj carries its case") {

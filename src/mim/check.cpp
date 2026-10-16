@@ -10,7 +10,7 @@
 namespace mim {
 
 bool Def::needs_zonk() const {
-    if (has_dep(Dep::Hole)) {
+    if (has_hole()) {
         for (auto mut : local_muts())
             if (Hole::isa_set(mut)) return true;
     }

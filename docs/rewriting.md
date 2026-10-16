@@ -8,58 +8,79 @@ It is also the foundation of several [phase](@ref phases) families.
 
 ## Rewriter {#rewriter}
 
-[`Rewriter`](@ref mim::Rewriter) is the general mechanism for recursively rebuilding IR.
+[`Rewriter`](@ref mim::Rewriter) walks a graph of [`Def`](@ref mim::Def)s and constructs corresponding nodes in a target world.
+It memoizes the mapping from old to new nodes, so a node referenced multiple times is rebuilt once and shared - rewriting is graph-aware rather than tree-only.
 
-Conceptually, it walks a graph of [`Def`](@ref mim::Def)s and constructs corresponding nodes in a target world.
-While doing so, it maintains a mapping from old nodes to new nodes.
-This is what makes rewriting graph-aware rather than tree-only:
-if the same old node is referenced multiple times, the rewritten graph will reuse the same rebuilt node instead of duplicating it.
+The same map makes rewriting terminate on recursive structures.
+A mutable is rebuilt by first creating a stub, mapping old mutable to stub, and only then rewriting and filling its operands.
+A recursive reference thus resolves to the stub instead of recursing forever.
 
-@note [`Rewriter`](@ref mim::Rewriter) rebuilds a [`Def`](@ref mim::Def) graph into a target [`World`](@ref mim::World) while preserving sharing and handling recursive mutables safely.
+```cpp
+auto rw      = mim::Rewriter(new_world);
+auto new_def = rw.rewrite(old_def);
+```
 
-The mapping is also the basis for termination on cyclic or recursive structures.
-For mutable nodes, rewriting typically proceeds by first creating a stub, recording the mapping from old mutable to new mutable, and only then rewriting and filling its operands.
-This allows recursive references to resolve to the stub instead of recursing forever.
+### Scopes {#rewriter_scopes}
 
-So the two key ideas behind [`Rewriter`](@ref mim::Rewriter) are:
+A rewrite often has to map an old node to something that is only valid *locally*: a binder's [`Var`](@ref mim::Var) to a fresh representative, a loop index to one particular literal, and so on.
+For this, the map is a stack of [scopes](@ref mim::Rewriter::push).
+[`push(old_vars, new_vars)`](@ref mim::Rewriter::push) opens a scope that owns two sets of [`Vars`](@ref mim::Vars) - one of the old world, one of the new - and [`pop()`](@ref mim::Rewriter::pop) discards it together with all of its mappings.
+The bottom scope - the *root* - is always there.
 
-- memoization of already rewritten nodes
-- stub-based reconstruction of mutable or recursive nodes
+A scope does not take *every* mapping recorded while it is open, though.
+[`map(old, new)`](@ref mim::Rewriter::map) files the mapping into the innermost scope whose old `Vars` `old` mentions or whose new `Vars` `new` mentions as free variables; any other mapping goes into the root.
+So only what actually depends on the local binding dies with the scope, while everything context-free stays shared across sibling scopes and beyond.
+For instance, [`rewrite_mut_Seq`](@ref mim::Rewriter::rewrite_mut_Seq) scalarizes `«i: n; body»` by rewriting `body` once per `i`, each time under
 
-At a high level, [`Rewriter`](@ref mim::Rewriter) preserves:
+```cpp
+push(Vars(var));
+map(var, world().lit_idx(n, i));
+auto new_op = rewrite(seq->body());
+pop();
+```
 
-- graph sharing
-- debug metadata
-- recursive structure through mutable stubs
+Only those parts of `body` that mention `var` are rebuilt for every `i`; the rest is rewritten once and found in the root on the next iteration.
 
-### Scoping
+Dependencies propagate:
 
-[`Rewriter`](@ref mim::Rewriter) uses a stack of mappings rather than a single global map.
-This allows temporary, scoped rewrites.
-This matters whenever rewriting enters a context where some old node should mean something different locally than globally.
-Inner mappings shadow outer ones, and leaving the scope removes the temporary bindings again.
-This scoped structure is important for binder-sensitive rewrites and for transformations that temporarily substitute certain nodes while rebuilding a larger term.
+- If a mutable binder is mapped into a scope, its own `Var` joins that scope's old `Vars`, so whatever its body builds from that `Var` lands there, too.
+- [`bind_old(var)`](@ref mim::Rewriter::bind_old) and [`bind_new(var)`](@ref mim::Rewriter::bind_new) add a `Var` to the innermost scope by hand.
+  The latter is for a fresh binder of the *new* world whose `Var` should keep new nodes local - e.g. the continuation `cps::phase::Conv` introduces when lifting a call.
+
+[`lookup()`](@ref mim::Rewriter::lookup) searches the scopes from innermost to root.
+
+### Nested Rewriters {#rewriter_nested}
+
+Sometimes the *same* old node must be rewritten differently depending on where it occurs.
+[`Scalarize`](@ref mim::Scalarize), for example, flattens a function type `Cn [[A, B], C]` to `Cn [A, B, C]` everywhere - except in what the signature of an interface `Lam` (an external, an annex, or a foreign declaration) mentions, which must keep its shape.
+A single map cannot hold both results.
+
+Hence, such a rewrite runs a second Rewriter with a map of its own that rebuilds only what differs and hands everything else back to the outer one:
+
+```cpp
+const Def* Scalarize::Keep::rewrite(const Def* old_def) {
+    if (!has_cn(old_def) && !has_intersection(old_def)) return sca_.rewrite(old_def);
+    bind_old(old_def->has_var());
+    return Rewriter::rewrite(old_def); // rebuilds a Pi without flattening it
+}
+```
+
+Whatever does not mention a `Cn` - or the `Var` of a binder rebuilt in here - is thus rewritten once and shared, while the nested map dies with the nested Rewriter.
+Where values of the two shapes meet, a [`CoercePhase`](@ref phases_coerce_phase) coerces between them.
 
 ### Mutable Rewrites
 
-In practice, mutable rewrites and scoped substitutions go together.
-When a transformation may encounter recursion, cycles, or binder-introduced variables, the usual pattern is:
+Putting it together, a mutable is rebuilt as follows:
 
-1. create the replacement mutable first,
-2. record the old-to-new mapping immediately,
-3. push a temporary scope if the rewrite introduces binder-local substitutions,
-4. rewrite operands, filters, codomains, or bodies,
-5. pop the temporary scope again,
-6. finally fill the mutable via [`mim::Def::set`](@ref mim::Def::set).
+1. create the replacement stub,
+2. map old mutable to stub immediately,
+3. map binder-local substitutions - in a [`push`](@ref mim::Rewriter::push)ed scope if they must not outlive this rewrite,
+4. rewrite and [`set`](@ref mim::Def::set) the operands,
+5. [`pop`](@ref mim::Rewriter::pop) the scope again.
 
-The base [`Rewriter`](@ref mim::Rewriter) follows this pattern through [`mim::Rewriter::rewrite_stub`](@ref mim::Rewriter::rewrite_stub), and custom phases often mirror it manually when they need more control over how a mutable is rebuilt.
-The crucial point is that recursive self-references must see the already-created replacement mutable instead of triggering another rebuild of the same node.
-
-The same stack discipline is used for binder-sensitive substitutions.
-Temporary mappings introduced while rewriting under a binder should stay local to that binder, typically via [`mim::Rewriter::push`](@ref mim::Rewriter::push) / [`mim::Rewriter::pop`](@ref mim::Rewriter::pop).
-This is the common pattern when rewriting dependent codomains under fresh variables, substituting a variable with a temporary representative, or rebuilding a body under newly introduced binder variables.
-
-@note The practical rule of thumb is: map early for recursive mutables, and scope narrowly for binder-local substitutions.
+[`rewrite_stub`](@ref mim::Rewriter::rewrite_stub) implements steps 2 and 4, and finally tries to immutabilize the result in hindsight.
+Custom phases mirror this pattern when they need more control - e.g. to map an old `Var` to something other than the new mutable's `Var`.
+The crucial point is that recursive self-references must see the stub instead of triggering another rebuild of the same node.
 
 If a rewrite replaces an external mutable with a fresh one, preserve the root explicitly by calling [`mim::Def::transfer_external`](@ref mim::Def::transfer_external) or re-externalizing the replacement node.
 
@@ -67,16 +88,16 @@ If a rewrite replaces an external mutable with a fresh one, preserve the root ex
 
 A rewrite that changes a mutable's *number* of ops - dropping components of a [`Sigma`](@ref mim::Sigma), say - cannot use the plain [`rewrite_stub`](@ref mim::Rewriter::rewrite_stub): that one rewrites `old->op(i)` into `new->op(i)` for every `i`.
 The overload [`rewrite_stub(old, new, new2old)`](@ref mim::Rewriter::rewrite_stub) spells out the op indices instead: `new->op(i)` is rewritten from `old->op(new2old[i])`.
-Everything else stays the same - mapping the stub before descending into it, entering its scope, and immutabilizing the result in hindsight unless something already captured the stub recursively.
+Everything else stays the same - mapping the stub before descending into it, entering it as [`curr_mut()`](@ref mim::Rewriter::curr_mut), and immutabilizing the result in hindsight unless something already captured the stub recursively.
 If you fill a stub entirely by hand, [`seal`](@ref mim::Rewriter::seal) is that last step on its own.
 
 [`Sieve`](@ref mim::Sieve) computes such an index list from a predicate over the old components:
 
 ```cpp
-auto keep = mim::Sieve(old_sigma->ops(), [](const Def* op) { return !is_gone(op); });
+auto keep = mim::Sieve(old_sigma->ops(), [&](const Def* op) { return !old_world().inhabitant(op); });
 if (keep.all()) return RWPhase::rewrite_mut_Sigma(old_sigma);
 
-auto new_sigma = new_world().mut_sigma(rewrite(old_sigma->type()), keep.size());
+auto new_sigma = new_world().mut_sigma(rewrite(old_sigma->type()), keep.num_new());
 return rewrite_stub(old_sigma, new_sigma, keep.new2old());
 ```
 
@@ -105,8 +126,8 @@ They extend the very same index space, so one `Sieve` still answers the whole ne
 [`all`](@ref mim::Sieve::all) then means _the new aggregate is the old one_ - nothing dropped **and** nothing appended.
 Since an appended component has no old op to rewrite from, [`new2old`](@ref mim::Sieve::new2old) - and hence `rewrite_stub` - is unavailable once you append.
 
-@warning Dropping decides *per type def*, so it must not tear apart an edge where two distinct defs meet: an [`App`](@ref mim::App) connecting a dependent dom with its instance (`[n: Nat, «n; *»]` vs `[Nat, []]`), or an [`Axm`](@ref mim::Axm) application, whose shapes are re-derived from the `Axm`'s generic type instead of being rewritten.
-Pin such aggregates in an [`Analysis`](@ref mim::Analysis) first; [`SingleErasure`](@ref mim::SingleErasure) does exactly that.
+@warning Dropping decides *per type*, but some shapes are not the phase's to change: an [`Axm`](@ref mim::Axm)'s signature, or the dependent domain an [`App`](@ref mim::App) instantiates (`[n: Nat, «n; *»]` vs `[Nat, []]`).
+Where a reshaped value meets such a shape, it must be converted back - this is what [`CoercePhase`](@ref phases_coerce_phase) does; [`SingleErasure`](@ref mim::SingleErasure) builds on it.
 
 ### Preserving Metadata
 
@@ -116,82 +137,24 @@ Hand-written transformations commonly propagate names or add derived names with 
 
 If you create a replacement node that should still be recognizable in dumps, diagnostics, or generated code, preserve or adapt its debug payload immediately instead of treating naming as an afterthought.
 
-### Typical Usage
-
-Rebuild a term into another world:
-
-```cpp
-auto rw      = mim::Rewriter(new_world);
-auto new_def = rw.rewrite(old_def);
-```
-
 ## VarRewriter {#varrewriter}
 
-[`VarRewriter`](@ref mim::VarRewriter) is a specialized form of [`Rewriter`](@ref mim::Rewriter) for variable substitution.
-It extends the generic rewriting machinery with knowledge about [`Var`](@ref mim::Var)s and binders.
-Instead of rebuilding everything indiscriminately, it only rewrites parts of the graph that may actually mention substituted variables.
+[`VarRewriter`](@ref mim::VarRewriter) substitutes [`Var`](@ref mim::Var)s and is nothing but a [`Rewriter`](@ref mim::Rewriter) whose root [scope](@ref rewriter_scopes) owns the substituted `Var`s:
+[`add(var, arg)`](@ref mim::VarRewriter::add) maps `var ↦ arg` and [`bind_old`s](@ref mim::Rewriter::bind_old) `var`.
 
-A good summary is:
-
-@note [`VarRewriter`](@ref mim::VarRewriter) performs scoped variable substitution on top of the general rewriting framework.
-
-The main extra idea is that [`VarRewriter`](@ref mim::VarRewriter) tracks which variables are currently relevant for substitution and uses free-variable information to decide whether a node needs to be rebuilt at all.
-If a subgraph cannot contain any of the substituted variables, it can be reused unchanged.
-This makes substitution much more efficient on large terms: unaffected subgraphs are skipped entirely.
-
-### Scoped Substitution
-
-Like [`Rewriter`](@ref mim::Rewriter), [`VarRewriter`](@ref mim::VarRewriter) is scope-aware.
-This is essential because substitution interacts with binders.
-When rewriting enters a mutable binder that introduces a variable, [`VarRewriter`](@ref mim::VarRewriter) tracks that variable in the current scope.
-This allows it to reason correctly about which free variables are relevant in nested terms.
-
-So [`VarRewriter`](@ref mim::VarRewriter) is not just “replace [`Var`](@ref mim::Var) with [`Def`](@ref mim::Def)”.
-It is substitution that respects binder structure and avoids rebuilding irrelevant parts of the graph.
-
-### Typical Usage
-
-Substitute one variable with one argument:
+On top of that, it only rebuilds what can change at all.
+A node without free variables in any scope's `Vars` is returned as is, so unaffected subgraphs are skipped entirely.
+Entering a mutable binds the mutable's own `Var`, since a binder that gets rebuilt changes its `Var`, too.
 
 ```cpp
-auto rw     = mim::VarRewriter(var, arg);
-auto result = rw.rewrite(body);
-```
+auto result = mim::VarRewriter(var, arg).rewrite(body);
 
-Build it incrementally:
-
-```cpp
 auto rw = mim::VarRewriter(world);
-rw.add(var1, arg1)
-  .add(var2, arg2);
-
+rw.add(var1, arg1).add(var2, arg2);
 auto result = rw.rewrite(def);
 ```
 
-Conceptually, this rewrites only those parts of `def` whose free variables intersect the substituted variables.
-
-## Rewriter vs. VarRewriter
-
-[`VarRewriter`](@ref mim::VarRewriter) is a specialization of [`Rewriter`](@ref mim::Rewriter):
-
-- [`Rewriter`](@ref mim::Rewriter) provides the general graph-rebuilding machinery:
-  - rebuild nodes into a target world
-  - preserve sharing
-  - handle mutable recursion through stubs
-  - support scoped mappings
-
-  If you just want to rebuild IR, use [`Rewriter`](@ref mim::Rewriter):
-
-  > What is the corresponding version of this IR in another rewriting context?
-
-- [`VarRewriter`](@ref mim::VarRewriter) adds substitution-specific behavior:
-  - map variables to replacement terms
-  - track relevant variables by scope
-  - skip unaffected subgraphs using free-variable information
-
-  If you want to substitute variables while rebuilding, use [`VarRewriter`](@ref mim::VarRewriter):
-
-  > What do I get if I substitute these variables and rebuild only where necessary?
+Use [`Rewriter`](@ref mim::Rewriter) to rebuild everything, e.g. into another world; use [`VarRewriter`](@ref mim::VarRewriter) to substitute within the same world and rebuild only where necessary.
 
 <div class="section_buttons">
 

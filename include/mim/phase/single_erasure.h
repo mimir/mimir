@@ -10,28 +10,14 @@ namespace mim {
 /// Besides Single this also catches the unit `[]` and `Idx 1` - and any aggregate built from those.
 /// A Variant with a single case `| A` is isomorphic to `A` and erased to it.
 /// A singleton above `*` has no unit to erase to and degrades to the type of its inhabitant instead.
-/// An aggregate whose arity another def relies upon keeps all of its components; only the erasure is mandatory.
-class SingleErasure : public RWPhase {
-private:
-    /// Pins the aggregates that must keep their arity.
-    class Analysis : public mim::Analysis {
-    public:
-        Analysis(World& world)
-            : mim::Analysis(world, "SingleErasure::Analysis") {}
-
-        bool pinned(const Def* type) const { return is_top(type); }
-
-    private:
-        const Def* rewrite(const Def* old) final;
-    };
-
+/// Where an erased value meets a shape that still demands its components (e.g. an Axm's signature), it is coerce()d:
+/// dropped components are re-inserted as their sole inhabitants, and Cn%s are η-wrapped.
+class SingleErasure : public CoercePhase {
 public:
     SingleErasure(World& world, std::string name)
-        : RWPhase(world, std::move(name), &analysis_)
-        , analysis_(world) {}
+        : CoercePhase(world, std::move(name)) {}
     SingleErasure(World& world, flags_t annex)
-        : RWPhase(world, annex, &analysis_)
-        , analysis_(world) {}
+        : CoercePhase(world, annex) {}
 
 private:
     /// @name Erasure
@@ -40,8 +26,6 @@ private:
     bool is_unit(const Single* single) { return single->type() == old_world().type<0>(); }
     const Def* erase(const Single*);        ///< The erasure of the singleton *type* itself.
     const Def* inhabitant(const Def* type); ///< The sole inhabitant of the information-free @p type.
-    bool is_gone(const Def* type);          ///< Does @p type have exactly one inhabitant?
-    const Variant* lone(const Def* type);   ///< @p type as a Variant with a single case that may be erased.
     Sieve sieve(const Sigma*);              ///< The components of @p sigma that survive.
     /// The literal @p index into a Sigma, adjusted for the components @p keep dropped.
     size_t remap(const Sieve& keep, const Def* index);
@@ -59,8 +43,6 @@ private:
     const Def* rewrite_imm_Insert(const Insert*) final;
     const Def* rewrite_imm_Seq(const Seq*) final;
     const Def* rewrite_mut_Seq(Seq*) final;
-
-    Analysis analysis_;
 };
 
 } // namespace mim

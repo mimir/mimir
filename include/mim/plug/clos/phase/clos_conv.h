@@ -97,7 +97,6 @@ private:
 
     /// @name Rewrite hooks
     ///@{
-    void rewrite_external(Def*) final;
     void finalize() final;
     const Def* rewrite_imm_Pi(const Pi*) final;
     const Def* rewrite_mut_Pi(Pi*) final;

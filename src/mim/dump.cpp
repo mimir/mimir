@@ -609,7 +609,7 @@ void full(std::ostream& os, Full d) {
 
         if (Pi::isa_implicit(app->callee()->unfold_type())) {
             // An argument that is still a Hole is what the parser inserts anyway - and `?` has no spelling.
-            if (app->arg()->has_dep(Dep::Hole)) return std::print(os, "{}", d.op(app->callee(), d.prec(), d.is_left()));
+            if (app->arg()->has_hole()) return std::print(os, "{}", d.op(app->callee(), d.prec(), d.is_left()));
             // Spelling out an implicit argument needs `@`; juxtaposition would insert a Hole in front of it.
             return std::print(os, "{} @ {}", d.l(app->callee(), Prec::App), d.r(app->arg(), Prec::App));
         }

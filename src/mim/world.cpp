@@ -293,13 +293,22 @@ const Def* World::umax(Defs ops_) {
 }
 
 const Def* World::inhabitant(const Def* type) {
-    if (auto s = Idx::isa(type)) {
-        if (Lit::isa(s) == 1) return lit_idx_1_0();
-    } else if (auto s = type->isa<Sigma>(); s && s->num_ops() == 0) {
-        return tuple(s, {});
-    } else if (auto single = type->isa<Single>()) {
-        return wrap(single->op());
+    if (auto s = Idx::isa(type)) return Lit::isa(s) == 1 ? lit_idx_1_0() : nullptr;
+    if (auto single = type->isa<Single>()) return wrap(single->op());
+    if (auto s = type->isa<Sigma>(); s && s->num_ops() == 0) return tuple(s, {});
+    if (auto sigma = type->isa_imm<Sigma>()) {
+        auto ops = DefVec();
+        for (auto op : sigma->ops())
+            if (auto i = inhabitant(op))
+                ops.emplace_back(i);
+            else
+                return nullptr;
+        return tuple(sigma, ops);
     }
+    if (auto arr = type->isa_imm<Arr>())
+        if (auto i = inhabitant(arr->body())) return pack(arr->shape(), i);
+    if (auto lone = Variant::isa_lone(type))
+        if (auto i = inhabitant(lone)) return inj(type, 0, i);
     return nullptr;
 }
 
@@ -901,7 +910,9 @@ const Def* World::inj(const Def* type, nat_t index, const Def* value) {
 
 const Def* World::variant(Defs ops) {
     auto zops = Def::zonk(ops);
-    return unify<Variant>(Variant::infer(*this, zops), zops);
+    auto kind = Variant::infer(*this, zops);
+    if (zops.empty()) return bot(kind);
+    return unify<Variant>(kind, zops);
 }
 
 const Def* World::match(Defs ops_) {

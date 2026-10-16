@@ -105,6 +105,12 @@ public:
     static const Def* infer(World&, Defs);
     ///@}
 
+    /// The payload `A` of a single-case Variant `| A`, which is isomorphic to `A`.
+    static const Def* isa_lone(const Def* d) {
+        auto variant = d->isa_imm<Variant>();
+        return variant && variant->num_ops() == 1 ? variant->op(0) : nullptr;
+    }
+
     static constexpr auto Node      = mim::Node::Variant;
     static constexpr size_t Num_Ops = std::dynamic_extent;
 
