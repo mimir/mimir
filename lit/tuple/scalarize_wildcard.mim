@@ -1,0 +1,15 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+plugin core;
+
+use core.ops.u.w;
+
+/// `sink` accepts `f` only because `⊤` matches `3`, so their leaves differ and coerce() cannot bridge them.
+/// Hence, `f` keeps its shape.
+con f (x: «3; I32», k: Cn I32) = k (x#0₃ + x#2₃);
+
+extern con sink (k: Cn Cn [«⊤:Nat; I32», Cn I32]) = k f;
+extern con call (a b c: I32, k: Cn I32) = f ((a, b, c), k);
+
+// CHECK-DAG: fun f ({{.*}}): I32 =
+// CHECK-DAG: extern con sink (k{{.*}}: Cn Cn [«⊤:Nat; I32», Cn I32]) =
+// CHECK-DAG: fun {{[_a-z0-9]+}} ({{[_a-z0-9]+}}: «3; I32»){{.*}}: I32 =

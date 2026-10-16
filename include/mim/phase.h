@@ -400,6 +400,7 @@ private:
     /// @returns `nullptr` unless both @p val%'s type and @p type are Pi%s.
     const Def* eta_coerce(const Def* val, const Def* type);
     /// Builds a value of @p type from the top of the stack @p todo.
+    /// Greedy matching is sound as assignable types share their leaves - unless a wildcard like `⊤` interferes.
     const Def* reshape(DefVec& todo, const Def* type);
 
     DefMap<Def2Def> etas_; ///< type ↦ val ↦ eta_coerce(val, type)

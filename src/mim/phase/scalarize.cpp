@@ -1,5 +1,6 @@
 #include "mim/phase/scalarize.h"
 
+#include "mim/check.h"
 #include "mim/lam.h"
 #include "mim/tuple.h"
 #include "mim/world.h"
@@ -74,6 +75,12 @@ void Scalarize::Analysis::inspect(const Def* def) {
         auto structural = DefSet();
         pin_opaque(structural, lam->type());
     }
+
+    // A wildcard like `«⊤; I32»` admits an argument with other leaves, which coerce() cannot reassemble.
+    if (auto app = def->isa<App>())
+        if (auto pi = app->callee()->type()->isa<Pi>();
+            pi && app->arg()->type() != pi->dom() && !Checker::alpha<Checker::Test>(pi->dom(), app->arg()->type()))
+            pin_imm(app->arg()->type(), isa_flattenable);
 
     if (auto app = def->isa<App>(); app && app->axm()) {
         // `tensor.buf x` nominates `x` itself.
