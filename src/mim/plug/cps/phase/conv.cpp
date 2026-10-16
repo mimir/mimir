@@ -13,8 +13,7 @@ static bool convertible(Lam* lam) {
 }
 
 const Def* Conv::map(const Def* old_def, const Def* new_def) {
-    auto& old2new           = new_def->has_free_vars_in(scoped_) ? old2news_.back() : old2news_.front();
-    return old2new[old_def] = new_def;
+    return old2new(!new_def->has_free_vars_in(scoped_))[old_def] = new_def;
 }
 
 const Def* Conv::rewrite_mut_Lam(Lam* old_lam) {

@@ -23,15 +23,16 @@ namespace mim {
 /// a Var (higher-order parameter), a branch tuple, or a value loaded back from memory.
 /// Hence, a Lam may escape (be stored, passed as argument) and still get its signature flattened.
 ///
-/// A Pi is *pinned* (left untouched) if
-/// * it is reachable from an opaque annex the program uses (normalizers and backends rely on its exact shape),
-/// * an Axm application's signature dictates it - what the Axm consumes and produces,
-///   plus a *bare* function argument's type (`autodiff.ad f`) - except for subtrees that are
-///   merely substituted in via (type) arguments (`T` in `mem.store T`), which stay flattenable,
-/// * it occurs inside an *interface* Lam's signature (external, annex, or unset declaration) -
-///   only such a Lam's own top-level Pi stays flattenable (it may be shared with internal values),
-/// * it types a value inside a dependently-typed aggregate (a typed closure),
-/// * an App connects a dom and an arg whose types are alpha-equivalent yet *distinct* defs, or
+/// Where a reshaped value meets a shape that is *not* reshaped, it is coerce()d:
+/// tuples are exploded / reassembled and Cn%s are η-wrapped.
+/// This happens wherever the expected shape stems from elsewhere:
+/// an App%'s domain (in particular an Axm's signature, e.g. `affine.For`'s body), an Axm's result,
+/// a Tuple's type, and the body of an *interface* Lam (external, annex, or unset declaration).
+/// The latter keeps the shape of everything its signature mentions - only its own Pi is flattened.
+///
+/// A Pi is *pinned* (left untouched) where a coercion would be observable:
+/// * a *bare* function argument of an Axm (`autodiff.ad f`) - the Axm inspects and calls it by its own convention,
+/// * it types a value inside a dependently-typed aggregate (a typed closure), or
 /// * one of its parameters is Extract%ed / Insert%ed via a **non-constant** index
 ///   (splitting would only force the body to reassemble the tuple),
 ///   or an Axm consumes it as a whole through one of its type variables (`tensor.buf x` nominates `x` as a tensor);
@@ -45,7 +46,7 @@ namespace mim {
 /// (Def::num_tprojs, Pi::tdom, App::targ): an Arr parameter is only expanded if its arity is
 /// below the threshold; a Sigma parameter always is.
 /// It will not flatten mutable @p Sigma%s or @p Arr%ays (their vars have no static arity).
-class Scalarize : public RWPhase {
+class Scalarize : public ReprPhase {
 private:
     /// Optimistic fixed-point analysis: every immutable `Cn` is assumed flattenable
     /// until proven otherwise (see the pinning rules above).
@@ -73,21 +74,23 @@ private:
         /// Kept out of lattice(), as a lattice write would also map() the Pi to its abstract value -
         /// which breaks as soon as that Pi occurs in a type argument (`mem.slot (H, 0)`).
         DefMap<fe::Bitset> keeps_;
-        DefSet interface_; ///< Everything reachable from the opaque annexes reached so far.
     };
 
 public:
     Scalarize(World& world, flags_t annex)
-        : RWPhase(world, annex, &analysis_)
+        : ReprPhase(world, annex, &analysis_)
         , analysis_(world) {}
 
 private:
-    const Def* rewrite_imm_Pi(const Pi*) final;
-    const Def* rewrite_mut_Lam(Lam*) final;
-    const Def* rewrite_imm_App(const App*) final;
+    /// Rewrites what an interface Lam's signature mentions: it keeps its shape.
+    static constexpr Ctx Iface = 1;
 
-    /// Flattens @p app%'s arguments one level according to @p mask.
-    DefVec flatten_args(const App* app, const fe::Bitset& mask);
+    const Def* rewrite_imm_Pi(const Pi*) final;
+    /// The new Lam for @p old, whose Var maps to the old Var reassembled from the new one.
+    Lam* stub(Lam* old, const fe::Bitset& mask);
+    /// Flattens @p pi%'s domain one level according to @p mask.
+    const Def* flatten(const Pi* pi, const fe::Bitset& mask);
+    const Def* rewrite_mut_Lam(Lam*) final;
 
     Analysis analysis_;
 };

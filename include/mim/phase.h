@@ -227,36 +227,6 @@ protected:
         pin_imm(visited, def, pinnable);
     }
 
-    /// pin%s the shapes @p gen - a part of an Axm's generic type - dictates in its instance @p inst.
-    /// Subgraphs substituted in for the signature's binders impose no shape, though, and are exempt.
-    void pin_axm(DefSet& visited, const Def* gen, const Def* inst, DefPred auto pinnable) {
-        if (is_binder(gen)) return;
-        // A normalizer reshaped what the signature dictates, e.g. `autodiff.AD T` into a Pi.
-        if (gen->node() != inst->node() || gen->num_deps() != inst->num_deps()) return pin_imm(visited, inst, pinnable);
-        if (!visited.emplace(inst).second) return;
-        if (pinnable(inst)) pin(inst);
-        if (inst->isa_mut()) return;
-        for (size_t i = 0, e = gen->num_deps(); i != e; ++i)
-            pin_axm(visited, gen->dep(i), inst->dep(i), pinnable);
-    }
-
-    /// If @p app applies an Axm, pin%s the shapes its signature dictates: what the Axm consumes and produces.
-    /// Rebuilding such an App re-derives them from the Axm's generic type instead of rewriting them.
-    /// @returns whether @p app applies an Axm.
-    bool pin_axm(const App* app, DefPred auto pinnable) {
-        if (!app->uncurry_callee()->isa<Axm>()) return false;
-
-        auto visited = DefSet();
-        if (auto pi = generic_type(app->callee())->isa<Pi>()) {
-            pin_axm(visited, pi->dom(), app->callee_type()->dom(), pinnable);
-            pin_axm(visited, pi->codom(), app->type(), pinnable);
-        } else {
-            pin_imm(visited, app->callee_type()->dom(), pinnable);
-            pin_imm(visited, app->type(), pinnable);
-        }
-        return true;
-    }
-
     /// Additionally schedules @p mut for the next sparse round.
     /// Use this when a lattice change must re-visit *other* mutables than curr_mut() -
     /// e.g. all call sites of a Lam whose var's abstract value changed.
@@ -310,8 +280,6 @@ private:
     }
 
     bool is_cyclic(const Def* def) const;
-    static const Def* generic_type(const Def* callee);
-    static bool is_binder(const Def*);
 
     /// Walks all enqueued mutables' dependencies - in BFS order - under each mutable's curr_mut() scope.
     void drain();
@@ -412,6 +380,35 @@ private:
 
     Analysis* analysis_;
     std::unique_ptr<World> new_world_; ///< Owns Rewriter::world.
+};
+
+/// An RWPhase that changes the representation of values, e.g. by flattening or erasing components.
+/// Every checking position - an App's argument and result, a Tuple's ops, a Lam's body - coerce()s such a value to a
+/// shape that is *not* changed (an Axm's signature, an interface's type, ...).
+class ReprPhase : public RWPhase {
+public:
+    using RWPhase::RWPhase;
+
+protected:
+    const Def* rewrite_imm_App(const App*) override;
+    const Def* rewrite_imm_Tuple(const Tuple*) override;
+    const Def* rewrite_stub(Def*, Def*) override;
+    using RWPhase::rewrite_stub;
+
+    /// @name Coercion
+    ///@{
+    /// Converts the *new* @p new_val into a value of the *new* @p new_type, where a checking position demands it.
+    /// Both are matched leaf by leaf: tuples are exploded and reassembled, Pi%s are η-wrapped, and
+    /// information-free components are dropped or filled in with their sole inhabitant.
+    const Def* coerce(const Def* new_val, const Def* new_type);
+    /// η-wraps @p val into a Lam of @p type, coerce()ing its Var to @p val%'s domain and its result to the codomain.
+    /// @returns `nullptr` unless both @p val%'s type and @p type are Pi%s.
+    const Def* eta_coerce(const Def* val, const Def* type);
+    ///@}
+
+private:
+    /// Builds a value of @p type from the top of the stack @p todo.
+    const Def* reshape(DefVec& todo, const Def* type);
 };
 
 /// An RWPhase that searches for a pattern and replaces it.

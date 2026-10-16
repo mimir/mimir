@@ -2,34 +2,6 @@
 
 namespace mim {
 
-static bool is_shaped(const Def* def) { return def->isa<Sigma>() || def->isa<Arr>() || def->isa<Variant>(); }
-
-/*
- * Analysis
- */
-
-const Def* SingleErasure::Analysis::rewrite(const Def* old) {
-    // Visit the subtree *before* inspecting: pin() seeds `def ↦ def` into the rewriter map, which would
-    // short-circuit the traversal into `old` and skip its subtree for the rest of the round.
-    auto res = mim::Analysis::rewrite(old);
-
-    if (auto app = old->isa<App>()) {
-        // An Axm's signature dictates arities (`Idx n_groups` becomes `Idx 1` all over again).
-        pin_axm(app, is_shaped);
-
-        // Assignability is alpha-equivalence, so an App may connect a dom and an arg whose types are *distinct*
-        // defs - a dependent dom and its instance (`[n: Nat, «n; *»]` vs `[Nat, []]`). Dropping decides per def,
-        // which would tear such an edge apart: the instance loses what the dependent dom still expects.
-        if (auto dom = app->callee_type()->dom(); dom != app->arg()->type()) {
-            auto visited = DefSet();
-            pin_imm(visited, dom, is_shaped);
-            pin_imm(visited, app->arg()->type(), is_shaped);
-        }
-    }
-
-    return res;
-}
-
 /*
  * SingleErasure
  */
@@ -37,7 +9,6 @@ const Def* SingleErasure::Analysis::rewrite(const Def* old) {
 bool SingleErasure::is_gone(const Def* type) {
     if (type->isa<Single>()) return true;
     if (Idx::isa_lit(type) == 1) return true;
-    if (analysis_.pinned(type)) return false;
     if (auto variant = lone(type)) return is_gone(variant->op(0));
     // An immutable aggregate is information-free iff all of its components are; this also covers `[]`.
     if (auto sigma = type->isa_imm<Sigma>())
@@ -47,14 +18,14 @@ bool SingleErasure::is_gone(const Def* type) {
 }
 
 const Variant* SingleErasure::lone(const Def* type) {
-    if (auto variant = type->isa<Variant>(); variant && variant->num_ops() == 1 && !analysis_.pinned(variant))
+    if (auto variant = type->isa<Variant>(); variant && variant->num_ops() == 1)
         if (variant->isa_imm() || variant->as_mut()->is_immutabilizable()) return variant;
     return nullptr;
 }
 
 Sieve SingleErasure::sieve(const Sigma* sigma) {
-    // A foreign declaration has no components to inspect; a pinned one must keep its arity.
-    if (!sigma->is_set() || analysis_.pinned(sigma)) return Sieve(sigma->num_ops());
+    // A foreign declaration has no components to inspect.
+    if (!sigma->is_set()) return Sieve(sigma->num_ops());
     return Sieve(sigma->ops(), [this](const Def* op) { return !is_gone(op); });
 }
 
@@ -125,14 +96,7 @@ const Def* SingleErasure::rewrite_mut_Sigma(Sigma* old_sigma) {
 
 const Def* SingleErasure::rewrite_imm_Tuple(const Tuple* tuple) {
     if (is_gone(tuple->type())) return inhabitant(tuple->type());
-
-    // Drive the drop by the *type*: a dependent component may reduce to a gone type while its Sigma op does not.
-    if (auto sigma = tuple->type()->isa<Sigma>()) {
-        auto keep = sieve(sigma);
-        if (!keep.all()) return new_world().tuple(rewrite(tuple->type()), rewrite(keep.gather(tuple->ops())));
-    }
-
-    return RWPhase::rewrite_imm_Tuple(tuple);
+    return ReprPhase::rewrite_imm_Tuple(tuple);
 }
 
 const Def* SingleErasure::rewrite_imm_Extract(const Extract* extract) {
@@ -165,8 +129,7 @@ const Def* SingleErasure::rewrite_imm_Seq(const Seq* seq) {
 
 const Def* SingleErasure::rewrite_mut_Seq(Seq* seq) {
     // A mutable Seq has no immutable type to ask, so inspect its body directly.
-    if (seq->is_set() && !analysis_.pinned(seq->is_intro() ? seq->type() : seq)
-        && is_gone(seq->is_intro() ? seq->body()->type() : seq->body()))
+    if (seq->is_set() && is_gone(seq->is_intro() ? seq->body()->type() : seq->body()))
         return new_world().prod(seq->is_intro());
     return RWPhase::rewrite_mut_Seq(seq);
 }

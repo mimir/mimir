@@ -296,7 +296,7 @@ const Def* VarRewriter::rewrite_mut(Def* mut) {
 const Def* Zonker::lookup(const Def* old_def) {
     // Holes only ever get set, so a cached result goes stale once a Hole within it got set since.
     // A self-map is a fixpoint, though: e.g. `binder#i` keeps a set Hole in its type until the binder is rewired.
-    if (auto new_def = fe::lookup(old2news_.back(), old_def);
+    if (auto new_def = fe::lookup(old2new(), old_def);
         new_def && (new_def == old_def || new_def->isa_mut() || !new_def->needs_zonk()))
         return new_def;
     return nullptr;
