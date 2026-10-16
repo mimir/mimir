@@ -508,9 +508,7 @@ const Def* World::tuple(Defs ops) {
 
 const Def* World::tuple(const Def* type, Defs ops) {
     auto t = tuple(type, ops, true);
-#ifdef MIM_ENABLE_CHECKS
     if (auto tup = t->isa<Tuple>()) check_tuple(tup);
-#endif
     return t;
 }
 
@@ -543,7 +541,6 @@ const Def* World::tuple(const Def* type, Defs ops_, bool may_be_uniform) {
     return unify<Tuple>(type, ops);
 }
 
-#ifdef MIM_ENABLE_CHECKS
 void World::check_tuple(const Tuple* t) {
     auto type = t->type();
     auto n    = t->num_ops();
@@ -551,18 +548,19 @@ void World::check_tuple(const Tuple* t) {
     if (auto a = Lit::isa(type->arity()); a && *a != n)
         t->blame("tuple has {} elements but its type `{}` has arity `{}`", n, type, type->arity()).bail();
 
-    auto sigma = type->isa_mut<Sigma>();
-    auto red   = sigma ? sigma->reduce(t) : Defs{};
+    auto sigma = type->isa<Sigma>();
+    auto dep   = sigma && sigma->has_var();
+    auto red   = dep ? sigma->reduce(t) : Defs{};
+    auto elem  = type->isa_imm<Arr>() ? type->as<Arr>()->elem() : nullptr;
     for (size_t i = 0; i != n; ++i) {
-        auto expected = sigma ? red[i] : type->proj(n, i);
+        auto expected = dep ? red[i] : elem ? elem : sigma ? sigma->op(i) : type->proj(n, i);
         auto op       = t->op(i);
-        if (!Checker::assignable(expected, op))
+        if (op->type() != expected && !Checker::assignable(expected, op))
             op->blame("tuple element is not assignable to its type")
                 .n("expected `{}`, got `{}` in `{}`", expected, type_of(op), type)
                 .bail();
     }
 }
-#endif
 
 const Def* World::tuple(Sym sym) {
     return tuple(DefVec(sym, [this](char c) { return lit_i8(c); }));
