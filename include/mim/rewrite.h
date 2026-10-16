@@ -33,7 +33,7 @@ public:
     World& world() { return *world_; }
     ///@}
 
-    /// @name Push / Pop
+    /// @name Scope
     ///@{
     /// Opens a scope for the mappings whose old Def depends on @p old_vars or whose new Def depends on @p new_vars.
     /// The root scope takes all others.
@@ -94,29 +94,12 @@ public:
     virtual const Def* rewrite_mut_Seq(Seq* seq);
     ///@}
 
-    friend void swap(Rewriter& rw1, Rewriter& rw2) noexcept {
-        using std::swap;
-        swap(rw1.scopes_, rw2.scopes_);
-        // Do NOT swap world_: it is a back pointer!
-    }
-
     template<class D = Def>
     D* curr_mut() const {
         return curr_mut_ ? curr_mut_->template isa<D>() : nullptr;
     }
 
-private:
-    World* world_;
-    Def* curr_mut_ = nullptr;
-
 protected:
-    struct Scope {
-        Vars old_vars; ///< Only mappings depending on these go here; the root's are VarRewriter's substitutions.
-        Vars new_vars;
-        Def2Def old2new;
-    };
-    fe::Vector<Scope> scopes_;
-
     /// The map of the innermost push() scope.
     Def2Def& old2new() { return scopes_.back().old2new; }
 
@@ -135,6 +118,23 @@ protected:
     /// A stub that already has users stays mutable, as the users captured it during its own rewrite.
     /// Only needed if you fill a stub yourself instead of going through rewrite_stub.
     const Def* seal(Def* old_mut, Def* new_mut);
+
+    struct Scope {
+        Vars old_vars; ///< Only mappings depending on these go here; the root's are VarRewriter's substitutions.
+        Vars new_vars;
+        Def2Def old2new;
+    };
+    fe::Vector<Scope> scopes_;
+
+private:
+    World* world_;
+    Def* curr_mut_ = nullptr;
+
+    friend void swap(Rewriter& rw1, Rewriter& rw2) noexcept {
+        using std::swap;
+        swap(rw1.scopes_, rw2.scopes_);
+        // Do NOT swap world_: it is a back pointer!
+    }
 };
 
 /// Extends Rewriter for variable substitution.
