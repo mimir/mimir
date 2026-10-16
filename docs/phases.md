@@ -241,7 +241,7 @@ Such a phase cannot reshape everything: an [`Axm`](@ref mim::Axm)'s signature is
 So wherever a type is *checked*, every [`RWPhase`](@ref mim::RWPhase) [`coerce()`s](@ref mim::RWPhase::coerce) the rewritten value to the rewritten expected type:
 
 - an [`App`](@ref mim::App)'s argument to the callee's domain, and its result to the `App`'s type,
-- a [`Tuple`](@ref mim::Tuple)'s ops to the components of its type,
+- a [`Tuple`](@ref mim::Tuple)'s ops to the components of its annotated type - an inferred one just follows the rewritten ops,
 - a [`Lam`](@ref mim::Lam)'s body to its codomain.
 
 Coercion matches value and type leaf by leaf: it explodes and reassembles tuples, η-wraps a function whose `Pi` differs, and drops or fills in components that have a sole [`inhabitant`](@ref mim::World::inhabitant).

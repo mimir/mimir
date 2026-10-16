@@ -148,7 +148,7 @@ bool Scalarize::Keep::has_cn(const Def* def) {
 const Def* Scalarize::rewrite_imm_Pi(const Pi* pi) { return flatten(*this, pi, analysis_.plan(pi)); }
 
 const Def* Scalarize::rewrite_imm_App(const App* app) {
-    if (!app->axm() || !app->arg()->isa_mut<Lam>()) return RWPhase::rewrite_imm_App(app);
+    if (!app->axm() || !app->arg()->type()->isa<Pi>()) return RWPhase::rewrite_imm_App(app);
 
     auto arg    = rewrite(app->arg());
     auto keep   = Keep(*this);

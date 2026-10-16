@@ -644,8 +644,6 @@ nat_t Def::num_tprojs() const {
     return 1;
 }
 
-bool Def::is_splittable() const { return (isa<Sigma>() || isa_imm<Arr>()) && num_tprojs() != 1; }
-
 const Def* Def::proj(nat_t a, nat_t i) const {
     if (a == 1) {
         assert(i == 0 && "only inhabitant of Idx 2 is 0_1");

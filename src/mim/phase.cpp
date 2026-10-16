@@ -227,7 +227,16 @@ const Def* RWPhase::rewrite_imm_App(const App* app) {
     return coerce(res, rewrite(app->type()));
 }
 
+/// Is @p tuple%'s type what World::tuple would infer from its ops?
+static bool has_inferred_type(const Tuple* tuple) {
+    auto& w = tuple->world();
+    return !w.is_frozen() && tuple->type() == Tuple::infer(w, tuple->ops());
+}
+
 const Def* RWPhase::rewrite_imm_Tuple(const Tuple* tuple) {
+    // Only an annotated type constrains the ops; an inferred one follows them.
+    if (has_inferred_type(tuple)) return new_world().tuple(rewrite(tuple->ops()));
+
     auto type = rewrite(tuple->type());
     auto ops  = rewrite(tuple->ops());
     auto n    = ops.size();
@@ -272,7 +281,7 @@ const Def* RWPhase::reshape(DefVec& todo, const Def* type) {
     if (auto s = w.inhabitant(type)) return s;
     if (front && w.inhabitant(front->type())) return todo.pop_back(), reshape(todo, type);
 
-    if (type->is_splittable()) {
+    if (splittable(type)) {
         auto n     = type->num_tprojs();
         auto parts = DefVec();
         for (size_t i = 0; i != n; ++i)

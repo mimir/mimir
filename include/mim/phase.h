@@ -375,9 +375,10 @@ protected:
     /// Both are matched leaf by leaf: tuples are exploded and reassembled, Pi%s are η-wrapped, and
     /// information-free components are dropped or filled in with their sole inhabitant.
     const Def* coerce(const Def* new_val, const Def* new_type);
-    /// Does coerce() see through @p type, i.e. split it or η-wrap it?
-    /// An analysis must keep the shape of whatever lies below any other type.
-    static bool transparent(const Def* type) { return type->isa<Pi>() || type->is_splittable(); }
+    /// Does coerce() explode and reassemble values of @p type?
+    static bool splittable(const Def* type) {
+        return (type->isa<Sigma>() || type->isa_imm<Arr>()) && type->num_tprojs() != 1;
+    }
     ///@}
 
     /// Run **after** all roots have been walked but still **before** the two worlds are swapped.

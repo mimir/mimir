@@ -891,8 +891,8 @@ private:
         auto todo = fe::Vector<Def*>();
         for (auto mut : muts)
             post_order(mut, todo);
-        for (auto lam : shared_)
-            ctx_.arms.erase(lam);
+        for (auto [lam, match] : arm_of_)
+            if (match && is_spellable(lam)) ctx_.arms.emplace(lam);
 
         if (mode_ == Dump::Local) {
             for (auto curr : todo) {
@@ -927,7 +927,7 @@ private:
         auto muts = fe::Vector<Def*>();
         auto seen = DefSet();
         printed_deps(mut, typed_let_, [&](const Def* op) {
-            if (op && op->isa_mut<Lam>()) shared_.emplace(op);
+            note_use(op, nullptr);
             local_muts(op, seen, muts);
         });
         for (auto local_mut : muts)
@@ -940,13 +940,18 @@ private:
         if (!def || def->local_muts().empty() || !seen.emplace(def).second) return;
         if (auto mut = def->isa_mut()) return (void)muts.emplace_back(mut);
         auto match = def->isa<Match>();
-        if (match && matches_.emplace(match).second)
-            for (auto arm : match->arms())
-                if (is_spellable(arm) && !ctx_.arms.emplace(arm).second) shared_.emplace(arm);
         printed_deps(def, typed_let_, [&](const Def* op) {
-            if (op && op->isa_mut<Lam>() && !(match && std::ranges::contains(match->arms(), op))) shared_.emplace(op);
+            // An arm twice in the same `match` cannot be spelled out at both places either.
+            auto arm = match && std::ranges::count(match->arms(), op) == 1;
+            note_use(op, arm ? match : nullptr);
             local_muts(op, seen, muts);
         });
+    }
+
+    /// Records that @p op is an arm of @p match or, if `nullptr`, used otherwise.
+    void note_use(const Def* op, const Match* match) {
+        if (!op || !op->isa_mut<Lam>()) return;
+        if (auto [i, ins] = arm_of_.emplace(op, match); !ins && i->second != match) i->second = nullptr;
     }
 
     void note_vars(const Def* def) {
@@ -1330,8 +1335,8 @@ private:
     Ctx ctx_;
     Srcs srcs_;
     MutSet scheduled_;
-    DefSet matches_;
-    DefSet shared_; ///< Lam%s that are anything but one `match` arm and hence need a declaration of their own.
+    /// The one `match` a Lam is an arm of, or `nullptr` if it is used otherwise and hence needs a declaration.
+    DefMap<const Match*> arm_of_;
 };
 
 } // namespace

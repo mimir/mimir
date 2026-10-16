@@ -44,6 +44,9 @@ private:
         /// Keeps @p def whole if it is a Lam's Var or one of its parameters.
         void keep_param(const Def* def);
         bool kept(const Pi* pi, size_t dom) const; ///< Is parameter @p dom of @p pi kept whole?
+        /// Does coerce() see through @p type, i.e. split it or η-wrap it?
+        /// The shape of whatever lies below any other type must be kept.
+        static bool transparent(const Def* type) { return type->isa<Pi>() || splittable(type); }
         /// pin%s the `Cn`%s below the parts of @p type that coerce() cannot take apart.
         void pin_opaque(DefSet& structural, const Def* type);
 
