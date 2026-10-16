@@ -7,14 +7,8 @@ namespace mim {
  */
 
 bool SingleErasure::is_gone(const Def* type) {
-    if (type->isa<Single>()) return true;
-    if (Idx::isa_lit(type) == 1) return true;
     if (auto variant = lone(type)) return is_gone(variant->op(0));
-    // An immutable aggregate is information-free iff all of its components are; this also covers `[]`.
-    if (auto sigma = type->isa_imm<Sigma>())
-        return std::ranges::all_of(sigma->ops(), [this](const Def* op) { return is_gone(op); });
-    if (auto arr = type->isa_imm<Arr>()) return is_gone(arr->body());
-    return false;
+    return old_world().inhabitant(type);
 }
 
 const Variant* SingleErasure::lone(const Def* type) {
@@ -36,8 +30,7 @@ const Def* SingleErasure::erase(const Single* single) {
 
 const Def* SingleErasure::inhabitant(const Def* type) {
     if (auto single = type->isa<Single>(); single && !is_unit(single)) return rewrite(single->op());
-    if (Idx::isa_lit(type) == 1) return new_world().lit_idx(1, 0);
-    return new_world().tuple();
+    return new_world().inhabitant(rewrite(type));
 }
 
 size_t SingleErasure::remap(const Sieve& keep, const Def* index) {

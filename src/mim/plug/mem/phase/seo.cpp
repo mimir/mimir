@@ -690,13 +690,12 @@ Lam* SEO::build_lam(Lam* old_lam) {
 
     // Map all *kept* vars/phis before rewriting any propagated value below: that rewrite may recursively
     // re-enter old_lam and must be able to resolve them - see var_of().
-    // map_root(), because a Var mapping is context-free and must outlive a scalarization scope.
     for (size_t i = 0; i != n; ++i)
         if (auto j = sig.sieve[i]; j != Sieve::Gone) {
             auto old_var = old_lam->tvar(i);
             auto v       = new_lam->var(sig.sieve.num_new(), j)->set(old_var->dbg_key());
-            map_root(old_var, v);
-            if (auto bundle = isa_bundle(lattice(old_var), old_lam)) map_root(bundle, v); // GVN bundle
+            map(old_var, v);
+            if (auto bundle = isa_bundle(lattice(old_var), old_lam)) map(bundle, v); // GVN bundle
         }
 
     for (size_t i = 0, e = sig.phis.size(); i != e; ++i)
@@ -705,19 +704,19 @@ Lam* SEO::build_lam(Lam* old_lam) {
             auto v        = new_lam->var(sig.sieve.num_new(), j);
             profile_count("phis.materialized");
             log().d("map phi {} → {}", p.phi, v);
-            map_root(p.phi, v);
-            if (p.val != p.phi) map_root(p.val, v); // phi is part of a GVN bundle
+            map(p.phi, v);
+            if (p.val != p.phi) map(p.val, v); // phi is part of a GVN bundle
         }
 
     // Map the whole var *before* rewriting a dropped phi's value below: such a value may project a *dropped*
     // var of old_lam (e.g. its now-removed empty closure env), which only the whole var resolves.
-    map_root(old_lam->var(), var_of(old_lam));
+    map(old_lam->var(), var_of(old_lam));
 
     for (size_t i = 0, e = sig.phis.size(); i != e; ++i)
         if (sig.sieve.cat(i) == Sieve::Gone) {
             const auto& p = sig.phis[i];
             log().d("map phi {} → its propagated value {}", p.phi, p.val);
-            map_root(p.phi, rewrite(p.val));
+            map(p.phi, rewrite(p.val));
         }
 
     auto _ = enter(old_lam);

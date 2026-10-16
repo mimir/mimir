@@ -266,7 +266,7 @@ protected:
 
     /// Schedules @p mut for a breadth-first visit of its dependencies and records `mut -> mut`.
     /// Mutables are enqueued instead of recursed into; Analysis::drain then walks them in BFS order.
-    /// The `mut -> mut` entry doubles as the per-round "already scheduled" marker (Rewriter::old2news_ is
+    /// The `mut -> mut` entry doubles as the per-round "already scheduled" marker (Rewriter::scopes_ are
     /// cleared by reset()), so each mutable's deps are visited at most once per fixed-point round.
     Def* rewrite_mut(Def*) override;
     virtual void leave() {} ///< Called after curr_mut() has been completely dealt with.

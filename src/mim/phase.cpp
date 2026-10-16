@@ -66,7 +66,7 @@ void Phase::profile_count(std::string_view key, uint64_t n) {
  */
 
 void Analysis::reset() {
-    old2news_.clear();
+    scopes_.clear();
     worklist_.clear();
     push();
     todo_ = false;
@@ -207,7 +207,7 @@ bool RWPhase::analyze() {
 
 const Def* RWPhase::lookup(const Def* old_def) {
     if (auto new_def = Rewriter::lookup(old_def)) return new_def;
-    if (auto flags = old_world().annexes().opaque(old_def)) return map_root(old_def, new_world().annex(*flags));
+    if (auto flags = old_world().annexes().opaque(old_def)) return map(old_def, new_world().annex(*flags));
     return nullptr;
 }
 
@@ -260,27 +260,11 @@ const Def* ReprPhase::rewrite_stub(Def* old_mut, Def* new_mut) {
     return seal(old_mut, new_mut);
 }
 
-/// Does the *new* @p type carry no information?
-static bool is_free(const Def* type) {
-    if (type->world().inhabitant(type)) return true;
-    if (auto sigma = type->isa_imm<Sigma>()) return std::ranges::all_of(sigma->ops(), is_free);
-    if (auto arr = type->isa_imm<Arr>()) return is_free(arr->body());
-    return false;
-}
-
-/// The sole inhabitant of the *new*, information-free @p type.
-static const Def* sole(const Def* type) {
-    auto& w = type->world();
-    if (auto s = w.inhabitant(type)) return s;
-    if (auto sigma = type->isa_imm<Sigma>()) return w.tuple(sigma, DefVec(sigma->ops(), sole));
-    return w.pack(type->as<Arr>()->shape(), sole(type->as<Arr>()->body()));
-}
-
 const Def* ReprPhase::coerce(const Def* val, const Def* type) {
     if (auto res = Checker::assignable(type, val)) return res;
     auto todo = DefVec{val};
     auto res  = reshape(todo, type);
-    while (!todo.empty() && is_free(todo.back()->type()))
+    while (!todo.empty() && new_world().inhabitant(todo.back()->type()))
         todo.pop_back();
     if (!todo.empty()) fe::throwf("cannot coerce `{}` to `{}`", val, type);
     return res;
@@ -294,8 +278,8 @@ const Def* ReprPhase::reshape(DefVec& todo, const Def* type) {
         if (auto res = eta_coerce(front, type)) return todo.pop_back(), res;
     }
 
-    if (is_free(type)) return sole(type);
-    if (front && is_free(front->type())) return todo.pop_back(), reshape(todo, type);
+    if (auto s = w.inhabitant(type)) return s;
+    if (front && w.inhabitant(front->type())) return todo.pop_back(), reshape(todo, type);
 
     if ((type->isa<Sigma>() || type->isa_imm<Arr>()) && type->num_tprojs() != 1) {
         auto n     = type->num_tprojs();

@@ -12,10 +12,6 @@ static bool convertible(Lam* lam) {
     return !codom->isa<Type>() && !codom->isa<Pi>();
 }
 
-const Def* Conv::map(const Def* old_def, const Def* new_def) {
-    return old2new(!new_def->has_free_vars_in(scoped_))[old_def] = new_def;
-}
-
 const Def* Conv::rewrite_mut_Lam(Lam* old_lam) {
     if (convertible(old_lam)) return convert(old_lam);
 
@@ -39,8 +35,7 @@ const Def* Conv::convert(Lam* old_lam) {
         // dependent codom: bind it against a fresh mutable Sigma [a: A, Cn B[old_var → a]]
         auto sigma = w.mut_sigma(2);
         sigma->var();
-        scoped_ = w.vars().insert(scoped_, sigma->has_var());
-        push();
+        push(Vars(sigma->has_var()));
         map(old_var, sigma->var(2, 0));
         auto new_codom = rewrite(old_pi->codom());
         pop();
@@ -81,7 +76,7 @@ const Def* Conv::lift(const Def* k, const Def* new_arg, const App* old_app) {
     auto cont = w.mut_con(rewrite(old_app->type()))->set_filter(false);
     auto res  = cont->var();
     cont->set(w.append_suffix(k->sym(), "_cont"));
-    scoped_ = w.vars().insert(scoped_, cont->has_var());
+    bind(cont->has_var());
     pending_.emplace_back(k, new_arg, cont);
 
     log().d("lift {} → {} ({}, {})", old_app, k, new_arg, cont);

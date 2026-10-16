@@ -22,8 +22,25 @@ Rewriter::~Rewriter() = default;
 
 void Rewriter::reset() {
     pop();
-    assert(old2news_.empty());
+    assert(scopes_.empty());
     push();
+}
+
+const Def* Rewriter::map(const Def* old_def, const Def* new_def) {
+    for (auto& scope : scopes_ | std::views::reverse)
+        if (!scope.vars || old_def->has_free_vars_in(*scope.vars) || new_def->has_free_vars_in(*scope.vars)) {
+            // A binder rebuilt in here takes its Var - and what depends on it - along.
+            if (auto var = scope.vars ? old_def->has_var() : nullptr)
+                scope.vars = old_def->world().vars().insert(*scope.vars, var);
+            return slot(scope)[old_def] = new_def;
+        }
+    std::unreachable(); // the root scope takes everything
+}
+
+void Rewriter::bind(const Var* var) {
+    auto& vars = scopes_.back().vars;
+    assert(vars && "only a Var-scoped scope binds Vars");
+    vars = var->world().vars().insert(*vars, var);
 }
 
 const Def* Rewriter::map(const Def* old_def, Defs new_defs) {
@@ -224,7 +241,7 @@ const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
     if (auto var = seq->has_var(); var && l && *l < world().flags().scalarize_threshold) {
         auto new_ops = fe::Vector<const Def*, 32>(*l);
         for (size_t i = 0, e = *l; i != e; ++i) {
-            push();
+            push(Vars(var));
             map(var, world().lit_idx(e, i));
             new_ops[i] = rewrite(seq->body());
             pop();

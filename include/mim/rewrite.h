@@ -45,19 +45,18 @@ public:
 
     /// @name Push / Pop
     ///@{
-    virtual void push() { old2news_.emplace_back(); }
-    virtual void pop() { old2news_.pop_back(); }
+    /// Opens a scope for all mappings or - with @p vars - only for those whose old or new Def depends on @p vars.
+    virtual void push(std::optional<Vars> vars = {}) { scopes_.emplace_back(vars); }
+    virtual void pop() { scopes_.pop_back(); }
+    /// Adds @p var to the Vars of the innermost push() scope.
+    void bind(const Var* var);
     ///@}
 
     /// @name Map / Lookup
     /// Map @p old_def to @p new_def and returns @p new_def.
     ///@{
-    virtual const Def* map(const Def* old_def, const Def* new_def) { return old2new()[old_def] = new_def; }
-
-    /// Like map() but records into the *root* map, so the entry outlives the current push()/pop() scope.
-    /// Use this for a context-free mapping - e.g. a Var of a rebuilt binder - that must stay valid after a
-    /// scope opened by rewrite_mut_Seq's scalarization is popped again.
-    const Def* map_root(const Def* old_def, const Def* new_def) { return old2new(true)[old_def] = new_def; }
+    /// Records the mapping in the innermost push() scope it depends on.
+    virtual const Def* map(const Def* old_def, const Def* new_def);
 
     // clang-format off
     const Def* map(const Def* old_def ,       Defs new_defs);
@@ -68,9 +67,9 @@ public:
     /// Lookup `old_def` by searching in reverse through the stack of maps.
     /// @returns `nullptr` if nothing was found.
     virtual const Def* lookup(const Def* old_def) {
-        for (const auto& maps : old2news_ | std::views::reverse)
-            if (ctx_ < maps.size())
-                if (auto new_def = fe::lookup(maps[ctx_], old_def)) return new_def;
+        for (const auto& scope : scopes_ | std::views::reverse)
+            if (ctx_ < scope.maps.size())
+                if (auto new_def = fe::lookup(scope.maps[ctx_], old_def)) return new_def;
         return nullptr;
     }
     ///@}
@@ -101,7 +100,7 @@ public:
 
     friend void swap(Rewriter& rw1, Rewriter& rw2) noexcept {
         using std::swap;
-        swap(rw1.old2news_, rw2.old2news_);
+        swap(rw1.scopes_, rw2.scopes_);
         // Do NOT swap world_: it is a back pointer!
     }
 
@@ -116,19 +115,25 @@ private:
     Ctx ctx_       = 0;
 
 protected:
-    /// Per push() scope, the map of each Ctx - allocated on demand.
-    fe::Vector<fe::Vector<Def2Def>> old2news_;
+    struct Scope {
+        std::optional<Vars> vars; ///< Only Def%s depending on these are mapped here; all, if unset.
+        fe::Vector<Def2Def> maps; ///< The map of each Ctx - allocated on demand.
+    };
+    fe::Vector<Scope> scopes_;
 
-    /// The map of the current ctx() in the innermost push() scope or - with @p root - in the outermost one.
-    Def2Def& old2new(bool root = false) {
-        auto& maps = root ? old2news_.front() : old2news_.back();
-        if (maps.size() <= ctx_) maps.resize(ctx_ + 1);
-        return maps[ctx_];
-    }
+    /// The map of the current ctx() in the innermost push() scope.
+    Def2Def& old2new() { return slot(scopes_.back()); }
 
     /// Updates curr_mut() to @p new_mut and restores it at the end of the scope.
     [[nodiscard]] auto enter(Def* new_mut) { return fe::Restore(curr_mut_, new_mut); }
 
+private:
+    Def2Def& slot(Scope& scope) {
+        if (scope.maps.size() <= ctx_) scope.maps.resize(ctx_ + 1);
+        return scope.maps[ctx_];
+    }
+
+protected:
     /// The tail of rewrite_stub: immutabilizes @p new_mut in hindsight, as rewriting may have made it vacuous.
     /// A stub that already has users stays mutable, as the users captured it during its own rewrite.
     /// Only needed if you fill a stub yourself instead of going through rewrite_stub.
@@ -158,7 +163,7 @@ public:
 
     /// @name push / pop
     ///@{
-    void push() final { Rewriter::push(), vars_.emplace_back(Vars()); }
+    void push(std::optional<Vars> vars = {}) final { Rewriter::push(vars), vars_.emplace_back(Vars()); }
     void pop() final { vars_.pop_back(), Rewriter::pop(); }
     ///@}
 

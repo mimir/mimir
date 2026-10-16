@@ -156,9 +156,12 @@ const Def* Scalarize::flatten(const Pi* pi, const fe::Bitset& mask) {
 
 Lam* Scalarize::stub(Lam* old, const fe::Bitset& mask) {
     // An interface Lam's own Pi is flattened like any other, but what it mentions keeps its shape.
-    auto c    = old->is_rewritable() ? ctx() : Iface;
+    auto in_ctx = [this, c = old->is_rewritable() ? ctx() : Iface](auto f) {
+        auto _ = enter_ctx(c);
+        return f();
+    };
     auto& w   = new_world();
-    auto type = (enter_ctx(c), mask.any() ? flatten(old->type()->as<Pi>(), mask) : rewrite(old->type()));
+    auto type = in_ctx([&] { return mask.any() ? flatten(old->type()->as<Pi>(), mask) : rewrite(old->type()); });
     auto sca  = w.mut_lam(type->as<Pi>())->set(old->dbg_key());
     map(old, sca);
     if (!old->is_set() || mask.none()) return sca;
@@ -170,7 +173,7 @@ Lam* Scalarize::stub(Lam* old, const fe::Bitset& mask) {
     params.reserve(n);
     for (size_t i = 0, v = 0; i != n; ++i) {
         if (mask[i]) {
-            auto t      = (enter_ctx(c), rewrite(old->tvar(i)->type()));
+            auto t      = in_ctx([&] { return rewrite(old->tvar(i)->type()); });
             auto pieces = DefVec(t->num_tprojs(), [&](size_t) { return sca->var(num_sca, v++); });
             params.emplace_back(w.tuple(t, pieces));
         } else {

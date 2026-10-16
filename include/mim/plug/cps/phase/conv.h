@@ -45,14 +45,15 @@ private:
     };
 
     /// RAII guard for rewriting the body of one mutable Lam:
-    /// fences pending_, pushes a map scope for contaminated rewrites, and tracks whether lifting is legal here.
+    /// fences pending_, pushes a map scope for rewrites contaminated by its continuations, and tracks whether lifting
+    /// is legal here.
     class Scope {
     public:
         Scope(Conv& conv, bool liftable)
             : conv_(conv)
             , base_(conv.pending_.size())
             , old_liftable_(conv.liftable_) {
-            conv_.push();
+            conv_.push(Vars());
             conv_.liftable_ = liftable;
         }
         ~Scope() {
@@ -72,11 +73,6 @@ private:
     const Def* rewrite_mut_Lam(Lam*) final;
     const Def* rewrite_imm_App(const App*) final;
 
-    /// Routes rewrites that mention scoped (continuation/binder) variables into the current Lam's map scope;
-    /// everything else goes into the root map and is shared globally.
-    using Rewriter::map;
-    const Def* map(const Def*, const Def*) final;
-
     /// Converts direct-style `f: [a: A] → B` to `f_cps: Cn [a: A, Cn B]` and returns the `cps2ds_dep`-wrapped f_cps.
     const Def* convert(Lam*);
     /// Turns the call `k (arg, cont)` into a Pending entry and returns `cont`'s variable as call result.
@@ -85,7 +81,6 @@ private:
     const Def* wire(size_t base, const Def* body);
 
     fe::Vector<Pending> pending_;
-    Vars scoped_;
     bool liftable_ = false;
 };
 
