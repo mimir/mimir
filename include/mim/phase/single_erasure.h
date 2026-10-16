@@ -26,8 +26,6 @@ private:
     bool is_unit(const Single* single) { return single->type() == old_world().type<0>(); }
     const Def* erase(const Single*);        ///< The erasure of the singleton *type* itself.
     const Def* inhabitant(const Def* type); ///< The sole inhabitant of the information-free @p type.
-    bool is_gone(const Def* type);          ///< Does @p type have exactly one inhabitant?
-    const Variant* lone(const Def* type);   ///< @p type as a Variant with a single case that may be erased.
     Sieve sieve(const Sigma*);              ///< The components of @p sigma that survive.
     /// The literal @p index into a Sigma, adjusted for the components @p keep dropped.
     size_t remap(const Sieve& keep, const Def* index);

@@ -307,8 +307,8 @@ const Def* World::inhabitant(const Def* type) {
     }
     if (auto arr = type->isa_imm<Arr>())
         if (auto i = inhabitant(arr->body())) return pack(arr->shape(), i);
-    if (auto variant = type->isa_imm<Variant>(); variant && variant->num_ops() == 1)
-        if (auto i = inhabitant(variant->op(0))) return inj(variant, i);
+    if (auto lone = Variant::isa_lone(type))
+        if (auto i = inhabitant(lone)) return inj(type, 0, i);
     return nullptr;
 }
 
@@ -910,7 +910,9 @@ const Def* World::inj(const Def* type, nat_t index, const Def* value) {
 
 const Def* World::variant(Defs ops) {
     auto zops = Def::zonk(ops);
-    return unify<Variant>(Variant::infer(*this, zops), zops);
+    auto kind = Variant::infer(*this, zops);
+    if (zops.empty()) return bot(kind);
+    return unify<Variant>(kind, zops);
 }
 
 const Def* World::match(Defs ops_) {

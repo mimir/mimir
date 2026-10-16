@@ -6,21 +6,10 @@ namespace mim {
  * SingleErasure
  */
 
-bool SingleErasure::is_gone(const Def* type) {
-    if (auto variant = lone(type)) return is_gone(variant->op(0));
-    return old_world().inhabitant(type);
-}
-
-const Variant* SingleErasure::lone(const Def* type) {
-    if (auto variant = type->isa<Variant>(); variant && variant->num_ops() == 1)
-        if (variant->isa_imm() || variant->as_mut()->is_immutabilizable()) return variant;
-    return nullptr;
-}
-
 Sieve SingleErasure::sieve(const Sigma* sigma) {
     // A foreign declaration has no components to inspect.
     if (!sigma->is_set()) return Sieve(sigma->num_ops());
-    return Sieve(sigma->ops(), [this](const Def* op) { return !is_gone(op); });
+    return Sieve(sigma->ops(), [this](const Def* op) { return !old_world().inhabitant(op); });
 }
 
 const Def* SingleErasure::erase(const Single* single) {
@@ -58,17 +47,17 @@ const Def* SingleErasure::rewrite_imm_Wrap(const Wrap* wrap) {
 }
 
 const Def* SingleErasure::rewrite_imm_Variant(const Variant* variant) {
-    if (lone(variant)) return rewrite(variant->op(0));
+    if (auto lone = Variant::isa_lone(variant)) return rewrite(lone);
     return RWPhase::rewrite_imm_Variant(variant);
 }
 
 const Def* SingleErasure::rewrite_imm_Inj(const Inj* inj) {
-    if (lone(inj->type())) return rewrite(inj->value());
+    if (Variant::isa_lone(inj->type())) return rewrite(inj->value());
     return RWPhase::rewrite_imm_Inj(inj);
 }
 
 const Def* SingleErasure::rewrite_imm_Match(const Match* match) {
-    if (lone(match->scrutinee()->unfold_type()))
+    if (Variant::isa_lone(match->scrutinee()->unfold_type()))
         return new_world().app(rewrite(match->arm(0)), rewrite(match->scrutinee()));
     return RWPhase::rewrite_imm_Match(match);
 }
@@ -88,12 +77,12 @@ const Def* SingleErasure::rewrite_mut_Sigma(Sigma* old_sigma) {
 }
 
 const Def* SingleErasure::rewrite_imm_Tuple(const Tuple* tuple) {
-    if (is_gone(tuple->type())) return inhabitant(tuple->type());
+    if (old_world().inhabitant(tuple->type())) return inhabitant(tuple->type());
     return ReprPhase::rewrite_imm_Tuple(tuple);
 }
 
 const Def* SingleErasure::rewrite_imm_Extract(const Extract* extract) {
-    if (is_gone(extract->type())) return inhabitant(extract->type());
+    if (old_world().inhabitant(extract->type())) return inhabitant(extract->type());
 
     if (auto sigma = extract->tuple()->type()->isa<Sigma>()) {
         auto keep = sieve(sigma);
@@ -104,7 +93,7 @@ const Def* SingleErasure::rewrite_imm_Extract(const Extract* extract) {
 }
 
 const Def* SingleErasure::rewrite_imm_Insert(const Insert* insert) {
-    if (is_gone(insert->value()->type())) return rewrite(insert->tuple());
+    if (old_world().inhabitant(insert->value()->type())) return rewrite(insert->tuple());
 
     if (auto sigma = insert->tuple()->type()->isa<Sigma>()) {
         auto keep = sieve(sigma);
@@ -116,13 +105,13 @@ const Def* SingleErasure::rewrite_imm_Insert(const Insert* insert) {
 }
 
 const Def* SingleErasure::rewrite_imm_Seq(const Seq* seq) {
-    if (is_gone(seq->is_intro() ? seq->type() : seq)) return new_world().prod(seq->is_intro());
+    if (old_world().inhabitant(seq->is_intro() ? seq->type() : seq)) return new_world().prod(seq->is_intro());
     return RWPhase::rewrite_imm_Seq(seq);
 }
 
 const Def* SingleErasure::rewrite_mut_Seq(Seq* seq) {
     // A mutable Seq has no immutable type to ask, so inspect its body directly.
-    if (seq->is_set() && is_gone(seq->is_intro() ? seq->body()->type() : seq->body()))
+    if (seq->is_set() && old_world().inhabitant(seq->is_intro() ? seq->body()->type() : seq->body()))
         return new_world().prod(seq->is_intro());
     return RWPhase::rewrite_mut_Seq(seq);
 }
