@@ -403,6 +403,9 @@ protected:
     static bool splittable(const Def* type) {
         return (type->isa<Sigma>() || type->isa_imm<Arr>()) && type->num_tprojs() != 1;
     }
+    /// Does coerce() see through @p type, i.e. split it or η-wrap it?
+    /// An analysis must keep the shape of whatever lies below any other type.
+    static bool transparent(const Def* type) { return type->isa<Pi>() || splittable(type); }
 
 private:
     /// η-wraps @p val into a Lam of @p type, coerce()ing its Var to @p val%'s domain and its result to the codomain.
@@ -410,6 +413,8 @@ private:
     const Def* eta_coerce(const Def* val, const Def* type);
     /// Builds a value of @p type from the top of the stack @p todo.
     const Def* reshape(DefVec& todo, const Def* type);
+
+    DefMap<Def2Def> etas_; ///< type ↦ val ↦ eta_coerce(val, type)
 };
 
 /// An RWPhase that searches for a pattern and replaces it.

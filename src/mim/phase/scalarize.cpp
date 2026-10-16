@@ -59,7 +59,7 @@ void Scalarize::Analysis::keep_param(const Def* def) {
 }
 
 void Scalarize::Analysis::pin_opaque(DefSet& structural, const Def* type) {
-    if (type->isa<Pi>() || splittable(type)) {
+    if (transparent(type)) {
         if (structural.emplace(type).second)
             for (auto op : type->ops())
                 pin_opaque(structural, op);

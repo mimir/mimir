@@ -301,8 +301,11 @@ const Def* CoercePhase::eta_coerce(const Def* val, const Def* type) {
     auto dst = type->isa<Pi>();
     auto src = val->type()->isa<Pi>();
     if (!dst || !src) return nullptr;
+    auto& memo = etas_[type][val];
+    if (memo) return memo;
 
     auto eta   = new_world().mut_lam(dst)->set(val->dbg_key());
+    memo       = eta; // before the recursion below may rehash etas_
     auto arg   = coerce(eta->var(), src->dom());
     auto codom = dst->reduce(eta->var());
     log().d("coerce {}: {} → {}", val, src, dst);
