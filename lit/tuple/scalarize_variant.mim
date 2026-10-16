@@ -1,0 +1,31 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+// The second arm is shared with `f`'s continuation, so the dump has to declare it to re-read.
+// RUN: %mim -p opt %s -o %t.mim
+// RUN: %mim %t.mim
+plugin core;
+plugin mem;
+
+use core.ops.u.w;
+
+/// coerce() does not see through a Variant: re-injecting it case by case would cost a second dispatch.
+/// So a `Cn` inside a Variant that an interface mentions keeps its shape everywhere.
+rec Op = | F: Cn [[I32, I32], Cn I32] | N: I32;
+
+con add (p: [I32, I32], k: Cn I32) =
+    let (a, b) = p;
+    k (a + b);
+
+con run (o: Op, k: Cn I32) =
+    match o with
+        | F f => f ((1I32, 2I32), k)
+        | N n => k n;
+
+extern con entry (o: Op, k: Cn I32) = run (o, k);
+extern con make (k: Cn Op) = k (Op#F add);
+
+// CHECK-DAG: extern fun entry ({{[_a-z0-9]+}}: (| _0: Cn [«2; I32», Cn I32] | _1: I32)): I32 =
+// CHECK-DAG: match {{[_a-z0-9]+}} with
+// CHECK-DAG: | _1 [[X:[_a-z0-9]+]]: I32 => [[K:[_a-z0-9]+]] [[X]];
+// CHECK-DAG: con [[K]] (
+// CHECK-DAG: fun {{[_a-z0-9]+}} ({{[_a-z0-9]+}}: «2; I32»): I32 =
+// CHECK-NOT: Match
