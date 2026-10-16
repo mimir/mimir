@@ -164,10 +164,15 @@ const Def* ClosConv::rewrite_imm_App(const App* app) {
     if (auto a = Axm::isa<anno>(app))
         if (auto handled = rewrite_anno(a)) return handled;
 
+    auto& w         = new_world();
     auto new_callee = rewrite(app->callee());
-    auto new_arg    = rewrite(app->arg());
-    if (new_callee->type()->isa<Sigma>()) return clos_apply(new_callee, new_arg);
-    return new_world().app(new_callee, new_arg);
+    auto is_clos    = new_callee->type()->isa<Sigma>();
+    auto pi         = is_clos ? clos_type_to_pi(new_callee->type()) : new_callee->type()->as<Pi>();
+    // The callee's domain knows which continuations are return continuations and hence stay plain `Cn`s.
+    auto tuple   = app->arg()->isa<Tuple>();
+    auto new_arg = tuple ? w.tuple(pi->dom(), rewrite(tuple->ops())) : rewrite(app->arg());
+    if (is_clos) return clos_apply(new_callee, new_arg);
+    return w.app(new_callee, new_arg);
 }
 
 const Def* ClosConv::rewrite_anno(Axm::IsA<anno, App> a) {

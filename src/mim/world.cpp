@@ -556,8 +556,12 @@ void World::check_tuple(const Tuple* t) {
     for (size_t i = 0; i != n; ++i) {
         auto expected = sigma ? red[i] : type->proj(n, i);
         auto op       = t->op(i);
-        if (!op->type() || !Checker::alpha<Checker::Test>(expected, op->type()))
-            log().w("op {} `{}`: `{}` expected `{}` in `{}`", i, op, op->type(), expected, type);
+        auto ty       = op->type();
+        // Check mode accepts what World::app accepts (e.g. `⊤`), but it would also unify Hole%s.
+        auto ok = ty
+               && (expected->has_hole() || ty->has_hole() ? Checker::alpha<Checker::Test>(expected, ty)
+                                                          : Checker::alpha<Checker::Check>(expected, ty));
+        if (!ok) log().w("op {} `{}`: `{}` expected `{}` in `{}`", i, op, ty, expected, type);
     }
 }
 #endif
