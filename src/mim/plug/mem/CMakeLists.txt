@@ -1,5 +1,6 @@
 add_mim_plugin(mem
     SOURCES
+        escape_analysis.cpp
         mem.cpp
         normalizers.cpp
         phase/add_mem.cpp

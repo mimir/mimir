@@ -1,46 +1,64 @@
 #include "mim/plug/mem/phase/free_locals.h"
 
+#include <fe/worklist.h>
+
 namespace mim::plug::mem::phase {
 
 bool FreeLocals::analyze() {
     if (RWPhase::analyze()) return true;
 
-    const auto nest = Nest(old_world());
-    mentions(nest.root());
-
+    auto shared = fe::Vector<std::pair<Lam*, const Def*>>();
     for (const auto& [lam, chain] : escape_.chains()) {
-        auto last = DefMap<size_t>();
         for (size_t i = 0, n = chain.ops.size(); i != n; ++i) {
-            last[chain.ops[i]] = i;
-            for (auto alloc : chain.uses[i])
-                last[alloc] = i;
-        }
-
-        for (auto alloc : chain.locals) {
+            auto alloc = chain.ops[i];
+            if (!EscapeAnalysis::allocates(alloc) || escape_.is_top(alloc)) continue;
             if (escape_.confined(alloc)) {
-                auto i = last[alloc] + 1;
-                frees_[i < chain.ops.size() ? chain.ops[i] : chain.tail].emplace_back(alloc);
+                auto last = fe::lookup(chain.last, alloc);
+                auto j    = (last ? *last : i) + 1;
+                frees_[j < n ? chain.ops[j] : chain.tail].emplace_back(alloc);
             } else {
-                place(nest[lam], nest[lam], alloc);
+                shared.emplace_back(lam, alloc);
             }
         }
+    }
+
+    if (!shared.empty()) {
+        const auto nest = Nest(old_world());
+        mentions(nest.root());
+        for (auto [lam, alloc] : shared)
+            place(nest[lam], nest[lam], alloc);
     }
 
     log().d("free_locals: frees before {} ops, on {} edges", frees_.size(), edges_.size());
     return false;
 }
 
-void FreeLocals::mentions(const Nest::Node* node) {
-    auto& res = mentions_[node];
+const DefSet& FreeLocals::mentions(const Nest::Node* node) {
+    auto res = DefSet();
     if (auto lam = node->mut() ? node->mut()->isa_mut<Lam>() : nullptr)
         if (auto i = escape_.chains().find(lam); i != escape_.chains().end())
-            for (const auto& uses : i->second.uses)
-                res.insert(uses.begin(), uses.end());
+            for (auto [alloc, _] : i->second.last)
+                res.emplace(alloc);
     for (auto child : node->children().nodes()) {
-        mentions(child);
-        const auto& sub = mentions_[child];
-        mentions_[node].insert(sub.begin(), sub.end());
+        const auto& sub = mentions(child);
+        res.insert(sub.begin(), sub.end());
     }
+    return mentions_[node] = std::move(res);
+}
+
+const DefSet& FreeLocals::reach(const Nest::Node* node) {
+    if (auto i = reach_.find(node); i != reach_.end()) return i->second;
+
+    auto res  = DefSet();
+    auto todo = fe::BFSWorklist<GIDSet<const Nest::Node*>>();
+    todo.push(node->sibl_deps().nodes());
+    while (!todo.empty()) {
+        auto s          = todo.pop();
+        const auto& sub = mentions_.at(s);
+        res.insert(sub.begin(), sub.end());
+        todo.push(s->sibl_deps().nodes());
+    }
+    return reach_[node] = std::move(res);
 }
 
 void FreeLocals::place(const Nest::Node* home, const Nest::Node* node, const Def* alloc) {
@@ -65,19 +83,9 @@ void FreeLocals::place(const Nest::Node* home, const Nest::Node* node, const Def
 }
 
 bool FreeLocals::live(const Nest::Node* home, const Nest::Node* node, const Def* alloc) {
-    if (mentions_[node].contains(alloc)) return true;
-    for (auto x = node; x != home; x = x->inest()) {
-        auto todo = fe::Vector<const Nest::Node*>(x->sibl_deps().nodes().begin(), x->sibl_deps().nodes().end());
-        auto done = std::set<const Nest::Node*>();
-        while (!todo.empty()) {
-            auto s = todo.back();
-            todo.pop_back();
-            if (!done.emplace(s).second) continue;
-            if (mentions_[s].contains(alloc)) return true;
-            for (auto d : s->sibl_deps().nodes())
-                todo.emplace_back(d);
-        }
-    }
+    if (mentions_.at(node).contains(alloc)) return true;
+    for (auto x = node; x != home; x = x->inest())
+        if (reach(x).contains(alloc)) return true;
     return false;
 }
 
@@ -93,14 +101,10 @@ const Def* FreeLocals::rewrite_imm_App(const App* app) {
     auto edges  = fe::lookup(edges_, app);
     if (!allocs && !edges) return RWPhase::rewrite_imm_App(app);
 
-    auto& w      = new_world();
-    auto new_arg = rewrite(app->arg());
-    if (allocs) {
-        if (auto mem = mem_def(app->arg()))
-            new_arg = thread(app->arg(), mem, *allocs);
-        else
-            log().d("free_locals: `{}` threads no memory, leaking {} allocations", app, allocs->size());
-    }
+    auto& w  = new_world();
+    auto mem = allocs ? mem_def(app->arg()) : nullptr;
+    if (allocs && !mem) log().d("free_locals: `{}` threads no memory, leaking {} allocations", app, allocs->size());
+    auto new_arg = mem ? thread(app->arg(), mem, *allocs) : rewrite(app->arg());
 
     if (!edges) return w.app(rewrite(app->callee()), new_arg);
     auto args = DefVec(app->num_targs(), [&](size_t i) {
@@ -111,16 +115,16 @@ const Def* FreeLocals::rewrite_imm_App(const App* app) {
 }
 
 const Def* FreeLocals::thread(const Def* arg, const Def* mem, const DefVec& allocs) {
-    auto& w = new_world();
-    if (arg == mem) {
-        auto new_mem = rewrite(mem);
-        for (auto alloc : allocs)
-            new_mem = w.call<mem::free>(Defs{new_mem, rewrite(alloc->proj(2, 1))});
-        return new_mem;
-    }
+    if (arg == mem) return free(rewrite(mem), allocs);
     if (mem_def(arg) != mem) return rewrite(arg);
-    auto n = arg->num_projs();
-    return w.tuple(DefVec(n, [&](size_t i) { return thread(arg->proj(n, i), mem, allocs); }));
+    return new_world().tuple(arg->projs([&](const Def* proj) { return thread(proj, mem, allocs); }));
+}
+
+const Def* FreeLocals::free(const Def* mem, const DefVec& allocs) {
+    // TODO: address spaces other than 0 are barely tested; some, like gpu shared memory, cannot be freed.
+    for (auto alloc : allocs)
+        mem = new_world().call<mem::free>(Defs{mem, rewrite(alloc->proj(2, 1))});
+    return mem;
 }
 
 const Def* FreeLocals::rewrite_target(const Def* target, const DefMap<DefVec>& edges) {
@@ -135,15 +139,13 @@ const Def* FreeLocals::rewrite_target(const Def* target, const DefMap<DefVec>& e
 const Def* FreeLocals::trampoline(const Def* cont, const DefVec& allocs) {
     auto& w   = new_world();
     auto lam  = w.mut_con(Pi::isa_cn(cont->type())->dom())->set("free_then");
-    auto n    = lam->num_vars();
-    auto args = DefVec(n, [&](size_t i) { return lam->var(n, i); });
+    auto args = DefVec(lam->vars());
     auto mem  = std::ranges::find_if(args, [](const Def* arg) { return isa_mem(arg); });
     if (mem == args.end()) {
         log().d("free_locals: `{}` takes no memory, leaking {} allocations", cont, allocs.size());
         return cont;
     }
-    for (auto alloc : allocs)
-        *mem = w.call<mem::free>(Defs{*mem, rewrite(alloc->proj(2, 1))});
+    *mem = free(*mem, allocs);
     lam->app(false, cont, args);
     return lam;
 }
