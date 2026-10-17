@@ -16,8 +16,6 @@ namespace mim::plug::mem {
 /// An allocation *escapes* if it flows into the data of a tail call - returned, or handed to a callee or continuation -
 /// or if an escaping Lam mentions it.
 /// A Lam escapes if its use is *unknown* - it is used as a value - or if an escaping Lam jumps to it.
-/// A tail call *leaves* a scope if no continuation it transfers control to is nested in that scope.
-/// Control is assumed to never re-enter a scope it has left; this is also the lifetime of a `mem.slot`.
 /// An axiom in control position is assumed to only pass control on to the continuations it receives.
 ///
 /// A buffer-typed parameter of a Lam takes on the value its known call sites pass, as in SCCP.
@@ -25,7 +23,6 @@ namespace mim::plug::mem {
 ///
 /// Lattice: an escaping allocation is ⊤ - keep as is; *absent* means it stays local.
 /// A parameter is ⊤ if its call sites disagree; everything they pass escapes.
-/// Subclasses add their plugin's allocating ops and the ops that hand back a handle they were given.
 class EscapeAnalysis : public mim::Analysis {
 public:
     struct Chain {
@@ -34,29 +31,23 @@ public:
         fe::Vector<DefVec> uses;    ///< Per op: the allocations it mentions.
         DefVec targets;             ///< The continuations the tail transfers control to.
         DefVec locals;              ///< The allocations on this chain that do not escape, in program order.
-        fe::Vector<Lam*> leaves;    ///< The scopes the tail leaves.
     };
 
-    EscapeAnalysis(World& world, std::string name)
-        : mim::Analysis(world, std::move(name)) {}
+    EscapeAnalysis(World& world)
+        : mim::Analysis(world, "mem::EscapeAnalysis") {}
 
     /// @name Results
     ///@{
     /// The Lam%s with an intact memory chain.
     const LamMap<Chain>& chains() const { return chains_; }
-    Defs locals(Lam* lam) const {
-        if (auto i = chains_.find(lam); i != chains_.end()) return i->second.locals;
-        return {};
-    }
+    /// May @p lam run at any time, as it is used as a value or jumped to by an escaping Lam?
+    bool escaping(Lam* lam) const { return escaping_.contains(lam); }
     /// Is the local @p alloc only mentioned on its home's own memory chain?
     bool confined(const Def* alloc) const { return !shared_.contains(alloc); }
     ///@}
 
-protected:
-    virtual bool allocates(const App* app) const { return Axm::isa<mem::alloc>(app) || Axm::isa<mem::malloc>(app); }
-    /// The handle that @p app's result hands back, if @p app merely writes through it; `nullptr` otherwise.
-    virtual const Def* hands_back(const App*) const { return nullptr; }
-    virtual bool is_handle(const Def* type) const { return Axm::isa<mem::Ptr>(type); }
+private:
+    static bool allocates(const App* app) { return Axm::isa<mem::alloc>(app) || Axm::isa<mem::malloc>(app); }
 
     /// Records what each value may carry: the allocations it aliases and the nested Lam%s in it.
     const Def* rewrite_imm(const Def* def) override {
@@ -68,8 +59,6 @@ protected:
         if (auto app = res->isa<App>()) {
             if (allocates(app))
                 carried.emplace_back(app);
-            else if (auto handle = hands_back(app))
-                join(carried, aliases_.contains(handle) ? handle : app->arg());
             else if (join(carried, app->arg()); !app->callee()->isa_mut<Lam>())
                 join(carried, app->callee());
         } else if (Var::isa_tproj(res).first || res->isa_mut()) {
@@ -94,7 +83,7 @@ protected:
         }
 
         auto escaping = escaping_.contains(lam);
-        auto& chain = chains_[lam] = Chain{tail, std::move(*ops), {}, {}, {}, {}};
+        auto& chain = chains_[lam] = Chain{tail, std::move(*ops), {}, {}, {}};
         for (auto op : chain.ops) {
             auto& uses = chain.uses.emplace_back();
             join(uses, op->callee());
@@ -104,6 +93,9 @@ protected:
                 if (k) escape(k);
                 return k;
             });
+            // A pointer stored into memory may be loaded again anywhere; one freed already is the program's business.
+            if (auto store = Axm::isa<mem::store>(op)) escape(store->arg(3, 2));
+            if (auto free = Axm::isa<mem::free>(op)) escape(free->arg());
             for (auto alloc : uses)
                 if (escaping)
                     pin(alloc);
@@ -134,21 +126,10 @@ protected:
             for (auto op : chain.ops)
                 if (allocates(op) && !is_top(op)) chain.locals.emplace_back(op);
         }
-
-        for (auto& [lam, chain] : chains_) {
-            chain.leaves.clear();
-            if (escaping_.contains(lam)) continue;
-            auto scopes = LamSet{lam};
-            collect_scopes(lam, scopes);
-            for (auto scope : scopes)
-                if (std::ranges::none_of(chain.targets, [scope](auto t) { return scope->nests(t); }))
-                    chain.leaves.emplace_back(scope);
-        }
     }
 
-private:
     bool may_hold(const Def* type) const {
-        if (type->isa_mut() || type->isa<Pi>() || is_handle(type)) return true;
+        if (type->isa_mut() || type->isa<Pi>() || Axm::isa<mem::Ptr>(type)) return true;
         if (auto sigma = type->isa<Sigma>())
             return std::ranges::any_of(sigma->ops(), [this](const Def* op) { return may_hold(op); });
         if (auto arr = type->isa<Arr>()) return may_hold(arr->body());
@@ -157,13 +138,6 @@ private:
 
     void escape(Lam* lam) {
         if (escaping_.emplace(lam).second) taint(lam), touch();
-    }
-
-    /// The Lam%s @p mut is nested in: the binders of its free Var%s, transitively.
-    void collect_scopes(Def* mut, LamSet& scopes) {
-        for (auto var : mut->free_vars())
-            if (auto lam = var->binder()->isa_mut<Lam>(); lam && scopes.emplace(lam).second)
-                collect_scopes(lam, scopes);
     }
 
     std::optional<fe::Vector<const App*>> walk(Lam* lam, const App* tail) {

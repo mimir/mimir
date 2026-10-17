@@ -92,6 +92,12 @@ axm lea: {n: Nat, Ts: «n; *», a: Nat} → [Ptr («j: n; Ts#j», a), i: Idx n] 
 ///
 axm add_mem: compile.Phase;
 ///
+/// ### free_locals
+///
+/// Frees the memory a function allocates but does not let escape (see mim::plug::mem::EscapeAnalysis).
+///
+axm free_locals: compile.Phase;
+///
 /// ### seo
 ///
 /// Symbolic Expression Optimization — SSA construction, expression propagation, and GVN in one fixed point (see mim::plug::mem::phase::SEO).

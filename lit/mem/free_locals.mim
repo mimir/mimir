@@ -1,0 +1,173 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+// `mem.free_locals` frees what a function allocates but neither returns nor otherwise lets escape:
+// right after its last use, or as control passes from where it is live to where it is dead.
+
+plugin core;
+plugin mem;
+plugin compile;
+
+use core.ops.u.w;
+
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.named "mem.free_locals",
+    );
+
+let P = mem.Ptr (I32, 0);
+
+extern con load [mem.M 0, P, Cn [mem.M 0, I32]];
+
+// Handed back into the scope enclosing its home, a pointer would outlive its home: it escapes.
+// CHECK-LABEL: extern con again
+// CHECK-NOT: mem.free
+// CHECK: (retry, done)#c
+extern con again (m: mem.M 0, c: Bool, x: P, return: Cn [mem.M 0, I32]) =
+    let (m, v) = mem.load (m, x);
+    con done (m: mem.M 0) = return (m, v);
+    con retry (m: mem.M 0) =
+        let (m, y) = mem.alloc (I32, 0) m;
+        again (m, ff, y, return);
+    (retry, done)#c m;
+
+// Each arm frees the pointer; the arm reading it frees it after the read.
+// CHECK-LABEL: extern con branch
+// CHECK: let [[P:[a-z_0-9]+]] = mem.alloc (I32, 0)
+// CHECK: con free_then
+// CHECK-NEXT: let [[M:[a-z_0-9]+]] = mem.free @ (I32, 0) ({{.*}}, [[P]]#tt)
+// CHECK-NEXT: no [[M]]
+// CHECK: con yes
+// CHECK-NEXT: mem.load
+// CHECK-NEXT: mem.free @ (I32, 0) ({{.*}}, [[P]]#tt)
+// CHECK: (free_then, yes)#
+extern con branch (m: mem.M 0, c: Bool, return: Cn [mem.M 0, I32]) =
+    let (m, p) = mem.alloc (I32, 0) m;
+    let m      = mem.store (m, p, 42I32);
+    con yes (m: mem.M 0) =
+        let (m, v) = mem.load (m, p);
+        return (m, v);
+    con no (m: mem.M 0) = return (m, 0I32);
+    (no, yes)#c m;
+
+// Passed to a callee, the pointer may be retained: it is not freed.
+// CHECK-LABEL: extern fun callee
+// CHECK-NOT: mem.free
+// CHECK: load (
+extern con callee (m: mem.M 0, return: Cn [mem.M 0, I32]) =
+    let (m, p) = mem.alloc (I32, 0) m;
+    con done (m: mem.M 0, v: I32) = return (m, v);
+    load (m, p, done);
+
+// A continuation returned inside a pair may run after the function has returned: the pointer it reads escapes.
+// CHECK-LABEL: extern fun closure
+// CHECK-NOT: mem.free
+// CHECK: return (
+extern fun closure (m: mem.M 0): [mem.M 0, [Cn [mem.M 0, Cn [mem.M 0, I32]], I32]] =
+    let (m, p) = mem.alloc (I32, 0) m;
+    con k (m: mem.M 0, done: Cn [mem.M 0, I32]) =
+        let (m, v) = mem.load (m, p);
+        done (m, v);
+    return (m, (k, 0I32));
+
+// Nobody reads it: freed right after its allocation.
+// CHECK-LABEL: extern fun dead
+// CHECK: let [[P:[a-z_0-9]+]] = mem.alloc (I32, 0)
+// CHECK-NEXT: let [[M:[a-z_0-9]+]] = mem.free @ (I32, 0) [[P]]
+// CHECK-NEXT: return [[M]]
+extern con dead (m: mem.M 0, return: Cn mem.M 0) =
+    let (m, p) = mem.alloc (I32, 0) m;
+    return m;
+
+// A program that frees the pointer itself keeps doing so.
+// CHECK-LABEL: extern fun explicit
+// CHECK: mem.free
+// CHECK-NOT: mem.free
+// CHECK: return
+extern con explicit (m: mem.M 0, return: Cn mem.M 0) =
+    let (m, p) = mem.alloc (I32, 0) m;
+    let m      = mem.free (m, p);
+    return m;
+
+// Handed to a join point, the pointer flows into its parameter and is freed there.
+// CHECK-LABEL: extern fun join
+// CHECK: let [[P:[a-z_0-9]+]] = mem.alloc (I32, 0)
+// CHECK: con k
+// CHECK-NEXT: mem.load
+// CHECK-NEXT: let [[M:[a-z_0-9]+]] = mem.free @ (I32, 0) ({{.*}}, [[P]]#tt)
+// CHECK-NEXT: return ([[M]],
+extern fun join (m: mem.M 0): [mem.M 0, I32] =
+    let (m, p) = mem.alloc (I32, 0) m;
+    let m      = mem.store (m, p, 42I32);
+    con k (m: mem.M 0, x: P) =
+        let (m, v) = mem.load (m, x);
+        return (m, v);
+    k (m, p);
+
+// Read in a loop, the pointer stays alive across the iterations and dies on the edge out of it.
+// The next loop does not read it.
+// CHECK-LABEL: extern con loops
+// CHECK: let [[P:[a-z_0-9]+]] = mem.alloc (I32, 0)
+// CHECK: con next
+// CHECK-NEXT: let [[M:[a-z_0-9]+]] = mem.free @ (I32, 0) ({{.*}}, [[P]]#tt)
+// CHECK-NEXT: head2 ([[M]],
+// CHECK-NOT: mem.free
+// CHECK: head (
+extern con loops (m: mem.M 0, n: I32, return: Cn [mem.M 0, I32]) =
+    let (m, p) = mem.alloc (I32, 0) m;
+    let m      = mem.store (m, p, 1I32);
+    con head (m: mem.M 0, i: I32, s: I32) =
+        con body (m: mem.M 0) =
+            let (m, v) = mem.load (m, p);
+            head (m, i + 1I32, s + v);
+        con next (m: mem.M 0) =
+            con head2 (m: mem.M 0, j: I32, t: I32) =
+                con body2 (m: mem.M 0) = head2 (m, j + 1I32, t + j);
+                con exit2 (m: mem.M 0) = return (m, t);
+                (exit2, body2)#(core.icmp.ul (j, n)) m;
+            head2 (m, 0I32, s);
+        (next, body)#(core.icmp.ul (i, n)) m;
+    head (m, 0I32, 0I32);
+
+// The loop may run again after `step`, which does not read the pointer: it stays alive there.
+// CHECK-LABEL: extern con stepping
+// CHECK: con next
+// CHECK-NEXT: mem.free
+// CHECK: con step
+// CHECK-NOT: mem.free
+// CHECK: head{{(_[0-9]+)?}} (
+extern con stepping (m: mem.M 0, n: I32, return: Cn [mem.M 0, I32]) =
+    let (m, p) = mem.alloc (I32, 0) m;
+    let m      = mem.store (m, p, 1I32);
+    con head (m: mem.M 0, i: I32, s: I32) =
+        con body (m: mem.M 0) =
+            let (m, v) = mem.load (m, p);
+            con step (m: mem.M 0) = head (m, i + 1I32, s + v);
+            step m;
+        con next (m: mem.M 0) = return (m, s);
+        (next, body)#(core.icmp.ul (i, n)) m;
+    head (m, 0I32, 0I32);
+
+// A pointer stored into memory may be loaded again anywhere: it escapes.
+// CHECK-LABEL: extern con stored
+// CHECK-NOT: mem.free
+// CHECK: return_{{[0-9]+}} m
+extern con stored (m: mem.M 0, q: mem.Ptr (P, 0), return: Cn mem.M 0) =
+    let (m, p) = mem.alloc (I32, 0) m;
+    let m      = mem.store (m, q, p);
+    return m;
+
+// The first pointer is dead once the second write has read it; the second one is returned.
+// CHECK-LABEL: extern fun straight
+// CHECK: let [[P:[a-z_0-9]+]] = mem.alloc (I32, 0)
+// CHECK: mem.load
+// CHECK-NEXT: mem.free @ (I32, 0) ({{.*}}, [[P]]#tt)
+// CHECK-NEXT: mem.alloc (I32, 0)
+// CHECK-NOT: mem.free
+// CHECK: return (
+extern fun straight (m: mem.M 0): [mem.M 0, P] =
+    let (m, p) = mem.alloc (I32, 0) m;
+    let m      = mem.store (m, p, 1I32);
+    let (m, v) = mem.load (m, p);
+    let (m, q) = mem.alloc (I32, 0) m;
+    let m      = mem.store (m, q, v);
+    return (m, q);

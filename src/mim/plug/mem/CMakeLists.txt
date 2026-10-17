@@ -3,5 +3,6 @@ add_mim_plugin(mem
         mem.cpp
         normalizers.cpp
         phase/add_mem.cpp
+        phase/free_locals.cpp
         phase/seo.cpp
 )
