@@ -181,6 +181,7 @@ public:
     /// Yields the end of the chain or `nullptr` if @p def is no η-redex.
     /// A chain running into an η-cycle like `ping = λn.pong n; pong = λn.ping n` ends at the cycle's entry.
     /// Hence, a Lam on such a cycle is no η-redex.
+    /// Neither is a Lam whose reduct mentions an η-redex, like `b = λx.(e, b)#c x`: reducing might unfold a recursion.
     static const Def* eta_reduce(const Def* def);
     ///@}
 

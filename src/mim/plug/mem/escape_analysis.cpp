@@ -115,19 +115,40 @@ bool EscapeAnalysis::may_hold(const Def* type) const {
 }
 
 std::optional<fe::Vector<const App*>> EscapeAnalysis::walk(Lam* lam, const App* tail) {
-    auto ops = fe::Vector<const App*>();
-    auto cur = mem_def(tail->arg());
-    if (!cur) return ops;
-    auto var = mem_var(lam);
-    if (!var) return {};
-    while (cur != var) {
-        auto ex = cur->isa<Extract>();
-        auto op = ex ? ex->tuple()->isa<App>() : cur->isa<App>();
-        if (!op || !(cur = mem_def(op->arg()))) return {};
+    auto ops  = fe::Vector<const App*>();
+    auto done = LamSet();
+    if (auto mem = exit_mem(tail, done); mem && !walk(lam, mem, ops)) return {};
+    return ops;
+}
+
+const Def* EscapeAnalysis::walk(Lam* lam, const Def* mem, fe::Vector<const App*>& ops) {
+    auto var  = mem_var(lam);
+    auto lvar = lam->has_var();
+    while (mem != var) {
+        if (!var && (!lvar || !mem->has_free_var(lvar))) break;
+        auto ex = mem->isa<Extract>();
+        auto op = ex ? ex->tuple()->isa<App>() : mem->isa<App>();
+        if (!op || !(mem = mem_def(op->arg()))) return nullptr;
         ops.emplace_back(op);
     }
     std::ranges::reverse(ops);
-    return ops;
+    return mem;
+}
+
+const Def* EscapeAnalysis::exit_mem(const App* tail, LamSet& done) {
+    if (auto mem = mem_def(tail->arg())) return mem;
+
+    auto res = static_cast<const Def*>(nullptr);
+    for (auto arg : tail->targs())
+        if (auto k = arg->isa_mut<Lam>(); k && k->is_set() && !mem_var(k) && done.emplace(k).second)
+            if (auto body = k->body()->isa<App>())
+                if (auto mem = exit_mem(body, done)) {
+                    auto ops   = fe::Vector<const App*>();
+                    auto start = walk(k, mem, ops);
+                    if (!start || (res && start != res)) return nullptr;
+                    res = start;
+                }
+    return res;
 }
 
 void EscapeAnalysis::join(DefVec& carried, const Def* def) const {

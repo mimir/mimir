@@ -54,6 +54,11 @@ private:
 
     bool may_hold(const Def* type) const;
     std::optional<fe::Vector<const App*>> walk(Lam* lam, const App* tail);
+    /// Collects the @p ops threading @p mem back to where they start: @p lam%'s memory Var or,
+    /// if @p lam has none, the memory it captures; `nullptr` if lost track.
+    const Def* walk(Lam* lam, const Def* mem, fe::Vector<const App*>& ops);
+    /// The memory @p tail hands on - directly or captured by the continuation of a direct-style call.
+    const Def* exit_mem(const App* tail, LamSet& done);
     /// Adds what @p def may carry to @p carried, possibly twice; a nested Lam carries itself.
     void join(DefVec& carried, const Def* def) const;
 

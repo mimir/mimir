@@ -964,7 +964,7 @@ private:
     void schedule_(const Def* def, Def* curr) {
         if (!def) return;
         if (auto mut = isa_decl(def); mut && !ctx_.arms.contains(mut)) return schedule_mut(mut, curr);
-        if (!done_.emplace(def).second) return;
+        if (!done_.emplace(def).second) return finish(def);
         if (ctx_.arms.contains(def)) {
             // An arm has no block of its own either.
             auto lam = def->as_mut<Lam>();
@@ -974,8 +974,23 @@ private:
             return;
         }
         note_vars(def);
-        printed_deps(def, typed_let_, [&](const Def* op) { schedule_(op, curr); });
+        schedule_deps(def, curr);
         if (!Full(&ctx_, def)) order_.emplace_back(def, curr);
+    }
+
+    void schedule_deps(const Def* def, Def* curr) {
+        pending_[def] = curr;
+        printed_deps(def, typed_let_, [&](const Def* op) { schedule_(op, curr); });
+        pending_.erase(def);
+    }
+
+    /// A mutable reached through @p def%'s deps may need @p def - and hence all of its deps - before they are done.
+    void finish(const Def* def) {
+        if (auto i = pending_.find(def); i != pending_.end()) {
+            auto curr = i->second;
+            pending_.erase(i);
+            printed_deps(def, typed_let_, [&](const Def* op) { schedule_(op, curr); });
+        }
     }
 
     void schedule_mut(Def* mut, Def* curr) {
@@ -1046,9 +1061,9 @@ private:
     void schedule_tail(const Def* def, Def* curr) {
         if (def && def->isa<Var>()) ctx_.whole_vars.emplace(def);
         if (!def || has_decl(def)) return schedule_(def, curr);
-        if (!done_.emplace(def).second) return;
+        if (!done_.emplace(def).second) return finish(def);
         note_vars(def);
-        printed_deps(def, typed_let_, [&](const Def* op) { schedule_(op, curr); });
+        schedule_deps(def, curr);
     }
 
     /// Is @p mut ours to emit - or does it only get referenced by name?
@@ -1331,6 +1346,7 @@ private:
     MutMap<DefVec> bucket_;
     MutMap<Def*> absorbed_; ///< Inner Lam of a curried chain -> the chain's outermost one.
     DefSet done_;
+    DefMap<Def*> pending_;            ///< Defs whose deps are being scheduled -> their block's mutable.
     MutMap<fe::Vector<Def*>> mutual_; ///< First member of a `mutual` group -> the whole group.
     Ctx ctx_;
     Srcs srcs_;

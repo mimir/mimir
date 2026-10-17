@@ -439,15 +439,17 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
 
 void SEO::Analysis::leave() {
     if (auto src = curr_mut()->isa<Lam>(); src && src->is_set()) {
+        auto phi_dsts       = fe::Vector<Lam*>();
         auto phi_vars       = DefVec();
         auto phi_abstr_args = DefVec();
 
-        auto propagate_unknowns = [this, &phi_vars, &phi_abstr_args, src](const Def* abstr) {
+        auto propagate_unknowns = [this, &phi_dsts, &phi_vars, &phi_abstr_args, src](const Def* abstr) {
             for (auto mut : abstr->local_muts())
                 if (auto dst = mut->isa<Lam>(); dst && dst->is_open()) {
                     log().d("unknown edge: {} → {}", src, dst);
                     live(dst, {});
                     propagate_phis(dst, phi_vars, phi_abstr_args);
+                    phi_dsts.resize(phi_vars.size(), dst);
                 }
         };
 
@@ -457,11 +459,9 @@ void SEO::Analysis::leave() {
             propagate_unknowns(app->arg());
         }
 
-        for (size_t i = 0, e = phi_vars.size(); i != e; ++i) {
-            if (is_top(phi_vars[i])) continue; // ⊤ is final - lattice() must not descend from it
-            fe::assert_emplace(first_, phi_vars[i]);
-            lattice(phi_vars[i], phi_abstr_args[i]);
-        }
+        // Several unknown edges may reach the same phi in one round.
+        for (size_t i = 0, e = phi_vars.size(); i != e; ++i)
+            sccp_join(phi_dsts[i], phi_vars[i], phi_abstr_args[i]);
     }
 }
 
@@ -561,8 +561,7 @@ const SEO::Sig& SEO::sig_of(Lam* old_lam) {
 
     auto var = old_lam->has_var();
 
-    sig.sieve = Sieve(old_lam->tvars(),
-                      [this, old_lam](const Def* old_var) { return keep(old_lam, old_var, lattice(old_var)); });
+    sig.sieve = Sieve(old_lam->tvars(), [this, old_lam](const Def* var) { return keep(old_lam, var, lattice(var)); });
 
     for (auto sloxy : sloxies_) {
         auto phi = mk_phi(old_world(), old_lam, sloxy);
@@ -573,8 +572,10 @@ const SEO::Sig& SEO::sig_of(Lam* old_lam) {
         if (analysis_.can_supply(old_lam, sloxy)) sig.phis.emplace_back(sloxy, phi, val);
     }
 
-    sig.sieve.cat(sig.phis.size(),
-                  [this, old_lam, &sig](size_t i) { return keep(old_lam, sig.phis[i].phi, sig.phis[i].val); });
+    sig.sieve.cat(sig.phis.size(), [old_lam, &sig](size_t i) {
+        auto [_, phi, val] = sig.phis[i];
+        return keep(old_lam, phi, val);
+    });
 
     // A new signature is needed iff some var is dropped/propagated/merged or some phi has to be threaded in -
     // except for an unknown lam, which is used as a value somewhere and hence must keep its signature as is.
