@@ -278,6 +278,14 @@ void SEO::Analysis::pin_slot(const App* slot) {
     pin(ptr);
     // Once slot is ⊤, apply_known no longer refreshes the whole var, whose stale sloxy would resurface via ptr.
     pin(ret_lam->var());
+    if (auto i = slot2resolved_.find(ret_lam->has_var()); i != slot2resolved_.end())
+        for (auto concr : i->second)
+            lattice_erase(concr);
+}
+
+void SEO::Analysis::resolve(const Def* sloxy, const Def* concr, const Def* abstr) {
+    lattice(concr, abstr);
+    slot2resolved_[slot_var(sloxy->op(1))].emplace(concr);
 }
 
 void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
@@ -388,7 +396,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 auto& stored = slot2stored_[slot_var(sloxy->op(1))];
                 if (auto grown = world().vars().merge(stored, abstr_val->free_vars()); grown != stored)
                     stored = grown, touch();
-                if (!path.empty()) lattice(ptr, abstr_ptr); // lets the rewrite recognize a promoted lea
+                if (!path.empty()) resolve(sloxy, ptr, abstr_ptr); // lets the rewrite recognize a promoted lea
                 sloxy2val(sloxy, path.empty() ? abstr_val : world().insert(agg, world().tuple(path), abstr_val));
                 log().d("store: {} ← {}", abstr_ptr, abstr_val);
                 return abstr_mem;
@@ -405,8 +413,8 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             if (auto agg = sloxy2val(sloxy)) {
                 auto abstr_val = path.empty() ? agg : world().extract(agg, world().tuple(path));
                 log().d("load: {} → {}", abstr_ptr, abstr_val);
-                if (!path.empty()) lattice(ptr, abstr_ptr);
-                lattice(val, abstr_val);
+                if (!path.empty()) resolve(sloxy, ptr, abstr_ptr);
+                resolve(sloxy, val, abstr_val);
                 return world().tuple({abstr_mem, abstr_val});
             }
             log().d("load of unknown value: {}", sloxy);

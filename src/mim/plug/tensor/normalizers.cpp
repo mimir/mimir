@@ -1,5 +1,3 @@
-#include <charconv>
-
 #include <algorithm>
 #include <array>
 
@@ -145,7 +143,7 @@ constexpr std::array Vec_widths = {1_u64, 4_u64, 8_u64, 16_u64};
 const Def* normalize_vec_width(const Def*, const Def*, const Def* arg) {
     // Read off the Driver so one graph can be re-emitted for another target by another Driver.
     auto& w = arg->world();
-    auto n  = arg_u64(w.driver(), "vec-width");
+    auto n  = w.driver().arg_nat("tensor", "vec-width");
     if (!n) return arg;
     if (std::ranges::find(Vec_widths, *n) == Vec_widths.end()) {
         w.log().w("ignoring `-X tensor:vec-width={}`: not one of {}", *n, fe::Join(Vec_widths, ", "));

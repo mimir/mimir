@@ -92,6 +92,19 @@ axm lea: {n: Nat, Ts: «n; *», a: Nat} → [Ptr («j: n; Ts#j», a), i: Idx n] 
 ///
 axm add_mem: compile.Phase;
 ///
+/// ### free_locals
+///
+/// Frees the memory a function allocates but does not let escape (see mim::plug::mem::EscapeAnalysis).
+///
+axm free_locals: compile.Phase;
+///
+/// ### heap2stack
+///
+/// Turns a small `mem.alloc` that does not escape its function into a `mem.slot` (see mim::plug::mem::phase::Heap2Stack).
+/// `-X mem:heap2stack=<n>` sets the maximum number of elements to stack-allocate; `0` disables it.
+///
+axm heap2stack: compile.Phase;
+///
 /// ### seo
 ///
 /// Symbolic Expression Optimization — SSA construction, expression propagation, and GVN in one fixed point (see mim::plug::mem::phase::SEO).

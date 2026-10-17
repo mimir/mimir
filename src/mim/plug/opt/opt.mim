@@ -25,6 +25,7 @@ extern lam _default_compile (): compile.Phase =
                 compile.beta_red,
                 compile.eta_conv,
             ),
+            compile.named "mem.heap2stack",
             compile.named "mem.seo",
             compile.adce,
             compile.static_arg_opt,
@@ -90,6 +91,7 @@ extern lam _default_compile (): compile.Phase =
 
         // prepare codegen
         optimize,
+        compile.named "mem.free_locals",
         compile.dispatch_normalize,
         compile.ret_wrap,
         compile.named "mem.alloc2malloc_repl",

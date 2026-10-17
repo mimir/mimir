@@ -1,7 +1,5 @@
 #include "mim/plug/tensor/phase/reassoc.h"
 
-#include <charconv>
-
 #include <algorithm>
 #include <array>
 
@@ -207,7 +205,7 @@ std::optional<std::pair<fe::Vector<u64>, Poly>> matrix_chain_order(fe::View<Leaf
 } // namespace
 
 void Reassoc::start() {
-    if (auto n = arg_u64(driver(), "reassoc-max")) {
+    if (auto n = driver().arg_nat("tensor", "reassoc-max")) {
         max_dispatch_ = *n;
         log().d("dispatch chains of up to {} matrices", *n);
         if (*n > Loud_max_dispatch)

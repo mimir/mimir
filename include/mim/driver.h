@@ -221,6 +221,8 @@ public:
     void add_arg(std::string_view plugin, std::string arg) { plugin_args_[plugin].emplace_back(std::move(arg)); }
     /// Yields an empty fe::Vector if @p plugin has none.
     const fe::Vector<std::string>& args(std::string_view plugin) const;
+    /// The number passed as `-X <plugin>:<key>=<n>`, if any; warns about and ignores a non-number.
+    std::optional<nat_t> arg_nat(std::string_view plugin, std::string_view key);
 
     /// The PluginArg%s each loaded Plugin declares, in load order; only for listing them, see PluginArg.
     const auto& known_args() const { return known_args_; }
