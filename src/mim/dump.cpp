@@ -82,18 +82,25 @@ const Def* live_proj(Ctx* ctx, const Def* def, nat_t n, nat_t i) {
     return proj && ctx && ctx->live && !ctx->live->contains(proj) ? nullptr : proj;
 }
 
+/// A numbered variant of @p base that no other name of the dump takes.
+std::string fresh_name(Ctx* ctx, const std::string& base) {
+    auto sep  = base == "_" ? "" : "_";
+    auto& i   = ctx->counters[base];
+    auto name = std::string();
+    do
+        name = std::format("{}{}{}", base, sep, ++i);
+    while (ctx->taken.contains(name));
+    ctx->taken.emplace(name);
+    return name;
+}
+
 std::string pick_name(Ctx* ctx, const Def* def) {
     auto sym  = def->sym();
     auto base = sym && sym != '_' && ast::Lexer::is_id(sym.view()) ? sym.str() : "_"s;
-    auto name = base;
     // A numbered variant of an identifier is an identifier and never a keyword.
-    if (base == "_" || def->world().driver().keys().find(sym) || ctx->taken.contains(name)) {
-        auto sep = base == "_" ? "" : "_";
-        auto& i  = ctx->counters[base];
-        do
-            name = std::format("{}{}{}", base, sep, ++i);
-        while (ctx->taken.contains(name));
-    }
+    auto name = base == "_" || def->world().driver().keys().find(sym) || ctx->taken.contains(base)
+                  ? fresh_name(ctx, base)
+                  : base;
     ctx->taken.emplace(name);
     return ctx->names.emplace(def, name).first->second;
 }
@@ -663,23 +670,28 @@ void full(std::ostream& os, Full d) {
         return std::print(os, "{}{}{}", al, d.op(single->op()), ar);
     } else if (auto wrap = d->isa<Wrap>()) {
         return std::print(os, "{}{}{}", pl, d.op(wrap->op()), pr);
-    } else if (auto match = d->isa<Match>();
-               match && d.ctx() && match->num_arms() != 0 && d.ctx()->arms.contains(match->arm(0))) {
+    } else if (auto match = d->isa<Match>(); match && d.ctx() && match->num_arms() != 0) {
         std::print(os, "match {} with", d.op(match->scrutinee()));
         auto variant = match->scrutinee()->type()->isa<Variant>();
         auto& tab    = d.ctx()->tab;
         ++tab;
         for (size_t i = 0; auto arm : match->arms()) {
-            auto lam = arm->as_mut<Lam>();
+            auto dom = arm->type()->as<Pi>()->dom();
             std::print(os, "\n{}| ", tab);
             // A variant's arms are its constructors, in order; a constructor without payload binds nothing.
             if (variant) std::print(os, "_{}", i++);
-            if (!variant || lam->dom() != d->world().sigma()) {
-                if (variant) os << ' ';
-                ptrn(os, d.ctx(), lam->has_var(), lam->dom());
+            auto binds = !variant || dom != d->world().sigma();
+            if (binds && variant) os << ' ';
+            if (d.ctx()->arms.contains(arm)) {
+                auto lam = arm->as_mut<Lam>();
+                if (binds) ptrn(os, d.ctx(), lam->has_var(), dom);
+                // Another `match` would swallow the arms that follow.
+                std::print(os, " => {}", d.op(lam->body(), Prec::Where));
+            } else {
+                auto x = binds ? fresh_name(d.ctx(), "_") : "()"s;
+                if (binds) std::print(os, "{}: {}", x, d.op(dom));
+                std::print(os, " => {} {}", d.l(arm, Prec::App), x);
             }
-            // Another `match` would swallow the arms that follow.
-            std::print(os, " => {}", d.op(lam->body(), Prec::Where));
         }
         --tab;
         return;
@@ -879,6 +891,8 @@ private:
         auto todo = fe::Vector<Def*>();
         for (auto mut : muts)
             post_order(mut, todo);
+        for (auto [lam, match] : arm_of_)
+            if (match && is_spellable(lam)) ctx_.arms.emplace(lam);
 
         if (mode_ == Dump::Local) {
             for (auto curr : todo) {
@@ -900,11 +914,9 @@ private:
         visit_nest(Nest(muts.front()->world(), muts, true), roots);
     }
 
-    static bool is_spellable(const Match* match) {
-        return std::ranges::all_of(match->arms(), [](const Def* arm) {
-            auto lam = arm->isa_mut<Lam>();
-            return lam && lam->is_set() && lam->filter() == lam->world().lit_tt();
-        });
+    static bool is_spellable(const Def* arm) {
+        auto lam = arm->isa_mut<Lam>();
+        return lam && lam->is_set() && lam->filter() == lam->world().lit_tt();
     }
 
     /// Like mim::post_order, but visits the mutables in the order the operands reach them.
@@ -914,7 +926,10 @@ private:
 
         auto muts = fe::Vector<Def*>();
         auto seen = DefSet();
-        printed_deps(mut, typed_let_, [&](const Def* op) { local_muts(op, seen, muts); });
+        printed_deps(mut, typed_let_, [&](const Def* op) {
+            note_use(op, nullptr);
+            local_muts(op, seen, muts);
+        });
         for (auto local_mut : muts)
             post_order(local_mut, todo);
 
@@ -924,10 +939,19 @@ private:
     void local_muts(const Def* def, DefSet& seen, fe::Vector<Def*>& muts) {
         if (!def || def->local_muts().empty() || !seen.emplace(def).second) return;
         if (auto mut = def->isa_mut()) return (void)muts.emplace_back(mut);
-        if (auto match = def->isa<Match>(); match && is_spellable(match))
-            for (auto arm : match->arms())
-                ctx_.arms.emplace(arm);
-        printed_deps(def, typed_let_, [&](const Def* op) { local_muts(op, seen, muts); });
+        auto match = def->isa<Match>();
+        printed_deps(def, typed_let_, [&](const Def* op) {
+            // An arm twice in the same `match` cannot be spelled out at both places either.
+            auto arm = match && std::ranges::count(match->arms(), op) == 1;
+            note_use(op, arm ? match : nullptr);
+            local_muts(op, seen, muts);
+        });
+    }
+
+    /// Records that @p op is an arm of @p match or, if `nullptr`, used otherwise.
+    void note_use(const Def* op, const Match* match) {
+        if (!op || !op->isa_mut<Lam>()) return;
+        if (auto [i, ins] = arm_of_.emplace(op, match); !ins && i->second != match) i->second = nullptr;
     }
 
     void note_vars(const Def* def) {
@@ -1311,6 +1335,8 @@ private:
     Ctx ctx_;
     Srcs srcs_;
     MutSet scheduled_;
+    /// The one `match` a Lam is an arm of, or `nullptr` if it is used otherwise and hence needs a declaration.
+    DefMap<const Match*> arm_of_;
 };
 
 } // namespace

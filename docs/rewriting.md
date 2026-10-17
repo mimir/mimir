@@ -66,7 +66,7 @@ const Def* Scalarize::Keep::rewrite(const Def* old_def) {
 ```
 
 Whatever does not mention a `Cn` - or the `Var` of a binder rebuilt in here - is thus rewritten once and shared, while the nested map dies with the nested Rewriter.
-Where values of the two shapes meet, a [`CoercePhase`](@ref phases_coerce_phase) coerces between them.
+Where values of the two shapes meet, the [`RWPhase`](@ref phases_coercion) coerces between them.
 
 ### Mutable Rewrites
 
@@ -127,7 +127,7 @@ They extend the very same index space, so one `Sieve` still answers the whole ne
 Since an appended component has no old op to rewrite from, [`new2old`](@ref mim::Sieve::new2old) - and hence `rewrite_stub` - is unavailable once you append.
 
 @warning Dropping decides *per type*, but some shapes are not the phase's to change: an [`Axm`](@ref mim::Axm)'s signature, or the dependent domain an [`App`](@ref mim::App) instantiates (`[n: Nat, «n; *»]` vs `[Nat, []]`).
-Where a reshaped value meets such a shape, it must be converted back - this is what [`CoercePhase`](@ref phases_coerce_phase) does; [`SingleErasure`](@ref mim::SingleErasure) builds on it.
+Where a reshaped value meets such a shape, it must be converted back - this is what every [`RWPhase`](@ref phases_coercion) does; [`SingleErasure`](@ref mim::SingleErasure) relies on it.
 
 ### Preserving Metadata
 

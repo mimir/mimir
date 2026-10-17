@@ -16,9 +16,7 @@ DefVec Match::cases(const Def* scrutinee) {
 }
 
 bool Match::accepts(const Def* arm, const Def* c, bool infer) {
-    auto alpha = [infer](const Def* a, const Def* b) {
-        return infer ? Checker::alpha<Checker::Check>(a, b) : Checker::alpha<Checker::Test>(a, b);
-    };
+    auto alpha = [infer](const Def* a, const Def* b) { return infer ? Check::alpha(a, b) : Check::test_alpha(a, b); };
 
     auto pi = arm->isa_type<Pi>();
     if (!pi) return false;

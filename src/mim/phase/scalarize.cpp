@@ -1,5 +1,6 @@
 #include "mim/phase/scalarize.h"
 
+#include "mim/check.h"
 #include "mim/lam.h"
 #include "mim/tuple.h"
 #include "mim/world.h"
@@ -75,18 +76,13 @@ void Scalarize::Analysis::inspect(const Def* def) {
         pin_opaque(structural, lam->type());
     }
 
-    if (auto app = def->isa<App>(); app && app->axm()) {
-        // An Axm calls a bare function argument (`autodiff.ad f`) by its own convention.
-        if (auto lam = app->arg()->isa_mut<Lam>()) pin_imm(lam->type(), isa_flattenable);
-
+    if (auto app = def->isa<App>()) {
+        // A wildcard like `«⊤; I32»` admits an argument with other leaves, which coerce() cannot reassemble.
+        if (auto pi = app->callee()->type()->isa<Pi>(); pi && !Check::test_alpha(pi->dom(), app->arg()->type()))
+            pin_imm(app->arg()->type(), isa_flattenable);
         // `tensor.buf x` nominates `x` itself.
-        if (is_polymorphic_arg(app)) keep_param(app->arg());
+        if (app->axm() && is_polymorphic_arg(app)) keep_param(app->arg());
     }
-
-    // A dependently-typed aggregate like a typed closure dictates its values' types.
-    if (auto tuple = def->isa<Tuple>(); tuple && tuple->type()->isa_mut())
-        for (auto op : tuple->ops())
-            pin_imm(op->type(), isa_flattenable);
 
     // Only the outermost index must be constant: `t#(0₂, i)` still splits.
     const Def* idx_tuple = nullptr;
@@ -149,6 +145,15 @@ bool Scalarize::Keep::has_cn(const Def* def) {
  */
 
 const Def* Scalarize::rewrite_imm_Pi(const Pi* pi) { return flatten(*this, pi, analysis_.plan(pi)); }
+
+const Def* Scalarize::rewrite_imm_App(const App* app) {
+    if (!app->axm() || !app->arg()->type()->isa<Pi>()) return RWPhase::rewrite_imm_App(app);
+
+    auto arg    = rewrite(app->arg());
+    auto keep   = Keep(*this);
+    auto callee = keep.rewrite(app->callee());
+    return new_world().app(callee, coerce(callee->type()->as<Pi>()->dom(), arg));
+}
 
 const Def* Scalarize::flatten(Rewriter& rw, const Pi* pi, const fe::Bitset& mask) {
     if (mask.none()) return RWPhase::rewrite_imm_Pi(pi);

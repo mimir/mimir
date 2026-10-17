@@ -2,7 +2,6 @@
 
 #include <fe/assert.h>
 
-#include "mim/driver.h"
 #include "mim/rewrite.h"
 #include "mim/rule.h"
 #include "mim/world.h"
@@ -106,26 +105,26 @@ const Def* Hole::tuplefy(nat_t n) {
  */
 
 #ifdef MIM_ENABLE_CHECKS
-template<Checker::Mode mode>
-bool Checker::fail() {
-    if (mode == Check && world().flags().break_on_alpha) fe::breakpoint();
+template<Check::Mode mode>
+bool Check::fail() {
+    if (mode == C && world().flags().break_on_alpha) fe::breakpoint();
     return false;
 }
 
-const Def* Checker::fail() {
+const Def* Check::fail() {
     if (world().flags().break_on_alpha) fe::breakpoint();
     return {};
 }
 #endif
 
-const Def* Checker::is_uniform(Defs defs) {
+const Def* Check::is_uniform(Defs defs) {
     if (defs.empty()) return nullptr;
     auto first = defs.front();
-    auto same  = [first](const Def* def) { return alpha<Test>(first, def); };
+    auto same  = [first](const Def* def) { return alpha<T>(first, def); };
     return std::ranges::all_of(defs.subspan(1), same) ? first : nullptr;
 }
 
-const Def* Checker::assignable_(const Def* type, const Def* val) {
+const Def* Check::coerce_(const Def* type, const Def* val) {
     auto val_t = val->unfold_type();
     if (!val_t) return fail(); // Level has no type, so it is assignable to nothing
     auto val_ty = val_t->zonk();
@@ -148,23 +147,30 @@ const Def* Checker::assignable_(const Def* type, const Def* val) {
     }
 
     if (auto sigma = type->isa<Sigma>()) {
-        if (!alpha_<Check>(type->arity(), val_ty->arity())) return fail();
+        if (!alpha_<C>(type->arity(), val_ty->arity())) return fail();
 
         size_t a     = sigma->num_ops();
-        auto red     = sigma->reduce(val);
-        auto new_ops = DefVec(a);
+        auto new_ops = DefVec(a, [&](size_t i) { return val->proj(a, i); });
         for (size_t i = 0; i != a; ++i) {
-            auto new_val = assignable_(red[i], val->proj(a, i));
+            // A telescope's component only depends on its predecessors, which must have been checked.
+            auto new_val = coerce_(w.component(sigma, new_ops, a, i), new_ops[i]);
             if (!new_val) return fail();
             new_ops[i] = new_val;
         }
         return w.tuple(new_ops);
     }
 
-    return alpha_<Check>(type, val_ty) ? val : fail();
+    auto num_deferred = deferred_.size();
+    if (alpha_<C>(type, val_ty)) return val;
+    // Ex falso: a value of the empty type is dead code, e.g. an extract with an `Idx 0` index.
+    if (auto bot = val_ty->isa<Bot>(); bot && bot->type()->isa<Type>()) {
+        deferred_.resize(num_deferred);
+        return val;
+    }
+    return fail();
 }
 
-std::pair<Checker::Binders::iterator, bool> Checker::bind(Def* mut, const Def* d) {
+std::pair<Check::Binders::iterator, bool> Check::bind(Def* mut, const Def* d) {
     if (!mut) return {binders_.end(), true};
 
     auto res = binders_.emplace(mut, d);
@@ -202,8 +208,8 @@ static bool is_flex(const Def* def) {
     return n == Node::Hole || n == Node::Top || Prod::isa_node(n) || Seq::isa_node(n);
 }
 
-template<Checker::Mode mode>
-std::optional<bool> Checker::try_alpha_(const Def* d1, const Def* d2) {
+template<Check::Mode mode>
+std::optional<bool> Check::try_alpha_(const Def* d1, const Def* d2) {
     // Pointer equality decides the matter, unless a free Var of an immutable is bound on one side only: λx.x vs λz.x.
     if (d1 == d2 && (d1->isa_mut() || bound_.empty() || !d1->has_free_vars_in(bound_))) return true;
 
@@ -215,8 +221,8 @@ std::optional<bool> Checker::try_alpha_(const Def* d1, const Def* d2) {
     return {};
 }
 
-template<Checker::Mode mode>
-bool Checker::alpha_(const Def* d1, const Def* d2) {
+template<Check::Mode mode>
+bool Check::alpha_(const Def* d1, const Def* d2) {
     if (auto res = try_alpha_<mode>(d1, d2)) return *res;
 
     auto& memo = memo_[mode];
@@ -227,8 +233,8 @@ bool Checker::alpha_(const Def* d1, const Def* d2) {
     return true;
 }
 
-template<Checker::Mode mode>
-bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
+template<Check::Mode mode>
+bool Check::alpha_impl_(const Def* d1, const Def* d2) {
     for (bool todo = true; todo;) {
         // below we check type and arity which may in turn open up more opportunities for zonking
         todo = false;
@@ -240,11 +246,11 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
         auto h1 = d1->isa_mut<Hole>();
         auto h2 = d2->isa_mut<Hole>();
 
-        if constexpr (mode == Check) {
+        if constexpr (mode == C) {
             if (h1) return check(h1, d2);
             if (h2) return check(h2, d1);
         } else if (h1 || h2) // mode == Test and h1 or h2 is an unresolved Hole
-            return fail<Test>();
+            return fail<T>();
 
         if (!d1->is_set() || !d2->is_set()) return fail<mode>();
 
@@ -256,23 +262,23 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
         if (auto [i, ins] = bind(mut1, d2); !ins) return i->second == d2;
         if (auto [i, ins] = bind(mut2, d1); !ins) return i->second == d1;
 
-        if (d1->isa<Top>() || d2->isa<Top>()) return mode == Check;
+        if (d1->isa<Top>() || d2->isa<Top>()) return mode == C;
 
         auto t1 = d1->type();
         auto t2 = d2->type();
         if (t1 && t2 && !alpha_<mode>(t1, t2)) return fail<mode>();
 
         // Def::arity of a flex-rank Seq is its first extent, which needs the rank pinned down first.
-        if constexpr (mode == Check) {
+        if constexpr (mode == C) {
             // Only a statically known rank on the *other* side pins it down; two dynamic ranks unify
             // their shapes structurally further below.
             if (auto rank = isa_flex_rank(d1); rank && known_rank(d2)) {
-                if (!check_rank(d1->as<Seq>(), rank, d2)) return fail<Check>();
+                if (!check_rank(d1->as<Seq>(), rank, d2)) return fail<C>();
                 todo = true;
                 continue;
             }
             if (auto rank = isa_flex_rank(d2); rank && known_rank(d1)) {
-                if (!check_rank(d2->as<Seq>(), rank, d1)) return fail<Check>();
+                if (!check_rank(d2->as<Seq>(), rank, d1)) return fail<C>();
                 todo = true;
                 continue;
             }
@@ -292,7 +298,7 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
     auto seq1 = d1->isa<Seq>();
     auto seq2 = d2->isa<Seq>();
 
-    if constexpr (mode == Check) {
+    if constexpr (mode == C) {
         if (auto lmax = d1->isa<LMax>()) return check(lmax, d2);
         if (auto lmax = d2->isa<LMax>()) return check(lmax, d1);
         if (auto inc = d1->isa<LSucc>()) return check(inc, d2);
@@ -318,7 +324,7 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
         if (auto i = binders_.find(var1->binder()); i != binders_.end()) return i->second == var2->binder();
         if (binders_.contains(var2->binder())) return fail<mode>(); // var2 is bound
         // both var1 and var2 are free: OK, when they are the same or in Check mode
-        return var1 == var2 || mode == Check;
+        return var1 == var2 || mode == C;
     }
 
     for (size_t i = 0, e = d1->num_ops(); i != e; ++i)
@@ -326,8 +332,8 @@ bool Checker::alpha_impl_(const Def* d1, const Def* d2) {
     return true;
 }
 
-template<Checker::Mode mode>
-bool Checker::check(const Prod* prod, const Def* def) {
+template<Check::Mode mode>
+bool Check::check(const Prod* prod, const Def* def) {
     size_t a = prod->num_ops();
     for (size_t i = 0; i != a; ++i)
         if (!alpha_<mode>(prod->op(i), def->proj(a, i))) return fail<mode>();
@@ -347,30 +353,30 @@ static const Def* drop_self(Hole* hole, const Def* def) {
 }
 
 // A Hole may only be solved with a Def its type accepts; this is what pins `r` down in `s: «r; Nat»`.
-bool Checker::check(Hole* hole, const Def* def) {
+bool Check::check(Hole* hole, const Def* def) {
     def = drop_self(hole, def);
 
     if (def->unfold_type()) { // Level has no type and is assignable to nothing
-        if (auto new_def = assignable_(hole->type(), def))
+        if (auto new_def = coerce_(hole->type(), def))
             def = new_def;
         else
-            return fail<Check>();
+            return fail<C>();
     }
     return hole->set(def), true;
 }
 
 // alpha(«?s; body», «e₀, …, e_{r-1}; def»): the fused shape spells out every axis, so the rank follows from
 // what `body` still claims - all of them while it is unknown, all but its own while it is a Seq itself.
-bool Checker::check_rank(const Seq* seq, Hole* rank, const Def* def) {
+bool Check::check_rank(const Seq* seq, Hole* rank, const Def* def) {
     auto r = known_rank(def);
-    if (!r) return fail<Check>();
+    if (!r) return fail<C>();
 
     auto n    = *r;
     auto body = seq->body()->zonk_mut();
     if (!Hole::isa_unset(body))
         if (auto bseq = body->isa<Seq>())
             if (auto q = bseq->shape().rank(); q && *q <= *r) n = *r - *q;
-    if (n == 0) return fail<Check>();
+    if (n == 0) return fail<C>();
 
     rank->set(world().lit_nat(n));
     Hole::isa_unset(seq->shape()->zonk_mut())->tuplefy(n);
@@ -379,8 +385,8 @@ bool Checker::check_rank(const Seq* seq, Hole* rank, const Def* def) {
 
 // alpha(«s₁; b₁», «s₂; b₂»): the two shapes may fuse a different number of axes, so compare the leading
 // ones they share and the remainders - `«2, 3; T»` against `«2; X»` binds `X` to `«3; T»`.
-template<Checker::Mode mode>
-bool Checker::check(const Seq* seq1, const Seq* seq2) {
+template<Check::Mode mode>
+bool Check::check(const Seq* seq1, const Seq* seq2) {
     auto r1 = seq1->shape().rank();
     auto r2 = seq2->shape().rank();
     if (r1 && r2 && *r1 != *r2) {
@@ -397,32 +403,32 @@ bool Checker::check(const Seq* seq1, const Seq* seq2) {
 }
 
 // alpha(«1; body», def) -> alpha(body, def);
-bool Checker::check1(const Seq* seq, const Def* def) {
+bool Check::check1(const Seq* seq, const Def* def) {
     auto body = seq->reduce(world().lit_idx_1_0()); // try to get rid of var inside of body
-    if (!alpha_<Check>(body, def)) return fail<Check>();
+    if (!alpha_<C>(body, def)) return fail<C>();
     if (auto mut_seq = seq->isa_mut<Seq>()) mut_seq->set(world().lit_nat_1(), body->zonk());
     return true;
 }
 
 // Try to get rid of mut_seq's var: it may occur in its body and vanish after reduction
 // as holes might have been filled in the meantime.
-bool Checker::check(Seq* mut_seq, const Seq* imm_seq) {
+bool Check::check(Seq* mut_seq, const Seq* imm_seq) {
     // `mut_seq` binds only its own axes, so a *fused* `imm_seq` keeps the remaining ones in a sub-Seq:
     // `«i: n; Ts#i»` against `«n, c, h; T»` matches `Ts#⊤` with `«c, h; T»`, not with `T`.
     auto r    = mut_seq->shape().rank();
     auto rest = r ? world().drop(imm_seq, *r) : nullptr;
 
-    if (!rest) return fail<Check>();
+    if (!rest) return fail<C>();
 
     auto mut_body = mut_seq->reduce(world().top(world().type_indices(mut_seq->shape())));
-    if (!alpha_<Check>(mut_body, rest)) return fail<Check>();
+    if (!alpha_<C>(mut_body, rest)) return fail<C>();
 
     mut_seq->set(*mut_seq->shape(), mut_body->zonk());
     return true;
 }
 
 // `max(xs, c) = l` determines the xs only if `l = 0` or a single x has to reach `l`; World::solve_levels does the rest.
-bool Checker::check(const LMax* lmax, const Def* def) {
+bool Check::check(const LMax* lmax, const Def* def) {
     if (auto l = Lit::isa(def)) {
         auto c  = level_t(0);
         auto xs = DefVec();
@@ -432,10 +438,10 @@ bool Checker::check(const LMax* lmax, const Def* def) {
             else
                 xs.emplace_back(op);
 
-        if (c > *l) return fail<Check>();
+        if (c > *l) return fail<C>();
         if (*l == 0 || (c < *l && xs.size() == 1)) {
             for (auto x : xs)
-                if (!alpha_<Check>(x, def)) return fail<Check>();
+                if (!alpha_<C>(x, def)) return fail<C>();
             return true;
         }
     }
@@ -445,25 +451,25 @@ bool Checker::check(const LMax* lmax, const Def* def) {
 }
 
 // `x + k = l` determines `x = l - k`; with `l = y + j` the smaller offset cancels.
-bool Checker::check(const LSucc* inc, const Def* def) {
+bool Check::check(const LSucc* inc, const Def* def) {
     auto k = inc->offset();
-    if (auto l = Lit::isa(def)) return *l >= k && alpha_<Check>(inc->op(), world().lit_level(*l - k));
+    if (auto l = Lit::isa(def)) return *l >= k && alpha_<C>(inc->op(), world().lit_level(*l - k));
     if (auto other = def->isa<LSucc>()) {
         auto j = other->offset();
-        return j >= k ? alpha_<Check>(inc->op(), world().lsucc(other->op(), j - k))
-                      : alpha_<Check>(world().lsucc(inc->op(), k - j), other->op());
+        return j >= k ? alpha_<C>(inc->op(), world().lsucc(other->op(), j - k))
+                      : alpha_<C>(world().lsucc(inc->op(), k - j), other->op());
     }
-    return fail<Check>();
+    return fail<C>();
 }
 
-void Checker::commit() {
+void Check::commit() {
     for (auto [lmax, level] : deferred_)
         world().postpone(lmax, level);
 }
 
 #ifndef DOXYGEN
-template bool Checker::alpha_<Checker::Check>(const Def*, const Def*);
-template bool Checker::alpha_<Checker::Test>(const Def*, const Def*);
+template bool Check::alpha_<Check::C>(const Def*, const Def*);
+template bool Check::alpha_<Check::T>(const Def*, const Def*);
 #endif
 
 /*
@@ -494,11 +500,11 @@ const Def* Def::check(size_t i, const Def* def) {
     if (!lam) return def; // TODO Pi/Sigma/Arr/Rule accept any op for now
 
     if (i == 0) {
-        if (auto filter = Checker::assignable(world().type_bool(), def)) return filter;
+        if (auto filter = Check::coerce(world().type_bool(), def)) return filter;
         def->blame("filter of a lambda is of type `{}` but must be of type `Bool`", type_of(def)).bail();
     }
     assert(i == 1);
-    if (auto body = Checker::assignable(lam->codom(), def)) return body;
+    if (auto body = Check::coerce(lam->codom(), def)) return body;
     auto codom = lam->codom();
     auto& err  = def->blame("function body is not assignable to its declared codomain")
                      .n("expected `{}`, got `{}`", codom, type_of(def));
@@ -514,25 +520,25 @@ const Def* Def::check() {
         case MutNode::Pi: {
             auto pi = as<Pi>();
             auto t  = Pi::infer(pi->dom(), pi->codom());
-            if (!pending && !Checker::alpha<Checker::Check>(t, type()))
+            if (!pending && !Check::alpha(t, type()))
                 type()->blame("declared sort of function type does not match inferred sort `{}`", t).bail();
             return t;
         }
         case MutNode::Arr: {
             auto t = as<Arr>()->body()->unfold_type();
-            if (!pending && !Checker::alpha<Checker::Check>(t, type()))
+            if (!pending && !Check::alpha(t, type()))
                 type()->blame("declared sort of array does not match inferred sort `{}`", t).bail();
             return t;
         }
         case MutNode::Sigma: {
             auto t = Sigma::infer(w, ops());
-            if (pending || Checker::alpha<Checker::Check>(t, type())) return t; // TODO HACK
+            if (pending || Check::alpha(t, type())) return t; // TODO HACK
             w.log().w("expected type {} for {} but keeping the declared {} due to clos-conv bugs", t, this, type());
             return type();
         }
         case MutNode::Variant: {
             auto t = Variant::infer(w, ops());
-            if (!Checker::alpha<Checker::Check>(t, type()))
+            if (!Check::alpha(t, type()))
                 type()->blame("declared sort of variant does not match inferred sort `{}`", t).bail();
             return t;
         }
@@ -540,11 +546,11 @@ const Def* Def::check() {
             auto rule = as<Rule>();
             auto t1   = rule->lhs()->unfold_type();
             auto t2   = rule->rhs()->unfold_type();
-            if (!Checker::alpha<Checker::Check>(t1, t2))
+            if (!Check::alpha(t1, t2))
                 type()
                     ->blame("type mismatch between rule sides: lhs has type `{}` but rhs has type `{}`", t1, t2)
                     .bail();
-            if (!Checker::assignable(w.type_bool(), rule->guard()))
+            if (!Check::coerce(w.type_bool(), rule->guard()))
                 rule->guard()
                     ->blame("condition of a rewrite rule is of type `{}` but must be of type `Bool`",
                             type_of(rule->guard()))

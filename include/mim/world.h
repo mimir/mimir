@@ -706,6 +706,9 @@ public:
     /// A dependent Sigma is projected while it is still being built - its later ops do not exist yet - so reducing
     /// all of them is not an option there.
     const Def* reduce(const Var* var, const Def* arg, size_t i);
+
+    /// The type of component @p i of the @p n-ary @p type, given its leading components @p parts.
+    const Def* component(const Def* type, Defs parts, size_t n, size_t i);
     ///@}
 
     /// @name for_each
@@ -747,6 +750,7 @@ public:
 private:
     const Def* annex_miss(flags_t);
     const Def* tuple(const Def* type, Defs ops, bool may_be_uniform);
+    void check_tuple(const Tuple*);
 
     Shape check_index(const Def* index); ///< Validates @p index and folds its size-1 axes away.
     /// Type-checks a *scalar* @p index of `Idx size`; `true` if the axis has folded out of @p type.
