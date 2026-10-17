@@ -8,6 +8,7 @@ namespace mim::plug::mem::phase {
 
 namespace {
 
+// Conservative: the slot's actual lifetime ends at the nearest enclosing returning Lam, not the top-level one.
 bool in_loop(const Nest::Node* node) {
     auto fun = node;
     while (fun->level() > 1)

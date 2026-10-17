@@ -200,6 +200,14 @@ protected:
     /// @returns `true` iff this changed the entry - i.e. iff it invalidate()d.
     bool lattice_force(const Def* concr, const Def* abstr);
 
+    /// **Non-monotone** removal of @p concr from lattice(), so no later sparse round replays it.
+    /// Like lattice_force, a removal invalidate()s and touch()es curr_mut().
+    /// @returns `true` iff @p concr had an entry.
+    bool lattice_erase(const Def* concr) {
+        if (!lattice_.erase(concr)) return false;
+        return touch(), true;
+    }
+
     /// Writes `concr ↦ abstr` into lattice() and map().
     /// invalidate()s - and thereby triggers another fixed-point round - iff this changes observable information:
     /// an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.

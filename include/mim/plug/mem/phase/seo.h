@@ -86,10 +86,8 @@ private:
         /// A direct-style call may access every slot reachable from its abstract callee and non-mem args.
         void pin_reachable_slots(const Def* abstr_callee, const Def* abstr_arg);
         void pin_slot(const App* slot);
-        /// Overwrites a stale @p concr ↦ promoted value from an earlier round, which a sparse round would replay.
-        void retract(const Def* concr, const Def* abstr) {
-            if (lattice(concr)) lattice_force(concr, abstr);
-        }
+        /// Writes `concr ↦ abstr` resolved against @p sloxy, which pin_slot erases again.
+        void resolve(const Def* sloxy, const Def* concr, const Def* abstr);
         void propagate_phis(Lam*, DefVec& vars, DefVec& abstr_args);
         const Def* sloxy2val(const Def* sloxy) { return lam2sloxy2val(curr_mut<Lam>(), sloxy); }
         const Def* sloxy2val(const Def* sloxy, const Def* val) { return lam2sloxy2val_[curr_mut<Lam>()][sloxy] = val; }
@@ -106,12 +104,13 @@ private:
         DefSet first_;
 
         // global (kept between iterations)
-        DefSet slots_;                // actually slot ptrs
-        VarMap<const App*> var2slot_; // slot continuation Var ↦ its slot
-        VarMap<Vars> slot2stored_;    // free Var%s of the values stored behind a slot
-        LamMap<Vars> lam2live_;       // slot Var%s a Lam may access; only grows
-        LamSet unknowns_;             // Lam%s reached as a *value*; their signature must stay untouched
-        LamMap<MutSet> lam2callers_;  // all muts that apply a Lam; tainted when the Lam's abstract vars change
+        DefSet slots_;                 // actually slot ptrs
+        VarMap<const App*> var2slot_;  // slot continuation Var ↦ its slot
+        VarMap<Vars> slot2stored_;     // free Var%s of the values stored behind a slot
+        VarMap<DefSet> slot2resolved_; // promoted leas and loaded values whose lattice entry depends on the slot
+        LamMap<Vars> lam2live_;        // slot Var%s a Lam may access; only grows
+        LamSet unknowns_;              // Lam%s reached as a *value*; their signature must stay untouched
+        LamMap<MutSet> lam2callers_;   // all muts that apply a Lam; tainted when the Lam's abstract vars change
     };
 
 public:
