@@ -255,21 +255,74 @@ void SEO::Analysis::live(Lam* lam, Defs abstr_args) {
     if (grown != live) live = grown, touch();
 }
 
-void SEO::Analysis::pin_reachable_slots(const Def* abstr_callee, const Def* abstr_arg) {
-    auto todo = VarWorklist();
-    todo.push(abstr_callee->free_vars());
-    if (auto tuple = abstr_arg->isa<Tuple>()) {
-        for (auto op : tuple->ops())
-            if (!isa_mem(op)) todo.push(op->free_vars());
-    } else if (!isa_mem(abstr_arg)) {
-        todo.push(abstr_arg->free_vars());
-    }
-
-    for (auto var : reachable_slots(todo))
+void SEO::Analysis::pin_used_slots(const Def* abstr_callee, const Def* abstr_arg) {
+    auto res  = Vars();
+    auto done = DefSet();
+    used_slots(abstr_callee, res, done);
+    used_slots(abstr_arg, res, done);
+    for (auto var : res)
         if (auto slot = var2slot_[var]; !is_top(slot)) {
-            log().d("slot var {} reaches a direct-style call", var);
+            log().d("slot var {} is used by a direct-style call", var);
             pin_slot(slot);
         }
+}
+
+void SEO::Analysis::used_slots(const Def* abstr, Vars& res, DefSet& done) {
+    if (auto mut = abstr->isa_mut(); mut ? !mut->isa<Lam>() : abstr->is_closed() || isa_mem(abstr)) return;
+    if (!done.emplace(abstr).second) return;
+
+    if (auto proxy = abstr->isa<Proxy>()) {
+        switch (proxy->tag()) {
+            case Proxy_Sloxy: return add_slot(slot_var(proxy->op(1)), res);
+            case Proxy_Phi:
+                if (auto stored = fe::lookup(slot2used_, slot_var(proxy->op(1)->op(1))))
+                    for (auto var : *stored)
+                        add_slot(var, res);
+                return;
+            case Proxy_SCCP_Top: return used_slots(proxy->op(0), res, done);
+            case Proxy_Bundle:
+                for (auto var : proxy->ops().subspan(1))
+                    used_slots(var, res, done);
+                return;
+        }
+    }
+
+    if (auto [var, i] = Var::isa_tproj(abstr); var && i) {
+        if (auto used = fe::lookup(var2used_, abstr)) res = world().vars().merge(res, *used);
+        return;
+    } else if (var) {
+        if (auto lam = var->binder()->isa_mut<Lam>())
+            for (auto tvar : lam->tvars())
+                if (auto used = fe::lookup(var2used_, tvar)) res = world().vars().merge(res, *used);
+        return;
+    }
+
+    if (auto lam = abstr->isa_mut<Lam>()) {
+        // Context-insensitive: a slot that any caller passes to a param the Lam dereferences counts for every caller.
+        if (auto used = fe::lookup(lam2used_, lam)) res = world().vars().merge(res, *used);
+        if (lam->is_set())
+            for (auto mut : lam->body()->local_muts())
+                used_slots(mut, res, done);
+        return;
+    }
+
+    for (auto op : abstr->ops())
+        used_slots(op, res, done);
+}
+
+void SEO::Analysis::add_slot(const Var* slot, Vars& res) {
+    if (res.contains(slot)) return;
+    res = world().vars().insert(res, slot);
+    if (auto stored = fe::lookup(slot2used_, slot))
+        for (auto var : *stored)
+            add_slot(var, res);
+}
+
+template<class M>
+void SEO::Analysis::grow(M& map, const typename M::key_type& key, Vars slots) {
+    if (slots.empty()) return;
+    auto& cur = map[key];
+    if (auto grown = world().vars().merge(cur, slots); grown != cur) cur = grown, touch();
 }
 
 void SEO::Analysis::pin_slot(const App* slot) {
@@ -332,6 +385,8 @@ const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
     });
 
     live(known, all_abstr_args);
+    for (size_t i = 0; i != n; ++i)
+        grow(var2used_, all_vars[i], used_slots(all_abstr_args[i]));
     propagate_phis(known, all_vars, all_abstr_args);
 
     auto all_abstr_vars = DefVec(all_vars.size());
@@ -390,12 +445,14 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         auto abstr_mem       = rewrite(mem);
         auto abstr_ptr       = rewrite(ptr);
         auto abstr_val       = rewrite(val);
+        if (auto lam = curr_mut<Lam>()) grow(lam2used_, lam, used_slots(abstr_ptr));
 
         if (auto [sloxy, path] = sloxy_path(abstr_ptr); sloxy) {
             if (auto agg = path.empty() ? abstr_val : sloxy2val(sloxy)) {
                 auto& stored = slot2stored_[slot_var(sloxy->op(1))];
                 if (auto grown = world().vars().merge(stored, abstr_val->free_vars()); grown != stored)
                     stored = grown, touch();
+                grow(slot2used_, slot_var(sloxy->op(1)), used_slots(abstr_val));
                 if (!path.empty()) resolve(sloxy, ptr, abstr_ptr); // lets the rewrite recognize a promoted lea
                 sloxy2val(sloxy, path.empty() ? abstr_val : world().insert(agg, world().tuple(path), abstr_val));
                 log().d("store: {} ← {}", abstr_ptr, abstr_val);
@@ -408,6 +465,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         auto [_, val]   = load->projs<2>();
         auto abstr_mem  = rewrite(mem);
         auto abstr_ptr  = rewrite(ptr);
+        if (auto lam = curr_mut<Lam>()) grow(lam2used_, lam, used_slots(abstr_ptr));
 
         if (auto [sloxy, path] = sloxy_path(abstr_ptr); sloxy) {
             if (auto agg = sloxy2val(sloxy)) {
@@ -424,7 +482,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
     } else {
         auto abstr_callee = rewrite(app->callee());
         auto abstr_arg    = rewrite(app->arg());
-        if (returns_mem(app)) pin_reachable_slots(abstr_callee, abstr_arg);
+        if (returns_mem(app)) pin_used_slots(abstr_callee, abstr_arg);
         if (auto known = Lam::isa_rewritable(abstr_callee)) {
             auto n = known->num_tvars();
             return apply_known(known, abstr_arg->projs(n));

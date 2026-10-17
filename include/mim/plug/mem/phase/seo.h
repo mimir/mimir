@@ -83,8 +83,22 @@ private:
         using VarWorklist = fe::DFSWorklist<GIDSet<const Var*>>;
         /// The slot Var%s reachable from @p todo through the lattice and slot2stored_.
         Vars reachable_slots(VarWorklist& todo);
-        /// A direct-style call may access every slot reachable from its abstract callee and non-mem args.
-        void pin_reachable_slots(const Def* abstr_callee, const Def* abstr_arg);
+        /// A direct-style call may access every slot whose ptr its abstract callee and non-mem args may use.
+        void pin_used_slots(const Def* abstr_callee, const Def* abstr_arg);
+        /// Adds the slot Var%s whose ptr @p abstr may carry or, if it contains a Lam, access.
+        void used_slots(const Def* abstr, Vars& res, DefSet& done);
+        Vars used_slots(const Def* abstr) {
+            auto res = Vars();
+            if (var2slot_.empty()) return res;
+            auto done = DefSet();
+            used_slots(abstr, res, done);
+            return res;
+        }
+        /// Adds @p slot and the slots whose ptr may be stored behind it.
+        void add_slot(const Var* slot, Vars& res);
+        /// Grows @p map[@p key] by @p slots.
+        template<class M>
+        void grow(M& map, const typename M::key_type& key, Vars slots);
         void pin_slot(const App* slot);
         /// Writes `concr ↦ abstr` resolved against @p sloxy, which pin_slot erases again.
         void resolve(const Def* sloxy, const Def* concr, const Def* abstr);
@@ -109,6 +123,9 @@ private:
         VarMap<Vars> slot2stored_;     // free Var%s of the values stored behind a slot
         VarMap<DefSet> slot2resolved_; // promoted leas and loaded values whose lattice entry depends on the slot
         LamMap<Vars> lam2live_;        // slot Var%s a Lam may access; only grows
+        LamMap<Vars> lam2used_;        // slot Var%s whose ptr a Lam's loads and stores use; only grows
+        DefMap<Vars> var2used_;        // slot Var%s whose ptr the call sites may pass to a tvar; only grows
+        VarMap<Vars> slot2used_;       // slot Var%s whose ptr may be stored behind a slot; only grows
         LamSet unknowns_;              // Lam%s reached as a *value*; their signature must stay untouched
         LamMap<MutSet> lam2callers_;   // all muts that apply a Lam; tainted when the Lam's abstract vars change
     };
