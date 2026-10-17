@@ -91,9 +91,9 @@ extern lam _default_compile (): compile.Phase =
 
         // prepare codegen
         optimize,
-        compile.named "mem.free_locals",
         compile.dispatch_normalize,
         compile.ret_wrap,
+        compile.named "mem.free_locals",
         compile.named "mem.alloc2malloc_repl",
         compile.named "refly.remove_dbg_repl",
         compile.named "gpu.check_addr_spaces_repl",
