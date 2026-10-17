@@ -78,7 +78,7 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 <div class="terminals-code">
 
 ```text
-Bool Cn Fn I1 I8 I16 I32 I64 Idx Nat Rule Type Univ
+Bool Cn Fn I1 I8 I16 I32 I64 Idx Level Nat Rule Type
 anx as axm cn con end extern ff fn fun
 i1 i8 i16 i32 i64 import inj lam let match mod mutual
 nom norm plugin priv pub rec ret rule tt use when where with
@@ -369,7 +369,7 @@ let (m, val) = mem.load (m, ptr);
 #### Kinds and Builtin Types
 
 ```ebnf
-e     ::= "Univ"
+e     ::= "Level"
        |  "Type" e
        |  "*"
        |  "□"
@@ -383,10 +383,10 @@ alias ::= "Bool"
        |  "i1" | "i8" | "i16" | "i32" | "i64"
 ```
 
-- `Univ` is the universe of type levels.
+- `Level` is the type of universe levels.
 - `Type e` is the type at level `e`.
-- `*` abbreviates `Type (0:Univ)`.
-- `□` abbreviates `Type (1:Univ)`.
+- `*` abbreviates `Type (0:Level)`.
+- `□` abbreviates `Type (1:Level)`.
 - `Nat` is the natural number type.
 - `Idx` is the builtin of type `Nat → *`.
 - `Rule e` is the type of rewrite rules over the meta type `e`.
@@ -566,7 +566,7 @@ e   ::= "«" e "»"
 ```
 
 - `« e »` is the singleton type whose sole inhabitant is `e`.
-  It sits one level above `e`, so `«23»` is a type and `«Nat»` a kind; `«Univ»` does not exist.
+  It sits one level above `e`, so `«23»` is a type and `«Nat»` a kind; `«Level»` does not exist.
 - `‹ e ›` introduces a value of that type and the prefix `#` eliminates it again, so `#‹e›` is `e`.
 - `#` recovers the inhabitant from the type alone: `#x` is `e` for every `x: «e»`.
 - The `;` is what tells an [array or pack](@ref prod) from a singleton - `«n; T»` is an array, `«T»` a singleton.
@@ -622,7 +622,7 @@ e   ::= e "==" e
   let x = 2 + 3;
   ```
 
-- `*` doubles as the multiplication operator, so `f *` is a multiplication and not an application of `f` to `Type (0:Univ)`; write `f (*)` for the latter.
+- `*` doubles as the multiplication operator, so `f *` is a multiplication and not an application of `f` to `Type (0:Level)`; write `f (*)` for the latter.
 
 #### Local Declaration Blocks
 
@@ -839,7 +839,10 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 
 ### Universes
 
-- `Type` levels: `l + 1` folds for a literal `l`, and a `UMax` flattens nested maxima, folds their literals into one, and sorts and deduplicates the rest
+- `Type` levels: `l + 1` folds for a literal `l`, nested successors add up, and a successor distributes over an `LMax`
+- an `LMax` flattens nested maxima, folds their literals into one (dropping `0`), sorts and deduplicates the rest, and collapses to its sole operand
+- inference: `x + k = l` solves `x = l - k`, and `max(xs, c) = l` solves the `xs` right away if `l = 0` or a single `x` must reach `l`; any other such constraint is postponed to the end of the enclosing declaration, where its still unknown levels default to `0`
+- an untyped binder used as a type, as `A` in `lam f (A) (B: *): * = [A, B]`, gets the sort `Type l` for a fresh level `l`
 - the var of a mutable whose var type is `Idx 1` -> `0₁`, and one whose var type is `[]` -> `()`
 
 <div class="section_buttons">

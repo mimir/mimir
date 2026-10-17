@@ -60,7 +60,7 @@ void FreeDefAna::classify(Node* node, const Def* fd, bool& spawned_pred, NodeQue
             pnode->succs.emplace_back(node);
             spawned_pred |= inserted;
         }
-    } else if (fd->has_dep(Dep::Var) && !fd->isa<Tuple>()) {
+    } else if (fd->local_vars() && !fd->isa<Tuple>()) {
         // Note: a Var may still be closed if its type is a mut, so the isa_var_proj case above is not redundant.
         node->add_fvs(fd);
     } else if (is_memop_res(fd)) {
@@ -119,19 +119,19 @@ const DefSet& FreeDefAna::run(Lam* lam) {
  * Closure Conversion
  */
 
-void ClosConv::rewrite_external(Def* old_mut) {
-    push(); // each external gets its own substitution scope
-    RWPhase::rewrite_external(old_mut);
-    pop();
-}
-
 void ClosConv::finalize() {
     // Rewrite the deferred closure bodies, each in isolation.
     while (!body_worklist_.empty()) {
         auto fn = body_worklist_.front();
         body_worklist_.pop();
-        push();
-        rewrite_body(closures_.at(fn));
+        auto& stub = closures_.at(fn);
+        auto& vs   = old_world().vars();
+        auto vars  = Vars();
+        for (auto fv : stub.fvs)
+            vars = vs.merge(vars, fv->free_vars());
+        push(vars);
+        bind_old(stub.old_fn->has_var());
+        rewrite_body(stub);
         pop();
     }
 }

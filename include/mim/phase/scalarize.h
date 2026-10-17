@@ -6,74 +6,52 @@
 
 namespace mim {
 
-/// Perform Scalarization (= Argument simplification).
-/// This means that, e.g.,
+/// Scalarization (= argument simplification):
 /// ```
 /// f := λ (x_1: [T_1, T_2], .., x_n: T_n).E
 /// ```
-/// will be transformed to
+/// becomes
 /// ```
 /// f' := λ (y_1: T_1, y_2: T_2, .. y_n: T_n).E[x_1 \ (y_1, y_2); ..; x_n \ y_n]
 /// ```
+/// It is type-directed: an immutable `Cn` is flattened along with all its Lam%s and App%s, even escaping ones.
+/// A flattened value is coerce()d where it meets an unflattened shape, e.g. an Axm's signature.
+/// An Axm handed a bare function (`autodiff.ad f`) is instantiated with the old shape, as its type may rely on it.
+/// A Pi is pinned where a coercion would be observable:
+/// * a `Cn` an interface Lam's signature reaches through a type coerce() cannot take apart (`mem.Ptr0 K`),
+/// * an argument whose callee accepts it only through a wildcard (`«⊤:Nat; I32»`), or
+/// * a parameter indexed non-constantly or consumed whole by an Axm - only this parameter is kept.
 ///
-/// The transformation is **type-directed**:
-/// the decision to flatten is made per continuation *type* (immutable `Cn`) - not per Lam.
-/// Every producer and consumer of such a type is reshaped in the same sweep:
-/// the Pi itself, all Lam%s of that type, and all App%s through it - no matter whether the callee is a mutable Lam,
-/// a Var (higher-order parameter), a branch tuple, or a value loaded back from memory.
-/// Hence, a Lam may escape (be stored, passed as argument) and still get its signature flattened.
-///
-/// A Pi is *pinned* (left untouched) if
-/// * it is reachable from an opaque annex the program uses (normalizers and backends rely on its exact shape),
-/// * an Axm application's signature dictates it - what the Axm consumes and produces,
-///   plus a *bare* function argument's type (`autodiff.ad f`) - except for subtrees that are
-///   merely substituted in via (type) arguments (`T` in `mem.store T`), which stay flattenable,
-/// * it occurs inside an *interface* Lam's signature (external, annex, or unset declaration) -
-///   only such a Lam's own top-level Pi stays flattenable (it may be shared with internal values),
-/// * it types a value inside a dependently-typed aggregate (a typed closure),
-/// * an App connects a dom and an arg whose types are alpha-equivalent yet *distinct* defs, or
-/// * one of its parameters is Extract%ed / Insert%ed via a **non-constant** index
-///   (splitting would only force the body to reassemble the tuple),
-///   or an Axm consumes it as a whole through one of its type variables (`tensor.buf x` nominates `x` as a tensor);
-///   this is tracked per parameter via a keep-bitmask.
-///
-/// The phase flattens **one level** of a Pi's (thresholded) domain per run.
-/// Because it is scheduled inside a fixed-point pipeline (`compile.phases tt (...)`),
-/// re-running it converges to a full flatten; each run that peels calls invalidate().
-///
-/// Flattening respects Flags::scalarize_threshold via the thresholded projection helpers
-/// (Def::num_tprojs, Pi::tdom, App::targ): an Arr parameter is only expanded if its arity is
-/// below the threshold; a Sigma parameter always is.
-/// It will not flatten mutable @p Sigma%s or @p Arr%ays (their vars have no static arity).
+/// Each run flattens one level; the fixed-point pipeline repeats it.
+/// Flags::scalarize_threshold bounds which Arr%s are expanded.
 class Scalarize : public RWPhase {
 private:
-    /// Optimistic fixed-point analysis: every immutable `Cn` is assumed flattenable
-    /// until proven otherwise (see the pinning rules above).
+    /// Optimistic: every immutable `Cn` is flattenable until pinned.
     class Analysis : public mim::Analysis {
     public:
         Analysis(World& world)
             : mim::Analysis(world, "Scalarize::Analysis") {}
 
-        /// Per-parameter expand mask for @p type; a set bit marks a parameter to be flattened one level.
-        /// An **empty** mask means "leave untouched".
-        /// Cheap; recomputed on demand from the (post-fixed-point) lattice.
+        /// The parameters of @p type to flatten one level; empty means leave it untouched.
         fe::Bitset plan(const Def* type) const;
 
     private:
         const Def* rewrite(const Def* old) final;
 
         void inspect(const Def* def);
-        /// Marks parameter @p dom of @p pi as *keep whole*; a fresh bit invalidate()s.
+        /// Keeps parameter @p dom of @p pi whole.
         void keep(const Pi* pi, size_t dom);
         /// Keeps @p def whole if it is a Lam's Var or one of its parameters.
         void keep_param(const Def* def);
         bool kept(const Pi* pi, size_t dom) const; ///< Is parameter @p dom of @p pi kept whole?
+        /// Does coerce() see through @p type, i.e. split it or η-wrap it?
+        /// The shape of whatever lies below any other type must be kept.
+        static bool transparent(const Def* type) { return type->isa<Pi>() || splittable(type); }
+        /// pin%s the `Cn`%s below the parts of @p type that coerce() cannot take apart.
+        void pin_opaque(DefSet& structural, const Def* type);
 
-        /// Which parameters of a Pi must not be split.
-        /// Kept out of lattice(), as a lattice write would also map() the Pi to its abstract value -
-        /// which breaks as soon as that Pi occurs in a type argument (`mem.slot (H, 0)`).
+        /// Not in lattice(), as its map() of the Pi would break type arguments like `mem.slot (H, 0)`.
         DefMap<fe::Bitset> keeps_;
-        DefSet interface_; ///< Everything reachable from the opaque annexes reached so far.
     };
 
 public:
@@ -82,12 +60,29 @@ public:
         , analysis_(world) {}
 
 private:
-    const Def* rewrite_imm_Pi(const Pi*) final;
-    const Def* rewrite_mut_Lam(Lam*) final;
-    const Def* rewrite_imm_App(const App*) final;
+    /// Rebuilds what an interface Lam's signature mentions in its old shape and leaves everything else to Scalarize.
+    class Keep : public Rewriter {
+    public:
+        Keep(Scalarize& sca)
+            : Rewriter(sca.new_world())
+            , sca_(sca) {}
 
-    /// Flattens @p app%'s arguments one level according to @p mask.
-    DefVec flatten_args(const App* app, const fe::Bitset& mask);
+        const Def* rewrite(const Def*) final;
+
+    private:
+        bool has_cn(const Def*);
+
+        Scalarize& sca_;
+        DefMap<bool> has_cn_;
+    };
+
+    const Def* rewrite_imm_Pi(const Pi*) final;
+    const Def* rewrite_imm_App(const App*) final;
+    /// The new Lam for @p old; the old Var maps to its reassembly from the new one.
+    Lam* stub(Lam* old, const fe::Bitset& mask);
+    /// Flattens @p pi%'s domain one level according to @p mask and rewrites its components with @p rw.
+    const Def* flatten(Rewriter& rw, const Pi* pi, const fe::Bitset& mask);
+    const Def* rewrite_mut_Lam(Lam*) final;
 
     Analysis analysis_;
 };

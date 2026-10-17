@@ -70,12 +70,12 @@ public:
 
 private:
     friend class World;
-    friend class Checker;
+    friend class Check;
 };
 
-class Checker {
+class Check {
 public:
-    explicit Checker(World& world)
+    explicit Check(World& world)
         : world_(world) {}
 
     World& world() { return world_; }
@@ -83,23 +83,31 @@ public:
     enum Mode {
         /// In Mode::Check, type inference is happening and Hole%s will be resolved, if possible.
         /// Also, two *free* but *different* Var%s **are** considered α-equivalent.
-        Check,
+        C,
         /// In Mode::Test, no type inference is happening and Hole%s will not be touched.
         /// Also, Two *free* but *different* Var%s are **not** considered α-equivalent.
-        Test,
+        T,
     };
 
-    template<Mode mode>
+    template<Mode mode = C>
     static bool alpha(const Def* d1, const Def* d2) {
         if (d1 == d2) return true;
-        return Checker(d1->world()).alpha_<mode>(d1, d2);
+        auto checker = Check(d1->world());
+        if (!checker.alpha_<mode>(d1, d2)) return false;
+        checker.commit();
+        return true;
     }
+
+    static bool test_alpha(const Def* d1, const Def* d2) { return alpha<T>(d1, d2); }
 
     /// Can @p value be assigned to sth of @p type?
     /// @note This is different from `equiv(type, value->type())` since @p type may be dependent.
-    [[nodiscard]] static const Def* assignable(const Def* type, const Def* value) {
+    [[nodiscard]] static const Def* coerce(const Def* type, const Def* value) {
         if (type == value->type()) return value;
-        return Checker(type->world()).assignable_(type, value);
+        auto checker = Check(type->world());
+        auto res     = checker.coerce_(type, value);
+        if (res) checker.commit();
+        return res;
     }
 
     /// Yields `defs.front()`, if all @p defs are Check::alpha-equivalent (`Mode::Test`) and `nullptr` otherwise.
@@ -118,7 +126,7 @@ private:
     const Def* fail() { return {}; }
 #endif
 
-    [[nodiscard]] const Def* assignable_(const Def* type, const Def* value);
+    [[nodiscard]] const Def* coerce_(const Def* type, const Def* value);
     template<Mode>
     [[nodiscard]] bool alpha_(const Def* d1, const Def* d2);
     template<Mode>
@@ -137,7 +145,9 @@ private:
     [[nodiscard]] bool check_rank(const Seq*, Hole* rank, const Def*);
     [[nodiscard]] bool check1(const Seq*, const Def*);
     [[nodiscard]] bool check(Seq*, const Seq*);
-    [[nodiscard]] bool check(const UMax*, const Def*);
+    [[nodiscard]] bool check(const LMax*, const Def*);
+    [[nodiscard]] bool check(const LSucc*, const Def*);
+    void commit(); ///< Hands deferred_ over to World::postpone once the whole check has succeeded.
 
     /// Symmetric key for the alpha_ memo: the two gids packed into one u64, smaller first.
     /// Canonicalizing by gid is what lets alpha_ get away with a single probe.
@@ -153,6 +163,7 @@ private:
     Binders binders_;
     Vars bound_; ///< Var%s of all binders_; these are the Var%s subject to renaming.
     std::array<ankerl::unordered_dense::set<u64>, 2> memo_;
+    fe::Vector<std::pair<const LMax*, const Def*>> deferred_;
 };
 
 } // namespace mim

@@ -213,7 +213,7 @@ protected:
     bool pin(const Def* def) { return lattice(def, def); }
 
     /// pin%s every def in @p def%'s immutable subgraph for which @p pinnable holds.
-    /// Mutables are visited but not descended into; defs already in @p visited are skipped - seed it to exempt them.
+    /// Mutables are visited but not descended into; defs already in @p visited are skipped.
     void pin_imm(DefSet& visited, const Def* def, DefPred auto pinnable) {
         if (!visited.emplace(def).second) return;
         if (pinnable(def)) pin(def);
@@ -225,28 +225,6 @@ protected:
     void pin_imm(const Def* def, DefPred auto pinnable) {
         auto visited = DefSet();
         pin_imm(visited, def, pinnable);
-    }
-
-    /// If @p app applies an Axm, pin_imm%s the shapes its signature dictates: what the Axm consumes and produces.
-    /// Rebuilding such an App re-derives them from the Axm's generic type instead of rewriting them.
-    /// Subgraphs merely substituted in via (type) arguments impose no shape, though, and are exempt.
-    /// @returns whether @p app applies an Axm.
-    bool pin_axm(const App* app, DefPred auto pinnable) {
-        if (!app->uncurry_callee()->isa<Axm>()) return false;
-
-        auto cands   = DefVec();
-        auto visited = DefSet();
-        auto collect = [&](this auto& self, const Def* def) -> void {
-            if (!visited.emplace(def).second) return;
-            if (pinnable(def)) cands.emplace_back(def);
-            if (def->isa_mut()) return;
-            for (auto d : def->deps())
-                self(d);
-        };
-        collect(app->callee_type()->dom());
-        collect(app->type());
-        pin_outside_args(app, cands);
-        return true;
     }
 
     /// Additionally schedules @p mut for the next sparse round.
@@ -288,7 +266,7 @@ protected:
 
     /// Schedules @p mut for a breadth-first visit of its dependencies and records `mut -> mut`.
     /// Mutables are enqueued instead of recursed into; Analysis::drain then walks them in BFS order.
-    /// The `mut -> mut` entry doubles as the per-round "already scheduled" marker (Rewriter::old2news_ is
+    /// The `mut -> mut` entry doubles as the per-round "already scheduled" marker (Rewriter::scopes_ are
     /// cleared by reset()), so each mutable's deps are visited at most once per fixed-point round.
     Def* rewrite_mut(Def*) override;
     virtual void leave() {} ///< Called after curr_mut() has been completely dealt with.
@@ -302,7 +280,6 @@ private:
     }
 
     bool is_cyclic(const Def* def) const;
-    void pin_outside_args(const App*, const DefVec& cands);
 
     /// Walks all enqueued mutables' dependencies - in BFS order - under each mutable's curr_mut() scope.
     void drain();
@@ -385,6 +362,25 @@ public:
 protected:
     void start() override;
 
+    /// @name Coercion
+    /// Every checking position - an App's argument and result, a Tuple's ops, a Lam's body - coerce()s its value.
+    /// This reconciles a representation the phase changed with one it did not, e.g. an Axm's signature.
+    ///@{
+    const Def* rewrite_imm_App(const App*) override;
+    const Def* rewrite_imm_Tuple(const Tuple*) override;
+    const Def* rewrite_stub(Def*, Def*) override;
+    using Rewriter::rewrite_stub;
+
+    /// Converts the *new* @p new_val into a value of the *new* @p new_type, where a checking position demands it.
+    /// Both are matched leaf by leaf: tuples are exploded and reassembled, Pi%s are η-wrapped, and
+    /// information-free components are dropped or filled in with their sole inhabitant.
+    const Def* coerce(const Def* new_type, const Def* new_val);
+    /// Does coerce() explode and reassemble values of @p type?
+    static bool splittable(const Def* type) {
+        return (type->isa<Sigma>() || type->isa_imm<Arr>()) && type->num_tprojs() != 1;
+    }
+    ///@}
+
     /// Run **after** all roots have been walked but still **before** the two worlds are swapped.
     /// This is where you drain a worklist of rewrites your hooks deferred (see e.g. clos::phase::ClosConv).
     virtual void finalize() {}
@@ -400,6 +396,15 @@ private:
         , Rewriter(*new_world)
         , analysis_(analysis)
         , new_world_(std::move(new_world)) {}
+
+    /// η-wraps @p val into a Lam of @p type, coerce()ing its Var to @p val%'s domain and its result to the codomain.
+    /// @returns `nullptr` unless both @p val%'s type and @p type are Pi%s.
+    const Def* eta_coerce(const Def* type, const Def* val);
+    /// Builds a value of @p type from the top of the stack @p todo.
+    /// Greedy matching is sound as assignable types share their leaves - unless a wildcard like `⊤` interferes.
+    const Def* reshape(DefVec& todo, const Def* type);
+
+    DefMap<Def2Def> etas_; ///< type ↦ val ↦ eta_coerce(type, val)
 
     Analysis* analysis_;
     std::unique_ptr<World> new_world_; ///< Owns Rewriter::world.

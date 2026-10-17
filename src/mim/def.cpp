@@ -26,20 +26,6 @@ std::ostream& DefKey::stream(std::ostream& os, const Def* d) { return os << d->s
  * constructors
  */
 
-// The Deps a node contributes to *itself*; Def::dep_ then accumulates the ones of its deps() on top.
-static constexpr unsigned node2dep(Node node, bool mut) {
-    auto dep = mut ? Dep::Mut : Dep::None;
-    // clang-format off
-    switch (node) {
-        case Node::Hole:  dep |= Dep::Hole;           break;
-        case Node::Proxy: dep |= Dep::Proxy;          break;
-        case Node::Var:   dep |= Dep::Var | Dep::Mut; break;
-        default:                                      break;
-    }
-    // clang-format on
-    return fe::to_underlying(dep);
-}
-
 Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     : world_(world)
     , flags_(flags)
@@ -47,13 +33,11 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     , mut_(false)
     , external_(false)
     , annex_(false)
+    , has_hole_(false)
     , num_ops_(ops.size())
     , type_(type) {
-    auto dep = node2dep(node, false);
-
-    if (node == Node::Univ) {
-        dep_  = dep;
-        hash_ = fe::hash_combine(0, node_t(Node::Univ));
+    if (node == Node::Level) {
+        hash_ = fe::hash_combine(0, node_t(Node::Level));
         return;
     }
 
@@ -61,15 +45,7 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     auto h = fe::hash_combine(0, u64(node) << 32 | (type ? type->gid() : 0));
     h      = fe::hash_combine(h, flags_);
 
-    auto collect = [&](const Def* d, bool with_vars = true, bool with_muts = true) {
-        if (!with_vars && !with_muts) return;
-        auto mask = ~0u;
-        if (!with_vars) mask &= ~fe::to_underlying(Dep::Var);
-        if (!with_muts) mask &= ~fe::to_underlying(Dep::Mut);
-        dep |= d->dep_ & mask;
-    };
-
-    if (type) collect(type);
+    auto has_hole = type && type->has_hole_;
 
     auto ptr  = ops_ptr();
     auto gids = u64(0);
@@ -78,24 +54,18 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
         ptr[i]  = op;
         gids    = gids << 32 | op->gid();
         if (i & 1) h = fe::hash_combine(h, gids), gids = 0;
-        if (node == Node::Proxy)
-            collect(op, flags & Proxy::Vars_Bit, flags & Proxy::Muts_Bit);
-        else
-            collect(op);
+        if (node != Node::Proxy || flags & (Proxy::Vars_Bit | Proxy::Muts_Bit)) has_hole |= op->has_hole_;
     }
     if (gids) h = fe::hash_combine(h, gids); // gid 0 is never handed out, so this odd tail cannot alias a pair
 
-    dep_  = dep;
-    hash_ = h;
+    has_hole_ = has_hole;
+    hash_     = h;
 }
 
 void Def::collect_locals() {
-    if (!(dep_ & (fe::to_underlying(Dep::Var) | fe::to_underlying(Dep::Mut)))) return;
-
     auto vars    = Vars();
     auto muts    = Muts();
     auto collect = [&](const Def* d, bool with_vars = true, bool with_muts = true) {
-        if (!(d->dep_ & (fe::to_underlying(Dep::Var) | fe::to_underlying(Dep::Mut)))) return;
         auto dvars = with_vars ? d->local_vars() : Vars();
         auto dmuts = with_muts ? d->local_muts() : Muts();
         if ((vars && dvars) || (muts && dmuts)) {
@@ -127,7 +97,7 @@ Def::Def(Node node, const Def* type, size_t num_ops, flags_t flags)
     , mut_(true)
     , external_(false)
     , annex_(false)
-    , dep_(node2dep(node, true))
+    , has_hole_(node == Node::Hole)
     , num_ops_(num_ops)
     , type_(type) {
     var_ = nullptr;
@@ -141,7 +111,7 @@ Def::Def(Node node, Def* binder)
     , mut_(false)
     , external_(false)
     , annex_(false)
-    , dep_(node2dep(node, false))
+    , has_hole_(false)
     , num_ops_(0)
     , type_(nullptr) {
     vars_ = Vars(as<Var>());
@@ -151,8 +121,8 @@ Def::Def(Node node, Def* binder)
 Nat::Nat(World& world)
     : Def(Node, world.type(), Defs{}, 0) {}
 
-UMax::UMax(World& world, Defs ops)
-    : Def(Node, world.univ(), ops, 0) {}
+LMax::LMax(World& world, Defs ops)
+    : Def(Node, world.type_level(), ops, 0) {}
 
 /*
  * immutabilize
@@ -313,7 +283,7 @@ bool Def::has_free_vars() const {
 }
 
 bool Def::has_free_vars_in(Vars vars) const {
-    return any_free_vars(this, [vars](Vars fvs) { return vars.has_intersection(fvs); });
+    return vars && any_free_vars(this, [vars](Vars fvs) { return vars.has_intersection(fvs); });
 }
 
 Vars Def::free_vars() {
@@ -499,8 +469,8 @@ void Def::set_dbg_key_(DbgKey key, bool ow) const {
 const Def* Def::unfold_type() const {
     if (auto t = type()) return t;
     auto& w = world();
-    if (auto t = isa<Type>()) return w.type(w.uinc(t->level()));
-    assert(isa<Univ>());
+    if (auto t = isa<Type>()) return w.type(w.lsucc(t->level()));
+    assert(isa<Level>());
     return nullptr;
 }
 
@@ -514,9 +484,9 @@ std::string_view Def::node_name() const {
 }
 
 Defs Def::deps() const noexcept {
-    // Univ, Type, and Var are the only nodes built without a type - and none of them has deps.
+    // Level, Type, and Var are the only nodes built without a type - and none of them has deps.
     if (!type_) {
-        assert(isa<Univ>() || isa<Type>() || isa<Var>());
+        assert(isa<Level>() || isa<Type>() || isa<Var>());
         return Defs();
     }
 

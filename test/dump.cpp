@@ -32,7 +32,7 @@ public:
     bool operator()(const Def* def) {
         note_    = std::format("{}", def);
         auto got = parse(std::format("{}let _rt = {};", prelude_, note_));
-        if (!got || !Checker::alpha<Checker::Test>(def, got)) {
+        if (!got || !Check::test_alpha(def, got)) {
             note_ += std::format("   -->   {}", got);
             return false;
         }
@@ -71,10 +71,10 @@ TEST_CASE("dump: types") {
     auto& w = rt.world();
     CHECK_RT(w.type_nat());
     CHECK_RT(w.type_idx());
-    CHECK_RT(w.univ());
+    CHECK_RT(w.type_level());
     CHECK_RT(w.type<0>());
     CHECK_RT(w.type<1>());
-    CHECK_RT(w.type(w.lit_univ(2)));
+    CHECK_RT(w.type(w.lit_level(2)));
     CHECK_RT(w.type_bool());
     CHECK_RT(w.type_i8());
     CHECK_RT(w.type_i16());

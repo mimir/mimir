@@ -45,6 +45,7 @@ add_mim_test(mim-test
     SOURCES
         cast.cpp
         dump.cpp
+        level.cpp
         lexer.cpp
         nom.cpp
         restricted_dep_types.cpp

@@ -1,7 +1,6 @@
 #include "mim/phase/scalarize.h"
 
-#include <fe/worklist.h>
-
+#include "mim/check.h"
 #include "mim/lam.h"
 #include "mim/tuple.h"
 #include "mim/world.h"
@@ -14,8 +13,7 @@ static const Pi* isa_flattenable(const Def* def) {
     return nullptr;
 }
 
-/// Is the argument of @p app - an Axm's last curried application - typed by one of the Axm's type variables?
-/// Such an Axm imposes no shape on it, so what it can care about is the argument's identity.
+/// Is the argument of the Axm application @p app typed by one of the Axm's type variables?
 static bool is_polymorphic_arg(const App* app) {
     auto n = 0;
     for (const Def* d = app; auto a = d->isa<App>(); d = a->callee())
@@ -32,7 +30,7 @@ static bool is_polymorphic_arg(const App* app) {
 }
 
 /*
- * Analysis - optimistic: every immutable Cn is flattenable until proven otherwise.
+ * Analysis
  */
 
 bool Scalarize::Analysis::kept(const Pi* pi, size_t dom) const {
@@ -42,10 +40,7 @@ bool Scalarize::Analysis::kept(const Pi* pi, size_t dom) const {
 }
 
 void Scalarize::Analysis::keep(const Pi* pi, size_t dom) {
-    // Out of the thresholded arity: plan() only iterates [0, num_tdoms), so such a parameter is never a
-    // split candidate anyway - nothing to record.
-    if (dom >= pi->num_tdoms()) return;
-    if (is_top(pi)) return; // already ⊤ - monotone, do not downgrade
+    if (dom >= pi->num_tdoms() || is_top(pi)) return;
     auto& mask = keeps_[pi];
     if (mask.test(dom)) return;
     mask.set(dom);
@@ -64,84 +59,32 @@ void Scalarize::Analysis::keep_param(const Def* def) {
     }
 }
 
+void Scalarize::Analysis::pin_opaque(DefSet& structural, const Def* type) {
+    if (transparent(type)) {
+        if (structural.emplace(type).second)
+            for (auto op : type->ops())
+                pin_opaque(structural, op);
+    } else {
+        pin_imm(type, isa_flattenable);
+    }
+}
+
 void Scalarize::Analysis::inspect(const Def* def) {
-    // Everything reachable from an opaque annex is interface: normalizers and backends rely on its exact shape.
-    if (world().annexes().opaque(def)) {
-        auto wl = fe::BFSWorklist<DefSet&>(interface_);
-        wl.push(def);
-        while (!wl.empty()) {
-            auto d = wl.pop();
-            if (auto pi = isa_flattenable(d)) pin(pi);
-            wl.push(d->deps());
-        }
-        return;
+    // The interface's signature keeps its shape, which the body only meets via coerce().
+    if (auto lam = def->isa_mut<Lam>(); lam && !lam->is_rewritable()) {
+        auto structural = DefSet();
+        pin_opaque(structural, lam->type());
     }
 
     if (auto app = def->isa<App>()) {
-        // The shapes an Axm's signature dictates are interface (e.g. `affine.For`'s body or `autodiff.ad f`):
-        // normalizers and plugin phases match on their exact shape.
-        if (pin_axm(app, isa_flattenable)) {
-            if (auto pi = isa_flattenable(app->callee_type())) pin(pi); // this very application's shape
-
-            // An Axm taking a *bare* function argument (`autodiff.ad f`) is higher-order machinery that
-            // will inspect and call that function by its own convention - keep the function's shape even
-            // where the Axm's signature is fully polymorphic (`{T: *} → T → ...`).
-            // A function buried inside a tuple argument (`mem.store (mem, ptr, f)`) is just data, though.
-            if (auto lam = app->arg()->isa_mut<Lam>()) pin_imm(lam->type(), isa_flattenable);
-
-            // An Axm polymorphic in its argument's type sees it whole, e.g. `tensor.buf x` nominates `x` itself.
-            if (is_polymorphic_arg(app)) keep_param(app->arg());
-        }
-
-        // Assignability is alpha-equivalence, so an App may connect a dom and an arg whose types are
-        // *distinct* defs (e.g. one with a mutable ret-Pi, one immutable). Flattening decides per def,
-        // which would tear such an edge apart - pin both sides.
-        // Only for immutable Pis: a dependent dom legitimately differs from the instantiated arg type.
-        if (auto pi = app->callee_type(); pi->isa_imm() && pi->dom() != app->arg()->type()) {
-            pin_imm(pi->dom(), isa_flattenable);
+        // A wildcard like `«⊤; I32»` admits an argument with other leaves, which coerce() cannot reassemble.
+        if (auto pi = app->callee()->type()->isa<Pi>(); pi && !Check::test_alpha(pi->dom(), app->arg()->type()))
             pin_imm(app->arg()->type(), isa_flattenable);
-        }
+        // `tensor.buf x` nominates `x` itself.
+        if (app->axm() && is_polymorphic_arg(app)) keep_param(app->arg());
     }
 
-    if (def->isa<Var>()) return; // a Var references its mut as op; that is not a use of the Lam
-
-    // A value inside a *dependently*-typed aggregate - e.g. a typed closure `(T, code, env)` of type
-    // `[T: *, Cn [.., T, ..], T]` - has its type dictated by the Sigma's binder:
-    // reshaping it would tear the aggregate's typing apart (and clos machinery rebuilds against it).
-    if (auto tuple = def->isa<Tuple>(); tuple && tuple->type()->isa_mut())
-        for (auto op : tuple->ops())
-            pin_imm(op->type(), isa_flattenable);
-
-    // An interface Lam (external, annex, or unset declaration) keeps its whole signature:
-    // pin everything its type mentions (its ret Pi, callback params, a polymorphic Lam's inner Cn, ...) -
-    // other code (plugin phases, foreign callers) builds against these shapes.
-    // Only the interface's own (top-level) Pi stays flattenable: it may be shared with internal values.
-    if (auto lam = def->isa_mut<Lam>(); lam && !lam->is_rewritable()) {
-        auto visited = DefSet();
-        visited.emplace(lam->type());
-        for (auto d : lam->type()->deps())
-            pin_imm(visited, d, isa_flattenable);
-        // A curried interface (e.g. `fun extern f {s: Nat} (ab: ...)`) reduces to its inner Lam%s
-        // upon application; their types are the interface's *instantiated* codomains - distinct defs
-        // from the Pi-side codomains pinned above (Lam var vs Pi var) - so pin them whole, too.
-        if (lam->is_set())
-            for (auto inner = lam->body()->isa_mut<Lam>(); inner;) {
-                pin_imm(visited, inner->type(), isa_flattenable);
-                inner = inner->is_set() ? inner->body()->isa_mut<Lam>() : nullptr;
-            }
-    }
-
-    // As long as an interface Lam is merely called that is a local affair (see Scalarize::rewrite_imm_App),
-    // but escaping as a *value* it would meet flattened values of the same type - so pin the whole type.
-    for (size_t i = 0, e = def->num_ops(); i != e; ++i) {
-        auto op  = def->op(i);
-        auto lam = op ? op->isa_mut<Lam>() : nullptr;
-        if (!lam || lam->is_rewritable()) continue;
-        if (auto pi = isa_flattenable(lam->type()); pi && !(def->isa<App>() && i == 0)) pin(pi);
-    }
-
-    // A parameter that is Extract%ed / Insert%ed via a non-constant index must not be split.
-    // Only the *outermost* axis decides: a fused `t#(0₂, i)` still splits into two halves.
+    // Only the outermost index must be constant: `t#(0₂, i)` still splits.
     const Def* idx_tuple = nullptr;
     const Def* idx       = nullptr;
     if (auto ex = def->isa<Extract>())
@@ -159,8 +102,7 @@ void Scalarize::Analysis::inspect(const Def* def) {
 }
 
 const Def* Scalarize::Analysis::rewrite(const Def* old) {
-    // Visit the subtree *before* inspecting: pin() seeds `pi ↦ pi` into the rewriter map (via pin),
-    // which would short-circuit the traversal into `old` and skip its subtree for the rest of the round.
+    // pin() maps `pi ↦ pi`, which would cut off the traversal into `old`.
     auto res = mim::Analysis::rewrite(old);
     inspect(old);
     return res;
@@ -169,14 +111,10 @@ const Def* Scalarize::Analysis::rewrite(const Def* old) {
 fe::Bitset Scalarize::Analysis::plan(const Def* type) const {
     auto mask = fe::Bitset();
     if (auto pi = isa_flattenable(type)) {
-        // A *dependent* domain (a mut Sigma whose components reference siblings through its Var, e.g. a
-        // runtime extent `n: Nat` named by a pointee `mem.Ptr («n; T», 0)`) must not be flattened at all:
-        // splitting any component shifts the indices the dependent references are bound to.
+        // Splitting a dependent domain would shift the indices its Var references.
         if (auto sig = pi->dom()->isa_mut<Sigma>(); sig && sig->has_var()) return mask;
         for (size_t i = 0, n = pi->num_tdoms(); i != n; ++i) {
-            // Only split immutable types: a mutable Sigma's element types may reference
-            // the Sigma's own var (e.g. a typed closure `[T: *, Cn [.., T, ..], T]`),
-            // which splitting would leave unbound.
+            // A mutable Sigma's elements may reference its Var.
             auto t = pi->tdom(i);
             if (!kept(pi, i) && t->isa_imm() && t->num_tprojs() > 1) mask.set(i);
         }
@@ -185,17 +123,44 @@ fe::Bitset Scalarize::Analysis::plan(const Def* type) const {
 }
 
 /*
+ * Keep
+ */
+
+const Def* Scalarize::Keep::rewrite(const Def* old_def) {
+    if (!has_cn(old_def) && !has_intersection(old_def)) return sca_.rewrite(old_def);
+    bind_old(old_def->has_var());
+    return Rewriter::rewrite(old_def);
+}
+
+bool Scalarize::Keep::has_cn(const Def* def) {
+    if (auto [i, ins] = has_cn_.emplace(def, false); !ins) return i->second;
+    auto res = isa_flattenable(def) != nullptr;
+    for (auto d : def->deps())
+        res |= has_cn(d);
+    return has_cn_[def] = res;
+}
+
+/*
  * Scalarize
  */
 
-const Def* Scalarize::rewrite_imm_Pi(const Pi* pi) {
-    auto mask = analysis_.plan(pi);
+const Def* Scalarize::rewrite_imm_Pi(const Pi* pi) { return flatten(*this, pi, analysis_.plan(pi)); }
+
+const Def* Scalarize::rewrite_imm_App(const App* app) {
+    if (!app->axm() || !app->arg()->type()->isa<Pi>()) return RWPhase::rewrite_imm_App(app);
+
+    auto arg    = rewrite(app->arg());
+    auto keep   = Keep(*this);
+    auto callee = keep.rewrite(app->callee());
+    return new_world().app(callee, coerce(callee->type()->as<Pi>()->dom(), arg));
+}
+
+const Def* Scalarize::flatten(Rewriter& rw, const Pi* pi, const fe::Bitset& mask) {
     if (mask.none()) return RWPhase::rewrite_imm_Pi(pi);
 
-    // build the flattened (one level) domain
     auto doms = DefVec();
     for (size_t i = 0, n = pi->num_tdoms(); i != n; ++i) {
-        auto t = rewrite(pi->tdom(i));
+        auto t = rw.rewrite(pi->tdom(i));
         if (mask[i]) {
             auto pieces = t->tprojs();
             doms.insert(doms.end(), pieces.begin(), pieces.end());
@@ -205,61 +170,48 @@ const Def* Scalarize::rewrite_imm_Pi(const Pi* pi) {
     }
 
     auto& w  = new_world();
-    auto sca = w.pi(w.sigma(doms), rewrite(pi->codom()), pi->is_implicit());
+    auto sca = w.pi(w.sigma(doms), rw.rewrite(pi->codom()), pi->is_implicit());
     log().d("scalarize {} → {}", pi, sca);
     invalidate();
     return sca;
 }
 
-const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
-    auto mask = analysis_.plan(old->type());
-    if (mask.none()) return RWPhase::rewrite_mut_Lam(old);
+Lam* Scalarize::stub(Lam* old, const fe::Bitset& mask) {
+    auto n     = old->num_tvars();
+    auto types = DefVec(n);
+    // An interface Lam's own Pi is flattened like any other, but what it mentions keeps its shape.
+    auto keep = Keep(*this);
+    auto& rw  = old->is_rewritable() ? static_cast<Rewriter&>(*this) : keep;
+    auto type = mask.any() ? flatten(rw, old->type()->as<Pi>(), mask) : rw.rewrite(old->type());
+    if (old->is_set())
+        for (size_t i = 0; i != n; ++i)
+            if (mask[i]) types[i] = rw.rewrite(old->tvar(i)->type());
 
     auto& w  = new_world();
-    auto sca = w.mut_lam(rewrite(old->type())->as<Pi>())->set(old->dbg_key());
-    log().d("scalarize {}: {} → {}: {}", old, old->type(), sca, sca->type());
+    auto sca = w.mut_lam(type->as<Pi>())->set(old->dbg_key());
     map(old, sca);
+    if (!old->is_set() || mask.none()) return sca;
 
-    if (old->is_set()) { // a foreign declaration has no var uses to rewire
-        // reassemble the old var one level from the fresh scalar vars
-        auto n       = old->num_tvars();
-        auto num_sca = sca->num_vars();
-        auto params  = DefVec();
-        params.reserve(n);
-        for (size_t i = 0, v = 0; i != n; ++i) {
-            auto t = rewrite(old->tvar(i)->type());
-            if (mask[i]) {
-                auto pieces = DefVec(t->num_tprojs(), [&](size_t) { return sca->var(num_sca, v++); });
-                params.emplace_back(w.tuple(t, pieces));
-            } else {
-                params.emplace_back(sca->var(num_sca, v++));
-            }
-        }
-        map(old->var(), w.tuple(params));
-    }
-
-    return rewrite_stub(old, sca);
-}
-
-DefVec Scalarize::flatten_args(const App* app, const fe::Bitset& mask) {
-    auto args = DefVec();
-    for (size_t i = 0, n = app->num_targs(); i != n; ++i) {
-        auto arg = rewrite(app->targ(i));
+    auto num_sca = sca->num_vars();
+    auto params  = DefVec();
+    params.reserve(n);
+    for (size_t i = 0, v = 0; i != n; ++i) {
         if (mask[i]) {
-            auto pieces = arg->tprojs();
-            args.insert(args.end(), pieces.begin(), pieces.end());
+            auto t      = types[i];
+            auto pieces = DefVec(t->num_tprojs(), [&](size_t) { return sca->var(num_sca, v++); });
+            params.emplace_back(w.tuple(t, pieces));
         } else {
-            args.emplace_back(arg);
+            params.emplace_back(sca->var(num_sca, v++));
         }
     }
-    return args;
+    map(old->var(), w.tuple(params));
+    return sca;
 }
 
-const Def* Scalarize::rewrite_imm_App(const App* app) {
-    if (auto mask = analysis_.plan(app->callee_type()); mask.any())
-        return new_world().app(rewrite(app->callee()), flatten_args(app, mask));
-
-    return RWPhase::rewrite_imm_App(app);
+const Def* Scalarize::rewrite_mut_Lam(Lam* old) {
+    auto mask = analysis_.plan(old->type());
+    if (mask.none() && old->is_rewritable()) return RWPhase::rewrite_mut_Lam(old);
+    return rewrite_stub(old, stub(old, mask));
 }
 
 } // namespace mim

@@ -377,6 +377,7 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
             if (!lookup(f_lam)) map(f_lam, idx_map_lam);
 
             push();
+            bind(f_lam->has_var(), idx_map_lam->has_var());
             map(f_lam->var(), idx_map_lam->var(2, 1));
             for (size_t i = 0; i != f_lam->num_vars(); ++i)
                 map(f_lam->var(f_lam->num_vars(), i), idx_map_lam->var(2, 1)->proj(f_lam->num_vars(), i));

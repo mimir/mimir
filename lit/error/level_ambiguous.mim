@@ -1,0 +1,4 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+lam ambig (A) (B): □ = [A, B];
+
+// CHECK: {{.*}}level_ambiguous.mim:2:24-2:29: error: ambiguous universe levels: `{{.*}}` = `1:Level` has no unique solution

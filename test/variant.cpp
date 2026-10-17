@@ -24,7 +24,7 @@ TEST_CASE("Variant: cases are positional and free") {
     CHECK(w.variant({nat, b}) != w.variant({b, nat}));
     CHECK(w.variant({nat, b}) == w.variant({nat, b}));
     CHECK(w.variant({nat})->isa<Variant>());
-    CHECK(w.variant({})->isa<Variant>());
+    CHECK(w.variant({}) == w.join({}));
 }
 
 TEST_CASE("Variant: Inj carries its case") {
@@ -41,7 +41,7 @@ TEST_CASE("Variant: Inj carries its case") {
     CHECK(green->as<Inj>()->index() == 1);
     CHECK(red != green);
     CHECK(red == w.inj(color, 0, w.tuple()));
-    CHECK(!Checker::alpha<Checker::Test>(red, green));
+    CHECK(!Check::test_alpha(red, green));
 
     CHECK_THROWS(w.inj(color, 3, w.tuple()));
     CHECK_THROWS(w.inj(color, w.tuple()));
@@ -98,7 +98,7 @@ TEST_CASE("Variant: recursion") {
     // Equi-recursive: two same-shaped recursive Variants are α-equivalent.
     auto l2 = list();
     CHECK(l1 != l2);
-    CHECK(Checker::alpha<Checker::Test>(l1, l2));
+    CHECK(Check::test_alpha(l1, l2));
 
     auto nil  = w.inj(l1, 0, w.tuple());
     auto cons = w.inj(l1, 1, w.tuple({w.lit_nat(23), nil}));

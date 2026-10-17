@@ -174,7 +174,7 @@ const Def* AddMem::rewrite_imm_Tuple(const Tuple* tuple) {
     //   3. continuation values last - their bodies run later, so a shared memory operation they capture must
     //      already have been anchored (threaded) in this scope by the memory operands above.
     auto rank = [](const Def* op) {
-        if (!op->type()) return 0; // Univ has no type and is neither memory nor a continuation
+        if (!op->type()) return 0; // Level has no type and is neither memory nor a continuation
         return isa_mem(op) ? 1 : (Pi::isa_cn(op->type()) ? 2 : 0);
     };
 

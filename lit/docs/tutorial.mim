@@ -56,10 +56,10 @@ let _ = refly.struc.e (tru, tt);
 let _ = refly.struc.e (alt, tt);
 let _ = refly.struc.e (wid, 23:I32);
 /// ## Kinds and Builtin Types
-let univ = Univ;            // the universe of type levels
-let lvl0 = Type (0:Univ);   // the type at level 0 …
+let levl = Level;           // the type of universe levels
+let lvl0 = Type (0:Level);  // the type at level 0 …
 let star = *;               // … which `*` abbreviates
-let boxx = □;               // and `Type (1:Univ)`, which `□` abbreviates
+let boxx = □;               // and `Type (1:Level)`, which `□` abbreviates
 let nat  = Nat;
 let idx  = Idx;             // the builtin of type `Nat → *`
 let rul  = Rule Nat;        // the type of rewrite rules over `Nat`
