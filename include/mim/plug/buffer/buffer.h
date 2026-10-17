@@ -62,6 +62,12 @@ inline const Def* op_free(const Def* r, const Def* s, const Def* T, const Def* m
     return w.app(w.app(w.annex<free>(), {r, s, T}), {mem, buf});
 }
 
+/// op_free with `(r, s, T)` read off the type of @p buf.
+inline const Def* op_free(const Def* mem, const Def* buf) {
+    auto [r, s, T] = Axm::isa<Buf>(buf->type())->args<3>();
+    return op_free(r, s, T, mem, buf);
+}
+
 /// `buffer.init (r, s, T) (mem, val)` ↦ `[mem.M 0, buffer.Buf (r, s, T)]` (initialised with the array value `val`).
 inline const Def* op_init(const Def* r, const Def* s, const Def* T, const Def* mem, const Def* val) {
     auto& w = mem->world();
