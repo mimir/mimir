@@ -88,7 +88,7 @@ private:
         void pin_slot(const App* slot);
         /// Overwrites a stale @p concr ↦ promoted value from an earlier round, which a sparse round would replay.
         void retract(const Def* concr, const Def* abstr) {
-            if (auto cur = lattice(concr); cur && cur != abstr) lattice_force(concr, abstr);
+            if (lattice(concr)) lattice_force(concr, abstr);
         }
         void propagate_phis(Lam*, DefVec& vars, DefVec& abstr_args);
         const Def* sloxy2val(const Def* sloxy) { return lam2sloxy2val(curr_mut<Lam>(), sloxy); }

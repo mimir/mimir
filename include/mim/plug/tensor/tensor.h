@@ -1,7 +1,5 @@
 #pragma once
 
-#include <charconv>
-
 #include <optional>
 
 #include <fe/worklist.h>
@@ -15,19 +13,6 @@
 #include "mim/plug/tensor/autogen.h"
 
 namespace mim::plug::tensor {
-
-/// The number passed as `-X tensor:<key>=<n>`, if any; warns about and ignores a non-number.
-inline std::optional<u64> arg_u64(Driver& d, std::string_view key) {
-    auto val = arg_value(d.args("tensor"), key);
-    if (!val) return {};
-    auto n   = 0_u64;
-    auto end = val->data() + val->size();
-    if (auto [ptr, ec] = std::from_chars(val->data(), end, n); ec != std::errc() || ptr != end) {
-        d.log().w("ignoring `-X tensor:{}={}`: not a number", key, *val);
-        return {};
-    }
-    return n;
-}
 
 /// Is @p map the identity access map `λ x. x`?
 inline bool is_identity_map(const Def* map) {

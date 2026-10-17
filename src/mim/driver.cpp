@@ -1,5 +1,6 @@
 #include "mim/driver.h"
 
+#include <charconv>
 #include <cstring>
 
 #include <algorithm>
@@ -221,6 +222,18 @@ const fe::Vector<std::string>& Driver::args(std::string_view plugin) const {
     static const fe::Vector<std::string> empty;
     if (auto args = fe::lookup(plugin_args_, plugin)) return *args;
     return empty;
+}
+
+std::optional<nat_t> Driver::arg_nat(std::string_view plugin, std::string_view key) {
+    auto val = arg_value(args(plugin), key);
+    if (!val) return {};
+    auto n   = nat_t(0);
+    auto end = val->data() + val->size();
+    if (auto [ptr, ec] = std::from_chars(val->data(), end, n); ec != std::errc() || ptr != end) {
+        log().w("ignoring `-X {}:{}={}`: not a number", plugin, key, *val);
+        return {};
+    }
+    return n;
 }
 
 PlainNames::PlainNames(const Driver* driver)
