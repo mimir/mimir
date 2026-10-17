@@ -1,0 +1,36 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+// The dynamic load pins the slot after the store resolved against it.
+// A sparse round must not replay that resolution afterwards, or SEO never reaches a fixed point.
+
+plugin core;
+plugin math;
+plugin mem;
+plugin compile;
+
+extern lam _compile (): compile.Phase = compile.phases ff (compile.named "mem.seo");
+
+let F = math.F64;
+let A = «4; F»;
+let D = «2, 3; F»;
+
+// CHECK-DAG: mem.slot
+// CHECK-DAG: mem.store
+// CHECK-DAG: mem.load
+extern con main (m: mem.M 0, return: Cn [mem.M 0, mem.Ptr (D, 0)]) =
+    ret (m, p) = mem.slot (A, 0) $ m;
+    con head (m: mem.M 0, q: mem.Ptr (A, 0)) =
+        let m        = mem.store (m, mem.lea (q, 2₄), 4.0:F);
+        let (m, dst) = mem.alloc (D, 0) m;
+        con outer (i: I32, m: mem.M 0, u: mem.Ptr (D, 0)) =
+            con exit (m: mem.M 0) = return (m, dst);
+            con inner (j: I32, m: mem.M 0) =
+                con next (m: mem.M 0) = outer (core.wrap.add 0 (i, 1I32), m, u);
+                con body (m: mem.M 0) =
+                    let (m, _) = mem.load (m, mem.lea (q, core.conv.u 4 j));
+                    inner (core.wrap.add 0 (j, 1I32), m);
+                (next, body)#(core.icmp.ul (j, 4I32)) m;
+            con enter (m: mem.M 0) = inner (0I32, m);
+            (exit, enter)#(core.icmp.ul (i, 3I32)) m;
+        outer (0I32, m, dst);
+    head (m, p);

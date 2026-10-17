@@ -395,6 +395,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             }
         }
         log().d("unresolved store: {} ← {}", abstr_ptr, abstr_val);
+        retract(ptr, abstr_ptr);
     } else if (auto load = Axm::isa<mem::load>(app)) {
         auto [mem, ptr] = load->args<2>();
         auto [_, val]   = load->projs<2>();
@@ -413,6 +414,11 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         } else {
             log().d("load from unknown ptr: {}", abstr_ptr);
         }
+        retract(ptr, abstr_ptr);
+        auto new_arg = rewrite(app->arg());
+        auto res     = abstract_app(rewrite(app->callee()), new_arg);
+        retract(val, res->proj(2, 1));
+        return res;
     } else {
         auto abstr_callee = rewrite(app->callee());
         auto abstr_arg    = rewrite(app->arg());

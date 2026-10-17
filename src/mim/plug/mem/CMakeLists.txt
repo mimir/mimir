@@ -5,5 +5,6 @@ add_mim_plugin(mem
         normalizers.cpp
         phase/add_mem.cpp
         phase/free_locals.cpp
+        phase/heap2stack.cpp
         phase/seo.cpp
 )

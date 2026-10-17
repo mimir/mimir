@@ -141,6 +141,9 @@ void EscapeAnalysis::join(DefVec& carried, const Def* def) const {
                 if (auto val = lattice(tvar); val && val != tvar) join(carried, val);
     } else if (auto i = aliases_.find(def); i != aliases_.end()) {
         carried.insert(carried.end(), i->second.begin(), i->second.end());
+    } else if (auto ex = def->isa<Extract>(); ex && may_hold(ex->type())) {
+        // App::targ builds projections the analysis has never visited.
+        join(carried, ex->tuple());
     }
 }
 

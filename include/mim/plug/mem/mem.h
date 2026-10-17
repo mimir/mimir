@@ -37,7 +37,7 @@ inline bool has_leading_mem(const Pi* pi) {
 /// Returns the (first) element of type `mem.M a` from the given tuple.
 inline const Def* mem_def(const Def* def) {
     if (isa_mem(def)) return def;
-    if (def->type()->isa<Arr>()) return {}; // don't look into possibly gigantic arrays
+    if (def->isa<Arr>() || def->type()->isa<Arr>()) return {}; // don't look into possibly gigantic arrays
 
     if (def->num_projs() > 1) {
         for (auto proj : def->projs())

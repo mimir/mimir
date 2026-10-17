@@ -86,6 +86,10 @@ private:
         /// A direct-style call may access every slot reachable from its abstract callee and non-mem args.
         void pin_reachable_slots(const Def* abstr_callee, const Def* abstr_arg);
         void pin_slot(const App* slot);
+        /// Overwrites a stale @p concr ↦ promoted value from an earlier round, which a sparse round would replay.
+        void retract(const Def* concr, const Def* abstr) {
+            if (auto cur = lattice(concr); cur && cur != abstr) lattice_force(concr, abstr);
+        }
         void propagate_phis(Lam*, DefVec& vars, DefVec& abstr_args);
         const Def* sloxy2val(const Def* sloxy) { return lam2sloxy2val(curr_mut<Lam>(), sloxy); }
         const Def* sloxy2val(const Def* sloxy, const Def* val) { return lam2sloxy2val_[curr_mut<Lam>()][sloxy] = val; }

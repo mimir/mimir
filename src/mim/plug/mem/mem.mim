@@ -98,6 +98,13 @@ axm add_mem: compile.Phase;
 ///
 axm free_locals: compile.Phase;
 ///
+/// ### heap2stack
+///
+/// Turns a small `mem.alloc` that does not escape its function into a `mem.slot` (see mim::plug::mem::phase::Heap2Stack).
+/// `-X mem:heap2stack=<n>` sets the maximum number of elements to stack-allocate; `0` disables it.
+///
+axm heap2stack: compile.Phase;
+///
 /// ### seo
 ///
 /// Symbolic Expression Optimization — SSA construction, expression propagation, and GVN in one fixed point (see mim::plug::mem::phase::SEO).
