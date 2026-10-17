@@ -511,8 +511,7 @@ std::string Emitter::emit_lit(const Def* def) {
 std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name, const Def* def) {
     if (def->isa<Var>()) {
         if (is_simd(def->type())) return id(def);
-        auto ts = def->type()->projs();
-        if (std::ranges::any_of(ts, [](auto t) { return Axm::isa<mem::M>(t); })) return std::string();
+        if (mem::has_mem_ty(def->type())) return std::string();
         return emit_tuple(bb, name, def);
     }
 

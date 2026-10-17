@@ -149,29 +149,28 @@ void SEO::Analysis::gvn_split(Lam* lam, Defs vars, fe::Span<const Def*> abstr_ar
     auto split = DefVec();
 
     for (size_t i = 0, n = vars.size(); i != n; ++i) {
-        auto bundle = isa_bundle(abstr_vars[i], lam);
-        if (!bundle) continue;
+        if (auto bundle = isa_bundle(abstr_vars[i], lam)) {
+            auto members = bundle->ops().subspan(1);
+            assert(members.size() > 1 && "a bundle is only ever built for a congruence class");
 
-        auto members = bundle->ops().subspan(1);
-        assert(members.size() > 1 && "a bundle is only ever built for a congruence class");
+            split.clear();
+            for (auto p : members)
+                if (abstr_args[idx_of(vars, p)] == abstr_args[i]) split.emplace_back(p);
 
-        split.clear();
-        for (auto p : members)
-            if (abstr_args[idx_of(vars, p)] == abstr_args[i]) split.emplace_back(p);
-
-        if (split.size() == members.size()) continue;
-
-        // vars[i] is a member of its own bundle and trivially agrees with itself, so it is in split.
-        if (split.size() == 1) {
-            pin(vars[i]);
-            abstr_vars[i] = vars[i];
-            log().d("GVN single: {}", vars[i]);
-        } else {
-            auto new_bundle = mk_bundle(lam, vars[i], split);
-            log().d("GVN split: {}", new_bundle);
-            for (auto p : split) {
-                auto j = idx_of(vars, p);
-                lattice(vars[j], abstr_vars[j] = new_bundle);
+            if (split.size() != members.size()) {
+                // vars[i] is a member of its own bundle and trivially agrees with itself, so it is in split.
+                if (split.size() == 1) {
+                    pin(vars[i]);
+                    abstr_vars[i] = vars[i];
+                    log().d("GVN single: {}", vars[i]);
+                } else {
+                    auto new_bundle = mk_bundle(lam, vars[i], split);
+                    log().d("GVN split: {}", new_bundle);
+                    for (auto p : split) {
+                        auto j = idx_of(vars, p);
+                        lattice(vars[j], abstr_vars[j] = new_bundle);
+                    }
+                }
             }
         }
     }
@@ -201,14 +200,6 @@ bool SEO::Analysis::can_supply(Lam* lam, const Def* sloxy) {
     return true;
 }
 
-// A direct-style call whose effects come back implicitly - not through a continuation the per-Lam store state follows.
-static bool returns_mem(const App* app) {
-    if (isa_mem(app)) return true;
-    if (auto sigma = app->type()->isa<Sigma>())
-        return std::ranges::any_of(sigma->ops(), [](const Def* op) { return Axm::isa<mem::M>(op); });
-    return false;
-}
-
 static const Var* slot_var(const Def* ptr) { return ptr->as<Extract>()->tuple()->as<Var>(); }
 
 /// The sloxy @p abstr_ptr points into, and the literal mem.lea indices on the way, outermost first.
@@ -231,9 +222,10 @@ static std::pair<const Proxy*, DefVec> sloxy_path(const Def* abstr_ptr) {
 }
 
 Vars SEO::Analysis::reachable_slots(VarWorklist& todo) {
+    if (var2slot_.empty()) return {};
+
     auto& vars = world().vars();
     auto res   = Vars();
-    if (var2slot_.empty()) return res;
     while (!todo.empty()) {
         auto var = todo.pop();
         if (var2slot_.contains(var)) res = vars.insert(res, var);
@@ -298,7 +290,6 @@ void SEO::Analysis::used_slots(const Def* abstr, Vars& res, DefSet& done) {
     }
 
     if (auto lam = abstr->isa_mut<Lam>()) {
-        // Context-insensitive: a slot that any caller passes to a param the Lam dereferences counts for every caller.
         if (auto used = fe::lookup(lam2used_, lam)) res = world().vars().merge(res, *used);
         if (lam->is_set())
             for (auto mut : lam->body()->local_muts())
@@ -320,9 +311,10 @@ void SEO::Analysis::add_slot(const Var* slot, Vars& res) {
 
 template<class M>
 void SEO::Analysis::grow(M& map, const typename M::key_type& key, Vars slots) {
-    if (slots.empty()) return;
-    auto& cur = map[key];
-    if (auto grown = world().vars().merge(cur, slots); grown != cur) cur = grown, touch();
+    if (slots) {
+        auto& cur = map[key];
+        if (auto grown = world().vars().merge(cur, slots); grown != cur) cur = grown, touch();
+    }
 }
 
 void SEO::Analysis::pin_slot(const App* slot) {
@@ -346,9 +338,7 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
     for (auto ptr : slots()) {
         if (!live.contains(slot_var(ptr))) {
             profile_count("seo.phis.dead");
-            continue;
-        }
-        if (auto sloxy = Proxy::isa<Proxy_Sloxy>(rewrite(ptr))) {
+        } else if (auto sloxy = Proxy::isa<Proxy_Sloxy>(rewrite(ptr))) {
             if (auto value = sloxy2val(sloxy)) {
                 auto phi = mk_phi(world(), lam, sloxy);
                 phis.emplace_back(phi);
@@ -482,7 +472,9 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
     } else {
         auto abstr_callee = rewrite(app->callee());
         auto abstr_arg    = rewrite(app->arg());
-        if (returns_mem(app)) pin_used_slots(abstr_callee, abstr_arg);
+        // A direct-style call's effects come back implicitly - not through a continuation the per-Lam store state
+        // follows.
+        if (has_mem_ty(app->type())) pin_used_slots(abstr_callee, abstr_arg);
         if (auto known = Lam::isa_rewritable(abstr_callee)) {
             auto n = known->num_tvars();
             return apply_known(known, abstr_arg->projs(n));
