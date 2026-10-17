@@ -23,7 +23,15 @@ bool FreeLocals::analyze() {
     }
 
     if (!shared.empty()) {
-        const auto nest = Nest(old_world());
+        auto homes = LamSet();
+        for (auto [lam, _] : shared)
+            homes.emplace(lam);
+        // A home nested in another must hang below it, not below the virtual root.
+        auto roots = fe::Vector<Def*>();
+        for (auto lam : homes)
+            if (std::ranges::none_of(homes, [lam](Lam* home) { return home->nests(lam); })) roots.emplace_back(lam);
+
+        const auto nest = Nest(old_world(), roots);
         mentions(nest.root());
         for (auto [lam, alloc] : shared)
             place(nest[lam], nest[lam], alloc);
