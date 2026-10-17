@@ -11,7 +11,7 @@ bool FreeLocals::analyze() {
     for (const auto& [lam, chain] : escape_.chains()) {
         for (size_t i = 0, n = chain.ops.size(); i != n; ++i) {
             auto alloc = chain.ops[i];
-            if (!EscapeAnalysis::allocates(alloc) || escape_.is_top(alloc)) continue;
+            if (!EscapeAnalysis::allocates(alloc) || escape_.is_top(alloc) || escape_.freed(alloc)) continue;
             if (escape_.confined(alloc)) {
                 auto last = fe::lookup(chain.last, alloc);
                 auto j    = (last ? *last : i) + 1;

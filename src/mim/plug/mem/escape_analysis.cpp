@@ -18,6 +18,7 @@ void dedup(DefVec& defs) {
 const Def* EscapeAnalysis::rewrite_imm(const Def* def) {
     auto res = mim::Analysis::rewrite_imm(def);
     if (def->isa<Var>() || !def->type()) return res;
+    if (auto alloc = freed_alloc(def)) freed_.emplace(alloc);
 
     // A value whose type cannot hold a handle (a loaded scalar, say) cannot alias one.
     if (!may_hold(def->type())) {
@@ -86,7 +87,7 @@ void EscapeAnalysis::leave() {
         // A pointer stored into memory may be loaded again anywhere.
         if (auto store = Axm::isa<mem::store>(op)) {
             escape(store->arg(3, 2));
-        } else if (!Axm::isa<mem::load>(op)) {
+        } else if (!Axm::isa<mem::load>(op) && !freed_alloc(op)) {
             escape(op->callee());
             escape(op->arg());
         }

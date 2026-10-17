@@ -41,6 +41,7 @@ bool Heap2Stack::analyze() {
             if (!nest) nest.emplace(old_world());
             if (in_loop((*nest)[lam])) continue;
         }
+        converted_.insert(allocs.begin(), allocs.end());
         slots_[chain.tail] = std::move(allocs);
     }
 
@@ -77,6 +78,9 @@ std::optional<nat_t> Heap2Stack::num_elems(const Def* type) const {
 }
 
 const Def* Heap2Stack::rewrite_imm_App(const App* app) {
+    if (auto alloc = EscapeAnalysis::freed_alloc(app); alloc && converted_.contains(alloc))
+        return rewrite(app->arg(2, 0));
+
     auto allocs = fe::lookup(slots_, app);
     if (!allocs) return RWPhase::rewrite_imm_App(app);
 

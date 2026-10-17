@@ -545,7 +545,7 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         if (auto sigma = extract->type()->isa<Sigma>(); sigma && sigma->num_ops() == 0) return std::string();
 
         auto t_tup = convert(tuple->type());
-        if (is_simd(tuple->type()))
+        if (t_tup.front() == '<')
             return bb.assign(name, "extractelement {} {}, i32 {}", t_tup, v_tup, emit_simd_index(bb, name, index));
 
         if (auto li = Lit::isa(index)) {
@@ -576,7 +576,7 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         auto t_val = convert(insert->value()->type());
         auto v_tup = emit(insert->tuple());
         auto v_val = emit(insert->value());
-        if (is_simd(insert->tuple()->type()))
+        if (t_tup.front() == '<')
             return bb.assign(name, "insertelement {} {}, {} {}, i32 {}", t_tup, v_tup, t_val, v_val,
                              emit_simd_index(bb, name, insert->index()));
 
