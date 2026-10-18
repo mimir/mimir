@@ -73,6 +73,8 @@ void Analysis::reset() {
 }
 
 void Analysis::start() {
+    auto _ = world().lenient();
+
     curr_sparse_ = !dense_ && !nonlocal_ && !dirty_.empty();
     nonlocal_    = false;
     auto seeds   = fe::Vector<Def*>(dirty_.begin(), dirty_.end());

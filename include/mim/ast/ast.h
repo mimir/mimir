@@ -154,6 +154,15 @@ public:
     /// tag. `nullptr` if @p dbg is anonymous or nests more than one `mod` deep.
     AnnexInfo* name2annex(Scopes& s, Dbg dbg, sub_t* sub_id);
     const auto& plugin2annexes(Sym plugin) { return plugin2sym2annex_[plugin]; }
+
+    /// An `anx` alias in one plugin for an annex of another, e.g. `anx M = core.M;` in `mem`.
+    struct ForeignAlias {
+        Sym alias;
+        const AnnexInfo* annex;
+        sub_t sub;
+    };
+    void add_foreign_alias(Sym plugin, ForeignAlias alias) { plugin2foreign_aliases_[plugin].emplace_back(alias); }
+    const auto& plugin2foreign_aliases(Sym plugin) { return plugin2foreign_aliases_[plugin]; }
     ///@}
 
     /// @name bootstrap
@@ -170,6 +179,7 @@ public:
         swap(a1.files_,  a2.files_ );
         swap(a1.scopes_, a2.scopes_);
         swap(a1.plugin2sym2annex_, a2.plugin2sym2annex_);
+        swap(a1.plugin2foreign_aliases_, a2.plugin2foreign_aliases_);
         // clang-format on
     }
 
@@ -184,6 +194,7 @@ private:
     // Inner map must be pointer-stable: name2annex() hands out `AnnexInfo*`s that are cached in AST nodes,
     // so the elements must not be relocated when further annexes are inserted into the same plugin.
     std::unordered_map<fe::Sym, std::unordered_map<fe::Sym, AnnexInfo>> plugin2sym2annex_;
+    std::unordered_map<fe::Sym, std::vector<ForeignAlias>> plugin2foreign_aliases_;
 };
 
 /// Base class of all AST nodes.
@@ -1253,6 +1264,7 @@ private:
     Ptr<Path> path_;
     mutable AnnexInfo* annex_ = nullptr;
     mutable sub_t sub_        = 0;
+    mutable Sym foreign_; ///< Qualified name of a ForeignAlias, which is registered in its own plugin.
 };
 
 /// `rule dbg var: lhs when guard => rhs;` or `norm` instead of `rule` if RuleDecl::is_normalizer.

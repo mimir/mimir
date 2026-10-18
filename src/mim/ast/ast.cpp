@@ -1,5 +1,7 @@
 #include "mim/ast/ast.h"
 
+#include <set>
+
 #include "mim/ast/parser.h"
 
 using namespace std::literals;
@@ -30,6 +32,15 @@ void AST::bootstrap(Sym plugin, std::ostream& h) {
     std::println(h, "{}#pragma once\n", tab);
     std::println(h, "{}#include <mim/axm.h>", tab);
     std::println(h, "{}#include <mim/plugin.h>\n", tab);
+
+    const auto& foreign = plugin2foreign_aliases(plugin);
+    auto targets        = std::set<std::string>();
+    for (const auto& alias : foreign)
+        targets.emplace(alias.annex->sym.plugin.str());
+    for (const auto& target : targets)
+        std::println(h, "{}#include <mim/plug/{}/autogen.h>", tab, target);
+    if (!targets.empty()) std::println(h, "");
+
     std::println(h, "{}/// @namespace mim::plug::{} @ref {}", tab, plugin, plugin);
     std::println(h, "{}namespace mim {{", tab);
     std::println(h, "{}namespace plug::{} {{\n", tab, plugin);
@@ -38,6 +49,16 @@ void AST::bootstrap(Sym plugin, std::ostream& h) {
     std::vector<std::ostringstream> normalizers, outer_namespace;
 
     std::println(h, "{}static constexpr plugin_t Plugin_Id = 0x{:x};\n", tab, plugin_id);
+
+    for (const auto& [alias, annex, sub] : foreign) {
+        const auto& [target, tag] = annex->sym;
+        if (annex->subs.empty())
+            std::println(h, "{}using {} = plug::{}::{};", tab, alias, target, tag);
+        else
+            std::println(h, "{}static constexpr auto {} = plug::{}::{}::{};", tab, alias, target, tag,
+                         annex->subs[sub].front());
+    }
+    if (!foreign.empty()) std::println(h, "");
 
     const auto& unordered = plugin2annexes(plugin);
     std::deque<std::pair<Sym, AnnexInfo>> infos(unordered.begin(), unordered.end());
@@ -156,6 +177,8 @@ void AST::bootstrap_py(Sym plugin, std::ostream& h) {
         else
             annexes_with_subs.emplace_back(&annex);
     }
+    for (const auto& [alias, annex, sub] : plugin2foreign_aliases(plugin))
+        std::println(h, "{}{} = 0x{:x}", tab, alias, annex->base() + sub);
     std::print(h, "\n");
 
     for (auto annex : annexes_with_subs) {

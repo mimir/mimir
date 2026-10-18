@@ -1,7 +1,6 @@
 #include <type_traits>
 
 #include <mim/plug/math/math.h>
-#include <mim/plug/mem/mem.h>
 
 #include "mim/plug/core/core.h"
 
@@ -943,6 +942,14 @@ const Def* normalize_bitcast(const Def* dst_t, const Def*, const Def* src) {
     return {};
 }
 
+// Matches `mem.Ptr` by name, since core must not depend on mem.
+static bool is_mem_ptr(const Def* type) {
+    auto& world = type->world();
+    if (auto [axm, _, __] = Axm::get(type); axm)
+        if (auto flags = fe::lookup(world.annexes().sym2flags(), world.sym("mem.Ptr"))) return axm->flags() == *flags;
+    return false;
+}
+
 // TODO this currently hard-codes x86_64 ABI
 // TODO in contrast to C, we might want to give singleton types like 'Idx 1' or '[]' a size of 0 and simply nuke each
 // and every occurance of these types in a later phase
@@ -950,7 +957,7 @@ const Def* normalize_bitcast(const Def* dst_t, const Def*, const Def* src) {
 template<trait id>
 const Def* normalize_trait(const Def*, const Def*, const Def* type) {
     auto& world = type->world();
-    if (Axm::isa<mem::Ptr>(type)) {
+    if (is_mem_ptr(type)) {
         return world.lit_nat(8);
     } else if (type->isa<Pi>()) {
         return world.lit_nat(8); // Gets lowered to function ptr

@@ -25,12 +25,12 @@ using Ranges = fe::Vector<Range>;
 // see lit/regex/match_manual.mim for a hand written state machine impl that this is based on
 
 // the main idea is:
-// for every state in the DFA, we create a lam that checks if the char c at pos is the end of the string \0
-// if not, jump to a checker lam, that consists of a few bit-wise or-ed in-range checks to verify if we can transition
-// to a certain other state with c if any of the checks is true, we jump to the corresponding state lam with the updated
-// position if the check fails, we jump to the next checker lam or the exit lam if we checked all possible transitions
-// Note, since the DFA stores the transitions as chars, not ranges, we have to merge the transitions to ranges first
-// (cf. transitions_to_ranges)
+// for every state in the DFA, we create a lam that checks if pos is the end of the string, i.e. n
+// if not, load c at pos and jump to a checker lam, that consists of a few bit-wise or-ed in-range checks to verify if
+// we can transition to a certain other state with c if any of the checks is true, we jump to the corresponding state
+// lam with the updated position if the check fails, we jump to the next checker lam or the exit lam if we checked all
+// possible transitions Note, since the DFA stores the transitions as chars, not ranges, we have to merge the
+// transitions to ranges first (cf. transitions_to_ranges)
 
 namespace {
 
@@ -57,8 +57,8 @@ const Def* match_range(const Def* c, nat_t lo, nat_t hi) {
     if (lo == 0 && hi == 255) return w.lit_tt();
 
     // let in_range     = core.bit2.and_ 0 (core.icmp.uge (char, lower),  core.icmp.ule (char, upper));
-    auto below_hi = w.call(core::icmp::ule, w.tuple({c, w.lit_i8(hi)}));
-    auto above_lo = w.call(core::icmp::uge, w.tuple({c, w.lit_i8(lo)}));
+    auto below_hi = w.call(core::icmp::ule, Defs{c, w.lit_i8(hi)});
+    auto above_lo = w.call(core::icmp::uge, Defs{c, w.lit_i8(lo)});
     return w.call(core::bit2::and_, w.lit_nat(2), w.tuple({below_hi, above_lo}));
 }
 
@@ -86,9 +86,11 @@ extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
     auto states = dfa.get_reachable_states();
     DFAMap<Lam*> state2matcher;
 
-    // ((mem: mem.M 0, string: Str n, pos: Idx n), Cn [mem.M 0, Bool, Idx n])
-    auto matcher = w.mut_fun({w.call<mem::M>(0), w.call<mem::Ptr0>(w.arr(n, w.type_i8())), w.type_idx(n)},
-                             {w.call<mem::M>(0), w.type_bool(), w.type_idx(n)});
+    // ((mem: mem.M 0, string: Str n, pos: Pos n), Cn [mem.M 0, Bool, Pos n])
+    auto np1     = w.call(core::nat::add, Defs{n, w.lit_nat_1()});
+    auto Pos     = w.type_idx(np1);
+    auto matcher = w.mut_fun({w.call<mem::M>(0), w.call<mem::Ptr0>(w.arr(n, w.type_i8())), Pos},
+                             {w.call<mem::M>(0), w.type_bool(), Pos});
     matcher->debug_prefix(std::string("match_regex"));
     auto [args, exit] = matcher->vars<2>();
     exit->debug_prefix(std::string("exit"));
@@ -97,7 +99,7 @@ extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
     string->debug_prefix(std::string("string"));
     pos->debug_prefix(std::string("pos"));
 
-    auto error = mem::mut_con(w.type_idx(n));
+    auto error = mem::mut_con(Pos);
     error->debug_prefix("error");
     {
         auto [mem, pos] = error->vars<2>();
@@ -106,7 +108,7 @@ extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
         error->app(false, exit, {mem, w.lit_ff(), pos});
     }
 
-    auto accept = mem::mut_con(w.type_idx(n));
+    auto accept = mem::mut_con(Pos);
     accept->debug_prefix("accept");
     {
         auto [mem, pos] = accept->vars<2>();
@@ -118,7 +120,7 @@ extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
     auto exiting = [error, accept](const DFANode* state) { return state->is_accepting() ? accept : error; };
 
     for (auto state : states) {
-        auto lam = mem::mut_con(w.type_idx(n));
+        auto lam = mem::mut_con(Pos);
         lam->debug_prefix(state_to_name(state));
         state2matcher.emplace(state, lam);
     }
@@ -131,30 +133,27 @@ extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
             continue;
         }
 
-        auto lea       = w.call<mem::lea>(Defs{string, i});
-        auto [mem2, c] = w.call<mem::load>(Defs{mem, lea})->projs<2>();
-
-        auto is_end  = w.call(core::icmp::e, Defs({c, w.lit_i8(0)}));
-        auto not_end = mem::mut_con(w.type_idx(n));
+        auto is_end  = w.call(core::icmp::e, Defs({i, w.call<core::idx>(w.lit_nat_0(), np1, n)}));
+        auto not_end = mem::mut_con(Pos);
         not_end->debug_prefix("not_end_" + state_to_name(state));
+        lam->app(false, w.select(is_end, exiting(state), not_end), {mem, i});
 
-        auto new_i = w.call(core::wrap::add, core::Mode::nsuw, w.tuple({i, w.call(core::conv::u, n, w.lit_i64(1))}));
-        lam->app(false, w.select(is_end, exiting(state), not_end), {mem2, i});
+        auto [mem2, j] = not_end->vars<2>();
+        auto lea       = w.call<mem::lea>(Defs{string, w.call(core::conv::u, n, j)});
+        auto [mem3, c] = w.call<mem::load>(Defs{mem2, lea})->projs<2>();
+        auto new_i = w.call(core::wrap::add, core::Mode::nsuw, w.tuple({j, w.call(core::conv::u, np1, w.lit_i64(1))}));
 
         auto transitions = create_check_match_transitions_from(c, state);
         auto next_check  = exiting(state); // if we want to check full string only, use error instead of exiting(state)
         for (auto [next_state, check] : transitions) {
             auto next_lam = state2matcher[next_state];
-            auto checker  = mem::mut_con(w.type_idx(n));
+            auto checker  = mem::mut_con(Pos);
             checker->debug_prefix("check_" + state_to_name(state) + "_to_" + state_to_name(next_state));
-            auto [mem3, pos] = checker->vars<2>();
-            checker->app(false, w.select(check, next_lam, next_check), {mem3, w.select(check, new_i, pos)});
+            auto [mem, pos] = checker->vars<2>();
+            checker->app(false, w.select(check, next_lam, next_check), {mem, w.select(check, new_i, pos)});
             next_check = checker;
         }
-        {
-            auto [mem, pos] = not_end->vars<2>();
-            not_end->app(true, next_check, {mem, pos});
-        }
+        not_end->app(true, next_check, {mem3, j});
     }
 
     matcher->app(false, state2matcher[dfa.get_start()], {mem, pos});

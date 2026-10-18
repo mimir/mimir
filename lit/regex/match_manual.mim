@@ -15,70 +15,48 @@ use core.ops.u.nw;
 
 // matches (a|b)+a
 
-extern con strlen [mem.M 0, mem.Ptr0 I8, Cn [mem.M 0, I64]];
-
 extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 I8», exit: Cn [mem.M 0, I32]) =
     (exit, match_argument) # (argc > 1I32) (m, 0I32)
     where
         con match_argument(m: mem.M 0, _: I32) =
-            let (m, to_match) = mem.load (m, mem.lea (argv, core.idx 0 (core.idx2nat argc) 1));
-            strlen (m, to_match, match_len)
+            let (m, to_match)    = mem.load (m, mem.lea (argv, core.idx 0 (core.idx2nat argc) 1));
+            ret (m, n, to_match) = mem.cstr $ (m, to_match);
+            let np1              = core.nat.add (n, 1);
+            let end_             = core.idx 0 np1 n;
+            let one              = core.idx 0 np1 1;
+            start (m, core.idx 0 np1 0)
             where
-                con match_len(m: mem.M 0, len: I64) =
-                    let n        = core.nat.add (core.idx2nat len, 1);
-                    let to_match = mem.assume (to_match, n);
-                    let one      = core.conv.u n 1I64;
-                    start (m, core.idx 0 n 0)
-                    where
-                        con start(m: mem.M 0, i: Idx n) =
-                            let ptr       = mem.lea (to_match, i);
-                            let (m, c) = mem.load (m, ptr);
-                            let new_i     = i + one;
-                            let is_end    = c == '\0';
-                            (not_end, error)#is_end (m, new_i)
-                            where
-                                con not_end(m: mem.M 0, i: Idx n) =
-                                    let is_match_a_or_b = core.bit2.or_ 2 (c == 'a', c == 'b');
-                                    (error, state1)#is_match_a_or_b (m, i)
-                                    where
-                                        con state1(m: mem.M 0, i: Idx n) =
-                                            let ptr       = mem.lea (to_match, i);
-                                            let (m, c) = mem.load (m, ptr);
-                                            let new_i     = i + one;
-                                            let is_end    = c == '\0';
-                                            (not_end, error)#is_end (m, new_i)
-                                            where
-                                                con not_end(m: mem.M 0, i: Idx n) =
-                                                    let is_match_a = c == 'a';
-                                                    (not_a, state2)#is_match_a (m, i)
-                                                    where
-                                                        con state2(m: mem.M 0, i: Idx n) =
-                                                            let ptr       = mem.lea (to_match, i);
-                                                            let (m, c)  = mem.load (m, ptr);
-                                                            let new_i     = i + one;
-                                                            let is_end    = c == '\0';
-                                                            (not_end, accept)#is_end (m, new_i)
-                                                            where
-                                                                con not_end(m: mem.M 0, i: Idx n) =
-                                                                    let is_match_a = c == 'a';
-                                                                    (not_a, state2)#is_match_a (m, i);
-
-                                                                con accept(m: mem.M 0, _: Idx n) =
-                                                                    exit (m, 1I32);
-
-                                                                con not_a(m: mem.M 0, i: Idx n) =
-                                                                    let is_match_b = c == 'b';
-                                                                    (error, state1)#is_match_b (m, i);
-                                                            end
-                                                    end;
-                                                con not_a(m: mem.M 0, i: Idx n) =
-                                                    let is_match_b = c == 'b';
-                                                    (error, state1)#is_match_b (m, i);
-                                            end
-                                    end
-                            end;
-                        con error(m: mem.M 0, _: Idx n) = exit (m, 0I32);
-                    end
+                mutual
+                    con start(m: mem.M 0, i: Idx np1) =
+                        (not_end, error)#(i == end_) (m, i)
+                        where
+                            con not_end(m: mem.M 0, i: Idx np1) =
+                                let (m, c) = mem.load (m, mem.lea (to_match, core.conv.u n i));
+                                (error, state1)#(core.bit2.or_ 2 (c == 'a', c == 'b')) (m, i + one);
+                        end
+                    con state1(m: mem.M 0, i: Idx np1) =
+                        (not_end, error)#(i == end_) (m, i)
+                        where
+                            con not_end(m: mem.M 0, i: Idx np1) =
+                                let (m, c) = mem.load (m, mem.lea (to_match, core.conv.u n i));
+                                (not_a, state2)#(c == 'a') (m, i + one)
+                                where
+                                    con not_a(m: mem.M 0, i: Idx np1) = (error, state1)#(c == 'b') (m, i);
+                                end
+                        end
+                    con state2(m: mem.M 0, i: Idx np1) =
+                        (not_end, accept)#(i == end_) (m, i)
+                        where
+                            con not_end(m: mem.M 0, i: Idx np1) =
+                                let (m, c) = mem.load (m, mem.lea (to_match, core.conv.u n i));
+                                (not_a, state2)#(c == 'a') (m, i + one)
+                                where
+                                    con not_a(m: mem.M 0, i: Idx np1) = (error, state1)#(c == 'b') (m, i);
+                                end
+                        end
+                    con accept(m: mem.M 0, _: Idx np1) = exit (m, 1I32);
+                    con error (m: mem.M 0, _: Idx np1) = exit (m, 0I32);
+                end
             end
     end
 

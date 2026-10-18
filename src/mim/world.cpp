@@ -408,6 +408,7 @@ const Def* World::app(const Def* callee, const Def* arg) {
             .bail();
 
     auto new_arg = Check::coerce(pi->dom(), arg);
+    if (!new_arg && is_lenient()) new_arg = arg;
     if (!new_arg)
         declared_here(arg->blame("argument is not assignable to callee's domain")
                           .n("expected `{}`, got `{}`", pi->dom(), type_of(arg)))
@@ -550,7 +551,7 @@ void World::check_tuple(const Tuple* t) {
     for (size_t i = 0; i != n; ++i) {
         auto expected = component(type, t->ops(), n, i);
         auto op       = t->op(i);
-        if (!Check::coerce(expected, op))
+        if (!Check::coerce(expected, op) && !is_lenient())
             op->blame("tuple element is not assignable to its type")
                 .n("expected `{}`, got `{}` in `{}`", expected, type_of(op), type)
                 .bail();

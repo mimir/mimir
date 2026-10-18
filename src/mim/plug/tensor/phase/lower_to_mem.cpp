@@ -566,8 +566,8 @@ const Def* LowerToMem::lower_generate(const App* app) {
     auto out_ty       = buf_of(app->type());
     auto [br, bs, bT] = Axm::isa<buffer::Buf>(out_ty)->args<3>();
     auto result_ty    = w.sigma({w.call<mem::M>(0), out_ty});
-    auto compute      = [&](const DefVec& iters, const Def*, const Def* m) -> std::pair<const Def*, const Def*> {
-        return {m, w.call(body, w.tuple(iters))};
+    auto compute      = [&](Defs iters, const Def*, const Def* m) -> std::pair<const Def*, const Def*> {
+        return {m, w.call(body, iters)};
     };
     auto [am, dst] = buffer::op_alloc(br, bs, bT, fresh_mem())->projs<2>();
     return btensor::build_pointwise(result_ty, am, dst, w.tuple(), s_out, rn, "generate", compute)->proj(2, 1);

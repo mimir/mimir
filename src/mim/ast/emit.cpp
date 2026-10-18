@@ -882,7 +882,10 @@ void AliasDecl::emit(Emitter& e) const {
     if (!annex_) return; // skip emit if binding failed
     auto target = path()->decl();
     def_        = target->def();
-    e.attach_alias(annex_, sub_, dbg().sym());
+    if (foreign_)
+        e.world().annexes().attach_alias(annex_->plugin_id(), annex_->id.tag, sub_, foreign_);
+    else
+        e.attach_alias(annex_, sub_, dbg().sym());
 }
 
 void ModDecl::emit_decls(Emitter& e) const {

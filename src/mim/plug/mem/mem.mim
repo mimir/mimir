@@ -7,13 +7,14 @@
 /// ## Dependencies
 ///
 import compile;
+plugin core;
 ///
 /// ## Types
 ///
 /// ### M {#memM}
 ///
-/// This type tracks all kinds of side effects in the given address space.
-axm M: Nat → *;
+/// The effect token core.M.
+anx M = core.M;
 ///
 /// ### Ptr
 ///
@@ -94,6 +95,24 @@ anx lam decay {n: Nat, T: *, a: Nat} (p: Ptr («n; T», a)): Ptr (T, a) = lea (p
 /// Views `p` as a pointer to an array of `n` elements.
 /// @warning This is *unchecked*: the caller vouches for the length, e.g. for memory a C function hands over.
 axm assume: {T: *, a: Nat} as Ta → [Ptr Ta, n: Nat] → Ptr («n; T», a);
+///
+/// ### cstr
+///
+/// Views a NUL-terminated C string `p` as an array of its `n` characters, excluding the NUL.
+/// @warning This is *unchecked*: `p` must actually point to a NUL-terminated string.
+///
+anx fun cstr (m: M 0, p: Ptr0 I8): [M 0, n: Nat, Ptr0 «n; I8»] =
+    loop (m, 0)
+    where
+        con loop (m: M 0, i: Nat) =
+            let n      = core.nat.add (i, 1);
+            let (m, c) = load (m, lea (assume (p, n), core.idx 0 n i));
+            (next, done)#(core.icmp.e (c, 0I8)) m
+            where
+                con next (m: M 0) = loop (m, n);
+                con done (m: M 0) = return (m, i, assume (p, i));
+            end
+    end;
 ///
 /// ## Phases
 ///

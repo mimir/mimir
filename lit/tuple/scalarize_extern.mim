@@ -14,7 +14,7 @@ extern fun pick(v w: «3; I32», i: Idx 3): I32 =
 
 // An interface spreads its argument list into individual parameters - nested tuples and arrays alike -
 // and a parameter is reassembled where it is used as a whole.
-// CHECK-DAG: extern con store_pair ({{[a-z0-9_]+}}: mem.M 0, {{[a-z0-9_]+}}: I32, {{[a-z0-9_]+}}: I8, {{[a-z0-9_]+}}: mem.Ptr ([I32, I8], 0), {{[a-z0-9_]+}}: Cn [mem.M 0, I32])
+// CHECK-DAG: extern con store_pair ({{[a-z0-9_]+}}: core.M 0, {{[a-z0-9_]+}}: I32, {{[a-z0-9_]+}}: I8, {{[a-z0-9_]+}}: mem.Ptr ([I32, I8], 0), {{[a-z0-9_]+}}: Cn [core.M 0, I32])
 // CHECK-DAG: mem.store @ ([I32, I8], 0) ({{[a-z0-9_]+}}, {{[a-z0-9_]+}}, ({{[a-z0-9_]+}}, {{[a-z0-9_]+}}))
 // CHECK-DAG: extern con ends ({{[a-z0-9_]+}}: I32, {{[a-z0-9_]+}}: I32, {{[a-z0-9_]+}}: I32, {{[a-z0-9_]+}}: I32, {{[a-z0-9_]+}}: I32, {{[a-z0-9_]+}}: I32, {{[a-z0-9_]+}}: Cn I32)
 

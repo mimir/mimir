@@ -20,10 +20,12 @@ plugin cps;
 /// Char and string types:
 pub let Char = I8;
 lam Str (n: Nat): * = mem.Ptr0 «n; Char»;
+/// A position in a `Str n`; position `n` is the end of the string.
+lam Pos (n: Nat): * = Idx (core.nat.add (n, 1));
 /// `Res n` is a match result: the memory, a success flag, and the new position.
-lam Res (n: Nat): * = [mem.M 0, Bool, Idx n];
+lam Res (n: Nat): * = [mem.M 0, Bool, Pos n];
 /// `RE` is the matcher itself: it takes the memory, the string, and the current position.
-let RE = {n: Nat} → [mem.M 0, Str n, Idx n] → Res n;
+let RE = {n: Nat} → [mem.M 0, Str n, Pos n] → Res n;
 ///
 /// ## Meta
 ///

@@ -4,9 +4,13 @@
 ///
 /// [TOC]
 ///
-/// ## Dependencies
+/// ## Types
 ///
-plugin mem;
+/// ### M {#coreM}
+///
+/// This type tracks all kinds of side effects in the given address space.
+/// The mem plugin re-exports it as `mem.M`.
+axm M: Nat → *;
 ///
 /// ## Nat Operations
 ///
@@ -158,10 +162,10 @@ anx lam minus (m: Nat) {s: Nat} (a: Idx s): Idx s = wrap.sub m (idx 0 s 0, a);
 /// Signed and unsigned integer division/remainder.
 ///
 /// @warning Division by zero is *undefined behavior* and a visible side effect.
-/// For this reason, these axioms expect a `mem.M`.
+/// For this reason, these axioms expect an `M`.
 ///
 axm div.(sdiv, udiv, srem, urem):
-    {s a: Nat} → [mem.M a, «2; Idx s»] → [mem.M a, Idx s], normalize_div;
+    {s a: Nat} → [M a, «2; Idx s»] → [M a, Idx s], normalize_div;
 ///
 /// ### icmp
 ///
@@ -250,9 +254,9 @@ axm extrema.(sm = umin, sM = umax, Sm = smin, SM = smax): {s: Nat} → «2; Idx 
 ///
 /// Absolute value of an integer.
 ///
-/// @warning Computing the absolute value of the lowest possible value leads to *undefined behavior*, which is why this axiom expects a `mem.M`.
+/// @warning Computing the absolute value of the lowest possible value leads to *undefined behavior*, which is why this axiom expects an `M`.
 ///
-axm abs: {s a: Nat} → [mem.M a, Idx s] → [mem.M a, Idx s], normalize_abs;
+axm abs: {s a: Nat} → [M a, Idx s] → [M a, Idx s], normalize_abs;
 ///
 /// ## Conversions
 ///
@@ -324,7 +328,7 @@ anx lam Select {T: □} (cond: Bool, t f: T): T = (f, t)#cond;
 /// | `core.ops.u.nw` | unsigned `Idx s`, `core.mode.nuw`          |
 ///
 /// `core.ops.s`/`core.ops.u` offer only those operators that don't depend on the mode.
-/// `Idx s` has no `/` and `%`, since core.div expects a `mem.M`.
+/// `Idx s` has no `/` and `%`, since core.div expects an `M`.
 ///
 pub mod ops
     pub mod n

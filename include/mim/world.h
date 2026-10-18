@@ -61,7 +61,8 @@ public:
             u32 curr_sub     = 0;
             CurrLoc curr_loc = {};
             Sym name;
-            mutable bool frozen = false;
+            mutable bool frozen  = false;
+            mutable bool lenient = false;
         } pod;
 
 #ifdef MIM_ENABLE_CHECKS
@@ -157,6 +158,14 @@ public:
     /// }
     /// ```
     [[nodiscard]] auto freeze() const { return fe::Restore(state_.pod.frozen, true); }
+    ///@}
+
+    /// @name Lenient
+    /// A lenient World builds ill-typed App%s and Tuple%s instead of reporting them.
+    /// An Analysis rewrites under partial substitutions, which may disagree with dependent types until its fixed point.
+    ///@{
+    bool is_lenient() const { return state_.pod.lenient; }
+    [[nodiscard]] auto lenient() const { return fe::Restore(state_.pod.lenient, true); }
     ///@}
 
     /// @name Debugging Features

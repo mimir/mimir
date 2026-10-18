@@ -453,6 +453,15 @@ void AliasDecl::bind(Scopes& s) const {
         return;
     }
 
+    auto& ast = s.ast();
+    if (auto src = dbg().loc().src; src && s.mod_depth() == 0) {
+        if (auto plugin = ast.sym(fs::path(src->path()).stem().string()); plugin != annex_->sym.plugin) {
+            foreign_ = ast.sym(plugin.str() + "." + dbg().sym().str());
+            ast.add_foreign_alias(plugin, {dbg().sym(), annex_, sub_});
+            return;
+        }
+    }
+
     add_alias(annex_, sub_, target->dbg().sym(), dbg().sym());
 }
 
