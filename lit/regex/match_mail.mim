@@ -75,7 +75,7 @@ extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.P
             where
                 con match_len(m: mem.M 0, len: I64) =
                     let n                 = core.nat.add (core.idx2nat len, 1);
-                    let (m, matched, pos) = re (m, mem.assume (to_match, n), 0:(Idx n));
+                    let (m, matched, pos) = re (m, mem.assume (to_match, n), core.idx 0 n 0);
                     let rest              = core.wrap.sub i32 (core.conv.u i32 len, core.conv.u i32 pos);
                     exit (m, (core.idx 0 i32 255, rest)#matched);
             end

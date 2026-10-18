@@ -151,7 +151,7 @@ axm shr.(a, l): {s: Nat} → «2; Idx s» → Idx s, normalize_shr;
 ///
 axm wrap.(add, sub, mul, shl): [m: Nat] → {s: Nat} → «2; Idx s» → Idx s, normalize_wrap;
 
-anx lam minus (m: Nat) {s: Nat} (a: Idx s): Idx s = wrap.sub m (0:(Idx s), a);
+anx lam minus (m: Nat) {s: Nat} (a: Idx s): Idx s = wrap.sub m (idx 0 s 0, a);
 ///
 /// ### div
 ///

@@ -28,7 +28,7 @@ extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.P
                     let n        = core.nat.add (core.idx2nat len, 1);
                     let to_match = mem.assume (to_match, n);
                     let one      = core.conv.u n 1I64;
-                    start (m, 0:(Idx n))
+                    start (m, core.idx 0 n 0)
                     where
                         con start(m: mem.M 0, i: Idx n) =
                             let ptr       = mem.lea (to_match, i);

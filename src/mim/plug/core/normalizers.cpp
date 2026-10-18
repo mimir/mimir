@@ -733,6 +733,7 @@ const Def* normalize_idx(const Def* type, const Def* c, const Def* arg) {
     auto& world = type->world();
     auto callee = c->as<App>();
     if (auto i = Lit::isa(arg)) {
+        if (*i == 0) return world.lit(type, 0); // inhabits every `Idx s`, even a symbolic one
         if (auto s = Lit::isa(Idx::isa(type))) {
             if (*s == 0 || *i < *s) return world.lit_idx(*s, *i);
             if (auto m = Lit::isa(callee->decurry()->arg())) return *m ? world.bot(type) : world.lit_idx_mod(*s, *i);

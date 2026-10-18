@@ -14,7 +14,7 @@ extern fun poly {s: Nat} (a b: Idx s) as ab: [Idx s, Cn [Idx s, Cn«2; Idx s»]]
 
 // Value-dependent domain: the type of `a` depends on the earlier parameter `n`.
 extern con dep (n: Nat, a: «n; I32», return: Cn [mem.M 0, I32]) =
-    return (⊤:(mem.M 0), a#(0:(Idx n)));
+    return (⊤:(mem.M 0), a#(core.idx 0 n 0));
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (

@@ -11,7 +11,7 @@ extern con main (mm: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem
     let c = 5I32;
     let (mm, m) = buffer.lit MT (mm, c);
     let f = buffer.read MT;
-    let idx = ‹2; 0:(Idx 3)›;
+    let idx = ‹2; 0₃›;
     let (mm, d) = buffer.read MT (mm, m, idx);
     return (mm, d);
 
