@@ -1,0 +1,35 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// Both CPS loops are unrolled by their `core.pe.is_closed i` filter, so every `mem.lea` gets a literal index.
+// heap2stack turns the heap array into a slot, and SEO promotes it entirely.
+
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun foo (m: mem.M 0, x: Nat): [mem.M 0, Nat] =
+    let (m, a) = mem.alloc («4; Nat», 0) m;
+    fill (m, 0)
+    where
+        con fill (m: mem.M 0, i: Nat)@(core.pe.is_closed i) =
+            (done, store)#(i < 4) m
+            where
+                con done (m: mem.M 0) = sum (m, 0, 0);
+                con store (m: mem.M 0) =
+                    let m = mem.store (m, mem.lea (a, core.idx 0 4 i), x * i);
+                    fill (m, i + 1);
+            end;
+        con sum (m: mem.M 0, i acc: Nat)@(core.pe.is_closed i) =
+            (exit, load)#(i < 4) m
+            where
+                con load (m: mem.M 0) =
+                    let (m, y) = mem.load (m, mem.lea (a, core.idx 0 4 i));
+                    sum (m, i + 1, acc + y);
+                con exit (m: mem.M 0) = return (m, acc);
+            end;
+    end;
+
+// CHECK-LABEL: extern con foo
+// CHECK-NOT: mem.{{alloc|malloc|slot|mslot|lea|load|store}}
+// CHECK: return_1 (m, {{.*}});
