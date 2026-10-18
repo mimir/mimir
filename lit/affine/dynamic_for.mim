@@ -20,16 +20,16 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8), return: Cn
         continue (a, b);
 
     con atoi_cont_begin (m: mem.M 0, start: I32) =
-        let (m, stop_str) = mem.load (m, mem.lea (argv, 2_4));
+        let (m, stop_str) = mem.load (m, mem.lea (argv, 2₄));
         con atoi_cont_end (m: mem.M 0, stop: I32) =
-            let (m, step_str) = mem.load (m, mem.lea (argv, 3_4));
+            let (m, step_str) = mem.load (m, mem.lea (argv, 3₄));
             con atoi_cont_step (m: mem.M 0, step: I32) =
                 con for_exit (acc: [I32, I32]) = return (m, acc#ff);
                 affine.For for_body for_exit (start, stop, step, (0I32, 5I32));
             atoi (m, step_str, atoi_cont_step);
         atoi (m, stop_str, atoi_cont_end);
 
-    let (m, start_str) = mem.load (m, mem.lea (argv, 1_4));
+    let (m, start_str) = mem.load (m, mem.lea (argv, 1₄));
     atoi (m, start_str, atoi_cont_begin);
 
 // CHECK-NOT: affine.for

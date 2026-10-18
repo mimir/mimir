@@ -20,7 +20,7 @@ extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8), exit: Cn [m
     (exit, match_argument) # (argc > 1I32) (m, 0I32)
     where
         con match_argument(m: mem.M 0, _: I32) =
-            let (m, to_match) = mem.load (m, mem.lea (mem.assume (argv, 2), 1_2));
+            let (m, to_match) = mem.load (m, mem.lea (mem.assume (argv, 2), 1₂));
             strlen (m, to_match, match_len)
             where
                 con match_len(m: mem.M 0, len: I64) =

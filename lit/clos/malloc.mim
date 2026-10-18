@@ -18,15 +18,15 @@ extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): [mem.M 0, 
     let (m, pb_arr) = mem.malloc («3; pb_type», 0) (m, 32);
     let (m, a_arr)  = mem.alloc («4; I32», 0) (m);
 
-    let lea = mem.lea (pb_arr, 0_3);
+    let lea = mem.lea (pb_arr, 0₃);
     let m = mem.store (m, lea, f);
-    let lea = mem.lea (pb_arr, 1_3);
+    let lea = mem.lea (pb_arr, 1₃);
     let m = mem.store (m, lea, g);
-    let lea = mem.lea (pb_arr, 2_3);
+    let lea = mem.lea (pb_arr, 2₃);
     let m = mem.store (m, lea, h);
-    let lea = mem.lea (a_arr, 0_4);
+    let lea = mem.lea (a_arr, 0₄);
     let m = mem.store (m, lea, 10I32);
-    let lea = mem.lea (pb_arr, 2_3);
+    let lea = mem.lea (pb_arr, 2₃);
     let (m, func) = mem.load (m, lea);
     let (m,  val) = mem.load (m, lea);
 

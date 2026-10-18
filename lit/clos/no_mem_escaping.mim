@@ -25,16 +25,16 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
 
     let (m, pb_arr) = mem.malloc («3; pb_type», 0) (m, 96);
 
-    let lea = mem.lea (pb_arr, 0_3);
+    let lea = mem.lea (pb_arr, 0₃);
     let m = mem.store (m, lea, f);
-    let lea = mem.lea (pb_arr, 1_3);
+    let lea = mem.lea (pb_arr, 1₃);
     let m = mem.store (m, lea, g);
-    let lea = mem.lea (pb_arr, 2_3);
+    let lea = mem.lea (pb_arr, 2₃);
     let m = mem.store (m, lea, h);
 
-    let (m, func0) = mem.load (m, mem.lea (pb_arr, 0_3));
-    let (m, func1) = mem.load (m, mem.lea (pb_arr, 1_3));
-    let (m, func2) = mem.load (m, mem.lea (pb_arr, 2_3));
+    let (m, func0) = mem.load (m, mem.lea (pb_arr, 0₃));
+    let (m, func1) = mem.load (m, mem.lea (pb_arr, 1₃));
+    let (m, func2) = mem.load (m, mem.lea (pb_arr, 2₃));
 
     func0 (1I32, cn (r0: I32) =
         func1 (1I32, cn (r1: I32) =
