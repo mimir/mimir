@@ -13,12 +13,6 @@ namespace mim::plug::clos::phase {
 
 namespace {
 
-/// Inserting the environment would shift the indices a telescope's Var refers to, so such a `Cn` stays as is.
-bool is_telescope_cn(const Def* def) {
-    auto pi = Pi::isa_cn(def);
-    return pi && pi->dom()->isa_binder<Sigma>().second;
-}
-
 bool is_memop_res(const Def* fd) {
     auto proj = fd->isa<Extract>();
     return proj && mem::has_mem_ty(proj->tuple()->type());

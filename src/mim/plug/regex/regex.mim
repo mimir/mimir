@@ -19,6 +19,8 @@ plugin cps;
 ///
 /// A position in a `mem.Str n`; position `n` is the end of the string.
 anx lam Pos (n: Nat): * = Idx (core.nat.add (n, 1));
+/// The `i`-th position in a `mem.Str n`.
+anx lam pos (n: Nat) (i: Nat): Pos n = core.idx 0 (core.nat.add (n, 1)) i;
 /// `Res n` is a match result: the memory, a success flag, and the new position.
 anx lam Res (n: Nat): * = [mem.M 0, Bool, Pos n];
 /// `RE` is the matcher itself: it takes the memory, the string, and the current position.

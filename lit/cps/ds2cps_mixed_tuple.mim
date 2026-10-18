@@ -16,7 +16,7 @@ con h (m: mem.M 0, a: I32, return: Cn [mem.M 0, I32]) =
     let c = f a;
     return (m, c#ff + c#tt);
 
-extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 I8»): [mem.M 0, I32] =
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
     h (m, 40I32, return);
 
 // CHECK-DAG: return_{{[0-9]+}} ({{.*}}, 85I32)

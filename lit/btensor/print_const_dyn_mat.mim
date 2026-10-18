@@ -10,7 +10,7 @@ plugin buffer;
 plugin mem;
 
 let u8 = I8;
-let String = mem.Ptr0 I8;
+let String = mem.Ptr0 mem.Char;
 
 extern con atoi [mem.M 0, String, Cn [mem.M 0, I32]];
 extern con print_int_matrix [mm: mem.M 0, k l: Nat, m: buffer.Buf (2, (k, l), I32), return: Cn [mem.M 0]];

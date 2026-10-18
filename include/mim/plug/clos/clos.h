@@ -75,6 +75,12 @@ std::tuple<const Extract*, N*> isa_var_proj(const Def* def) {
         if (auto var = proj->tuple()->isa<Var>(); var && var->binder()->isa<N>()) return {proj, var->binder()->as<N>()};
     return {nullptr, nullptr};
 }
+
+/// Inserting the environment would shift the indices a telescope's Var refers to, so ClosConv leaves such a `Cn` as is.
+inline bool is_telescope_cn(const Def* def) {
+    auto pi = Pi::isa_cn(def);
+    return pi && pi->dom()->isa_binder<Sigma>().second;
+}
 ///@}
 
 /// @name Closure Types

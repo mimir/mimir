@@ -17,7 +17,7 @@ con init (m: mem.M 0, return: Cn [mem.M 0]) =
         (return, print)#(i < 42I32) ( m );
     loop_head ( m, 0I32 );
 
-extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 I8», return: Cn [mem.M 0, I32]) =
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char», return: Cn [mem.M 0, I32]) =
     con init_b (m: mem.M 0) = return ( m, 0I32 );
     con init_a (m: mem.M 0) = init(m, init_b);
 

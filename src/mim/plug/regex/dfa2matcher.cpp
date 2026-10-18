@@ -8,6 +8,8 @@
 #include <mim/plug/core/core.h>
 #include <mim/plug/mem/mem.h>
 
+#include "mim/plug/regex/regex.h"
+
 #ifndef DOXYGEN
 template<>
 struct std::formatter<automaton::DFA> : fe::ostream_formatter {};
@@ -25,17 +27,16 @@ using Ranges = fe::Vector<Range>;
 // see lit/regex/match_manual.mim for a hand written state machine impl that this is based on
 
 // the main idea is:
-// for every state in the DFA, we create a lam that checks if pos is the end of the string, i.e. n
-// if not, load c at pos and jump to a checker lam, that consists of a few bit-wise or-ed in-range checks to verify if
-// we can transition to a certain other state with c if any of the checks is true, we jump to the corresponding state
-// lam with the updated position if the check fails, we jump to the next checker lam or the exit lam if we checked all
-// possible transitions Note, since the DFA stores the transitions as chars, not ranges, we have to merge the
-// transitions to ranges first (cf. transitions_to_ranges)
+// For every state in the DFA, we create a lam that checks whether pos is the end of the string, i.e. n.
+// If not, it loads c at pos and jumps to a chain of checker lams, each a few bit-wise or-ed in-range checks.
+// A successful check jumps to the target state's lam with the next position, a failed one to the next checker or exit.
+// Since the DFA stores the transitions as chars, we have to merge them to ranges first (cf. transitions_to_ranges).
 
 namespace {
 
-namespace core = plug::core;
-namespace mem  = plug::mem;
+namespace core  = plug::core;
+namespace mem   = plug::mem;
+namespace regex = plug::regex;
 
 // Name states by their stable id - never by pointer value, which would change from run to run.
 std::string state_to_name(const DFANode* state) { return "state_" + std::to_string(state->id()); }
@@ -86,11 +87,12 @@ extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
     auto states = dfa.get_reachable_states();
     DFAMap<Lam*> state2matcher;
 
-    // ((mem: mem.M 0, string: mem.Str n, pos: Pos n), Cn [mem.M 0, Bool, Pos n])
-    auto np1     = w.call(core::nat::add, Defs{n, w.lit_nat_1()});
-    auto Pos     = w.type_idx(np1);
-    auto matcher = w.mut_fun({w.call<mem::M>(0), w.call<mem::Ptr0>(w.arr(n, w.type_i8())), Pos},
-                             {w.call<mem::M>(0), w.type_bool(), Pos});
+    auto pos_t = w.call<regex::Pos>(n);
+    auto np1   = Idx::isa(pos_t);
+    auto end   = w.call<regex::pos>(n, n);
+    auto one   = w.call(core::conv::u, np1, w.lit_i64(1));
+    auto matcher
+        = w.mut_fun({w.call<mem::M>(0), w.call<mem::Str>(n), pos_t}, {w.call<mem::M>(0), w.type_bool(), pos_t});
     matcher->debug_prefix(std::string("match_regex"));
     auto [args, exit] = matcher->vars<2>();
     exit->debug_prefix(std::string("exit"));
@@ -99,7 +101,7 @@ extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
     string->debug_prefix(std::string("string"));
     pos->debug_prefix(std::string("pos"));
 
-    auto error = mem::mut_con(Pos);
+    auto error = mem::mut_con(pos_t);
     error->debug_prefix("error");
     {
         auto [mem, pos] = error->vars<2>();
@@ -108,7 +110,7 @@ extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
         error->app(false, exit, {mem, w.lit_ff(), pos});
     }
 
-    auto accept = mem::mut_con(Pos);
+    auto accept = mem::mut_con(pos_t);
     accept->debug_prefix("accept");
     {
         auto [mem, pos] = accept->vars<2>();
@@ -120,7 +122,7 @@ extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
     auto exiting = [error, accept](const DFANode* state) { return state->is_accepting() ? accept : error; };
 
     for (auto state : states) {
-        auto lam = mem::mut_con(Pos);
+        auto lam = mem::mut_con(pos_t);
         lam->debug_prefix(state_to_name(state));
         state2matcher.emplace(state, lam);
     }
@@ -133,21 +135,21 @@ extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
             continue;
         }
 
-        auto is_end  = w.call(core::icmp::e, Defs({i, w.call<core::idx>(w.lit_nat_0(), np1, n)}));
-        auto not_end = mem::mut_con(Pos);
+        auto is_end  = w.call(core::icmp::e, Defs{i, end});
+        auto not_end = mem::mut_con(pos_t);
         not_end->debug_prefix("not_end_" + state_to_name(state));
         lam->app(false, w.select(is_end, exiting(state), not_end), {mem, i});
 
         auto [mem2, j] = not_end->vars<2>();
         auto lea       = w.call<mem::lea>(Defs{string, w.call(core::conv::u, n, j)});
         auto [mem3, c] = w.call<mem::load>(Defs{mem2, lea})->projs<2>();
-        auto new_i = w.call(core::wrap::add, core::Mode::nsuw, w.tuple({j, w.call(core::conv::u, np1, w.lit_i64(1))}));
+        auto new_i     = w.call(core::wrap::add, core::Mode::nsuw, Defs{j, one});
 
         auto transitions = create_check_match_transitions_from(c, state);
         auto next_check  = exiting(state); // if we want to check full string only, use error instead of exiting(state)
         for (auto [next_state, check] : transitions) {
             auto next_lam = state2matcher[next_state];
-            auto checker  = mem::mut_con(Pos);
+            auto checker  = mem::mut_con(pos_t);
             checker->debug_prefix("check_" + state_to_name(state) + "_to_" + state_to_name(next_state));
             auto [mem, pos] = checker->vars<2>();
             checker->app(false, w.select(check, next_lam, next_check), {mem, w.select(check, new_i, pos)});

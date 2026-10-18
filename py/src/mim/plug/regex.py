@@ -52,7 +52,7 @@ class RegBuilder(MimPlugin):
     def build(self):
         function_name = "match_func"
         mem_t = self.world.call(mem.M, self.world.lit_nat_0())
-        str_t = self.world.call(mem.Ptr0, [self.world.type_i8()])
+        str_t = self.world.call(mem.Ptr0, [self.world.annex(mem.Char)])
 
         strlen = self.world.mut_con([mem_t, str_t, self.world.cn([mem_t, self.world.type_i64()])]).set("strlen")
 
@@ -70,14 +70,13 @@ class RegBuilder(MimPlugin):
         state_mem, length = match_len.var().projs(2)
 
         n = self.world.call(core.bitcast, self.world.type_nat(), length)
-        np1 = self.world.call(core.nat.add, [n, self.world.lit_nat_1()])
         to_match = self.world.call(mem.assume, [c_str, n])
 
         regex_mem, matched, pos = self.world.implicit_app(
             self._final_def,
-            [state_mem, to_match, self.world.lit(self.world.type_idx(np1), 0)],
+            [state_mem, to_match, self.world.call(regex.pos, n, self.world.lit_nat_0())],
         ).projs(3)
-        at_end = self.world.call(core.icmp.e, [pos, self.world.call(core.idx, self.world.lit_nat_0(), np1, n)])
+        at_end = self.world.call(core.icmp.e, [pos, self.world.call(regex.pos, n, n)])
 
         matched_and_end = self.world.call(
             core.bit2.and_,

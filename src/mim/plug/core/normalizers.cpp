@@ -913,7 +913,7 @@ const Def* normalize_idx2nat(const Def* type, const Def*, const Def* x) {
 
     if (x->isa<Bot>()) return world.bot(type);
     if (auto l = Lit::isa(x)) return world.lit_nat(*l);
-    if (auto s = Lit::isa(Idx::isa(x->type())); s && *s == 1) return world.lit_nat_0();
+    if (Idx::isa_lit(x->type()) == 1) return world.lit_nat_0();
 
     return {};
 }
@@ -942,14 +942,6 @@ const Def* normalize_bitcast(const Def* dst_t, const Def*, const Def* src) {
     return {};
 }
 
-// Matches `mem.Ptr` by name, since core must not depend on mem.
-static bool is_mem_ptr(const Def* type) {
-    auto& world = type->world();
-    if (auto [axm, _, __] = Axm::get(type); axm)
-        if (auto flags = fe::lookup(world.annexes().sym2flags(), world.sym("mem.Ptr"))) return axm->flags() == *flags;
-    return false;
-}
-
 // TODO this currently hard-codes x86_64 ABI
 // TODO in contrast to C, we might want to give singleton types like 'Idx 1' or '[]' a size of 0 and simply nuke each
 // and every occurance of these types in a later phase
@@ -957,7 +949,7 @@ static bool is_mem_ptr(const Def* type) {
 template<trait id>
 const Def* normalize_trait(const Def*, const Def*, const Def* type) {
     auto& world = type->world();
-    if (is_mem_ptr(type)) {
+    if (Axm::isa<Ptr>(type)) {
         return world.lit_nat(8);
     } else if (type->isa<Pi>()) {
         return world.lit_nat(8); // Gets lowered to function ptr

@@ -12,6 +12,13 @@
 /// The mem plugin re-exports it as `mem.M`.
 axm M: Nat → *;
 ///
+/// ### Ptr {#corePtr}
+///
+/// Pointer type with *pointee* type `T` and *address space* `a`.
+/// At the moment, the *address space* is not really used and serves as a placeholder for future work.
+/// The mem plugin re-exports it as `mem.Ptr`.
+axm Ptr: [*, Nat] → *;
+///
 /// ## Nat Operations
 ///
 /// ### nat

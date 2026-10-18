@@ -11,7 +11,7 @@ plugin mem;
 
 use core.ops.u.w;
 
-extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 I8», exit: Cn [mem.M 0, I32]) =
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char», exit: Cn [mem.M 0, I32]) =
     head (m, 0I32)
     where
         mutual
