@@ -6,7 +6,7 @@ plugin mem;
 
 let size = 100000000;
 
-extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0)): [mem.M 0, I32] =
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): [mem.M 0, I32] =
     let (alloc_mem, arr) = mem.alloc («size; I32», 0) (m);
     let lea = mem.lea (arr, 0:(Idx size));
     let (load_mem, val) = mem.load (alloc_mem, lea);

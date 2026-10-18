@@ -14,7 +14,7 @@ use regex;
 let pattern = regex.conj (regex.quant.plus  regex.cls.w, regex.lit '@');
 let len     = 10;
 
-extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [mem.M 0, I32]) =
+extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8), exit: Cn [mem.M 0, I32]) =
     let (m, string) = mem.alloc («len; Char», 0) m;
     let m           = mem.store (m, string, "testasdf@\0");
     match_regex len ((m, string), exiting)
