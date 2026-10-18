@@ -22,9 +22,7 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8), return: Cn
     con end_ (m: mem.M 0) = return (m, 99I32);
 
     con init22 (m: mem.M 0) =
-        let (alloc_pb_mem, pb_ptr) = mem.malloc (pb_type, 0) (m, 100);
-        let pb_arr = core.bitcast (mem.Ptr («⊤:Nat; pb_type», 0)) pb_ptr;
-        let lea_pb = mem.lea (pb_arr, 0I32);
+        let (alloc_pb_mem, lea_pb) = mem.malloc (pb_type, 0) (m, 100);
         let store_pb = mem.store (alloc_pb_mem, lea_pb, end_);
 
         con loop_head (m: mem.M 0, i: I32) =

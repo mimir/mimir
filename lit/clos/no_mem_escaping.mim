@@ -23,19 +23,18 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
 
     let pb_type = Cn [I32, Cn I32];
 
-    let (m, pb_ptr) = mem.malloc (pb_type, 0) (m, 96);
-    let pb_arr         = core.bitcast (mem.Ptr («⊤:Nat; pb_type», 0)) pb_ptr;
+    let (m, pb_arr) = mem.malloc («3; pb_type», 0) (m, 96);
 
-    let lea = mem.lea (pb_arr, core.idx_unsafe 0);
+    let lea = mem.lea (pb_arr, 0_3);
     let m = mem.store (m, lea, f);
-    let lea = mem.lea (pb_arr, core.idx_unsafe 1);
+    let lea = mem.lea (pb_arr, 1_3);
     let m = mem.store (m, lea, g);
-    let lea = mem.lea (pb_arr, core.idx_unsafe 2);
+    let lea = mem.lea (pb_arr, 2_3);
     let m = mem.store (m, lea, h);
 
-    let (m, func0) = mem.load (m, mem.lea (pb_arr, core.idx_unsafe 0));
-    let (m, func1) = mem.load (m, mem.lea (pb_arr, core.idx_unsafe 1));
-    let (m, func2) = mem.load (m, mem.lea (pb_arr, core.idx_unsafe 2));
+    let (m, func0) = mem.load (m, mem.lea (pb_arr, 0_3));
+    let (m, func1) = mem.load (m, mem.lea (pb_arr, 1_3));
+    let (m, func2) = mem.load (m, mem.lea (pb_arr, 2_3));
 
     func0 (1I32, cn (r0: I32) =
         func1 (1I32, cn (r1: I32) =
