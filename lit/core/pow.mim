@@ -21,6 +21,6 @@ fun pow(a b: I32): I32 =
     let cmp = b == 0I32;
     (pow_else, pow_then)#cmp ();
 
-extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): [mem.M 0, I32] =
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 I8»): [mem.M 0, I32] =
     ret res = pow $ (3I32, 4I32);
     return (m, res);

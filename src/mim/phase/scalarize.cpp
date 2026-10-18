@@ -12,6 +12,13 @@ static const Pi* isa_flattenable(const Def* def) {
     return nullptr;
 }
 
+/// A dependent Sigma of values only; other mutable Sigma%s may be recursive or pack an existential, like a closure.
+static bool is_value_telescope(const Def* def) {
+    if (auto [sigma, var] = def->isa_binder<Sigma>(); var)
+        return std::ranges::none_of(sigma->ops(), [](const Def* op) { return op->isa<Type>(); });
+    return false;
+}
+
 /// Is the argument of the Axm application @p app typed by one of the Axm's type variables?
 static bool is_polymorphic_arg(const App* app) {
     auto n = 0;
@@ -108,9 +115,8 @@ fe::Bitset Scalarize::Analysis::plan(const Def* type) const {
         // Splitting a dependent domain would shift the indices its Var references.
         if (auto sig = pi->dom()->isa_mut<Sigma>(); sig && sig->has_var()) return mask;
         for (size_t i = 0, n = pi->num_tdoms(); i != n; ++i) {
-            // A mutable Sigma's elements may reference its Var.
             auto t = pi->tdom(i);
-            if (!kept(pi, i) && t->isa_imm() && t->num_tprojs() > 1) mask.set(i);
+            if (!kept(pi, i) && (t->isa_imm() || is_value_telescope(t)) && t->num_tprojs() > 1) mask.set(i);
         }
     }
     return mask;
@@ -152,19 +158,47 @@ const Def* Scalarize::rewrite_imm_App(const App* app) {
 const Def* Scalarize::flatten(Rewriter& rw, const Pi* pi, const fe::Bitset& mask) {
     if (mask.none()) return RWPhase::rewrite_imm_Pi(pi);
 
-    auto doms = DefVec();
-    for (size_t i = 0, n = pi->num_tdoms(); i != n; ++i) {
-        auto t = rw.rewrite(pi->tdom(i));
-        if (mask[i]) {
-            auto pieces = t->tprojs();
-            doms.insert(doms.end(), pieces.begin(), pieces.end());
-        } else {
-            doms.emplace_back(t);
-        }
+    auto& w   = new_world();
+    auto n    = pi->num_tdoms();
+    auto ts   = DefVec(n, [&](size_t i) { return rw.rewrite(pi->tdom(i)); });
+    auto num  = size_t(0);
+    auto deps = false;
+    for (size_t i = 0; i != n; ++i) {
+        num += mask[i] ? ts[i]->num_tprojs() : 1;
+        deps |= mask[i] && ts[i]->isa_binder<Sigma>().second;
     }
 
-    auto& w  = new_world();
-    auto sca = w.pi(w.sigma(doms), rw.rewrite(pi->codom()), pi->is_implicit());
+    const Def* dom;
+    if (deps) {
+        // A telescope's pieces refer to their predecessors, which now live in the new domain's binder.
+        auto sigma = w.mut_sigma(num);
+        for (size_t i = 0, v = 0; i != n; ++i) {
+            if (!mask[i]) {
+                sigma->set(v++, ts[i]);
+                continue;
+            }
+            auto k     = ts[i]->num_tprojs();
+            auto parts = DefVec();
+            for (size_t j = 0; j != k; ++j, ++v) {
+                sigma->set(v, w.component(ts[i], parts, k, j));
+                parts.emplace_back(sigma->var(num, v));
+            }
+        }
+        dom = sigma;
+    } else {
+        auto doms = DefVec();
+        for (size_t i = 0; i != n; ++i) {
+            if (mask[i]) {
+                auto pieces = ts[i]->tprojs();
+                doms.insert(doms.end(), pieces.begin(), pieces.end());
+            } else {
+                doms.emplace_back(ts[i]);
+            }
+        }
+        dom = w.sigma(doms);
+    }
+
+    auto sca = w.pi(dom, rw.rewrite(pi->codom()), pi->is_implicit());
     log().d("scalarize {} → {}", pi, sca);
     invalidate();
     return sca;

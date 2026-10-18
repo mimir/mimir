@@ -11,7 +11,7 @@ let _ = 23;
 fun foo(m: mem.M 0, x: I32)@(x == 23I32): [mem.M 0, I32] =
     return (m, x + 1I32);
 
-extern fun main(m: mem.M 0, argc: I32, argv: Ptr (Ptr I8)): [mem.M 0, I32] =
+extern fun main(m: mem.M 0, argc: I32, argv: Ptr «core.idx2nat argc; Ptr I8»): [mem.M 0, I32] =
     ret (m, x) = foo $ (m, 23I32);
     ret (m, y) = foo $ (m, 23I32);
     return (m, x + y);

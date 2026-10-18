@@ -11,7 +11,7 @@ lam U (n: Nat): * = «n; Nat»;
 
 con f (n: Nat, return: Cn «n; Nat») = return ‹i: n; core.idx2nat i›;
 
-extern fun main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0)): [mem.M 0, I32] =
+extern fun main (m: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (I8, 0)», 0)): [mem.M 0, I32] =
     let xs = cps.cps2ds_dep U f 3;
     return (m, core.bitcast I32 (xs#1₃));
 

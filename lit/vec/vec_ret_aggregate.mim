@@ -18,7 +18,7 @@ extern fun pair(a b: I32): [I32, I32] =
 // CHECK-NEXT:  [[V1:%.*]] = insertelement <2 x i32> [[V0]], i32 %{{.*}}, i32 1
 // CHECK-NEXT:  ret <2 x i32> [[V1]]
 
-extern fun main(argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): I32 =
+extern fun main(argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 I8»): I32 =
     ret (x, y) = pair $ (5I32, 3I32);
     use core.ops.u.w;
     return (x * argc + y * 4I32);

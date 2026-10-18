@@ -116,6 +116,8 @@ private:
     const Def* clos_type_of(const Pi* pi, const Def* env_type = nullptr);
     /// Rewrites a return continuation's type: stays a plain `Cn`, but its domains are closure-converted.
     const Pi* rewrite_ret_cn(const Pi*);
+    /// A telescope's Cn keeps its shape; only its return continuation's domain is rewritten as rewrite_ret_cn() does.
+    const Pi* rewrite_telescope_cn(const Pi*);
 
     FreeDefAna fva_{old_world()};
     DefMap<Stub> closures_; ///< old_fn *and* new fn ↦ Stub.
