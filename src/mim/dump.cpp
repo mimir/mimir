@@ -6,7 +6,6 @@
 
 #include "mim/driver.h"
 #include "mim/nest.h"
-#include "mim/schedule.h"
 
 #include "mim/ast/lexer.h"
 #include "mim/ast/tok.h"
@@ -160,6 +159,20 @@ using ast::Assoc;
 using ast::Prec;
 using ast::prec_assoc;
 
+/// The name the surface syntax has for `Idx size`.
+std::optional<std::string_view> idx_name(nat_t size) {
+    // clang-format off
+    switch (size) {
+        case 0x0'0000'0002_n: return "Bool";
+        case 0x0'0000'0100_n: return "I8";
+        case 0x0'0001'0000_n: return "I16";
+        case 0x1'0000'0000_n: return "I32";
+        case             0_n: return "I64";
+        default:              return std::nullopt;
+    }
+    // clang-format on
+}
+
 Prec def2prec(Ctx* ctx, const Def* def) {
     if (auto ex = def->isa<Extract>()) return by_name(ctx, ex) ? Prec::Lit : Prec::Extract;
     if (def->isa<Insert>()) return Prec::Ins;
@@ -178,20 +191,8 @@ Prec def2prec(Ctx* ctx, const Def* def) {
     if (def->isa<Lam>() || def->isa<Match>())
         return Prec::Bot; // a λ- or match-expression swallows what follows it, too
     if (auto app = def->isa<App>()) {
-        if (auto size = Idx::isa(app)) {
-            if (auto l = Lit::isa(size)) {
-                // clang-format off
-                switch (*l) {
-                    case 0x0'0000'0002_n:
-                    case 0x0'0000'0100_n:
-                    case 0x0'0001'0000_n:
-                    case 0x1'0000'0000_n:
-                    case             0_n: return Prec::Lit;
-                    default: break;
-                }
-                // clang-format on
-            }
-        }
+        if (auto size = Idx::isa(app))
+            if (auto l = Lit::isa(size); l && idx_name(*l)) return Prec::Lit;
         return Prec::App;
     }
 
@@ -322,6 +323,7 @@ std::string shape(Ctx* ctx, const Seq* seq) {
 
 /// As above but each axis binds its index - `i: 2, j: 3`; a fused Seq binds one Var per axis.
 std::string shape(Ctx* ctx, const Seq* seq, const Def* var) {
+    if (!var) return shape(ctx, seq);
     auto s = seq->shape();
     auto r = s.rank();
     if (!r || *r <= 1) return std::format("{}: {}", Op(ctx, var), Op(ctx, *s));
@@ -377,14 +379,22 @@ bool destructible(Ctx* ctx, const Def* def, const Def* type, size_t n) {
     return true;
 }
 
+void ptrn(std::ostream&, Ctx*, const Def*, const Def*, bool = false, const Def* = nullptr);
+
+/// The first @p limit of @p def%'s @p n components as sub-patterns; @p def may be `nullptr`.
+void ptrns(std::ostream& os, Ctx* ctx, const Def* def, const Def* type, size_t n, size_t limit, bool brckt) {
+    for (auto sep = ""; auto i : std::views::iota(size_t(0), limit)) {
+        auto proj = def ? live_proj(ctx, def, n, i) : nullptr;
+        os << sep;
+        // A projection's own type is the one where the binder has already been substituted for this Var.
+        ptrn(os, ctx, proj, proj ? proj->type() : type->proj(n, i), brckt, binder_proj(type, n, i));
+        sep = ", ";
+    }
+}
+
 /// @p brckt selects the `[]` sub-patterns of a type over the `()` sub-patterns of a Lam's parameter list.
 /// @p binder names a dead component that a dependent Sigma refers to; see binder_proj.
-void ptrn(std::ostream& os,
-          Ctx* ctx,
-          const Def* def,
-          const Def* type,
-          bool brckt        = false,
-          const Def* binder = nullptr) {
+void ptrn(std::ostream& os, Ctx* ctx, const Def* def, const Def* type, bool brckt, const Def* binder) {
     if (!def) {
         if (!binder || !ctx) return std::print(os, "_: {}", Op(ctx, type));
         ctx->bound.emplace(binder);
@@ -403,13 +413,7 @@ void ptrn(std::ostream& os,
     }
 
     os << (brckt ? '[' : '(');
-    for (auto sep = ""; auto i : std::views::iota(size_t(0), n)) {
-        auto proj = live_proj(ctx, def, n, i);
-        os << sep;
-        // A projection's own type is the one where the binder has already been substituted for this Var.
-        ptrn(os, ctx, proj, proj ? proj->type() : type->proj(n, i), brckt, binder_proj(type, n, i));
-        sep = ", ";
-    }
+    ptrns(os, ctx, def, type, n, n, brckt);
     // The alias keeps a name for the entity as a whole - which the body may well refer to.
     std::print(os, "{} as {}", brckt ? ']' : ')', name(ctx, def));
 }
@@ -422,12 +426,7 @@ void dom_ptrn(std::ostream& os, Ctx* ctx, const Def* var, const Def* type, bool 
     if (!destructible(ctx, var, type, n)) return std::print(os, "{}{}: {}{}", l, name(ctx, var), Op(ctx, type), r);
 
     os << l;
-    for (auto sep = ""; auto i : std::views::iota(size_t(0), n)) {
-        os << sep;
-        auto proj = live_proj(ctx, var, n, i);
-        ptrn(os, ctx, proj, proj ? proj->type() : type->proj(n, i), true, binder_proj(type, n, i));
-        sep = ", ";
-    }
+    ptrns(os, ctx, var, type, n, n, true);
     std::print(os, "{} as {}", r, name(ctx, var));
 }
 
@@ -451,12 +450,7 @@ void curry(std::ostream& os,
     }
 
     os << l;
-    for (auto sep = ""; auto i : std::views::iota(size_t(0), limit)) {
-        os << sep;
-        auto proj = def ? live_proj(ctx, def, num, i) : nullptr;
-        ptrn(os, ctx, proj, proj ? proj->type() : type->proj(num, i), false, binder_proj(type, num, i));
-        sep = ", ";
-    }
+    ptrns(os, ctx, def, type, num, limit, false);
     os << r;
     if (alias && def) std::print(os, " as {}", name(ctx, def));
 }
@@ -522,6 +516,11 @@ std::ostream& operator<<(std::ostream& os, Op op) {
     return os << id(op.ctx(), *op);
 }
 
+/// A block's tail has no `let`, so it is spelled out unless it has a declaration of its own.
+std::string tail(Ctx* ctx, const Def* def) {
+    return has_decl(def) ? std::format("{}", Op(ctx, def)) : std::format("{}", Full(ctx, def));
+}
+
 /// Streams @p d with all of its operands; Full::is_full decides who gets here.
 void full(std::ostream& os, Full d) {
     if (auto hole = d->isa_mut<Hole>()) {
@@ -570,27 +569,18 @@ void full(std::ostream& os, Full d) {
             // clang-format on
         } else if (auto size = Idx::isa(lit->type())) {
             if (auto s = Lit::isa(size)) {
-                // clang-format off
-                switch (*s) {
-                    case 0x0'0000'0002_n: return std::print(os, "{}", lit->get<bool>() ? "tt" : "ff");
-                    case 0x0'0000'0100_n: return std::print(os, "{}I8" , lit->get());
-                    case 0x0'0001'0000_n: return std::print(os, "{}I16", lit->get());
-                    case 0x1'0000'0000_n: return std::print(os, "{}I32", lit->get());
-                    case             0_n: return std::print(os, "{}I64", lit->get());
-                    default: {
-                        std::print(os, "{}", lit->get());
-                        auto digits = std::to_string(*s);
-                        if (ascii) {
-                            os << '_' << digits;
-                        } else {
-                            // Raw UTF-8 units of a subscript - bytes to stream, not numbers to format.
-                            for (auto d : digits)
-                                os << "\xE2\x82" << char(0x80 + d - '0');
-                        }
-                        return;
-                    }
+                if (*s == 2) return std::print(os, "{}", lit->get<bool>() ? "tt" : "ff");
+                if (auto suffix = idx_name(*s)) return std::print(os, "{}{}", lit->get(), *suffix);
+                std::print(os, "{}", lit->get());
+                auto digits = std::to_string(*s);
+                if (ascii) {
+                    os << '_' << digits;
+                } else {
+                    // Raw UTF-8 units of a subscript - bytes to stream, not numbers to format.
+                    for (auto d : digits)
+                        os << "\xE2\x82" << char(0x80 + d - '0');
                 }
-                // clang-format on
+                return;
             }
         }
         return std::print(os, "{}:{}", lit->get(), d.r(lit->type(), Prec::Lit));
@@ -623,23 +613,11 @@ void full(std::ostream& os, Full d) {
         lam_ptrn(os, d.ctx(), lam, fun, con, true, true);
         lam_codom(os, d.ctx(), lam, fun, con);
         // Like any tail, the body is spelled out - there is no block here that could `let`-bind it.
-        if (has_decl(lam->body())) return std::print(os, " = {}", d.op(lam->body()));
-        return std::print(os, " = {}", Full(d.ctx(), lam->body()));
+        return std::print(os, " = {}", tail(d.ctx(), lam->body()));
     } else if (auto app = d->isa<App>()) {
-        if (auto size = Idx::isa(app)) {
-            if (auto l = Lit::isa(size)) {
-                // clang-format off
-                switch (*l) {
-                    case 0x0'0000'0002_n: return std::print(os, "Bool");
-                    case 0x0'0000'0100_n: return std::print(os, "I8");
-                    case 0x0'0001'0000_n: return std::print(os, "I16");
-                    case 0x1'0000'0000_n: return std::print(os, "I32");
-                    case             0_n: return std::print(os, "I64");
-                    default: break;
-                }
-                // clang-format on
-            }
-        }
+        if (auto size = Idx::isa(app))
+            if (auto l = Lit::isa(size))
+                if (auto name = idx_name(*l)) return std::print(os, "{}", *name);
 
         if (Pi::isa_implicit(app->callee()->unfold_type())) {
             // An argument that is still a Hole is what the parser inserts anyway - and `?` has no spelling.
@@ -648,34 +626,30 @@ void full(std::ostream& os, Full d) {
             return std::print(os, "{} @ {}", d.l(app->callee(), Prec::App), d.r(app->arg(), Prec::App));
         }
         return std::print(os, "{} {}", d.l(app->callee(), Prec::App), d.r(app->arg(), Prec::App));
-    } else if (auto [sigma, var] = d->isa_binder<Sigma>(); sigma) {
+    } else if (auto sigma = d->isa<Sigma>()) {
+        auto var  = sigma->has_var();
         size_t i  = 0;
         auto elem = fe::StreamFn{[&](std::ostream& os) -> std::ostream& {
             auto sep = "";
             for (auto op : sigma->ops()) {
                 os << sep;
-                if (auto v = sigma->var(sigma->num_ops(), i++))
+                if (auto v = var ? var->proj(sigma->num_ops(), i) : nullptr)
                     std::print(os, "{}: {}", d.op(v), d.op(op));
                 else
                     os << d.op(op);
+                ++i;
                 sep = ", ";
             }
             return os;
         }};
 
         return std::print(os, "[{}]", elem);
-    } else if (auto sigma = d->isa<Sigma>()) {
-        return std::print(os, "[{}]", Op::map(d.ctx(), sigma->ops()));
     } else if (auto tuple = d->isa<Tuple>()) {
         return std::print(os, "({})", Op::map(d.ctx(), tuple->ops()));
-    } else if (auto [arr, var] = d->isa_binder<Arr>(); arr) {
-        return std::print(os, "{}{}; {}{}", al, shape(d.ctx(), arr, var), d.op(arr->body()), ar);
     } else if (auto arr = d->isa<Arr>()) {
-        return std::print(os, "{}{}; {}{}", al, shape(d.ctx(), arr), d.op(arr->body()), ar);
-    } else if (auto [pack, var] = d->isa_binder<Pack>(); pack) {
-        return std::print(os, "{}{}; {}{}", pl, shape(d.ctx(), pack, var), d.op(pack->body()), pr);
+        return std::print(os, "{}{}; {}{}", al, shape(d.ctx(), arr, arr->has_var()), d.op(arr->body()), ar);
     } else if (auto pack = d->isa<Pack>()) {
-        return std::print(os, "{}{}; {}{}", pl, shape(d.ctx(), pack), d.op(pack->body()), pr);
+        return std::print(os, "{}{}; {}{}", pl, shape(d.ctx(), pack, pack->has_var()), d.op(pack->body()), pr);
     } else if (auto proxy = d->isa<Proxy>()) {
         return std::print(os, "(proxy#{} {})", proxy->tag(), Op::map(d.ctx(), proxy->ops()));
     } else if (auto join = d->isa<Join>()) {
@@ -780,8 +754,9 @@ struct DumpAnnex {
 ///
 /// Dump::Expr and Dump::Local walk Def::deps and nothing else - which is what makes them safe to call from a
 /// debugger, where the World is usually half-built. Dump::Scope and Dump::All buy a better layout with a Nest:
-/// it nests the mutables, and Scheduler::early places everything else. Should that analysis choke on the very
-/// program you wanted to look at, World::dot still shows it - its tooltips only ever use Dump::Expr.
+/// everything goes into the block of the innermost binder its free Var%s refer to.
+/// Should that analysis choke on the very program you wanted to look at, World::dot still shows it - its tooltips
+/// only ever use Dump::Expr.
 class Dumper {
 public:
     /// @p srcs are the files an `import` pulls in: they declare their own content, so a dump must not repeat it.
@@ -883,10 +858,8 @@ private:
 
     /// Emits what @p roots reach within @p nest: its virtual root is the top level.
     void visit_nest(const Nest& nest, fe::View<Def*> roots) {
-        auto sched = Scheduler(nest);
-        auto _     = fe::Restore(nest_, &nest);
-        auto __    = fe::Restore(sched_, &sched);
-        block_     = nest.root()->mut();
+        auto _ = fe::Restore(nest_, &nest);
+        block_ = nest.root()->mut();
         for (auto root : roots)
             schedule_(root, nullptr);
         bucket();
@@ -1108,20 +1081,25 @@ private:
     /// Is @p mut ours to emit - or does it only get referenced by name?
     bool enter(Def* mut) const { return nest_ ? (*nest_)[mut] != nullptr : mut == block_; }
 
-    /// Turns the schedule into one list per block: the Nest nests the mutables, Scheduler::early places the rest.
+    /// The innermost Nest::Node that binds a free Var of @p def; for a mutable, that is its Nest::Node::inest.
+    const Nest::Node* place(const Def* def) const {
+        auto res = nest_->root();
+        for (auto fv : def->free_vars())
+            if (auto node = (*nest_)[fv->binder()]; node && node->level() > res->level()) res = node;
+        return res;
+    }
+
+    /// Turns the schedule into one list per block.
     void bucket() {
         for (auto [def, curr] : order_) {
             auto mut = isa_decl(def);
             auto key = curr; // Dump::Local has one block per root and asks no analysis where anything belongs
             if (nest_) {
-                key = mut ? owner((*nest_)[mut]->inest()) : owner(sched_->early(def));
-                // A Nom is the one immutable with a declaration of its own: it goes where its body would, never inline.
-                if (auto nom = def->isa<Nom>()) {
+                key = owner(place(def));
+                // A Nom is the one immutable with a declaration of its own, so it never inlines.
+                if (def->isa<Nom>()) {
                     // A header may already refer to it, so a closed Nom goes to the top level.
-                    if (nom->is_closed())
-                        key = nullptr;
-                    else if (auto body = nom->op()->isa_mut())
-                        if (auto node = (*nest_)[body]) key = owner(node->inest());
+                    if (def->is_closed()) key = nullptr;
                     while (key && inlines(key))
                         key = owner((*nest_)[key]->inest());
                     // TODO A Nom over a Var in its own Lam's signature has no valid place: `lam k (n: Nat, x: V n)`.
@@ -1175,13 +1153,16 @@ private:
                 continue;
             }
             sep(mut ? Prev::Decl : Prev::Let);
-            if (!mut)
-                emit_let(def);
-            else if (auto group = fe::lookup(mutual_, mut))
+            if (auto group = mut ? fe::lookup(mutual_, mut) : nullptr)
                 emit_mutual(*group);
             else
-                emit_decl(mut);
+                emit_item(def);
         }
+    }
+
+    void emit_item(const Def* def) {
+        if (auto mut = isa_decl(def)) return emit_decl(mut);
+        emit_let(def);
     }
 
     // Only a bare variant may refer back to the `nom`.
@@ -1242,12 +1223,8 @@ private:
         {
             auto _ = fe::Restore(prev_, Prev::None);
             for (auto def : group) {
-                auto mut = isa_decl(def);
-                sep(mut ? Prev::Decl : Prev::Let);
-                if (mut)
-                    emit_decl(mut);
-                else
-                    emit_let(def);
+                sep(isa_decl(def) ? Prev::Decl : Prev::Let);
+                emit_item(def);
             }
         }
         std::println(os_, "{}end", --ctx_.tab);
@@ -1359,12 +1336,8 @@ private:
         }
     }
 
-    /// Tail position: what a block ends with is spelled out - it has no `let` of its own.
     void emit_tail(const Def* def, std::string_view end) {
-        if (has_decl(def))
-            std::println(os_, "{}{}{}", ctx_.tab, Op(&ctx_, def), end);
-        else
-            std::println(os_, "{}{}{}", ctx_.tab, Full(&ctx_, def), end);
+        std::println(os_, "{}{}{}", ctx_.tab, tail(&ctx_, def), end);
     }
 
     /// Would a `fun` here hide the `return` of an enclosing one @p lam might still refer to?
@@ -1380,7 +1353,6 @@ private:
     Dump mode_;
     bool typed_let_;
     const Nest* nest_ = nullptr; ///< Nests the mutables of the scope being emitted.
-    Scheduler* sched_ = nullptr; ///< Places everything else in it.
     Def* block_       = nullptr; ///< The mutable whose block we are filling; the only one in Dump::Local.
     Prev prev_        = Prev::None;
     fe::Vector<const Var*> rets_;
