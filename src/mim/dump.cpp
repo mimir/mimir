@@ -1085,21 +1085,13 @@ private:
     /// Is @p mut ours to emit - or does it only get referenced by name?
     bool enter(Def* mut) const { return nest_ ? (*nest_)[mut] != nullptr : mut == block_; }
 
-    /// The innermost Nest::Node that binds a free Var of @p def; for a mutable, that is its Nest::Node::inest.
-    const Nest::Node* place(const Def* def) const {
-        auto res = nest_->root();
-        for (auto fv : def->free_vars())
-            if (auto node = (*nest_)[fv->binder()]; node && node->level() > res->level()) res = node;
-        return res;
-    }
-
     /// Turns the schedule into one list per block.
     void bucket() {
         for (auto [def, curr] : order_) {
             auto mut = isa_decl(def);
             auto key = curr; // Dump::Local has one block per root and asks no analysis where anything belongs
             if (nest_) {
-                key = owner(place(def));
+                key = owner(nest_->inest(def));
                 // A Nom is the one immutable with a declaration of its own, so it never inlines.
                 if (def->isa<Nom>()) {
                     // A header may already refer to it, so a closed Nom goes to the top level.
