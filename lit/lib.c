@@ -25,7 +25,7 @@ void print_int_vector(int n, int* v) {
         print_integer(v[i]);
     print_newline();
 }
-void print_int_matrix(int n, int m, int* v) {
+void print_int_matrix(int64_t n, int64_t m, int* v) {
     for (int i = 0; i < n; i++)
         print_int_vector(m, v + i * m);
 }
@@ -37,7 +37,7 @@ void print_float_vector(int n, float* v) {
         print_float(v[i]);
     print_newline();
 }
-void print_float_matrix(int n, int m, float* v) {
+void print_float_matrix(int64_t n, int64_t m, float* v) {
     for (int i = 0; i < n; i++)
         print_float_vector(m, v + i * m);
 }
@@ -49,7 +49,7 @@ void print_double_vector(int n, double* v) {
         print_double(v[i]);
     print_newline();
 }
-void print_double_matrix(int n, int m, double* v) {
+void print_double_matrix(int64_t n, int64_t m, double* v) {
     for (int i = 0; i < n; i++)
         print_double_vector(m, v + i * m);
 }

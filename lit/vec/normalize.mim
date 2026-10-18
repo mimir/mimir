@@ -6,13 +6,13 @@ plugin core;
 
 use core.ops.n;
 
-let l = vec.fold.l core.nat.add (0, (1, 2, 3, 4, 5));
-let r = vec.fold.r core.nat.add ((1, 2, 3, 4, 5), 0);
+let l = vec.fold.l `+ (0, (1, 2, 3, 4, 5));
+let r = vec.fold.r `+ ((1, 2, 3, 4, 5), 0);
 let _ = refly.struc.e (l, 15);
 let _ = refly.struc.e (r, 15);
 
-let l2 = vec.fold.l core.nat.mul (1, «4; 2»);
-let r2 = vec.fold.r core.nat.mul («4; 2», 1);
+let l2 = vec.fold.l `* (1, ‹4; 2›);
+let r2 = vec.fold.r `* (‹4; 2›, 1);
 let _ = refly.struc.e (l2, 16);
 let _ = refly.struc.e (r2, 16);
 
@@ -26,18 +26,33 @@ let a2 = vec.scan.for_all (λ (n: Nat): Bool = n < 3) (0, 1, 2, 3, 4);
 let _  = refly.struc.e (a1, tt);
 let _  = refly.struc.e (a2, ff);
 
+let p1 = vec.scan.exists  (λ (n: Nat): Bool = n == 7) ‹4; 7›;
+let p2 = vec.scan.for_all (λ (n: Nat): Bool = n < 3) ‹4; 7›;
+let _  = refly.struc.e (p1, tt);
+let _  = refly.struc.e (p2, ff);
+
+let o1 = vec.fold.l @(Nat, «2; Nat») @1 (λ (acc: Nat, (a b: Nat)): Nat = acc + a * b) (1, (2, 3));
+let o2 = vec.scan.exists  @«2; Nat» @1 (λ (a b: Nat): Bool = a == b) (3, 3);
+let o3 = vec.scan.for_all @«3; Nat» @1 (λ (v: «3; Nat»): Bool = v#0₃ == 7) ‹3; 7›;
+let _  = refly.struc.e (o1, 7);
+let _  = refly.struc.e (o2, tt);
+let _  = refly.struc.e (o3, tt);
+
+lam scan_exists  (n: Nat): Bool = refly.struc.e (vec.scan.exists  (λ (x: Nat): Bool = x == 7) ‹n; 7›, n != 0);
+lam scan_for_all (n: Nat): Bool = refly.struc.e (vec.scan.for_all (λ (x: Nat): Bool = x <  3) ‹n; 7›, n == 0);
+
 let d1 = vec.diff ((8, 1, 3, 6, 9, 0), (4₆, 2₆));
 let d2 = vec.diff (‹6; 23›, (4₆, 2₆));
 let _  = refly.struc.e (d1, (8, 1, 6, 0));
 let _  = refly.struc.e (d2, (23, 23, 23, 23));
 
-let g1 = vec.first core.ncmp.e ((8, 1, 3, 6, 9, 0), 1);
-let g2 = vec.last core.ncmp.e ((8, 1, 3, 6, 9, 0), 2);
+let g1 = vec.first `== ((8, 1, 3, 6, 9, 0), 1);
+let g2 = vec.last  `== ((8, 1, 3, 6, 9, 0), 2);
 let g3 = vec.first (core.icmp.e @10) ((8₁₀, 1₁₀, 3₁₀, 6₁₀, 9₁₀, 0₁₀), 1₁₀ );
 let _  = refly.struc.e (g1, o.some 1₆);
 let _  = refly.struc.e (g2, o.none (Idx 6));
 let _  = refly.struc.e (g3, o.some 1₆);
-let g4 = vec.last core.ncmp.e ((8, 1, 3, 1, 9, 0), 1);
+let g4 = vec.last `== ((8, 1, 3, 1, 9, 0), 1);
 let _  = refly.struc.e (g4, o.some 3₆);
 
 let r1 = ‹i: 3; i›;
@@ -45,11 +60,11 @@ let r2 = ‹i: 3; core.wrap.add 0 (i, 1₃)›;
 let _  = refly.struc.e (r1, (0₃, 1₃, 2₃));
 let _  = refly.struc.e (r2, (1₃, 2₃, 3₃));
 
-let r0 = vec.zip core.nat.add ((1), (2));
-let r1 = vec.zip core.nat.add ((1, 1), (2, 2));
-let r2 = vec.zip core.nat.add ((1, 2), (3, 3));
-let r3 = vec.zip core.nat.add ((1, 1), (2, 3));
-let r4 = vec.zip core.nat.add ((1, 2), (3, 4));
+let r0 = vec.zip `+ ((1), (2));
+let r1 = vec.zip `+ ((1, 1), (2, 2));
+let r2 = vec.zip `+ ((1, 2), (3, 3));
+let r3 = vec.zip `+ ((1, 1), (2, 3));
+let r4 = vec.zip `+ ((1, 2), (3, 4));
 let foo  =  vec.zip (λ (a b: Nat, c: Bool): I32 = 23I32) ((2, 1, 2, 3), (4, 4, 4, 4), (tt, ff, ff, tt));
 
 let _  = refly.struc.e (r0, (3));

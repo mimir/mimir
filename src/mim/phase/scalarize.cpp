@@ -1,6 +1,5 @@
 #include "mim/phase/scalarize.h"
 
-#include "mim/check.h"
 #include "mim/lam.h"
 #include "mim/tuple.h"
 #include "mim/world.h"
@@ -76,13 +75,8 @@ void Scalarize::Analysis::inspect(const Def* def) {
         pin_opaque(structural, lam->type());
     }
 
-    if (auto app = def->isa<App>()) {
-        // A wildcard like `«⊤; I32»` admits an argument with other leaves, which coerce() cannot reassemble.
-        if (auto pi = app->callee()->type()->isa<Pi>(); pi && !Check::test_alpha(pi->dom(), app->arg()->type()))
-            pin_imm(app->arg()->type(), isa_flattenable);
-        // `tensor.buf x` nominates `x` itself.
-        if (app->axm() && is_polymorphic_arg(app)) keep_param(app->arg());
-    }
+    // `tensor.buf x` nominates `x` itself.
+    if (auto app = def->isa<App>(); app && app->axm() && is_polymorphic_arg(app)) keep_param(app->arg());
 
     // Only the outermost index must be constant: `t#(0₂, i)` still splits.
     const Def* idx_tuple = nullptr;

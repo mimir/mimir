@@ -1310,6 +1310,10 @@ private:
         auto num = num_binders(dom);
         if (fun) {
             std::println(os_, "[{}]: {};", Op(&ctx_, dom->proj(num, 0)), Op(&ctx_, last->ret_dom()));
+        } else if (auto [_, var] = dom->isa_binder<Sigma>(); var) {
+            // Flattened, its components would refer to binders nothing prints.
+            std::println(os_, "{}{};", Op(&ctx_, dom),
+                         con ? std::string() : std::format(": {}", Op(&ctx_, last->type()->codom())));
         } else {
             std::println(os_, "[{}]{};", Op::map(&ctx_, dom->projs(num)),
                          con ? std::string() : std::format(": {}", Op(&ctx_, last->type()->codom())));

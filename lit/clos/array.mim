@@ -15,13 +15,12 @@ con g (m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) =
     return (m, 1I32);
 
 
-extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [mem.M 0, I32]) =
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8), return: Cn [mem.M 0, I32]) =
     con h (m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) = return (m, x + argc);
 
     let pb_type = Cn [mem.M 0, I32, Cn [mem.M 0, I32]];
     let Tas = (pb_type, 0);
     let real_arr_type = (I32, 0);
-    let arr_size = ⊤:Nat;
 
     let (m, pb_arr) = mem.alloc («4; pb_type», 0) m;
     let (m, a_arr)  = mem.alloc («4; I32», 0) m;

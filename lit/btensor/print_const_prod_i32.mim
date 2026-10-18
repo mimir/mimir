@@ -15,11 +15,7 @@ let MT2 = (2, (4, 3), I32);
 
 fun mul_add (m: mem.M 0, acc: I32, (a b: I32))@tt: [mem.M 0, I32] = return (m, acc + a * b);
 
-extern con print_int_matrix [mm: mem.M 0, k l: Nat, m: buffer.Buf (2, (⊤:Nat, ⊤:Nat), I32), return: Cn [mem.M 0]];
-
-con print_int_matrix_wrap (mm: mem.M 0, k l: Nat, m: buffer.Buf (2, (k, l), I32), return: Cn [mem.M 0]) =
-    let m2 = core.bitcast (buffer.Buf (2, (⊤:Nat, ⊤:Nat), I32)) m;
-    print_int_matrix (mm, k, l, m2, return);
+extern con print_int_matrix [mm: mem.M 0, k l: Nat, m: buffer.Buf (2, (k, l), I32), return: Cn [mem.M 0]];
 
 extern con main (mm: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
     con return_cont (mm: mem.M 0) = return (mm, 0I32);
@@ -30,7 +26,7 @@ extern con main (mm: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), ret
         (btensor.proj_map (0, 1))
         (btensor.proj_map (0, 2), btensor.proj_map (2, 1))
         (mm, dst, (m1, m2));
-    print_int_matrix_wrap (mm, 2, 3, mP, return_cont);
+    print_int_matrix (mm, 2, 3, mP, return_cont);
 
 // CHECK: 60, 60, 60,
 // CHECK: 60, 60, 60,

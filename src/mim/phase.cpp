@@ -221,10 +221,7 @@ const Def* RWPhase::rewrite_imm_App(const App* app) {
     auto arg    = rewrite(app->arg());
     auto callee = rewrite(app->callee());
     if (auto pi = callee->isa_type<Pi>()) arg = coerce(pi->dom(), arg);
-    auto res = new_world().app(callee, arg);
-    // A partially applied Axm must stay one, as its normalizer only fires once it is saturated.
-    if (app->axm() && app->curry() != 0) return res;
-    return coerce(rewrite(app->type()), res);
+    return new_world().app(callee, arg);
 }
 
 /// Is @p tuple%'s type what World::tuple would infer from its ops?

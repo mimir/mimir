@@ -205,7 +205,7 @@ static Hole* isa_flex_rank(const Def* def) {
 // These may be α-equivalent to a Def with a different Node or Def::flags(); see alpha_impl_.
 static bool is_flex(const Def* def) {
     auto n = def->node();
-    return n == Node::Hole || n == Node::Top || Prod::isa_node(n) || Seq::isa_node(n);
+    return n == Node::Hole || Prod::isa_node(n) || Seq::isa_node(n);
 }
 
 template<Check::Mode mode>
@@ -261,8 +261,6 @@ bool Check::alpha_impl_(const Def* d1, const Def* d2) {
 
         if (auto [i, ins] = bind(mut1, d2); !ins) return i->second == d2;
         if (auto [i, ins] = bind(mut2, d1); !ins) return i->second == d1;
-
-        if (d1->isa<Top>() || d2->isa<Top>()) return mode == C;
 
         auto t1 = d1->type();
         auto t2 = d2->type();

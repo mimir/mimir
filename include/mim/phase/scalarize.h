@@ -18,8 +18,7 @@ namespace mim {
 /// A flattened value is coerce()d where it meets an unflattened shape, e.g. an Axm's signature.
 /// An Axm handed a bare function (`autodiff.ad f`) is instantiated with the old shape, as its type may rely on it.
 /// A Pi is pinned where a coercion would be observable:
-/// * a `Cn` an interface Lam's signature reaches through a type coerce() cannot take apart (`mem.Ptr0 K`),
-/// * an argument whose callee accepts it only through a wildcard (`«⊤:Nat; I32»`), or
+/// * a `Cn` an interface Lam's signature reaches through a type coerce() cannot take apart (`mem.Ptr0 K`), or
 /// * a parameter indexed non-constantly or consumed whole by an Axm - only this parameter is kept.
 ///
 /// Each run flattens one level; the fixed-point pipeline repeats it.

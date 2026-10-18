@@ -14,14 +14,21 @@ use core.ops.u;
 
 let re = regex.conj (regex.quant.plus  regex.cls.w, regex.lit 'a');
 
-extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [mem.M 0, I32]) =
+extern con strlen [mem.M 0, mem.Ptr0 I8, Cn [mem.M 0, I64]];
+
+extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8), exit: Cn [mem.M 0, I32]) =
     (exit, match_argument) # (argc > 1I32) (m, 0I32)
     where
         con match_argument(m: mem.M 0, _: I32) =
-            let arg1 = mem.lea (argv, core.idx_unsafe 1);
-            let (m, to_match) = mem.load (m, arg1);
-            let (m, matched, pos) = re (m, to_match, 0:(Idx ⊤:Nat));
-            exit (m, core.conv.u i32 matched);
+            let (m, to_match) = mem.load (m, mem.lea (mem.assume (argv, 2), 1₂));
+            strlen (m, to_match, match_len)
+            where
+                con match_len(m: mem.M 0, len: I64) =
+                    let n                 = core.nat.add (core.bitcast Nat len, 1);
+                    let to_match          = mem.assume (to_match, n);
+                    let (m, matched, pos) = re (m, to_match, 0:(Idx n));
+                    exit (m, core.conv.u i32 matched);
+            end
     end;
 
 // CHECK-NOT: regex.

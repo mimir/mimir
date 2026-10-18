@@ -20,6 +20,7 @@
 /// ## Files, Imports, and Modules
 ///
 /// `import foo;`, `import "some/dir/foo.mim" as bar;`, and `pub import foo as *;` bind a file the same way - only `plugin` additionally loads a shared object.
+///
 plugin core;        // loads `libmim_core` and imports `core.mim` under the name `core`
 plugin core as *;   // … and once more, splicing its public members into this scope instead
 plugin math;
@@ -27,7 +28,9 @@ plugin mem;
 plugin refly;
 
 use core.ops.u.w;   // `+`, `<`, `<<`, … bound for unsigned `Idx s`, wrapping around
+///
 /// ## Lexical Structure
+///
 let dec = 42;               // decimal
 let bin = 0b101010;         // binary
 let oct = 0o52;             // octal
@@ -38,8 +41,6 @@ let quo = '\'';             // a `'` payload must be escaped
 let byt = 0xFFI8;           // the `I8` suffix spells a bit width
 let str = "Mim";            // «3; I8»
 let neg = -42I32;           // the sign belongs to the expression, not to the token
-let nothing = ⊥;            // `bot`; defaults to `*`
-let anything = ⊤:Nat;       // `top`, ascribed
 
 let _ = refly.struc.e (⊥:[Nat, Bool], (⊥:Nat, ⊥:Bool)); // pushed into aggregates
 
@@ -55,7 +56,9 @@ let wid = 23I32;            // or as a bit width - the very same as `23:I32`
 let _ = refly.struc.e (tru, tt);
 let _ = refly.struc.e (alt, tt);
 let _ = refly.struc.e (wid, 23:I32);
+///
 /// ## Kinds and Builtin Types
+///
 let levl = Level;           // the type of universe levels
 let lvl0 = Type (0:Level);  // the type at level 0 …
 let star = *;               // … which `*` abbreviates
@@ -65,6 +68,7 @@ let idx  = Idx;             // the builtin of type `Nat → *`
 let rul  = Rule Nat;        // the type of rewrite rules over `Nat`
 
 lam bool_is_idx (b: Bool): Idx 2 = b;   // `Bool` abbreviates `Idx i1`; likewise I8 … I64
+///
 /// ## Patterns and Telescopes
 ///
 /// `(...)` is a pattern and `[...]` a telescope: an unnamed element *binds* in the one and is a *type* in the other.
@@ -76,7 +80,9 @@ lam group (a b: Nat, c d: Bool): Nat = a + b where use core.ops.n; end;
 /// An alias pattern binds the components *and* the whole value.
 let (a, b, c) as abc = (23, 42, 66);
 let _ = refly.struc.e (abc, (23, 42, 66));
+///
 /// ## Aggregates
+///
 let tup = (23, 42, 66);     // a tuple
 let pck = ‹3; 7›;           // a pack - and a tuple of equal elements *is* one
 let sig = [Nat, Bool];      // a sigma
@@ -96,7 +102,9 @@ lam fused (t: «2, 3; Nat», i: Idx 2, j: Idx 3): Nat =
     refly.struc.e (t#i#j, t#(i, j));
 /// Unless an extent depends on an earlier index - then the nest stays one array per axis.
 let jagged = «i: 3, j: (1, 2, 3)#i; Nat»;
+///
 /// ## Dependent Tuple Types
+///
 let dyn = [n: Nat, «n; Nat»];   // a component mentions a name to its left: a *mutable* sigma
 /// `rec` puts the declared name in scope inside the body - the only way for a type to mention itself - and keeps the sigma mutable even where nothing depends on it.
 rec List = [head: I32, tail: mem.Ptr0 List];
@@ -107,14 +115,15 @@ mutual
 end
 /// Components carry field names, which beat lexical names of the same spelling - with a warning, as here.
 let tail = 1₂;
-lam by_field (l: List): mem.Ptr0 List = l#tail;
-lam by_var   (p: «2; Nat»): Nat       = p#(tail);   // parentheses force the variable
-let Size = [w h: Nat];                               // just `«2; Nat»`: the names belong to the shape
+// lam by_field (l: List): mem.Ptr0 List = l#tail; // warning: tail names both field 1 of `List` and a declaration in scope; using the field
+lam by_var   (p: «2; Nat»): Nat       = p#(tail);  // parentheses force the variable
+let Size = [w h: Nat];                             // just `«2; Nat»`: the names belong to the shape
 lam width (s: Size): Nat = s#w;
 /// `rec` is also the only way to keep a genuine one-element aggregate.
 rec One = [x: Nat];
 lam real_extract (t: «2; One»): Nat = t#1₂#0₁;    // a real Extract into the 1-tuple
 lam axis_folds   (t: «2; One»): One = t#(1₂, 0₁); // the size-1 axis folds away: just `t#1₂`
+///
 /// ## Functions and Continuations
 ///
 /// | Declaration | Expression | Type |
@@ -151,13 +160,17 @@ mutual
         con no  () = ret r = even $ (n - 1I32); return r;
     end;
 end
+///
 /// ## Unions
+///
 lam inject (A B: *) (x: A): A ∪ B = x inj A ∪ B;
 lam elim (A B: *) (ab: A ∪ B): Nat =
     match ab with
     | _: A => 0
     | _: B => 1;
+///
 /// ## Variants
+///
 /// A variant's cases are positional and never merged: these three `[]` cases stay three, where `∪` would collapse them.
 rec Color = | Red | Green | Blue;
 lam hue (c: Color): Nat =
@@ -180,6 +193,7 @@ let _ = refly.struc.e (first_by_index (Nats#Cons (23, Nats#Nil)), 23);
 /// A variant is a type like any other, so it may just as well be anonymous.
 lam get (x: | None | Some: Nat): Nat = match x with | None => 0 | Some n => n;
 let _ = refly.struc.e (get ((| None | Some: Nat)#Some 42), 42);
+///
 /// ## Singletons
 ///
 /// `«e»` is the singleton type whose sole inhabitant is `e` and sits one level above it.
@@ -194,6 +208,7 @@ lam only (T: *) (x: «T»): * = #x;
 lam not_single (x: «2; Nat»): Nat = x#0₂;
 /// `#` is a prefix only where an expression starts, so `f #x` extracts instead of applying.
 lam extracts (t: «2; Nat», i: Idx 2): Nat = refly.struc.e (t #i, t#i);
+///
 /// ## Nominal Newtypes
 ///
 /// `nom` wraps a type into a fresh one; two `nom`s over the same type stay distinct.
@@ -205,6 +220,7 @@ lam to_foot (m: Meter): Foot = #m inj Foot;
 let _ = refly.struc.e (#(23I32 inj Meter), 23I32);
 /// Like `rec`, a `nom` is in scope in its own body, and `anx nom` makes it an annex.
 nom Chain = | End | Link: [I32, Chain];
+///
 /// ## Infix Operators
 ///
 /// `a op b` is sugar for `` `op (a, b) `` - Mim gives the operators no meaning of their own.
@@ -214,7 +230,9 @@ let shift = (1I32 << 2I32, 8I32 >> 1I32);             // `core.ops.u.w`, in scop
 /// Rebind one and the arithmetic changes with it.
 let surprise = 2 + 3 where let `+ = core.nat.mul; end;
 let _ = refly.struc.e (surprise, 6);
+///
 /// ## Modules and Visibility
+///
 pub mod geo
     pub let dim = 3;
     priv let hidden = 0;                // no path from outside may reach this
@@ -228,14 +246,18 @@ use geo.deep as *;                      // splices `leaf` into this scope - a pl
 use geo.deep as dp;                     // … or binds another name for the module
 let _ = refly.struc.e (leaf, dp.leaf);
 let _ = refly.struc.e (leaf, geo.deep.leaf);
+///
 /// ## Annexes and Axioms
+///
 anx let answer = 42;                    // an annex is additionally registered by its qualified name
 anx Answer = answer;                    // an alias for an annex
 
 axm Set: * → *;                                                 // an axiom
 axm set.(union = join, inter): {T: *} → [Set T, Set T] → Set T; // several at once, with an alias
 axm Curried: [Nat, Nat] → *, 1;                                 // … and a curry counter
+///
 /// ## Rules
+///
 mod rewrites
     use core.ops.n;
     pub rule dbl (a: Nat): (a + a) => (a * 2);          // a rewrite rule, visible outside `rewrites`

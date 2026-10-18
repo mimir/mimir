@@ -8,11 +8,9 @@ use core.ops.u.w;
 
 extern con print_i32 [m: mem.M 0, val: I32, return: Cn [mem.M 0]];
 
-let arr_size = ⊤:Nat;
-
 con init (m: mem.M 0, arr: mem.Ptr («4; I32», 0), return: Cn [mem.M 0]) =
     con loop_body (m: mem.M 0, i: I32, continue: Cn mem.M 0) =
-        let lea = mem.lea (arr, core.bitcast (Idx arr_size) i);
+        let lea = mem.lea (arr, core.bitcast (Idx 4) i);
         continue(mem.store (m, lea, i));
 
     con loop_head (m: mem.M 0, i: I32) =
@@ -33,16 +31,13 @@ con outer (m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) =
     // TODO: check if fix is correct
     con finish_pb_trace (m: mem.M 0, return: Cn mem.M 0) = return m;
 
-    let (alloc_pb_mem, pb_ptr) = mem.malloc (Cn [mem.M 0, Cn [mem.M 0]], 0) (m, 32);
-
-    let pb_arr = core.bitcast (mem.Ptr («⊤:Nat; Cn [mem.M 0, Cn [mem.M 0]]», 0)) pb_ptr;
-    let lea_pb = mem.lea (pb_arr, core.bitcast (Idx arr_size) 0I32);
+    let (alloc_pb_mem, lea_pb) = mem.malloc (Cn [mem.M 0, Cn [mem.M 0]], 0) (m, 32);
     let mem_assign_pb_anchor = mem.store (alloc_pb_mem, lea_pb, finish_pb_trace);
 
     con loop_body (m: mem.M 0, i: I32, continue: Cn mem.M 0) =
-        let a_lea = mem.lea (a_arr, core.bitcast (Idx arr_size) i);
-        let b_lea = mem.lea (b_arr, core.bitcast (Idx arr_size) i);
-        let c_lea = mem.lea (c_arr, core.bitcast (Idx arr_size) i);
+        let a_lea = mem.lea (a_arr, core.bitcast (Idx 4) i);
+        let b_lea = mem.lea (b_arr, core.bitcast (Idx 4) i);
+        let c_lea = mem.lea (c_arr, core.bitcast (Idx 4) i);
 
         let (a_load_mem, a_val) = mem.load (m, a_lea);
         let (b_load_mem, b_val) = mem.load (a_load_mem, a_lea);
@@ -52,9 +47,9 @@ con outer (m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) =
         let c_store_mem = mem.store (b_load_mem, c_lea, prod);
 
         con pb (m: mem.M 0, return: Cn mem.M 0) =
-            let ad_lea = mem.lea (ad_arr, core.bitcast (Idx arr_size) i);
-            let bd_lea = mem.lea (bd_arr, core.bitcast (Idx arr_size) i);
-            let cd_lea = mem.lea (cd_arr, core.bitcast (Idx arr_size) i);
+            let ad_lea = mem.lea (ad_arr, core.bitcast (Idx 4) i);
+            let bd_lea = mem.lea (bd_arr, core.bitcast (Idx 4) i);
+            let cd_lea = mem.lea (cd_arr, core.bitcast (Idx 4) i);
 
             let (cd_load_mem, cd_val) = mem.load (m, cd_lea);
             let cd_store_mem = mem.store (cd_load_mem, cd_lea, 0I32);
@@ -85,6 +80,6 @@ con outer (m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) =
 
     init(mem_assign_pb_anchor, a_arr, init_a);
 
-extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [mem.M 0, I32]) =
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8), return: Cn [mem.M 0, I32]) =
     con callback (m: mem.M 0, x: I32) = return (m, x);
     outer(m, 1I32, callback);

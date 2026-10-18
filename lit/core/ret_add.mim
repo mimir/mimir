@@ -7,15 +7,16 @@
 plugin core;
 plugin mem;
 
-extern con atoi[mem.M 0, mem.Ptr («⊤:Nat; I8», 0), Cn [mem.M 0, I32]];
+extern con atoi[mem.M 0, mem.Ptr0 I8, Cn [mem.M 0, I32]];
 
-extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [mem.M 0, I32]) =
-    let argv_ptr_a = mem.lea (argv, 1I32);
+extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8), return: Cn [mem.M 0, I32]) =
+    let argv = mem.assume (argv, 3);
+    let argv_ptr_a = mem.lea (argv, 1₃);
     let (m, val) = mem.load (m, argv_ptr_a);
     atoi (m, val, atoi_cont_a)
     where
         con atoi_cont_a (m: mem.M 0, a: I32) =
-            let argv_ptr_b = mem.lea (argv, 2I32);
+            let argv_ptr_b = mem.lea (argv, 2₃);
             let (m, val) = mem.load (m, argv_ptr_b);
             atoi (m, val, atoi_cont_b)
             where

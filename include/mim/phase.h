@@ -371,7 +371,7 @@ protected:
     void start() override;
 
     /// @name Coercion
-    /// Every checking position - an App's argument and result, a Tuple's ops, a Lam's body - coerce()s its value.
+    /// Every checking position - an App's argument, a Tuple's ops, a Lam's body - coerce()s its value.
     /// This reconciles a representation the phase changed with one it did not, e.g. an Axm's signature.
     ///@{
     const Def* rewrite_imm_App(const App*) override;
@@ -409,7 +409,7 @@ private:
     /// @returns `nullptr` unless both @p val%'s type and @p type are Pi%s.
     const Def* eta_coerce(const Def* type, const Def* val);
     /// Builds a value of @p type from the top of the stack @p todo.
-    /// Greedy matching is sound as assignable types share their leaves - unless a wildcard like `⊤` interferes.
+    /// Greedy matching is sound as assignable types share their leaves.
     const Def* reshape(DefVec& todo, const Def* type);
 
     DefMap<Def2Def> etas_; ///< type ↦ val ↦ eta_coerce(type, val)
