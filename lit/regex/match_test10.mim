@@ -15,11 +15,11 @@ let pattern = regex.conj (regex.quant.plus  regex.cls.w, regex.lit '@');
 let len     = 9;
 
 extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 I8», exit: Cn [mem.M 0, I32]) =
-    let (m, string) = mem.alloc («len; Char», 0) m;
+    let (m, string) = mem.alloc («len; mem.Char», 0) m;
     let m           = mem.store (m, string, "testasdf@");
     match_regex len ((m, string), exiting)
     where
-        fun match_regex(len: Nat) (m: mem.M 0, str: mem.Ptr0 «len; Char»): [mem.M 0, Bool] =
+        fun match_regex(len: Nat) (m: mem.M 0, str: mem.Str len): [mem.M 0, Bool] =
             let np1               = core.nat.add (len, 1);
             let (m, matched, pos) = pattern (m, str, core.idx 0 np1 0);
             return (m, core.bit2.and_ 0 (pos == core.idx 0 np1 len, matched));

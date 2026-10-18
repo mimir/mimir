@@ -86,7 +86,7 @@ extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
     auto states = dfa.get_reachable_states();
     DFAMap<Lam*> state2matcher;
 
-    // ((mem: mem.M 0, string: Str n, pos: Pos n), Cn [mem.M 0, Bool, Pos n])
+    // ((mem: mem.M 0, string: mem.Str n, pos: Pos n), Cn [mem.M 0, Bool, Pos n])
     auto np1     = w.call(core::nat::add, Defs{n, w.lit_nat_1()});
     auto Pos     = w.type_idx(np1);
     auto matcher = w.mut_fun({w.call<mem::M>(0), w.call<mem::Ptr0>(w.arr(n, w.type_i8())), Pos},

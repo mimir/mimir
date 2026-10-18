@@ -24,6 +24,12 @@ axm Ptr: [*, Nat] → *;
 
 anx lam Ptr0 (T: *): * = Ptr (T, 0);
 ///
+/// ### Char & Str
+///
+/// A character and a pointer to a string of `n` of them.
+anx let Char = I8;
+anx lam Str (n: Nat): * = Ptr0 «n; Char»;
+///
 /// ## Operations w/ Side Effects
 ///
 /// The following operations have side effects.
@@ -101,7 +107,7 @@ axm assume: {T: *, a: Nat} as Ta → [Ptr Ta, n: Nat] → Ptr («n; T», a);
 /// Views a NUL-terminated C string `p` as an array of its `n` characters, excluding the NUL.
 /// @warning This is *unchecked*: `p` must actually point to a NUL-terminated string.
 ///
-anx fun cstr (m: M 0, p: Ptr0 I8): [M 0, n: Nat, Ptr0 «n; I8»] =
+anx fun cstr (m: M 0, p: Ptr0 Char): [M 0, n: Nat, Str n] =
     loop (m, 0)
     where
         con loop (m: M 0, i: Nat) =
