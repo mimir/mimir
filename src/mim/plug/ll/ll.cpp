@@ -122,38 +122,39 @@ static const char* fcmp_pred(math::cmp id) {
 }
 
 std::string Emitter::convert_impl(const Def* type, bool simd) {
-    if (auto s = fe::lookup(types_, type)) return *s;
+    if (auto s = fe::lookup(types_[simd], type)) return *s;
+    if (simd && !has_vec(type)) return types_[simd][type] = convert_impl(type, false);
 
     if (Axm::isa<mem::M>(type)) type->blame(MIM_LL_BE "cannot convert a `mem.M` type").bail();
     std::ostringstream s;
     std::string name;
 
     if (type->isa<Nat>()) {
-        return types_[type] = "i64";
+        return types_[simd][type] = "i64";
     } else if (Idx::isa(type)) {
         // `Idx 1` is zero bits wide information-theoretically, but LLVM has no i0: clamp to i1
         // (its only value is 0, so any i1 zext/trunc of it stays correct).
-        auto w              = idx_bitwidth(type);
-        return types_[type] = "i" + std::to_string(std::max<nat_t>(1, w));
+        auto w                    = idx_bitwidth(type);
+        return types_[simd][type] = "i" + std::to_string(std::max<nat_t>(1, w));
     } else if (auto w = math::isa_f(type)) {
         switch (*w) {
-            case 16: return types_[type] = "half";
-            case 32: return types_[type] = "float";
-            case 64: return types_[type] = "double";
+            case 16: return types_[simd][type] = "half";
+            case 32: return types_[simd][type] = "float";
+            case 64: return types_[simd][type] = "double";
             default: type->blame(MIM_LL_BE "unsupported floating-point width {}", *w).bail();
         }
     } else if (auto ptr = Axm::isa<mem::Ptr>(type)) {
         auto [pointee, addr_space] = ptr->args<2>();
         std::print(s, "{} addrspace({})*", convert(pointee, false), addr_space);
     } else if (auto arr = type->isa<Arr>()) {
-        if (auto se = is_simd(arr); se && simd) {
+        if (auto se = simd ? vectorize(arr) : std::nullopt) {
             auto [size, elem] = *se;
             std::print(s, "<{} x {}>", size, convert(elem));
         } else {
             u64 size = 0;
             if (auto arity = Lit::isa(arr->arity())) size = *arity;
             // One LLVM array level per axis, so a fused Arr nests: `«3, 4; i32»` is `[3 x [4 x i32]]`.
-            std::print(s, "[{} x {}]", size, convert(arr->elem(), false));
+            std::print(s, "[{} x {}]", size, convert(arr->elem(), simd));
         }
     } else if (auto pi = type->isa<Pi>()) {
         if (!Pi::isa_returning(pi)) pi->blame(MIM_LL_BE "cannot convert the type of a basic block").bail();
@@ -171,18 +172,18 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
         }
         std::print(s, ")*");
     } else if (auto t = detail::isa_mem_sigma_2(type)) {
-        return convert(t);
+        return convert(t, simd);
     } else if (auto sigma = type->isa<Sigma>()) {
         if (sigma->isa_mut()) {
-            name          = id(sigma);
-            types_[sigma] = name;
+            name                = simd ? id(sigma) + ".simd" : id(sigma);
+            types_[simd][sigma] = name;
             std::print(s, "{} = type", name);
         }
 
         std::print(s, "{{");
         for (auto sep = ""; auto t : sigma->ops()) {
             if (Axm::isa<mem::M>(t)) continue;
-            std::print(s, "{}{}", sep, convert(t));
+            std::print(s, "{}{}", sep, convert(t, simd));
             sep = ", ";
         }
         std::print(s, "}}");
@@ -190,11 +191,11 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
         type->blame(MIM_LL_BE "cannot convert this type to LLVM").bail();
     }
 
-    if (name.empty()) return types_[type] = s.str();
+    if (name.empty()) return types_[simd][type] = s.str();
 
     if (s.str().empty()) type->blame(MIM_LL_BE "empty type declaration").bail();
     std::println(type_decls_, "{}", s.str());
-    return types_[type] = name;
+    return types_[simd][type] = name;
 }
 
 void Emitter::finalize_impl() {
@@ -275,7 +276,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
                 std::string type;
                 std::string prev;
 
-                if (auto se = is_simd_aggregate(types)) {
+                if (auto se = vectorize(world().sigma(types))) {
                     auto [size, elem] = *se;
                     auto val_t        = convert(elem);
 
@@ -317,7 +318,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
 
     } else if (auto dispatch = Dispatch(app)) {
         for (auto callee : dispatch.tuple()->projs([](const Def* def) { return def->isa_mut<Lam>(); }))
-            if (size_t n = callee->num_tvars(); n == 1 && is_simd(callee->var(n, 0)->type()))
+            if (size_t n = callee->num_tvars(); n == 1 && vectorize(callee->var(n, 0)->type()))
                 emit_phi(callee, callee->var(n, 0), emit(app->arg(n, 0)), lam);
             else
                 emit_phi_args(callee, app, lam);
@@ -428,11 +429,11 @@ std::string Emitter::emit_tuple(BB& bb, const std::string& name, const Def* tupl
         return emit(tuple->proj(2, 1));
     }
 
+    auto vec = vectorize(tuple->type()).has_value();
     if (tuple->is_closed()) {
-        bool is_array   = tuple->type()->isa<Arr>();
-        auto simd_array = convert(tuple->type()).front() == '<'; // needed to respect pointer context
+        bool is_array = tuple->type()->isa<Arr>();
         std::string s;
-        s += simd_array ? "<" : is_array ? "[" : "{";
+        s += vec ? "<" : is_array ? "[" : "{";
         auto sep = "";
         for (size_t i = 0, n = tuple->num_projs(); i != n; ++i) {
             auto e = tuple->proj(n, i);
@@ -443,7 +444,7 @@ std::string Emitter::emit_tuple(BB& bb, const std::string& name, const Def* tupl
             }
         }
 
-        return s += simd_array ? ">" : is_array ? "]" : "}";
+        return s += vec ? ">" : is_array ? "]" : "}";
     }
 
     std::string prev = "undef";
@@ -454,7 +455,7 @@ std::string Emitter::emit_tuple(BB& bb, const std::string& name, const Def* tupl
             auto elem_t = convert(e->type());
             // TODO: check dst vs src
             auto namei = name + "." + std::to_string(dst);
-            if (t.front() == '<') // not using is_simd to respect the pointer context (Pointer Pointee case)
+            if (vec)
                 prev = bb.assign(namei, "insertelement {} {}, {} {}, i32 {}", t, prev, elem_t, elem, dst);
             else
                 prev = bb.assign(namei, "insertvalue {} {}, {} {}, {}", t, prev, elem_t, elem, dst);
@@ -462,6 +463,30 @@ std::string Emitter::emit_tuple(BB& bb, const std::string& name, const Def* tupl
         }
     }
     return prev;
+}
+
+std::string Emitter::repack(BB& bb, const std::string& name, const Def* type, const std::string& v, bool simd) {
+    if (!has_vec(type)) return v;
+
+    auto t_src    = convert(type, !simd);
+    auto t_dst    = convert(type, simd);
+    auto vec      = vectorize(type).has_value();
+    auto src_vec  = vec && !simd;
+    auto dst_vec  = vec && simd;
+    auto n        = Lit::expect(type->arity(), "a statically-sized aggregate");
+    std::string r = "undef";
+    for (u64 i = 0, j = 0; i != n; ++i) {
+        auto t_i = type->proj(n, i);
+        if (Axm::isa<mem::M>(t_i)) continue;
+        auto name_i = name + ".r" + std::to_string(j);
+        auto v_i    = bb.assign(name_i, "{} {} {}, {}{}", src_vec ? "extractelement" : "extractvalue", t_src, v,
+                                src_vec ? "i32 " : "", j);
+        v_i         = repack(bb, name_i, t_i, v_i, simd);
+        r = bb.assign(name_i + ".r", "{} {} {}, {} {}, {}{}", dst_vec ? "insertelement" : "insertvalue", t_dst, r,
+                      convert(t_i, simd), v_i, dst_vec ? "i32 " : "", j);
+        ++j;
+    }
+    return r;
 }
 
 std::pair<std::string, std::string> Emitter::emit_gep_index(BB& bb, const std::string& name, const Def* index) {
@@ -513,7 +538,7 @@ std::string Emitter::emit_lit(const Def* def) {
 
 std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name, const Def* def) {
     if (def->isa<Var>()) {
-        if (is_simd(def->type())) return id(def);
+        if (vectorize(def->type())) return id(def);
         if (mem::has_mem_ty(def->type())) return std::string();
         return emit_tuple(bb, name, def);
     }
@@ -547,8 +572,7 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         if (auto sigma = extract->type()->isa<Sigma>(); sigma && sigma->num_ops() == 0) return std::string();
 
         auto t_tup = convert(tuple->type());
-        // TODO convert_impl caches per type, ignoring the simd context, so is_simd may disagree with t_tup.
-        if (t_tup.front() == '<')
+        if (vectorize(tuple->type()))
             return bb.assign(name, "extractelement {} {}, i32 {}", t_tup, v_tup, emit_simd_index(bb, name, index));
 
         if (auto li = Lit::isa(index)) {
@@ -579,8 +603,7 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         auto t_val = convert(insert->value()->type());
         auto v_tup = emit(insert->tuple());
         auto v_val = emit(insert->value());
-        // TODO see extract: is_simd may disagree with the cached t_tup.
-        if (t_tup.front() == '<')
+        if (vectorize(insert->tuple()->type()))
             return bb.assign(name, "insertelement {} {}, {} {}, i32 {}", t_tup, v_tup, t_val, v_val,
                              emit_simd_index(bb, name, insert->index()));
 
@@ -795,7 +818,7 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
         auto [ptr, i]  = lea->args<2>();
         auto pointee   = Axm::expect<mem::Ptr>(ptr->type(), "a `mem.Ptr`")->arg(2, 0);
         auto v_ptr     = emit(ptr);
-        auto t_pointee = convert(pointee);
+        auto t_pointee = convert(pointee, false);
         auto t_ptr     = convert(ptr->type());
         if (pointee->isa<Sigma>())
             return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, i32 {}", t_pointee, t_ptr, v_ptr,
@@ -841,13 +864,14 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
         emit_unsafe(m);
         auto v_ptr     = emit(ptr);
         auto t_ptr     = convert(ptr->type());
-        auto t_pointee = convert(Axm::expect<mem::Ptr>(ptr->type(), "a `mem.Ptr`")->arg(2, 0), false);
-        return bb.assign(name, "load {}, {} {}", t_pointee, t_ptr, v_ptr);
+        auto pointee   = Axm::expect<mem::Ptr>(ptr->type(), "a `mem.Ptr`")->arg(2, 0);
+        auto t_pointee = convert(pointee, false);
+        return repack(bb, name, pointee, bb.assign(name, "load {}, {} {}", t_pointee, t_ptr, v_ptr), true);
     } else if (auto store = Axm::isa<mem::store>(def)) {
         auto [m, ptr, val] = store->args<3>();
         emit_unsafe(m);
         auto v_ptr = emit(ptr);
-        auto v_val = emit(val);
+        auto v_val = repack(bb, name, val->type(), emit(val), false);
         auto t_ptr = convert(ptr->type());
         auto t_val = convert(val->type(), false);
         std::print(bb.body().emplace_back(), "store {} {}, {} {}", t_val, v_val, t_ptr, v_ptr);

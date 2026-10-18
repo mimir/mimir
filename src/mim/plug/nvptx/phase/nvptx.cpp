@@ -68,7 +68,9 @@ public:
     using Super = ll::Emitter;
 
     DeviceEmitter(World& world, std::ostream& ostream)
-        : Super(world, "llvm_nvptx_device_emitter", ostream) {}
+        : Super(world, "llvm_nvptx_device_emitter", ostream) {
+        simd_ = false;
+    }
 
     void start() final;
 
@@ -80,15 +82,11 @@ public:
     const std::string& get_extra_flags() const { return extra_flags; }
 
 private:
-    std::string convert(const Def* def, bool simd = false) override {
-        if (simd) log().w("ignoring simd=true for type conversion in device code");
-        return Super::convert(def, false);
-    }
-
     /// Device slots live in a module-scope global in their requested address space, not on the stack.
     std::string emit_slot(ll::BB&, const App* app, const Def* pointee, const Def* addr_space) override {
         auto v_ptr = "@" + app->unique_name() + ".slot";
-        std::println(vars_decls_, "{} = internal addrspace({}) global {} undef", v_ptr, addr_space, convert(pointee));
+        std::println(vars_decls_, "{} = internal addrspace({}) global {} undef", v_ptr, addr_space,
+                     convert(pointee, false));
         return v_ptr;
     }
 
@@ -588,7 +586,7 @@ std::string DeviceEmitter::prepare() {
                        smem->type());
         auto name     = "@" + smem->unique_name();
         locals_[smem] = name;
-        std::println(vars_decls_, "{} = internal addrspace({}) global {} undef", name, a, convert(T));
+        std::println(vars_decls_, "{} = internal addrspace({}) global {} undef", name, a, convert(T, false));
     }
 
     return kernel->unique_name();

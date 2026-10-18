@@ -214,12 +214,20 @@ protected:
     const Scheduler::Schedule& schedule() const { return schedule_; }
 
     std::string id(const Def*, bool force_bb = false) const;
+
+    /// Converts @p type to its LLVM representation as a value (@p simd) or in memory (`!simd`).
+    /// Only values use LLVM vectors; memory keeps the plain array layout C expects.
     virtual std::string convert(const Def* type, bool simd = true) {
         std::string res;
         convert_(*this, type, simd, res);
         return res;
     }
     std::string convert_ret_pi(const Pi*);
+
+    /// Lane count and element type if a value of @p type is an LLVM vector.
+    std::optional<std::pair<nat_t, const Def*>> vectorize(const Def* type) const;
+    /// Whether @p type's value representation contains an LLVM vector and hence differs from its memory one.
+    bool has_vec(const Def* type) const;
 
     /// Registers @p arg as an incoming phi value for @p phi in @p callee, coming from predecessor @p pred.
     void emit_phi(Lam* callee, const Def* phi, std::string arg, Lam* pred) {
@@ -253,7 +261,7 @@ protected:
     Scheduler scheduler_;
     Scheduler::Schedule schedule_;
     DefMap<std::string> locals_;
-    DefMap<std::string> types_;
+    std::array<DefMap<std::string>, 2> types_; ///< Indexed by the `simd` flag of Emitter::convert.
     LamMap<BB> lam2bb_;
 
     std::set<std::string> decls_;
@@ -269,6 +277,7 @@ protected:
     static constexpr u64 LoopMdBase = 1000;
     LamMap<std::pair<u64, bool>> loop_md_;
 
+    bool simd_    = true;
     Rt rt_        = Rt::embed;
     bool rt_used_ = false;
     std::string rt_module_;
@@ -292,6 +301,9 @@ private:
 
     /// An `extractelement`/`insertelement` lane index; LLVM wants a plain `i32`, not the `Idx` carrier.
     std::string emit_simd_index(BB&, const std::string& name, const Def* index);
+    /// Converts the value @p v of @p type into its value (@p simd) or memory (`!simd`) representation.
+    std::string repack(BB&, const std::string& name, const Def* type, const std::string& v, bool simd);
+    const Def* find_common_simd_src(const App*) const;
 
     decltype(&mim_ll_convert) convert_             = nullptr;
     decltype(&mim_ll_finalize) finalize_           = nullptr;
@@ -325,23 +337,26 @@ inline static std::optional<std::pair<nat_t, const Def*>> is_simd(const Def* typ
     return {};
 }
 
-inline static std::optional<std::pair<nat_t, const Def*>> is_simd_aggregate(Defs types) {
-    if (!std::has_single_bit(types.size())) return {};
-    if (std::ranges::all_of(types, [&](auto i) { return i == types[0]; })) {
-        if (types[0]->isa<Nat>() || Idx::isa(types[0]) || Axm::isa<math::F>(types[0]))
-            return std::pair{types.size(), types[0]};
-    }
-
-    return {};
+inline std::optional<std::pair<nat_t, const Def*>> Emitter::vectorize(const Def* type) const {
+    return simd_ ? is_simd(type) : std::nullopt;
 }
 
-inline static const Def* find_common_simd_src(const App* app) {
+inline bool Emitter::has_vec(const Def* type) const {
+    if (!simd_) return false;
+    if (is_simd(type)) return true;
+    if (auto arr = type->isa<Arr>()) return has_vec(arr->elem());
+    if (auto sigma = type->isa<Sigma>())
+        return std::ranges::any_of(sigma->ops(), [this](auto t) { return has_vec(t); });
+    return false;
+}
+
+inline const Def* Emitter::find_common_simd_src(const App* app) const {
     const Def* common_src = nullptr;
     size_t lane           = 0;
     for (auto arg : app->args()) {
         if (Axm::isa<mem::M>(arg->type())) continue;
         auto extract = arg->isa<Extract>();
-        if (!extract || !is_simd(extract->tuple()->type())) return nullptr;
+        if (!extract || !vectorize(extract->tuple()->type())) return nullptr;
         // Only devectorized args - lane i in position i - may forward the whole vector;
         // anything else (e.g. a Select with a non-literal index) must stay scalar.
         if (auto index = Lit::isa(extract->index()); !index || *index != lane++) return nullptr;
@@ -350,10 +365,7 @@ inline static const Def* find_common_simd_src(const App* app) {
         else if (common_src != extract->tuple())
             return nullptr;
     }
-    if (common_src) {
-        auto simd = is_simd(common_src->type());
-        if (!simd || simd->first != lane) return nullptr;
-    }
+    if (common_src && vectorize(common_src->type())->first != lane) return nullptr;
     return common_src;
 }
 
@@ -502,8 +514,6 @@ inline std::string Emitter::prepare() {
     for (auto sep = ""; auto var : vars.view().rsubspan(1)) {
         if (Axm::isa<mem::M>(var->type())) continue;
         if (auto sigma = var->type()->isa<Sigma>(); sigma && sigma->num_ops() == 0) continue;
-        if (auto arr = var->type()->isa<Arr>())
-            if (is_simd(arr->body())) convert(arr->body()); // pre-add input vector to cache
         auto name    = id(var);
         locals_[var] = name;
         std::print(func_impls_, "{}{} {}", sep, convert(var->type()), name);
