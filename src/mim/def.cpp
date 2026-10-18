@@ -680,7 +680,6 @@ std::optional<nat_t> Idx::isa_lit(const Def* def) {
 }
 
 std::optional<nat_t> Idx::size2bitwidth(const Def* size) {
-    if (size->isa<Top>()) return 64;
     if (auto s = Lit::isa(size)) return size2bitwidth(*s);
     return {};
 }

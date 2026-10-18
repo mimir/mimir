@@ -92,7 +92,7 @@ anx lam decay {n: Nat, T: *, a: Nat} (p: Ptr («n; T», a)): Ptr (T, a) = lea (p
 /// ### assume
 ///
 /// Views `p` as a pointer to an array of `n` elements.
-/// This is *unchecked*: the caller vouches for the length, e.g. for memory a C function hands over.
+/// @warning This is *unchecked*: the caller vouches for the length, e.g. for memory a C function hands over.
 axm assume: {T: *, a: Nat} as Ta → [Ptr Ta, n: Nat] → Ptr («n; T», a);
 ///
 /// ## Phases

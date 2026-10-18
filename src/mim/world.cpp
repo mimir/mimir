@@ -183,7 +183,6 @@ World::World(Driver* driver, const State& state)
     data_.tuple       = unify<Tuple>(sigma(), Defs{});
     data_.type_nat    = insert<mim::Nat>(*this);
     data_.type_idx    = insert<mim::Idx>(pi(type_nat(), type()));
-    data_.top_nat     = insert<Top>(type_nat());
     // A frozen World cannot create them on demand, but e.g. Def::num_tprojs needs them to compute an arity.
     for (nat_t i = 0; i != Num_Lit_Nats; ++i)
         data_.lit_nats[i] = lit(type_nat(), i);
@@ -895,9 +894,7 @@ const Lit* World::lit(const Def* type, u64 val) {
     type = type->zonk();
 
     if (auto size = Idx::isa(type)) {
-        if (size->isa<Top>()) {
-            // unsafe but fine
-        } else if (auto s = Lit::isa(size)) {
+        if (auto s = Lit::isa(size)) {
             if (*s != 0 && val >= *s) type->blame("index `{}` does not fit within arity `{}`", val, size).bail();
         } else if (val != 0) { // 0 of any size is allowed
             type->blame("cannot create literal `{}` of `Idx {}` as size is unknown", val, size).bail();

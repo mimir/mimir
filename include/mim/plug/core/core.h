@@ -57,30 +57,6 @@ constexpr std::array<std::array<u64, 2>, 2> make_truth_table(bit2 id) {
 }
 ///@}
 
-/// @name extract_unsafe
-///@{
-inline const Def* extract_unsafe(const Def* d, const Def* i) {
-    World& w = d->world();
-    return w.extract(d, w.call(conv::u, d->unfold_type()->arity(), i));
-}
-inline const Def* extract_unsafe(const Def* d, u64 i) {
-    World& w = d->world();
-    return extract_unsafe(d, w.lit_idx(0_u64, i));
-}
-///@}
-
-/// @name insert_unsafe
-///@{
-inline const Def* insert_unsafe(const Def* d, const Def* i, const Def* val) {
-    World& w = d->world();
-    return w.insert(d, w.call(conv::u, d->unfold_type()->arity(), i), val);
-}
-inline const Def* insert_unsafe(const Def* d, u64 i, const Def* val) {
-    World& w = d->world();
-    return insert_unsafe(d, w.lit_idx(0_u64, i), val);
-}
-///@}
-
 } // namespace mim::plug::core
 
 namespace mim {

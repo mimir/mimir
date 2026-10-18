@@ -38,8 +38,6 @@ let quo = '\'';             // a `'` payload must be escaped
 let byt = 0xFFI8;           // the `I8` suffix spells a bit width
 let str = "Mim";            // «3; I8»
 let neg = -42I32;           // the sign belongs to the expression, not to the token
-let nothing = ⊥;            // `bot`; defaults to `*`
-let anything = ⊤:Nat;       // `top`, ascribed
 
 let _ = refly.struc.e (⊥:[Nat, Bool], (⊥:Nat, ⊥:Bool)); // pushed into aggregates
 

@@ -510,7 +510,6 @@ public:
     ///@}
 
     /// @name Extract
-    /// @see core::extract_unsafe
     ///@{
     const Def* extract(const Def* d, const Def* i);
     const Def* extract(const Def* d, u64 a, u64 i) { return extract(d, lit_idx(a, i)); }
@@ -521,7 +520,6 @@ public:
     ///@}
 
     /// @name Insert
-    /// @see core::insert_unsafe
     ///@{
     const Def* insert(const Def* d, const Def* i, const Def* val);
     const Def* insert(const Def* d, u64 a, u64 i, const Def* val) { return insert(d, lit_idx(a, i), val); }
@@ -554,7 +552,6 @@ public:
     /// Constructs a Lit of type Idx of size @p size.
     /// @note `size = 0` means `2^64`.
     const Lit* lit_idx(nat_t size, u64 val) { return lit(type_idx(size), val); }
-    const Lit* lit_idx_unsafe(u64 val) { return lit(type_idx(top_nat()), val); }
 
     const Lit* lit_idx(std::integral auto val) { return lit_idx(Idx::bitwidth2size(sizeof(val) * 8), val); }
 
@@ -586,7 +583,6 @@ public:
     const Def* top(const Def* type) { return ext<true>(type); }
     const Def* type_bot() { return data_.type_bot; }
     const Def* type_top() { return data_.type_top; }
-    const Def* top_nat() { return data_.top_nat; }
     ///@}
 
     /// @name Join & Variant
@@ -948,7 +944,6 @@ private:
         const Bot* type_bot;
         const Top* type_top;
         const Def* type_bool;
-        const Top* top_nat;
         const Sigma* sigma;
         const Tuple* tuple;
         const Nat* type_nat;
