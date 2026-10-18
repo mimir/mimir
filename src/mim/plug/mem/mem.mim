@@ -89,6 +89,12 @@ axm lea: {n: Nat, Ts: «n; *», a: Nat} → [Ptr («j: n; Ts#j», a), i: Idx n] 
 /// Pointer to the first element of an array, akin to C's array-to-pointer decay.
 anx lam decay {n: Nat, T: *, a: Nat} (p: Ptr («n; T», a)): Ptr (T, a) = lea (p, 0:(Idx n));
 ///
+/// ### assume
+///
+/// Views `p` as a pointer to an array of `n` elements.
+/// This is *unchecked*: the caller vouches for the length, e.g. for memory a C function hands over.
+axm assume: {T: *, a: Nat} as Ta → [Ptr Ta, n: Nat] → Ptr («n; T», a);
+///
 /// ## Phases
 ///
 /// ### add_mem

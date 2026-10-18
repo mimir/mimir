@@ -49,6 +49,9 @@ public:
  * `extern "C"` shims below, looked up with GET_FUN_PTR (see ll.h).
  */
 
+/// An `Idx n` whose `n` is only known at runtime is bounded by a `Nat`, hence an `i64`.
+static nat_t idx_bitwidth(const Def* type) { return Idx::size2bitwidth(Idx::isa(type)).value_or(64); }
+
 static std::string fmath_flags(math::Mode mode) {
     if (mode == math::Mode::fast) return " fast";
     std::string flags;
@@ -130,7 +133,7 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
     } else if (Idx::isa(type)) {
         // `Idx 1` is zero bits wide information-theoretically, but LLVM has no i0: clamp to i1
         // (its only value is 0, so any i1 zext/trunc of it stays correct).
-        auto w              = Idx::expect_bitwidth(type, "a statically-sized index type");
+        auto w              = idx_bitwidth(type);
         return types_[type] = "i" + std::to_string(std::max<nat_t>(1, w));
     } else if (auto w = math::isa_f(type)) {
         switch (*w) {
@@ -465,12 +468,12 @@ std::pair<std::string, std::string> Emitter::emit_gep_index(BB& bb, const std::s
     auto v_i = emit(index);
     auto t_i = convert(index->type());
 
-    if (auto size = Idx::isa(index->type())) {
-        if (auto w = Idx::size2bitwidth(size); w && *w < 64) {
+    if (Idx::isa(index->type())) {
+        if (auto w = idx_bitwidth(index->type()); w < 64) {
             v_i = bb.assign(name + ".zext",
                             "zext {} {} to i{} ; add one more bit for gep index as it is treated as signed value", t_i,
-                            v_i, *w + 1);
-            t_i = "i" + std::to_string(*w + 1);
+                            v_i, w + 1);
+            t_i = "i" + std::to_string(w + 1);
         }
     }
 
@@ -483,7 +486,7 @@ std::string Emitter::emit_simd_index(BB& bb, const std::string& name, const Def*
 
     auto t_i = convert(index->type());
     if (t_i == "i32") return v_i;
-    auto w = Idx::expect_bitwidth(index->type(), "a vector lane index of known width");
+    auto w = idx_bitwidth(index->type());
     return bb.assign(name + ".idx", "{} {} {} to i32", w < 32 ? "zext" : "trunc", t_i, v_i);
 }
 
@@ -636,7 +639,7 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         return bb.assign(name, "{} i64 {}, {}", op, a, b);
     } else if (auto idx = Axm::isa<core::idx>(def)) {
         auto x = emit(idx->arg());
-        auto s = Idx::expect_bitwidth(idx->type(), "a `core.idx` result of known width");
+        auto s = idx_bitwidth(idx->type());
         auto t = convert(idx->type());
         if (s < 64) return bb.assign(name, "trunc i64 {} to {}", x, t);
         return x;
@@ -743,8 +746,8 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         auto t_src = convert(conv->arg()->type());
         auto t_dst = convert(conv->type());
 
-        nat_t w_src = Idx::expect_bitwidth(conv->arg()->type(), "a `core.conv` source of known width");
-        nat_t w_dst = Idx::expect_bitwidth(conv->type(), "a `core.conv` target of known width");
+        nat_t w_src = idx_bitwidth(conv->arg()->type());
+        nat_t w_dst = idx_bitwidth(conv->type());
 
         if (w_src == w_dst) return v_src;
 
@@ -770,7 +773,7 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
 
         auto size2width = [&](const Def* type) {
             if (type->isa<Nat>()) return 64_n;
-            if (Idx::isa(type)) return Idx::expect_bitwidth(type, "a statically-sized index type");
+            if (Idx::isa(type)) return idx_bitwidth(type);
             return 0_n;
         };
 
@@ -802,6 +805,9 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
         auto [v_i, t_i] = emit_gep_index(bb, name, i);
 
         return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, {} {}", t_pointee, t_ptr, v_ptr, t_i, v_i);
+    } else if (auto assume = Axm::isa<mem::assume>(def)) {
+        auto p = assume->arg(2, 0);
+        return bb.assign(name, "bitcast {} {} to {}", convert(p->type()), emit(p), convert(def->type()));
     } else if (auto malloc = Axm::isa<mem::malloc>(def)) {
         auto address_space = malloc->decurry()->arg(2, 1);
         declare("i8* @malloc(i64)");
