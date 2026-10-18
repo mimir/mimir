@@ -88,11 +88,12 @@ private:
         /// Adds the slot Var%s whose sloxy @p abstr contains or whose ptr a Lam in it may access.
         /// Any other flow of a slot's ptr leaves its sloxy in the abstract program, which finalize() pins.
         void used_slots(const Def* abstr, Vars& res, DefSet& done);
-        Vars used_slots(const Def* abstr) {
+        Vars used_slots(std::initializer_list<const Def*> abstrs) {
             auto res = Vars();
             if (var2slot_.empty()) return res;
             auto done = DefSet();
-            used_slots(abstr, res, done);
+            for (auto abstr : abstrs)
+                used_slots(abstr, res, done);
             return res;
         }
         /// Records the slots a load or store through @p abstr_ptr in the current Lam resolves against.

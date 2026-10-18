@@ -119,6 +119,7 @@ std::optional<fe::Vector<const App*>> EscapeAnalysis::walk(Lam* lam, const App* 
     auto ops  = fe::Vector<const App*>();
     auto done = LamSet();
     if (auto mem = exit_mem(tail, done); mem && !walk(lam, mem, ops)) return {};
+    std::ranges::reverse(ops);
     return ops;
 }
 
@@ -132,14 +133,13 @@ const Def* EscapeAnalysis::walk(Lam* lam, const Def* mem, fe::Vector<const App*>
         if (!op || !(mem = mem_def(op->arg()))) return nullptr;
         ops.emplace_back(op);
     }
-    std::ranges::reverse(ops);
     return mem;
 }
 
 const Def* EscapeAnalysis::exit_mem(const App* tail, LamSet& done) {
     if (auto mem = mem_def(tail->arg())) return mem;
 
-    auto res = static_cast<const Def*>(nullptr);
+    const Def* res = nullptr;
     for (auto arg : tail->targs())
         if (auto k = arg->isa_mut<Lam>(); k && k->is_set() && !mem_var(k) && done.emplace(k).second)
             if (auto body = k->body()->isa<App>())

@@ -248,11 +248,7 @@ void SEO::Analysis::live(Lam* lam, Defs abstr_args) {
 }
 
 void SEO::Analysis::pin_used_slots(const Def* abstr_callee, const Def* abstr_arg) {
-    auto res  = Vars();
-    auto done = DefSet();
-    used_slots(abstr_callee, res, done);
-    used_slots(abstr_arg, res, done);
-    for (auto var : res)
+    for (auto var : used_slots({abstr_callee, abstr_arg}))
         if (auto slot = var2slot_[var]; !is_top(slot)) {
             log().d("slot var {} is used by a direct-style call", var);
             pin_slot(slot);
@@ -278,7 +274,7 @@ void SEO::Analysis::used_slots(const Def* abstr, Vars& res, DefSet& done) {
 
 void SEO::Analysis::record_use(const Def* abstr_ptr) {
     if (auto lam = curr_mut<Lam>())
-        if (auto slots = used_slots(abstr_ptr)) {
+        if (auto slots = used_slots({abstr_ptr})) {
             auto& used = lam2used_[lam];
             if (auto grown = world().vars().merge(used, slots); grown != used) used = grown, touch();
         }
@@ -436,8 +432,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
     } else {
         auto abstr_callee = rewrite(app->callee());
         auto abstr_arg    = rewrite(app->arg());
-        // A direct-style call's effects come back implicitly - not through a continuation the per-Lam store state
-        // follows.
+        // A direct-style call's effects bypass the continuation the per-Lam store state follows.
         if (has_mem_ty(app->type())) pin_used_slots(abstr_callee, abstr_arg);
         if (auto known = Lam::isa_rewritable(abstr_callee)) {
             auto n = known->num_tvars();

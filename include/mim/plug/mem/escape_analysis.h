@@ -64,8 +64,8 @@ private:
 
     bool may_hold(const Def* type) const;
     std::optional<fe::Vector<const App*>> walk(Lam* lam, const App* tail);
-    /// Collects the @p ops threading @p mem back to where they start: @p lam%'s memory Var or,
-    /// if @p lam has none, the memory it captures; `nullptr` if lost track.
+    /// Yields where @p mem starts in @p lam - its memory Var or the memory it captures - or `nullptr` if lost.
+    /// Collects the @p ops on the way in reverse program order.
     const Def* walk(Lam* lam, const Def* mem, fe::Vector<const App*>& ops);
     /// The memory @p tail hands on - directly or captured by the continuation of a direct-style call.
     const Def* exit_mem(const App* tail, LamSet& done);
