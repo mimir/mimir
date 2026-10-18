@@ -17,7 +17,7 @@ use core.ops.u.w;
 lam f (i j: affine.Index): «3; affine.Index» =
     (affine.op.sub (affine.op.add (i, j), j), affine.semiop.mul (i, 3), affine.lit 5);
 
-extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I32, 0), 0), return: Cn [mem.M 0, I32]) =
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (I8, 0)», 0), return: Cn [mem.M 0, I32]) =
     let a = argc;
     let b = 4I32;
     let (m, (r1, r2, r3)) = affine.map f (a, b) m;

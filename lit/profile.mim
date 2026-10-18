@@ -14,7 +14,7 @@ plugin core;
 
 use core.ops.n;
 
-extern lam f(): «3; Nat» = ‹i: 3; 1 + core.bitcast Nat i›;
+extern lam f(): «3; Nat» = ‹i: 3; 1 + core.idx2nat i›;
 
 // FLAT:      Profile (flat):
 // FLAT-NEXT: {{.*}}total{{.*}}self{{.*}}name

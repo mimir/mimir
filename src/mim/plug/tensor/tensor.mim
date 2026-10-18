@@ -661,20 +661,20 @@ lam comp_map {A B C: *} (m: B → C, g: A → B) (o: A): C = m (g o);
 /// its new position.
 anx lam interchange (t: Tileable, perm: «t#Ro + t#Rr; Nat»): Tileable =
     let r = t#Ro + t#Rr;
-    let perm_ok = ‹j: r; let jj = core.bitcast Nat j;
+    let perm_ok = ‹j: r; let jj = core.idx2nat j;
                          refly.check (core.icmp.e @2 (jj < t#Ro, perm#j < t#Ro),
                                        perm#j,
                                        "interchange: permutation must not mix parallel and reduction dims")›;
     let sr_n   = ‹i: r; t#Sr#(core.idx 0 r (perm_ok#i))›;
     let vdim_n = match vec.first `== (perm_ok, t#vdim) with
-                     | j: Idx r => core.bitcast Nat j
+                     | j: Idx r => core.idx2nat j
                      | _: []    => t#vdim;
     // The parallel dims permute among themselves (checked above), so the new dim j writes the
     // output axis its old dim perm#j wrote.
-    let oax_n = ‹j: t#Ro; t#oax#(core.idx 0 (t#Ro) (perm_ok#(core.idx 0 r (core.bitcast Nat j))))›;
+    let oax_n = ‹j: t#Ro; t#oax#(core.idx 0 (t#Ro) (perm_ok#(core.idx 0 r (core.idx2nat j))))›;
     // iota: old dim i is found at the new position j with perm#j = i.
     lam iota_p (o: «r; affine.Index»): «r; affine.Index» =
-        ‹i: r; o#(option.unwrap_unsafe (vec.first `== (perm_ok, core.bitcast Nat i)))›;
+        ‹i: r; o#(option.unwrap_unsafe (vec.first `== (perm_ok, core.idx2nat i)))›;
     lam retile_n (ro_m rr_m: Nat)
                  (so_m: «ro_m; Nat», sr_m: «ro_m + rr_m; Nat», vdim_m unroll_m: Nat)
                  (iota:  «ro_m + rr_m; affine.Index» → «r; affine.Index»,
@@ -772,7 +772,7 @@ lam shift_ax (a x: Nat): Nat = core.select (x < a, x, x + 1);
 /// passed explicitly, in the syntactic form the call site's types require (the checker does not
 /// re-associate `core.nat.add` symbolically).
 lam split_bounds (m n: Nat, v: «n; Nat», d ts nt: Nat): «m; Nat» =
-    ‹i: m; let ii = core.bitcast Nat i;
+    ‹i: m; let ii = core.idx2nat i;
            core.select (ii < d, v#(core.idx 0 n ii),
            core.select (ii == d, nt,
            core.select (ii == d + 1, ts,
@@ -782,7 +782,7 @@ lam split_bounds (m n: Nat, v: «n; Nat», d ts nt: Nat): «m; Nat» =
 ///
 /// Recombine a split loop vector (`m = n+1`): `old#d = new#d · ts + new#(d+1)`.
 lam split_iota (m n d ts: Nat) (o: «m; affine.Index»): «n; affine.Index» =
-    ‹j: n; let jj = core.bitcast Nat j;
+    ‹j: n; let jj = core.idx2nat j;
            core.select (jj < d, o#(core.idx 0 m jj),
            core.select (jj == d,
                          affine.op.add (affine.semiop.mul (o#(core.idx 0 m d), ts),
@@ -793,7 +793,7 @@ lam split_iota (m n d ts: Nat) (o: «m; affine.Index»): «n; affine.Index» =
 ///
 /// Split an output coordinate vector (`m = n+1`): `new#a = old#a ⌊/⌋ ts`, `new#(a+1) = old#a mod ts`.
 lam split_omega (m n a ts: Nat) (oc: «n; affine.Index»): «m; affine.Index» =
-    ‹j: m; let jj = core.bitcast Nat j;
+    ‹j: m; let jj = core.idx2nat j;
            core.select (jj < a, oc#(core.idx 0 n jj),
            core.select (jj == a, affine.semiop.floordiv (oc#(core.idx 0 n a), ts),
            core.select (jj == a + 1, affine.semiop.rem (oc#(core.idx 0 n a), ts),
@@ -817,7 +817,7 @@ anx lam strip_mine_par (t: Tileable, d ts: Nat): Tileable =
     // The split dim writes the split axis pair; all other dims write their old axis, renumbered
     // around the insertion at `a`. The unit-stride half is the inner one: a vdim at `d` moves to
     // `d + 1`.
-    let oax_n = ‹j: ro_n; let jj = core.bitcast Nat j;
+    let oax_n = ‹j: ro_n; let jj = core.idx2nat j;
                           core.select (jj < d, shift_ax (a, t#oax#(core.idx 0 (t#Ro) jj)),
                           core.select (jj == d, a,
                           core.select (jj == d + 1, a + 1,
@@ -888,7 +888,7 @@ lam unroll_budget (t: Tileable, budget: Nat): Nat =
         let taps_n  = taps * t#Sr#(core.idx 0 r d);
         let alive_n = alive * if_static (taps_n, (0, 1)#(taps_n <= budget), 0);
         (cnt + alive_n, core.select (alive_n == 1, taps_n, taps), alive_n);
-    (vec.fold.r @(«3; Nat», Nat) @(t#Rr) step (‹i: t#Rr; t#Ro + core.bitcast Nat i›, (0, 1, 1)))#0_3;
+    (vec.fold.r @(«3; Nat», Nat) @(t#Rr) step (‹i: t#Rr; t#Ro + core.idx2nat i›, (0, 1, 1)))#0_3;
 ///
 /// #### vectorize_if
 ///
@@ -964,7 +964,7 @@ lam conv_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
     let r_n   = t_oh#1_9 + t_oh#2_9;
     // Dims are (n, co/cb, cb, oh/bs, bs, ow | …); rotate `cb` down next to `ow` so the jam dim and
     // the vector dim are the trailing parallel pair. Identity when the block is not taken.
-    let perm  = ‹j: r_n; let jj = core.bitcast Nat j;
+    let perm  = ‹j: r_n; let jj = core.idx2nat j;
                          core.select (core.bit2.and_ 2 (cblk, jj == 2), 3,
                          core.select (core.bit2.and_ 2 (cblk, jj == 3), 4,
                          core.select (core.bit2.and_ 2 (cblk, jj == 4), 2, jj)))›;
@@ -1038,7 +1038,7 @@ lam dot_schedule_kvec (r_out: Nat) (t: Tileable): Tileable =
     let swap = 2 <= r_out;
     let pa   = r_out - 1;
     let pb   = r_out;
-    let perm = ‹j: r3; let jj = core.bitcast Nat j;
+    let perm = ‹j: r3; let jj = core.idx2nat j;
                        core.select (core.bit2.and_ 2 (swap, jj == pa), pb,
                        core.select (core.bit2.and_ 2 (swap, jj == pb), pa, jj))›;
     unroll_trailing (vectorize (interchange (t3, perm), r3 - 1), 2);
@@ -1144,18 +1144,18 @@ pub fun pool_fun {T: *} (g: [T, T] → T) (acc y: T)@tt: T = return (g (acc, y))
 ///
 /// `s` without axis `ax`.
 pub lam reduce_shape {r: Nat} (ax: Idx r, s: «r; Nat»): «r - 1; Nat» =
-    ‹i: r - 1; s#(core.idx 0 r (shift_ax (core.bitcast Nat ax, core.bitcast Nat i)))›;
+    ‹i: r - 1; s#(core.idx 0 r (shift_ax (core.idx2nat ax, core.idx2nat i)))›;
 ///
 /// ### reduce
 ///
 /// Folds `input` along axis `ax` with `g`, seeded with `init`; the result drops that axis.
 /// The output axes run as the leading loops, `ax` as the trailing reduction loop.
 pub lam reduce {T: *} (g: [T, T] → T, init: T) {r: Nat} (ax: Idx r) {s: «r; Nat»} (input: «s; T»): «reduce_shape (ax, s); T» =
-    let a = core.bitcast Nat ax;
-    map_reduce (reduce_shape (ax, s), ‹i: r; let ii = core.bitcast Nat i; s#(core.idx 0 r (core.select (ii < r - 1, shift_ax (a, ii), a)))›)
+    let a = core.idx2nat ax;
+    map_reduce (reduce_shape (ax, s), ‹i: r; let ii = core.idx2nat i; s#(core.idx 0 r (core.select (ii < r - 1, shift_ax (a, ii), a)))›)
         (pool_fun g, init)
-        (proj_map ‹i: r - 1; core.bitcast Nat i›)
-        (proj_map ‹j: r; let jj = core.bitcast Nat j; core.select (jj < a, jj, core.select (jj == a, r - 1, jj - 1))›)
+        (proj_map ‹i: r - 1; core.idx2nat i›)
+        (proj_map ‹j: r; let jj = core.idx2nat j; core.select (jj < a, jj, core.select (jj == a, r - 1, jj - 1))›)
         input;
 ///
 /// ### binary_ax
@@ -1164,9 +1164,9 @@ pub lam reduce {T: *} (g: [T, T] → T, init: T) {r: Nat} (ax: Idx r) {s: «r; N
 pub lam binary_ax {Ti1 Ti2 To: *} (app: [Ti1, Ti2] → To) {r: Nat} (ax: Idx r) {s: «r; Nat»}
                   (x: «s; Ti1», y: «reduce_shape (ax, s); Ti2»): «s; To» =
     fun app_mr (_: To, (u: Ti1, v: Ti2))@tt: To = return (app (u, v));
-    let a = core.bitcast Nat ax;
+    let a = core.idx2nat ax;
     map_reduce (s, s) @((Ti1, Ti2), (r, r - 1), (s, reduce_shape (ax, s))) (app_mr, ⊥:To)
-        affine.id (affine.id @r, proj_map ‹i: r - 1; shift_ax (a, core.bitcast Nat i)›) (x, y);
+        affine.id (affine.id @r, proj_map ‹i: r - 1; shift_ax (a, core.idx2nat i)›) (x, y);
 ///
 /// ### softmax
 ///
@@ -1339,11 +1339,11 @@ pub fun dot_general_fun (R: Ring) (x: R#T, (y z: R#T))@tt: R#T = return (R#add (
 /// the remaining free axes.
 pub lam dot_general_pick {n: Nat} {na nb nc: Nat} (a: «na; Idx n», b: «nb; Idx n», c: «nc; Idx n») (off_1 off_2: Nat) (i: Idx n): Nat =
     match vec.first core.icmp.e (b, i) with
-        | bi: Idx nb => core.bitcast Nat bi
+        | bi: Idx nb => core.idx2nat bi
         | _:  []     => match vec.first core.icmp.e (c, i) with
-            | ci: Idx nc => off_2 + core.bitcast Nat ci
+            | ci: Idx nc => off_2 + core.idx2nat ci
             | _:  []     => match vec.first core.icmp.e (a, i) with
-                | ai: Idx na => off_1 + core.bitcast Nat ai
+                | ai: Idx na => off_1 + core.idx2nat ai
                 | _:  []     => 0;
 ///
 /// ### dot_product_impl
@@ -1390,10 +1390,10 @@ priv anx lam dot_product_impl
       let s_full   = vec.cat (s_out, s_red);
       let n_loops  = r_out + nc;
       let t        = mr_tileable @2 @(r_out, nc)
-                         (s_out, ‹i: r_out; core.bitcast Nat i›, s_full)
+                         (s_out, ‹i: r_out; core.idx2nat i›, s_full)
                          @((R#T, R#T), (r1, r2), (s1, s2))
                          (f, R#_0, id @(R#T))
-                         (proj_map @(n_loops, r_out) ‹i: r_out; core.bitcast Nat i›)
+                         (proj_map @(n_loops, r_out) ‹i: r_out; core.idx2nat i›)
                          (proj_map @(n_loops, r1) subs_1, proj_map @(n_loops, r2) subs_2)
                          (a, b);
       // Schedule (frontend, selected from the parameters — see `dot_schedule`/`dot_schedule_kvec`):
@@ -1403,7 +1403,7 @@ priv anx lam dot_product_impl
       // Tileable: behind a stuck extract the record's `Out` field would not reduce, so the
       // reshape's input could not be checked. `sched#3_9` is the scheduled Tileable's (possibly
       // packed) output shape `So`.
-      let kvec = option.is_some (vec.first `== (‹i: nc; core.bitcast Nat (c2#i)›, fastest_2));
+      let kvec = option.is_some (vec.first `== (‹i: nc; core.idx2nat (c2#i)›, fastest_2));
       lam go_n    (u: []): «s_out; R#T» =
           let sched = dot_schedule r_out t;
           reshape (sched#3_9) s_out (materialize sched);

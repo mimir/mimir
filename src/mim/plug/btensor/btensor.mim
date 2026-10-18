@@ -275,14 +275,14 @@ lam range_nest (r: Nat, Sr: «r; Nat») (A: *) (loop: ForT A, lo hi: Nat)
             loop lbody lexit (0I32, core.bitcast I32 (Sr#(core.idx 0 r d)), 1I32, (m, acc))
             where
                 con lbody (iv: I32, (m: mem.M 0, acc: A), yield: Cn [mem.M 0, A]) =
-                    let pref = ‹j: r; core.select (core.bitcast Nat j == d, iv, pref#j)›;
+                    let pref = ‹j: r; core.select (core.idx2nat j == d, iv, pref#j)›;
                     w (pref, m, acc, yield);
                 con lexit (macc: [mem.M 0, A]) = k macc;
             end;
         level;
     let m = hi - lo;
     vec.fold.r @(Cn [«r; I32», mem.M 0, A, Cn [mem.M 0, A]], Nat) @m
-        wrap (‹i: m; lo + core.bitcast Nat i›, inner);
+        wrap (‹i: m; lo + core.idx2nat i›, inner);
 ///
 /// ### range_unroll
 ///
@@ -298,15 +298,15 @@ lam range_unroll (r: Nat, Sr: «r; Nat») (A: *) (lo hi: Nat)
         con level (pref: «r; I32», m: mem.M 0, acc: A, k: Cn [mem.M 0, A]) =
             lam step (i: Nat, kk: Cn [mem.M 0, A]): Cn [mem.M 0, A] =
                 con at (m: mem.M 0, acc: A) =
-                    let pref = ‹j: r; core.select (core.bitcast Nat j == d, core.bitcast I32 i, pref#j)›;
+                    let pref = ‹j: r; core.select (core.idx2nat j == d, core.bitcast I32 i, pref#j)›;
                     w (pref, m, acc, kk);
                 at;
             let t = Sr#(core.idx 0 r d);
-            (vec.fold.r @(Cn [mem.M 0, A], Nat) @t step (‹i: t; core.bitcast Nat i›, k)) (m, acc);
+            (vec.fold.r @(Cn [mem.M 0, A], Nat) @t step (‹i: t; core.idx2nat i›, k)) (m, acc);
         level;
     let m = hi - lo;
     vec.fold.r @(Cn [«r; I32», mem.M 0, A, Cn [mem.M 0, A]], Nat) @m
-        wrap (‹i: m; lo + core.bitcast Nat i›, inner);
+        wrap (‹i: m; lo + core.idx2nat i›, inner);
 
 /// ### NestT
 ///
@@ -462,10 +462,10 @@ anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
         let rv_bd     = (0, ro - rv_j)#(rv_j <= ro);
         let rv_vd     = (0, vdim)#(vdim < r);
         let redvec_ok = core.bit2.and_ 2 (ro <= vdim, core.bit2.and_ 2 (vdim + 1 == r, rv_j <= ro));
-        let Sr_rv     = ‹j: r; let jj = core.bitcast Nat j;
+        let Sr_rv     = ‹j: r; let jj = core.idx2nat j;
                                (Sr#j, (1, Sr#j)#redvec_ok)#(core.bit2.and_ 2 (rv_bd <= jj, jj < ro))›;
         lam rv_mul (d: Nat, acc: Nat): Nat = acc * Sr_rv#(core.idx 0 r d);
-        let rv_ds = ‹i: rv_j; rv_bd + core.bitcast Nat i›;
+        let rv_ds = ‹i: rv_j; rv_bd + core.idx2nat i›;
         let Sb    = vec.fold.r @(Nat, Nat) @rv_j rv_mul (rv_ds, 1);
 
         con redvec (m: mem.M 0, u: U, done: Cn [mem.M 0, U])@tt =

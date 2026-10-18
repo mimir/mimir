@@ -17,7 +17,7 @@ plugin core;
 /// Computes the type of a `tuple.cat` with an `n`- and an `m`-tuple.
 anx lam typecat {n m: Nat} (Ts: «n; *») (Us: «m; *»): * =
     «i: core.nat.add (n, m);
-        let nat_i = core.bitcast Nat i;
+        let nat_i = core.idx2nat i;
         core.Select (
             core.ncmp.l (nat_i, n),
             Ts#(core.bitcast (Idx n) i),
@@ -64,8 +64,8 @@ anx lam head {n: Nat}
 anx lam tail {n: Nat}
     {Ts: «n; *»}
     (values: «i: n; Ts#i»)
-  : «i: core.nat.sub (n, 1); Ts#(core.bitcast (Idx n) (core.nat.add (core.bitcast Nat i, 1)))»
-  = ‹i: core.nat.sub (n, 1); values#(core.bitcast (Idx n) (core.nat.add (core.bitcast Nat i, 1)))›;
+  : «i: core.nat.sub (n, 1); Ts#(core.bitcast (Idx n) (core.nat.add (core.idx2nat i, 1)))»
+  = ‹i: core.nat.sub (n, 1); values#(core.bitcast (Idx n) (core.nat.add (core.idx2nat i, 1)))›;
 
 ///
 /// ### contains

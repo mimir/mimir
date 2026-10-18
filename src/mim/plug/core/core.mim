@@ -265,6 +265,13 @@ axm abs: {s a: Nat} → [mem.M a, Idx s] → [mem.M a, Idx s], normalize_abs;
 ///
 axm conv.(s, u): {ss: Nat} → [ds: Nat] → Idx ss → Idx ds, normalize_conv;
 ///
+/// ### idx2nat
+///
+/// Yields the unsigned representative of an index as a `Nat`.
+/// In contrast to `bitcast`, this never truncates.
+///
+axm idx2nat: {s: Nat} → Idx s → Nat, normalize_idx2nat;
+///
 /// ### bitcast
 ///
 /// Bitcast to reinterpret a value as another type.

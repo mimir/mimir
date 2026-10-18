@@ -17,15 +17,15 @@ let re = regex.not_ (regex.disj (regex.lit('a'), regex.cls.W));
 
 extern con strlen [mem.M 0, mem.Ptr0 I8, Cn [mem.M 0, I64]];
 
-extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8), exit: Cn [mem.M 0, I32]) =
+extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 I8», exit: Cn [mem.M 0, I32]) =
     (exit, match_argument) # (argc > 1I32) (m, 0I32)
     where
         con match_argument(m: mem.M 0, _: I32) =
-            let (m, to_match) = mem.load (m, mem.lea (mem.assume (argv, 2), 1₂));
+            let (m, to_match) = mem.load (m, mem.lea (argv, core.idx 0 (core.idx2nat argc) 1));
             strlen (m, to_match, match_len)
             where
                 con match_len(m: mem.M 0, len: I64) =
-                    let n                 = core.nat.add (core.bitcast Nat len, 1);
+                    let n                 = core.nat.add (core.idx2nat len, 1);
                     let to_match          = mem.assume (to_match, n);
                     let (m, matched, pos) = re (m, to_match, 0:(Idx n));
                     exit (m, core.conv.u i32 matched);

@@ -46,6 +46,7 @@ struct Ctx {
     DefMap<nat_t> ret_projs; ///< Var -> index of the `ret` component within it.
     DefSet opaque;           ///< Def%s no pattern took apart, so their components have no name of their own.
     DefSet destructured;     ///< Def%s a pattern took apart, so their components print by name.
+    DefSet bound;            ///< Projections of a dependent Sigma's Var a pattern binds in place of a dead component.
     DefSet whole_vars;       ///< Var%s used as a whole; see isa_fun.
     DefSet arms;             ///< Lam%s a `match` spells out as its arms instead of declaring them.
     DefSet header;           ///< Def%s a Lam's header prints inline, as it precedes the block that `let`s them.
@@ -117,6 +118,7 @@ const Def* alias_proj(Ctx* ctx, const Def* def) {
 bool by_name(Ctx* ctx, const Extract* ex) {
     if (!ex->index()->isa<Lit>()) return false;
     if (!ctx) return ex->tuple()->isa<Var>();
+    if (ctx->bound.contains(ex)) return true;
     // A Var's component prints by name - unless the pattern that would have bound that name kept the Var whole.
     if (ctx->opaque.contains(ex->tuple())) return false;
     // An aliased Var's component the Lam's Var does not hand out is spelled via the Lam's Var instead.
@@ -336,6 +338,20 @@ std::string shape(Ctx* ctx, const Seq* seq, const Def* var) {
     return res;
 }
 
+/// Does @p var occur in @p t only as projections, which a pattern binds by name?
+bool only_projs(const Def* t, const Var* var, DefSet& done) {
+    if (!t->has_free_var(var) || !done.emplace(t).second) return true;
+    if (t == var) return false;
+    if (auto ex = t->isa<Extract>(); ex && ex->tuple() == var) return ex->index()->isa<Lit>();
+    return std::ranges::all_of(t->deps(), [&](const Def* d) { return only_projs(d, var, done); });
+}
+
+/// The projection of @p type's binder that names its dead @p i-th component, if anything refers to it.
+const Def* binder_proj(const Def* type, size_t n, size_t i) {
+    if (auto [_, var] = type->isa_binder<Sigma>(); var) return var->proj(n, i);
+    return nullptr;
+}
+
 /// May @p def of @p type be taken apart into @p n components?
 /// A component the frozen World does not hand out has no name, so it has to fall back to @p type - and that
 /// spells a *dependent* component with the domain's binders instead of this pattern's. That is where
@@ -347,12 +363,13 @@ bool destructible(Ctx* ctx, const Def* def, const Def* type, size_t n) {
         if (ctx && def->num_projs() > 1) ctx->opaque.emplace(def);
         return false;
     }
-    auto var = type->isa_mut<Sigma>() ? type->has_var() : nullptr;
+    auto var  = type->isa_mut<Sigma>() ? type->has_var() : nullptr;
+    auto done = DefSet();
 
     for (size_t i = 0; i != n; ++i) {
         if (live_proj(ctx, def, n, i)) continue; // it exists and hence brings its own name and type
         auto t = type->proj(n, i);
-        if (!t || (var && t->has_free_var(var))) {
+        if (!t || (var && !only_projs(t, var, done))) {
             if (ctx) ctx->opaque.emplace(def);
             return false;
         }
@@ -361,8 +378,18 @@ bool destructible(Ctx* ctx, const Def* def, const Def* type, size_t n) {
 }
 
 /// @p brckt selects the `[]` sub-patterns of a type over the `()` sub-patterns of a Lam's parameter list.
-void ptrn(std::ostream& os, Ctx* ctx, const Def* def, const Def* type, bool brckt = false) {
-    if (!def) return std::print(os, "_: {}", Op(ctx, type));
+/// @p binder names a dead component that a dependent Sigma refers to; see binder_proj.
+void ptrn(std::ostream& os,
+          Ctx* ctx,
+          const Def* def,
+          const Def* type,
+          bool brckt        = false,
+          const Def* binder = nullptr) {
+    if (!def) {
+        if (!binder || !ctx) return std::print(os, "_: {}", Op(ctx, type));
+        ctx->bound.emplace(binder);
+        return std::print(os, "{}: {}", name(ctx, binder), Op(ctx, type));
+    }
 
     auto n = def->num_tprojs();
     // Unless some component exists, nothing refers to one and the whole reads back the same.
@@ -380,7 +407,7 @@ void ptrn(std::ostream& os, Ctx* ctx, const Def* def, const Def* type, bool brck
         auto proj = live_proj(ctx, def, n, i);
         os << sep;
         // A projection's own type is the one where the binder has already been substituted for this Var.
-        ptrn(os, ctx, proj, proj ? proj->type() : type->proj(n, i), brckt);
+        ptrn(os, ctx, proj, proj ? proj->type() : type->proj(n, i), brckt, binder_proj(type, n, i));
         sep = ", ";
     }
     // The alias keeps a name for the entity as a whole - which the body may well refer to.
@@ -398,7 +425,7 @@ void dom_ptrn(std::ostream& os, Ctx* ctx, const Def* var, const Def* type, bool 
     for (auto sep = ""; auto i : std::views::iota(size_t(0), n)) {
         os << sep;
         auto proj = live_proj(ctx, var, n, i);
-        ptrn(os, ctx, proj, proj ? proj->type() : type->proj(n, i), true);
+        ptrn(os, ctx, proj, proj ? proj->type() : type->proj(n, i), true, binder_proj(type, n, i));
         sep = ", ";
     }
     std::print(os, "{} as {}", r, name(ctx, var));
@@ -427,7 +454,7 @@ void curry(std::ostream& os,
     for (auto sep = ""; auto i : std::views::iota(size_t(0), limit)) {
         os << sep;
         auto proj = def ? live_proj(ctx, def, num, i) : nullptr;
-        ptrn(os, ctx, proj, proj ? proj->type() : type->proj(num, i));
+        ptrn(os, ctx, proj, proj ? proj->type() : type->proj(num, i), false, binder_proj(type, num, i));
         sep = ", ";
     }
     os << r;
@@ -1040,6 +1067,7 @@ private:
             // The chain spells out its Pi%s, so only their components are referenced.
             for (auto* lam : chain) {
                 schedule_inline(lam->type()->dom(), mut, ctx_.header);
+                if (auto var = lam->has_var()) schedule_proj_types(var, mut);
                 schedule_inline(lam->filter(), mut, ctx_.header);
                 if (lam == chain.back()) {
                     schedule_inline(lam->type()->codom(), mut, ctx_.header);
@@ -1047,6 +1075,17 @@ private:
                 }
             }
         }
+    }
+
+    /// A destructured parameter prints the types of its projections, where the Lam's own Var is already substituted.
+    void schedule_proj_types(const Def* def, Def* curr) {
+        auto n = def->num_tprojs();
+        if (n <= 1) return;
+        for (size_t i = 0; i != n; ++i)
+            if (auto proj = def->proj(n, i)) {
+                schedule_inline(proj->type(), curr, ctx_.header);
+                schedule_proj_types(proj, curr);
+            }
     }
 
     /// Schedules what @p def needs; @p def itself, noted in @p inline_set, prints inline.

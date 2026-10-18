@@ -908,6 +908,16 @@ const Def* normalize_conv(const Def* dst_t, const Def*, const Def* x) {
     return {};
 }
 
+const Def* normalize_idx2nat(const Def* type, const Def*, const Def* x) {
+    auto& world = type->world();
+
+    if (x->isa<Bot>()) return world.bot(type);
+    if (auto l = Lit::isa(x)) return world.lit_nat(*l);
+    if (auto s = Lit::isa(Idx::isa(x->type())); s && *s == 1) return world.lit_nat_0();
+
+    return {};
+}
+
 const Def* normalize_bitcast(const Def* dst_t, const Def*, const Def* src) {
     auto& world = dst_t->world();
     auto src_t  = src->type();
@@ -917,6 +927,9 @@ const Def* normalize_bitcast(const Def* dst_t, const Def*, const Def* src) {
 
     if (auto other = Axm::isa<bitcast>(src))
         return other->arg()->type() == dst_t ? other->arg() : world.call<bitcast>(dst_t, other->arg());
+
+    if (auto i2n = Axm::isa<idx2nat>(src); i2n && Idx::isa(dst_t))
+        return i2n->arg()->type() == dst_t ? i2n->arg() : world.call<bitcast>(dst_t, i2n->arg());
 
     if (auto l = Lit::isa(src)) {
         if (dst_t->isa<Nat>()) return world.lit(dst_t, *l);

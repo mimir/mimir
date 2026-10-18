@@ -5,6 +5,7 @@
 // RUN: %t 1 2 3 ; test $? -eq 4
 // RUN: %t a b c d e f ; test $? -eq 7
 
+plugin core;
 plugin mem;
 
-extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) = return (m, argc);
+extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (I8, 0)», 0), return: Cn [mem.M 0, I32]) = return (m, argc);

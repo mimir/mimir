@@ -12,24 +12,23 @@ use core.ops.u.w;
 
 extern con atoi [mem.M 0, mem.Ptr0 I8, Cn [mem.M 0, I32]];
 
-extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8), return: Cn [mem.M 0, I32]) =
-    let argv = mem.assume (argv, 4);
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 I8», return: Cn [mem.M 0, I32]) =
     con for_body (i: I32, (acc_a acc_b: I32), continue: Cn [I32, I32]) =
         let a: I32 = i + acc_a;
         let b: I32 = i - acc_b;
         continue (a, b);
 
     con atoi_cont_begin (m: mem.M 0, start: I32) =
-        let (m, stop_str) = mem.load (m, mem.lea (argv, 2₄));
+        let (m, stop_str) = mem.load (m, mem.lea (argv, core.idx 0 (core.idx2nat argc) 2));
         con atoi_cont_end (m: mem.M 0, stop: I32) =
-            let (m, step_str) = mem.load (m, mem.lea (argv, 3₄));
+            let (m, step_str) = mem.load (m, mem.lea (argv, core.idx 0 (core.idx2nat argc) 3));
             con atoi_cont_step (m: mem.M 0, step: I32) =
                 con for_exit (acc: [I32, I32]) = return (m, acc#ff);
                 affine.For for_body for_exit (start, stop, step, (0I32, 5I32));
             atoi (m, step_str, atoi_cont_step);
         atoi (m, stop_str, atoi_cont_end);
 
-    let (m, start_str) = mem.load (m, mem.lea (argv, 1₄));
+    let (m, start_str) = mem.load (m, mem.lea (argv, core.idx 0 (core.idx2nat argc) 1));
     atoi (m, start_str, atoi_cont_begin);
 
 // CHECK-NOT: affine.for
