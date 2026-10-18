@@ -9,6 +9,7 @@ namespace mim::plug::mem::phase {
 /// The slot's continuation receives the remainder of the alloc's home.
 /// Only allocations of at most `-X mem:heap2stack=<n>` elements in address space 0 qualify; `0` disables this phase.
 /// A slot lives until its function returns, so an alloc in a loop of its function stays on the heap.
+/// A `mem.free` of a converted alloc is dropped.
 class Heap2Stack : public RWPhase {
 public:
     Heap2Stack(World&, flags_t annex);
@@ -24,6 +25,7 @@ private:
     const nat_t max_;
     /// Old tail ↦ the allocs on its chain to turn into slots, in program order.
     DefMap<fe::Vector<const App*>> slots_;
+    DefSet converted_;
 };
 
 } // namespace mim::plug::mem::phase

@@ -5,7 +5,7 @@
 #include <fe/container.h>
 #include <fe/worklist.h>
 
-#include <mim/plug/mem/autogen.h>
+#include <mim/plug/mem/mem.h>
 
 using namespace std::literals;
 
@@ -15,9 +15,7 @@ namespace {
 
 bool is_memop_res(const Def* fd) {
     auto proj = fd->isa<Extract>();
-    if (!proj) return false;
-    auto types = proj->tuple()->type()->ops();
-    return std::ranges::any_of(types, [](auto d) { return Axm::isa<mem::M>(d); });
+    return proj && mem::has_mem_ty(proj->tuple()->type());
 }
 
 /// The free (non-closed, not-nested) Def%s directly reachable from @p nest's root.

@@ -83,7 +83,9 @@ private:
         using VarWorklist = fe::DFSWorklist<GIDSet<const Var*>>;
         /// The slot Var%s reachable from @p todo through the lattice and slot2stored_.
         Vars reachable_slots(VarWorklist& todo);
-        /// A direct-style call may access every slot reachable from its abstract callee and non-mem args.
+        /// Like free_vars() but skips mem-typed parts, which cannot carry a slot's ptr.
+        Vars non_mem_free_vars(const Def* def);
+        /// A direct-style call may access every slot reachable from the non-mem parts of its abstract callee and arg.
         void pin_reachable_slots(const Def* abstr_callee, const Def* abstr_arg);
         void pin_slot(const App* slot);
         /// Writes `concr ↦ abstr` resolved against @p sloxy, which pin_slot erases again.
@@ -102,6 +104,7 @@ private:
         LamMap<Def2Def> lam2sloxy2val_;
         DefSet visited_;
         DefSet first_;
+        DefMap<Vars> non_mem_fvs_;
 
         // global (kept between iterations)
         DefSet slots_;                 // actually slot ptrs

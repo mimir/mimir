@@ -18,6 +18,7 @@ void dedup(DefVec& defs) {
 const Def* EscapeAnalysis::rewrite_imm(const Def* def) {
     auto res = mim::Analysis::rewrite_imm(def);
     if (def->isa<Var>() || !def->type()) return res;
+    if (auto alloc = freed_alloc(def)) freed_.emplace(alloc);
 
     // A value whose type cannot hold a handle (a loaded scalar, say) cannot alias one.
     if (!may_hold(def->type())) {
@@ -86,7 +87,7 @@ void EscapeAnalysis::leave() {
         // A pointer stored into memory may be loaded again anywhere.
         if (auto store = Axm::isa<mem::store>(op)) {
             escape(store->arg(3, 2));
-        } else if (!Axm::isa<mem::load>(op)) {
+        } else if (!Axm::isa<mem::load>(op) && !freed_alloc(op)) {
             escape(op->callee());
             escape(op->arg());
         }
@@ -115,19 +116,40 @@ bool EscapeAnalysis::may_hold(const Def* type) const {
 }
 
 std::optional<fe::Vector<const App*>> EscapeAnalysis::walk(Lam* lam, const App* tail) {
-    auto ops = fe::Vector<const App*>();
-    auto cur = mem_def(tail->arg());
-    if (!cur) return ops;
-    auto var = mem_var(lam);
-    if (!var) return {};
-    while (cur != var) {
-        auto ex = cur->isa<Extract>();
-        auto op = ex ? ex->tuple()->isa<App>() : cur->isa<App>();
-        if (!op || !(cur = mem_def(op->arg()))) return {};
-        ops.emplace_back(op);
-    }
+    auto ops  = fe::Vector<const App*>();
+    auto done = LamSet();
+    if (auto mem = exit_mem(tail, done); mem && !walk(lam, mem, ops)) return {};
     std::ranges::reverse(ops);
     return ops;
+}
+
+const Def* EscapeAnalysis::walk(Lam* lam, const Def* mem, fe::Vector<const App*>& ops) {
+    auto var  = mem_var(lam);
+    auto lvar = lam->has_var();
+    while (mem != var) {
+        if (!var && (!lvar || !mem->has_free_var(lvar))) break;
+        auto ex = mem->isa<Extract>();
+        auto op = ex ? ex->tuple()->isa<App>() : mem->isa<App>();
+        if (!op || !(mem = mem_def(op->arg()))) return nullptr;
+        ops.emplace_back(op);
+    }
+    return mem;
+}
+
+const Def* EscapeAnalysis::exit_mem(const App* tail, LamSet& done) {
+    if (auto mem = mem_def(tail->arg())) return mem;
+
+    const Def* res = nullptr;
+    for (auto arg : tail->targs())
+        if (auto k = arg->isa_mut<Lam>(); k && k->is_set() && !mem_var(k) && done.emplace(k).second)
+            if (auto body = k->body()->isa<App>())
+                if (auto mem = exit_mem(body, done)) {
+                    auto ops   = fe::Vector<const App*>();
+                    auto start = walk(k, mem, ops);
+                    if (!start || (res && start != res)) return nullptr;
+                    res = start;
+                }
+    return res;
 }
 
 void EscapeAnalysis::join(DefVec& carried, const Def* def) const {

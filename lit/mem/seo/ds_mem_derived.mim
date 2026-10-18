@@ -1,0 +1,19 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// The direct-style `mem.free` only gets a ptr derived from the slot continuation's memory, not the slot's ptr.
+// So it does not prevent the promotion of the slot.
+
+plugin core;
+plugin mem;
+
+extern fun test(m: mem.M 0, a: Nat): [mem.M 0, Nat] =
+    ret (m, p) = mem.slot (Nat, 0) $ m;
+    let m      = mem.store (m, p, a);
+    let (m, q) = mem.malloc (Nat, 0) (m, 8);
+    let m      = mem.free (m, q);
+    let (m, x) = mem.load (m, p);
+    return (m, x);
+
+// CHECK-NOT: mem.slot
+// CHECK-NOT: mem.load
+// CHECK: return_1 ({{.*}}, a)

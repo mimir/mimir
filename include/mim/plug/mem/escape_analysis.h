@@ -13,9 +13,10 @@ namespace mim::plug::mem {
 /// The *home* of an allocation is the Lam on whose memory chain it sits.
 /// An allocation *escapes* if it flows into the data of a tail call - returned, or handed to a callee or continuation -
 /// or if an escaping Lam mentions it.
-/// Any op but `mem.load` and the address of a `mem.store` may retain the pointers it is handed, so they escape there.
-/// A Lam escapes if its use is *unknown* - it is used as a value - or if an escaping Lam jumps to it.
-/// An axiom in control position is assumed to only pass control on to the continuations it receives.
+/// Any op but `mem.load`, the address of a `mem.store`, and a `mem.free` of the allocation itself may retain the
+/// pointers it is handed, so they escape there. A Lam escapes if its use is *unknown* - it is used as a value - or if
+/// an escaping Lam jumps to it. An axiom in control position is assumed to only pass control on to the continuations it
+/// receives.
 ///
 /// A buffer-typed parameter of a Lam takes on the value its known call sites pass, as in SCCP.
 /// An external Lam has unknown call sites, so whatever is passed to it escapes.
@@ -45,6 +46,15 @@ public:
     bool escaping(Lam* lam) const { return escaping_.contains(lam); }
     /// Is the local @p alloc only mentioned on its home's own memory chain?
     bool confined(const Def* alloc) const { return !shared_.contains(alloc); }
+    /// Does a `mem.free` release @p alloc?
+    bool freed(const Def* alloc) const { return freed_.contains(alloc); }
+    /// The allocation @p def releases if it is a `mem.free` of one; `nullptr` otherwise.
+    static const App* freed_alloc(const Def* def) {
+        if (auto free = Axm::isa<mem::free>(def))
+            if (auto ex = free->arg(2, 1)->isa<Extract>())
+                if (auto app = ex->tuple()->isa<App>(); app && allocates(app)) return app;
+        return nullptr;
+    }
     ///@}
 
 private:
@@ -54,6 +64,11 @@ private:
 
     bool may_hold(const Def* type) const;
     std::optional<fe::Vector<const App*>> walk(Lam* lam, const App* tail);
+    /// Yields where @p mem starts in @p lam - its memory Var or the memory it captures - or `nullptr` if lost.
+    /// Collects the @p ops on the way in reverse program order.
+    const Def* walk(Lam* lam, const Def* mem, fe::Vector<const App*>& ops);
+    /// The memory @p tail hands on - directly or captured by the continuation of a direct-style call.
+    const Def* exit_mem(const App* tail, LamSet& done);
     /// Adds what @p def may carry to @p carried, possibly twice; a nested Lam carries itself.
     void join(DefVec& carried, const Def* def) const;
 
@@ -76,6 +91,7 @@ private:
     LamMap<Chain> chains_;
     DefMap<DefVec> aliases_; ///< What a value may carry; *absent* means nothing.
     DefSet shared_;
+    DefSet freed_;
     LamSet escaping_;
 };
 

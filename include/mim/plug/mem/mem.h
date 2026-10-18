@@ -50,6 +50,14 @@ inline const Def* mem_def(const Def* def) {
 /// Returns the memory argument of a function if it has one.
 inline const Def* mem_var(Lam* lam) { return mem_def(lam->var()); }
 
+/// Is @p type `mem.M` or a Sigma with a `mem.M` component?
+inline bool has_mem_ty(const Def* type) {
+    if (Axm::isa<mem::M>(type)) return true;
+    if (auto sigma = type->isa<Sigma>())
+        return std::ranges::any_of(sigma->ops(), [](const Def* op) { return Axm::isa<mem::M>(op); });
+    return false;
+}
+
 /// Removes recusively all occurences of mem from a type (sigma).
 inline const Def* strip_mem_ty(const Def* def) {
     auto& world = def->world();
