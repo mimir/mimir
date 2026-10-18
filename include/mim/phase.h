@@ -371,7 +371,7 @@ protected:
     void start() override;
 
     /// @name Coercion
-    /// Every checking position - an App's argument and result, a Tuple's ops, a Lam's body - coerce()s its value.
+    /// Every checking position - an App's argument, a Tuple's ops, a Lam's body - coerce()s its value.
     /// This reconciles a representation the phase changed with one it did not, e.g. an Axm's signature.
     ///@{
     const Def* rewrite_imm_App(const App*) override;

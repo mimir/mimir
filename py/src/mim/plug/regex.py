@@ -51,24 +51,33 @@ class RegBuilder(MimPlugin):
 
     def build(self):
         function_name = "match_func"
+        mem_t = self.world.call(mem.M, self.world.lit_nat_0())
+        str_t = self.world.call(mem.Ptr0, [self.world.type_i8()])
+
+        strlen = self.world.mut_con([mem_t, str_t, self.world.cn([mem_t, self.world.type_i64()])]).set("strlen")
+
         self.match_func = self.world.mut_con([
-            self.world.call(mem.M, self.world.lit_nat_0()),
-            self.world.call(
-                mem.Ptr0,
-                [self.world.arr(self.world.top_nat(), self.world.type_i8())],
-            ),
-            self.world.cn([
-                self.world.call(mem.M, self.world.lit_nat_0()),
-                self.world.type_bool(),
-            ]),
+            mem_t,
+            str_t,
+            self.world.cn([mem_t, self.world.type_bool()]),
         ]).set(function_name)
 
         self.match_func.externalize()
-        state_mem, to_match, exit = self.match_func.var().projs(3)
+        state_mem, c_str, exit = self.match_func.var().projs(3)
+
+        match_len = self.world.mut_con([mem_t, self.world.type_i64()])
+        self.match_func.app(False, strlen, [state_mem, c_str, match_len])
+        state_mem, length = match_len.var().projs(2)
+
+        n = self.world.call(
+            core.nat.add,
+            [self.world.call(core.bitcast, self.world.type_nat(), length), self.world.lit_nat_1()],
+        )
+        to_match = self.world.call(mem.assume, [c_str, n])
 
         regex_mem, matched, pos = self.world.implicit_app(
             self._final_def,
-            [state_mem, to_match, self.world.lit(self.world.type_idx(self.world.top_nat()), 0)],
+            [state_mem, to_match, self.world.lit(self.world.type_idx(n), 0)],
         ).projs(3)
         last_elem_ptr = self.world.call(mem.lea, [to_match, pos])
         final_mem, last_elem = self.world.call(mem.load, [regex_mem, last_elem_ptr]).projs(2)
@@ -79,7 +88,7 @@ class RegBuilder(MimPlugin):
             self.world.lit_nat_0(),
             [matched, eq_zero],
         )
-        self.match_func.app(False, exit, [final_mem, matched_and_end])
+        match_len.app(False, exit, [final_mem, matched_and_end])
 
         self.register_func(function_name, [ctypes.c_char_p], ctypes.c_bool)
 
