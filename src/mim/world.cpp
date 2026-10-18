@@ -679,7 +679,6 @@ const Def* World::extract_fused(const Def* d, Shape index) {
 /// `d#index ← val` replaces all of it.
 bool World::is_folded_axis(const Def* type, const Def* index, const Def* size) {
     if (Lit::isa(size) == 1) {
-        if (Lit::isa(index) != 0) log().w("index of `Idx 1` is not the literal 0: {}", index);
         // A *mutable* Sigma may be a genuine 1-tuple and still needs a real Extract/Insert; TODO mutable Arr?
         auto sigma = type->isa_mut<Sigma>();
         if (!sigma || sigma->num_ops() != 1) return true;
