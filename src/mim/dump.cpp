@@ -43,8 +43,7 @@ struct Ctx {
     /// Keyed by Var and index, because the projection itself need not exist as a Def while the World is frozen.
     DefMap<std::string> names;
     DefMap<nat_t> ret_projs; ///< Var -> index of the `ret` component within it.
-    DefSet opaque;           ///< Def%s no pattern took apart, so their components have no name of their own.
-    DefSet destructured;     ///< Def%s a pattern took apart, so their components print by name.
+    DefMap<bool> split;      ///< Whether a pattern took a Def apart, so that its components print by name.
     DefSet bound;            ///< Projections of a dependent Sigma's Var a pattern binds in place of a dead component.
     DefSet whole_vars;       ///< Var%s used as a whole; see isa_fun.
     DefSet arms;             ///< Lam%s a `match` spells out as its arms instead of declaring them.
@@ -105,10 +104,16 @@ std::string pick_name(Ctx* ctx, const Def* def) {
     return ctx->names.emplace(def, name).first->second;
 }
 
+/// Did a pattern keep @p def whole?
+bool is_opaque(Ctx* ctx, const Def* def) {
+    auto split = fe::lookup(ctx->split, def);
+    return split && !*split;
+}
+
 /// The projection of the aliased Var that @p def - a projection of a Pi's Var - stands for; see Ctx::aliases.
 const Def* alias_proj(Ctx* ctx, const Def* def) {
     if (auto ex = def->isa<Extract>())
-        if (auto var = fe::lookup(ctx->aliases, ex->tuple()); var && !ctx->opaque.contains(var))
+        if (auto var = fe::lookup(ctx->aliases, ex->tuple()); var && !is_opaque(ctx, var))
             if (auto l = Lit::isa(ex->index())) return live_proj(ctx, var, ex->tuple()->num_tprojs(), *l);
     return nullptr;
 }
@@ -119,10 +124,11 @@ bool by_name(Ctx* ctx, const Extract* ex) {
     if (!ctx) return ex->tuple()->isa<Var>();
     if (ctx->bound.contains(ex)) return true;
     // A Var's component prints by name - unless the pattern that would have bound that name kept the Var whole.
-    if (ctx->opaque.contains(ex->tuple())) return false;
+    auto split = fe::lookup(ctx->split, ex->tuple());
+    if (split && !*split) return false;
     // An aliased Var's component the Lam's Var does not hand out is spelled via the Lam's Var instead.
     if (ctx->aliases.contains(ex->tuple()) && !alias_proj(ctx, ex)) return false;
-    return ex->tuple()->isa<Var>() || ctx->destructured.contains(ex->tuple());
+    return ex->tuple()->isa<Var>() || (split && *split);
 }
 
 /// Def::unique_name - or a plain name while a World is dumped or a diagnostic is being formatted, where a gid is noise.
@@ -359,24 +365,31 @@ const Def* binder_proj(const Def* type, size_t n, size_t i) {
 /// spells a *dependent* component with the domain's binders instead of this pattern's. That is where
 /// destructuring stops: @p def stays opaque and its components print as `def#i` rather than by a dangling name.
 bool destructible(Ctx* ctx, const Def* def, const Def* type, size_t n) {
-    if (!def) return false;
-    if (n <= 1) {
-        // Def::num_tprojs keeps a Seq above Flags::scalarize_threshold whole, so its components have no name either.
-        if (ctx && def->num_projs() > 1) ctx->opaque.emplace(def);
-        return false;
-    }
+    if (!def || n <= 1) return false;
     auto var  = type->isa_mut<Sigma>() ? type->has_var() : nullptr;
     auto done = DefSet();
 
     for (size_t i = 0; i != n; ++i) {
         if (live_proj(ctx, def, n, i)) continue; // it exists and hence brings its own name and type
         auto t = type->proj(n, i);
-        if (!t || (var && !only_projs(t, var, done))) {
-            if (ctx) ctx->opaque.emplace(def);
-            return false;
-        }
+        if (!t || (var && !only_projs(t, var, done))) return false;
     }
     return true;
+}
+
+/// destructible, recorded in Ctx::split so that by_name agrees with the pattern.
+bool split(Ctx* ctx, const Def* def, const Def* type, size_t n) {
+    if (!ctx || !def) return destructible(ctx, def, type, n);
+    if (auto res = fe::lookup(ctx->split, def)) return *res;
+    auto res = destructible(ctx, def, type, n);
+    // Def::num_tprojs keeps a Seq above Flags::scalarize_threshold whole, so its components have no name either.
+    if (res || n > 1 || def->num_projs() > 1) ctx->split.emplace(def, res);
+    return res;
+}
+
+/// Taken apart, a dependent Sigma no longer binds its Var itself; see Ctx::aliases.
+void alias_sigma(Ctx* ctx, const Def* type, const Def* def) {
+    if (auto [_, var] = type->isa_binder<Sigma>(); ctx && var) ctx->aliases.emplace(var, def);
 }
 
 void ptrn(std::ostream&, Ctx*, const Def*, const Def*, bool = false, const Def* = nullptr);
@@ -405,12 +418,8 @@ void ptrn(std::ostream& os, Ctx* ctx, const Def* def, const Def* type, bool brck
     // Unless some component exists, nothing refers to one and the whole reads back the same.
     auto used
         = std::ranges::any_of(std::views::iota(size_t(0), n), [&](size_t i) { return live_proj(ctx, def, n, i); });
-    if (!used || !destructible(ctx, def, type, n)) return std::print(os, "{}: {}", name(ctx, def), Op(ctx, type));
-    if (ctx) {
-        ctx->destructured.emplace(def);
-        // Taken apart, a dependent Sigma no longer binds its Var itself; see Ctx::aliases.
-        if (auto [_, var] = type->isa_binder<Sigma>(); var) ctx->aliases.emplace(var, def);
-    }
+    if (!used || !split(ctx, def, type, n)) return std::print(os, "{}: {}", name(ctx, def), Op(ctx, type));
+    alias_sigma(ctx, type, def);
 
     os << (brckt ? '[' : '(');
     ptrns(os, ctx, def, type, n, n, brckt);
@@ -423,7 +432,7 @@ void dom_ptrn(std::ostream& os, Ctx* ctx, const Def* var, const Def* type, bool 
     auto l = implicit ? '{' : '[';
     auto r = implicit ? '}' : ']';
     auto n = var->num_tprojs();
-    if (!destructible(ctx, var, type, n)) return std::print(os, "{}{}: {}{}", l, name(ctx, var), Op(ctx, type), r);
+    if (!split(ctx, var, type, n)) return std::print(os, "{}{}: {}{}", l, name(ctx, var), Op(ctx, type), r);
 
     os << l;
     ptrns(os, ctx, var, type, n, n, true);
@@ -431,6 +440,7 @@ void dom_ptrn(std::ostream& os, Ctx* ctx, const Def* var, const Def* type, bool 
 }
 
 /// @p num is how many binders the domain has; @p limit how many of them to print - a returning Lam hides its last.
+/// @p split tells whether the parameter list comes apart; see mim::split.
 void curry(std::ostream& os,
            Ctx* ctx,
            const Def* def,
@@ -438,13 +448,13 @@ void curry(std::ostream& os,
            bool implicit,
            size_t num,
            size_t limit,
+           bool split,
            bool alias) {
     auto l = implicit ? '{' : '(';
     auto r = implicit ? '}' : ')';
 
     if (limit == 0) return (void)(os << l << r);
-    // Same as in ptrn: a parameter list only comes apart if every parameter is there to be named.
-    if (limit == num && !destructible(ctx, def, type, num)) {
+    if (!split) {
         if (def) return std::print(os, "{}{}: {}{}", l, name(ctx, def), Op(ctx, type), r);
         return std::print(os, "{}_: {}{}", l, Op(ctx, type), r);
     }
@@ -475,16 +485,15 @@ bool isa_fun(Ctx* ctx, const Lam* lam) {
 void lam_ptrn(std::ostream& os, Ctx* ctx, Lam* lam, bool fun, bool con, bool last, bool alias) {
     auto num   = num_binders(lam->type()->dom());
     auto limit = fun && last ? num - 1 : num;
-    if (ctx) {
-        if (auto var = lam->has_var()) {
-            if (auto pi_var = lam->type()->has_var()) ctx->aliases.emplace(pi_var, var);
-            // Kept whole, the domain prints as a Sigma that binds its Var itself.
-            if (auto [_, sigma_var] = lam->dom()->isa_binder<Sigma>();
-                sigma_var && (limit != num || destructible(ctx, var, lam->dom(), num)))
-                ctx->aliases.emplace(sigma_var, var);
-        }
+    auto var   = lam->has_var();
+    // A parameter list only comes apart if every parameter is there to be named - unless a `fun` hides its `ret`.
+    auto parts = limit != num || (limit != 0 && split(ctx, var, lam->dom(), num));
+    if (ctx && var) {
+        if (auto pi_var = lam->type()->has_var()) ctx->aliases.emplace(pi_var, var);
+        // Kept whole, the domain prints as a Sigma that binds its Var itself.
+        if (parts) alias_sigma(ctx, lam->dom(), var);
     }
-    curry(os, ctx, lam->has_var(), lam->type()->dom(), lam->type()->is_implicit(), num, limit, alias);
+    curry(os, ctx, var, lam->type()->dom(), lam->type()->is_implicit(), num, limit, parts, alias);
     auto& w = lam->world();
     if (auto dflt = last && (fun || con) ? w.lit_ff() : w.lit_tt(); lam->filter() != dflt)
         std::print(os, "@({})", Op(ctx, lam->filter()));
@@ -797,7 +806,7 @@ public:
                 for (auto mut : nom->local_muts())
                     bodies.emplace_back(mut);
             }
-        auto cycles = bodies.empty() ? DefMap<DefVec>() : nom_cycles(Nest(bodies.front()->world(), bodies, true), noms);
+        if (!bodies.empty()) group_noms(Nest(bodies.front()->world(), bodies, true), noms);
         std::string_view curr_mod;
         for (const auto& [mod, name, def] : annexes) {
             if (mod != curr_mod) {
@@ -806,14 +815,9 @@ public:
                 curr_mod = mod;
                 ctx_.mod = mod.empty() ? std::string() : std::string(mod) + ".";
             }
-            if (auto cycle = fe::lookup(cycles, def)) {
-                // Everything a cycle needs precedes its last member.
-                if (def != cycle->back()) continue;
-                std::println(os_, "{}mutual", ctx_.tab);
-                ++ctx_.tab;
-                for (auto member : *cycle)
-                    emit_nom("anx nom", names[member], member->as<Nom>());
-                std::println(os_, "{}end", --ctx_.tab);
+            if (deferred_.contains(def)) continue;
+            if (auto group = fe::lookup(mutual_, def)) {
+                emit_mutual(*group, [&](const Def* m) { emit_nom("anx nom", names[m], m->as<Nom>()); });
                 continue;
             }
             if (auto nom = def->isa<Nom>()) {
@@ -1002,7 +1006,7 @@ private:
         for (auto m : group)
             schedule_body(m);
         order_.emplace_back(group.front(), curr);
-        if (group.size() > 1) mutual_.emplace(group.front(), std::move(group));
+        if (group.size() > 1) mutual_.emplace(group.front(), DefVec(group.begin(), group.end()));
     }
 
     /// A block only sees what precedes it, so the mutually recursive siblings of @p mut print as one `mutual` group.
@@ -1141,20 +1145,14 @@ private:
     /// @name emit
     ///@{
     void emit(Def* key) {
-        auto defs   = key ? std::move(bucket_[key]) : std::move(top_);
-        auto cycles = nest_ ? nom_cycles(*nest_, defs) : DefMap<DefVec>();
+        auto defs = key ? std::move(bucket_[key]) : std::move(top_);
+        if (nest_) group_noms(*nest_, defs);
         for (auto def : defs) {
-            auto mut = isa_decl(def);
-            if (auto cycle = fe::lookup(cycles, def)) {
-                // Everything a cycle needs precedes its last member.
-                if (def != cycle->back()) continue;
-                sep(Prev::Decl);
-                emit_mutual(*cycle);
-                continue;
-            }
-            sep(mut ? Prev::Decl : Prev::Let);
-            if (auto group = mut ? fe::lookup(mutual_, mut) : nullptr)
-                emit_mutual(*group);
+            if (deferred_.contains(def)) continue;
+            auto group = fe::lookup(mutual_, def);
+            sep(group || isa_decl(def) ? Prev::Decl : Prev::Let);
+            if (group)
+                emit_mutual(*group, [this](const Def* m) { emit_item(m); });
             else
                 emit_item(def);
         }
@@ -1172,13 +1170,14 @@ private:
         std::println(os_, "{}{} {} = {};", ctx_.tab, kw, name, Op(&ctx_, nom->op()));
     }
 
-    /// The Nom%s among @p defs on a cycle, each mapped to its whole cycle in the order of @p defs.
+    /// Groups the Nom%s among @p defs that lie on a cycle, in the order of @p defs.
     /// No immutable refers back to itself, so such a cycle runs through a recursive SCC.
-    static DefMap<DefVec> nom_cycles(const Nest& nest, const DefVec& defs) {
-        auto cycles = DefMap<DefVec>();
+    /// Everything a cycle needs precedes its last member, so that is where the group goes.
+    void group_noms(const Nest& nest, const DefVec& defs) {
+        auto grouped = DefSet();
         for (auto def : defs) {
             auto nom = def->isa<Nom>();
-            if (!nom || cycles.contains(nom)) continue;
+            if (!nom || grouped.contains(nom)) continue;
             for (auto mut : nom->local_muts()) {
                 auto node = nest[mut];
                 if (!node || node->is_root() || !node->is_recursive()) continue;
@@ -1186,13 +1185,14 @@ private:
                 auto cycle    = DefVec();
                 for (auto d : defs)
                     if (on_cycle.contains(d)) cycle.emplace_back(d);
-                if (cycle.size() > 1)
-                    for (auto member : cycle)
-                        cycles[member] = cycle;
+                if (cycle.size() > 1) {
+                    grouped.insert(cycle.begin(), cycle.end());
+                    deferred_.insert(cycle.begin(), cycle.end() - 1);
+                    mutual_.emplace(cycle.back(), std::move(cycle));
+                }
                 break;
             }
         }
-        return cycles;
     }
 
     /// The Nom%s @p scc reaches that reach it back.
@@ -1217,14 +1217,14 @@ private:
         return res;
     }
 
-    void emit_mutual(const auto& group) {
+    void emit_mutual(const DefVec& group, auto emit_member) {
         std::println(os_, "{}mutual", ctx_.tab);
         ++ctx_.tab;
         {
             auto _ = fe::Restore(prev_, Prev::None);
             for (auto def : group) {
                 sep(isa_decl(def) ? Prev::Decl : Prev::Let);
-                emit_item(def);
+                emit_member(def);
             }
         }
         std::println(os_, "{}end", --ctx_.tab);
@@ -1258,7 +1258,8 @@ private:
         auto dom = rule->dom();
         auto num = num_binders(dom);
         std::print(os_, "{}rule {} ", ctx_.tab, id(&ctx_, rule));
-        curry(os_, &ctx_, rule->has_var(), dom, false, num, num, false);
+        auto var = rule->has_var();
+        curry(os_, &ctx_, var, dom, false, num, num, num != 0 && split(&ctx_, var, dom, num), false);
         std::print(os_, ": {}", Full(&ctx_, rule->lhs()));
         if (rule->guard() != rule->world().lit_tt()) std::print(os_, " when {}", Full(&ctx_, rule->guard()));
         std::println(os_, " => {};", Full(&ctx_, rule->rhs()));
@@ -1361,8 +1362,9 @@ private:
     MutMap<DefVec> bucket_;
     MutMap<Def*> absorbed_; ///< Inner Lam of a curried chain -> the chain's outermost one.
     DefSet done_;
-    DefMap<Def*> pending_;            ///< Defs whose deps are being scheduled -> their block's mutable.
-    MutMap<fe::Vector<Def*>> mutual_; ///< First member of a `mutual` group -> the whole group.
+    DefMap<Def*> pending_;  ///< Defs whose deps are being scheduled -> their block's mutable.
+    DefMap<DefVec> mutual_; ///< The member a `mutual` group prints at -> the whole group.
+    DefSet deferred_;       ///< The other members of a `mutual` group, which print with it.
     Ctx ctx_;
     Srcs srcs_;
     MutSet scheduled_;
