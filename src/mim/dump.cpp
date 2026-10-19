@@ -761,11 +761,8 @@ struct DumpAnnex {
 
 /// Emits Def%s as Mim declarations.
 ///
-/// Dump::Expr and Dump::Local walk Def::deps and nothing else - which is what makes them safe to call from a
-/// debugger, where the World is usually half-built. Dump::Scope and Dump::All buy a better layout with a Nest:
-/// everything goes into the block of the innermost binder its free Var%s refer to.
-/// Should that analysis choke on the very program you wanted to look at, World::dot still shows it - its tooltips
-/// only ever use Dump::Expr.
+/// Dump::Scope and Dump::All place everything into the block of the innermost binder its free Var%s refer to.
+/// Dump::Expr asks no analysis at all, and neither do the tooltips of World::dot.
 class Dumper {
 public:
     /// @p srcs are the files an `import` pulls in: they declare their own content, so a dump must not repeat it.
@@ -793,7 +790,7 @@ public:
         for (const auto& [_, __, annex] : annexes)
             for (auto mut : content(annex)->local_muts())
                 if (isa_decl(mut)) muts.emplace_back(mut);
-        dump_muts(muts);
+        dump_muts(annexes.front().def->world(), muts);
 
         sep(Prev::Decl);
         auto noms   = DefVec();
@@ -839,44 +836,29 @@ public:
     ///@{
     /// @p def and whatever Dumper::mode_ reaches from it.
     void dump(const Def* def) {
-        if (auto mut = isa_decl(def)) return dump_muts({mut});
+        if (auto mut = isa_decl(def)) return dump_muts(def->world(), {mut});
 
         auto muts = fe::Vector<Def*>();
-        if (mode_ != Dump::Local)
-            for (auto mut : def->local_muts())
-                if (isa_decl(mut)) muts.emplace_back(mut);
-        dump_muts(muts);
-
-        block_ = nullptr; // a non-decl opens no block, so nothing can be entered or placed into one
-        emit_block(def);
-        sep(Prev::Let);
-        emit_tail(def, "");
+        for (auto mut : def->local_muts())
+            if (isa_decl(mut)) muts.emplace_back(mut);
+        dump_muts(def->world(), muts, def);
     }
 
-    void dump(fe::View<Def*> muts) { dump_muts(muts); }
+    void dump(World& world, fe::View<Def*> muts) { dump_muts(world, muts); }
     ///@}
 
 private:
     /// What the current block emitted last; only a declaration is worth setting apart.
     enum class Prev { None, Let, Decl };
 
-    /// Emits what @p roots reach within @p nest: its virtual root is the top level.
-    void visit_nest(const Nest& nest, fe::View<Def*> roots) {
-        auto _ = fe::Restore(nest_, &nest);
-        block_ = nest.root()->mut();
-        for (auto root : roots)
-            schedule_(root, nullptr);
-        bucket();
-        emit(nullptr);
-    }
-
     /// An `import` re-declares what it *exports* - but a plain `let` in that file stays local to it, so the dump has
     /// to spell that one out or nothing binds the name it refers to.
     bool is_imported(Def* mut) const { return mut->is_external() && srcs_.contains(mut->loc().src); }
 
-    /// Schedules @p root into the current Dumper::block_ and emits whatever landed there.
-    void emit_block(const Def* root) {
-        schedule_(root, nullptr);
+    /// Schedules @p roots and emits what lands at the top level.
+    void emit_top(const auto& roots) {
+        for (auto root : roots)
+            schedule_(root);
         bucket();
         emit(nullptr);
     }
@@ -884,27 +866,14 @@ private:
     /// @name schedule
     ///@{
     /// The closed mutables @p muts reach, callees first: Mim binds a name before its uses.
-    void dump_muts(fe::View<Def*> muts) {
-        if (muts.empty()) return;
-        if (mode_ == Dump::Scope) {
-            for (auto mut : muts)
-                if (mut->is_closed() && !is_imported(mut)) visit_nest(Nest(mut), {mut});
-            return;
-        }
-
+    /// A non-decl @p tail ends the dump; it is spelled out after the `let`s it needs.
+    void dump_muts(World& world, fe::View<Def*> muts, const Def* tail = nullptr) {
+        if (muts.empty() && !tail) return;
         auto todo = fe::Vector<Def*>();
         for (auto mut : muts)
             post_order(mut, todo);
         for (auto [lam, match] : arm_of_)
             if (match && is_spellable(lam)) ctx_.arms.emplace(lam);
-
-        if (mode_ == Dump::Local) {
-            for (auto curr : todo) {
-                block_ = curr;
-                emit_block(curr);
-            }
-            return;
-        }
 
         // Nest::Node::topo_ breaks ties by gid, which a re-read dump need not reproduce.
         auto roots = fe::Vector<Def*>();
@@ -915,7 +884,16 @@ private:
             else
                 roots.emplace_back(mut);
         }
-        visit_nest(Nest(muts.front()->world(), muts, true), roots);
+        if (mode_ == Dump::Scope) scope_.insert(muts.begin(), muts.end());
+
+        const auto nest = Nest(world, muts, true);
+        auto _          = fe::Restore(nest_, &nest);
+        emit_top(roots);
+        if (tail) {
+            emit_top(std::array{tail});
+            sep(Prev::Let);
+            emit_tail(tail, "");
+        }
     }
 
     static bool is_spellable(const Def* arm) {
@@ -965,39 +943,35 @@ private:
                 ctx_.whole_vars.emplace(op);
     }
 
-    void schedule_(const Def* def, Def* curr) {
+    void schedule_(const Def* def) {
         if (!def) return;
-        if (auto mut = isa_decl(def); mut && !ctx_.arms.contains(mut)) return schedule_mut(mut, curr);
+        if (auto mut = isa_decl(def); mut && !ctx_.arms.contains(mut)) return schedule_mut(mut);
         if (!done_.emplace(def).second) return finish(def);
         if (ctx_.arms.contains(def)) {
             // An arm has no block of its own either.
             auto lam = def->as_mut<Lam>();
             if (lam->body()->isa<Var>()) ctx_.whole_vars.emplace(lam->body());
-            schedule_inline(lam->dom(), curr, ctx_.inlined);
-            schedule_inline(lam->body(), curr, ctx_.inlined);
+            schedule_inline(lam->dom(), ctx_.inlined);
+            schedule_inline(lam->body(), ctx_.inlined);
             return;
         }
         note_vars(def);
-        schedule_deps(def, curr);
-        if (!Full(&ctx_, def)) order_.emplace_back(def, curr);
+        schedule_deps(def);
+        if (!Full(&ctx_, def)) order_.emplace_back(def);
     }
 
-    void schedule_deps(const Def* def, Def* curr) {
-        pending_[def] = curr;
-        printed_deps(def, typed_let_, [&](const Def* op) { schedule_(op, curr); });
+    void schedule_deps(const Def* def) {
+        pending_.emplace(def);
+        printed_deps(def, typed_let_, [&](const Def* op) { schedule_(op); });
         pending_.erase(def);
     }
 
     /// A mutable reached through @p def%'s deps may need @p def - and hence all of its deps - before they are done.
     void finish(const Def* def) {
-        if (auto i = pending_.find(def); i != pending_.end()) {
-            auto curr = i->second;
-            pending_.erase(i);
-            printed_deps(def, typed_let_, [&](const Def* op) { schedule_(op, curr); });
-        }
+        if (pending_.erase(def)) printed_deps(def, typed_let_, [&](const Def* op) { schedule_(op); });
     }
 
-    void schedule_mut(Def* mut, Def* curr) {
+    void schedule_mut(Def* mut) {
         if (!enter(mut) || done_.contains(mut)) return;
 
         auto group = sibling_group(mut);
@@ -1005,13 +979,13 @@ private:
             done_.emplace(m);
         for (auto m : group)
             schedule_body(m);
-        order_.emplace_back(group.front(), curr);
+        order_.emplace_back(group.front());
         if (group.size() > 1) mutual_.emplace(group.front(), DefVec(group.begin(), group.end()));
     }
 
     /// A block only sees what precedes it, so the mutually recursive siblings of @p mut print as one `mutual` group.
     fe::Vector<Def*> sibling_group(Def* mut) const {
-        auto node = nest_ ? (*nest_)[mut] : nullptr;
+        auto node = (*nest_)[mut];
         if (!node || !node->is_mutually_recursive()) return {mut};
         if (auto key = owner(node->inest()); key && inlines(key)) return {mut};
 
@@ -1033,78 +1007,80 @@ private:
 
         if (auto rule = mut->isa_mut<Rule>()) {
             // The surface syntax has no block for a rule's parts, so whatever depends on its meta variable is inlined.
-            printed_deps(rule->type(), typed_let_, [&](const Def* op) { schedule_inline(op, mut, ctx_.inlined); });
-            printed_deps(rule, typed_let_, [&](const Def* op) { schedule_inline(op, mut, ctx_.inlined); });
+            printed_deps(rule->type(), typed_let_, [&](const Def* op) { schedule_inline(op, ctx_.inlined); });
+            printed_deps(rule, typed_let_, [&](const Def* op) { schedule_inline(op, ctx_.inlined); });
         } else if (chain.empty()) {
             for (auto op : mut->deps())
-                schedule_(op, mut);
+                schedule_(op);
         } else {
             for (auto* lam : chain)
                 if (lam != mut) done_.emplace(lam), absorbed_.emplace(lam, mut);
             // The chain spells out its Pi%s, so only their components are referenced.
             for (auto* lam : chain) {
-                schedule_inline(lam->type()->dom(), mut, ctx_.header);
-                if (auto var = lam->has_var()) schedule_proj_types(var, mut);
-                schedule_inline(lam->filter(), mut, ctx_.header);
+                schedule_inline(lam->type()->dom(), ctx_.header);
+                if (auto var = lam->has_var()) schedule_proj_types(var);
+                schedule_inline(lam->filter(), ctx_.header);
                 if (lam == chain.back()) {
-                    schedule_inline(lam->type()->codom(), mut, ctx_.header);
-                    schedule_tail(lam->body(), mut);
+                    schedule_inline(lam->type()->codom(), ctx_.header);
+                    schedule_tail(lam->body());
                 }
             }
         }
     }
 
     /// A destructured parameter prints the types of its projections, where the Lam's own Var is already substituted.
-    void schedule_proj_types(const Def* def, Def* curr) {
+    void schedule_proj_types(const Def* def) {
         auto n = def->num_tprojs();
         if (n <= 1) return;
         for (size_t i = 0; i != n; ++i)
             if (auto proj = def->proj(n, i)) {
-                schedule_inline(proj->type(), curr, ctx_.header);
-                schedule_proj_types(proj, curr);
+                schedule_inline(proj->type(), ctx_.header);
+                schedule_proj_types(proj);
             }
     }
 
     /// Schedules what @p def needs; @p def itself, noted in @p inline_set, prints inline.
-    void schedule_inline(const Def* def, Def* curr, DefSet& inline_set) {
-        if (!def || def->is_closed() || has_decl(def)) return schedule_(def, curr);
+    void schedule_inline(const Def* def, DefSet& inline_set) {
+        if (!def || def->is_closed() || has_decl(def)) return schedule_(def);
         if (!inline_set.emplace(def).second) return;
         note_vars(def);
-        printed_deps(def, typed_let_, [&](const Def* op) { schedule_inline(op, curr, inline_set); });
+        printed_deps(def, typed_let_, [&](const Def* op) { schedule_inline(op, inline_set); });
     }
 
     /// A Lam's body is the tail of its block, so it is emitted there instead of as a `let` of its own.
-    void schedule_tail(const Def* def, Def* curr) {
+    void schedule_tail(const Def* def) {
         if (def && def->isa<Var>()) ctx_.whole_vars.emplace(def);
-        if (!def || has_decl(def)) return schedule_(def, curr);
+        if (!def || has_decl(def)) return schedule_(def);
         if (!done_.emplace(def).second) return finish(def);
         note_vars(def);
-        schedule_deps(def, curr);
+        schedule_deps(def);
     }
 
     /// Is @p mut ours to emit - or does it only get referenced by name?
-    bool enter(Def* mut) const { return nest_ ? (*nest_)[mut] != nullptr : mut == block_; }
+    /// Dump::Scope only enters what nests in one of Dumper::scope_.
+    bool enter(Def* mut) const {
+        auto node = (*nest_)[mut];
+        if (!node || mode_ != Dump::Scope) return node != nullptr;
+        while (!node->inest()->is_root())
+            node = node->inest();
+        return scope_.contains(node->mut());
+    }
 
     /// Turns the schedule into one list per block.
     void bucket() {
-        for (auto [def, curr] : order_) {
+        for (auto def : order_) {
             auto mut = isa_decl(def);
-            auto key = curr; // Dump::Local has one block per root and asks no analysis where anything belongs
-            if (nest_) {
-                key = owner(nest_->inest(def));
-                // A Nom is the one immutable with a declaration of its own, so it never inlines.
-                if (def->isa<Nom>()) {
-                    // A header may already refer to it, so a closed Nom goes to the top level.
-                    if (def->is_closed()) key = nullptr;
-                    while (key && inlines(key))
-                        key = owner((*nest_)[key]->inest());
-                    // TODO A Nom over a Var in its own Lam's signature has no valid place: `lam k (n: Nat, x: V n)`.
-                }
-                // A binder that prints inline has no block of its own, so what belongs into it is inlined as well.
-                if (key && inlines(key) && !(mut && is_recursive(mut))) {
-                    ctx_.inlined.emplace(def);
-                    continue;
-                }
+            auto key = owner(nest_->inest(def));
+            // A Nom is the one immutable with a declaration of its own, so it never inlines.
+            if (def->isa<Nom>()) {
+                while (key && inlines(key))
+                    key = owner((*nest_)[key]->inest());
+                // TODO A Nom over a Var in its own Lam's signature has no valid place: `lam k (n: Nat, x: V n)`.
+            }
+            // A binder that prints inline has no block of its own, so what belongs into it is inlined as well.
+            if (key && inlines(key) && !(mut && is_recursive(mut))) {
+                ctx_.inlined.emplace(def);
+                continue;
             }
             (key ? bucket_[key] : top_).emplace_back(def);
         }
@@ -1118,11 +1094,7 @@ private:
         return false;
     }
 
-    /// Without a Nest, the only recursion a block sees is @p mut referring to itself.
-    bool is_recursive(Def* mut) const {
-        if (auto node = nest_ ? (*nest_)[mut] : nullptr; node && !node->is_root()) return node->is_recursive();
-        return std::ranges::any_of(mut->deps(), [mut](const Def* op) { return op->local_muts().contains(mut); });
-    }
+    bool is_recursive(Def* mut) const { return (*nest_)[mut]->is_recursive(); }
 
     /// The mutable whose block @p node stands for; `nullptr` for the top level.
     Def* owner(const Nest::Node* node) const {
@@ -1138,7 +1110,7 @@ private:
     ///@{
     void emit(Def* key) {
         auto defs = key ? std::move(bucket_[key]) : std::move(top_);
-        if (nest_) group_noms(*nest_, defs);
+        group_noms(*nest_, defs);
         for (auto def : defs) {
             if (deferred_.contains(def)) continue;
             auto group = fe::lookup(mutual_, def);
@@ -1172,7 +1144,7 @@ private:
             if (!nom || grouped.contains(nom)) continue;
             for (auto mut : nom->local_muts()) {
                 auto node = nest[mut];
-                if (!node || node->is_root() || !node->is_recursive()) continue;
+                if (!node || !node->is_recursive()) continue;
                 auto on_cycle = scc_noms(nest, node->scc());
                 auto cycle    = DefVec();
                 for (auto d : defs)
@@ -1346,15 +1318,15 @@ private:
     Dump mode_;
     bool typed_let_;
     const Nest* nest_ = nullptr; ///< Nests the mutables of the scope being emitted.
-    Def* block_       = nullptr; ///< The mutable whose block we are filling; the only one in Dump::Local.
     Prev prev_        = Prev::None;
     fe::Vector<const Var*> rets_;
-    fe::Vector<std::pair<const Def*, Def*>> order_; ///< What to emit, in dependency order, with its block's mutable.
+    DefVec order_; ///< What to emit, in dependency order.
     DefVec top_;
     MutMap<DefVec> bucket_;
     MutMap<Def*> absorbed_; ///< Inner Lam of a curried chain -> the chain's outermost one.
     DefSet done_;
-    DefMap<Def*> pending_;  ///< Defs whose deps are being scheduled -> their block's mutable.
+    DefSet scope_;          ///< The closed mutables Dump::Scope dumps.
+    DefSet pending_;        ///< Def%s whose deps are being scheduled.
     DefMap<DefVec> mutual_; ///< The member a `mutual` group prints at -> the whole group.
     DefSet deferred_;       ///< The other members of a `mutual` group, which print with it.
     Ctx ctx_;
@@ -1452,13 +1424,11 @@ void World::dump(std::ostream& os) {
     }
     std::ranges::sort(annexes, {}, [](const auto& a) { return a.def->flags(); });
 
-    // The local dump keeps every mutable to itself: no Nest that a broken program could trip over.
-    auto mode   = flags().mim_local ? Def::Dump::Local : Def::Dump::All;
-    auto dumper = Dumper(os, mode, flags().mim_typed_let, std::move(srcs));
+    auto dumper = Dumper(os, Def::Dump::All, flags().mim_typed_let, std::move(srcs));
     dumper.plain(reserved);
     dumper.live(seen);
     if (!annexes.empty()) dumper.dump_annexes(std::move(self), annexes);
-    dumper.dump(externals().mutate());
+    dumper.dump(*this, externals().mutate());
 
     assertf(old_gid == curr_gid(), "new nodes created during dump. old_gid: {}; curr_gid: {}", old_gid, curr_gid());
 }

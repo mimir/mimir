@@ -221,7 +221,6 @@ int main(int argc, char** argv) {
             .opt(opts.dot.no_tooltip       , ""          , ""  , "--dot-no-tooltip"      , "Omits the per-node tooltip from DOT output; it accounts for roughly two fifths of the file.")
             .opt(opts.dot.show_hidden      , ""          , ""  , "--dot-show-hidden"     , "Renders otherwise-transparent detached edges in DOT output - back-edges from a Var to its binder, shared literals/axioms, and type edges - in a subtle gray.")
             .grp("Mim Output")
-            .opt(flags.mim_local           , ""          , ""  , "--mim-local"           , "Dumps each mutable as its own flat block without scheduling; the result does not read back but works for broken programs.")
             .opt(flags.mim_typed_let       , ""          , ""  , "--mim-typed-let"       , "Ascribes the type of each `let`-bound name; it is inferable from the right-hand side and hence elided by default.")
             .grp("Diagnostics")
             .opt(diag.gutter               , "width"     , ""  , "--gutter"              , "Width of a diagnostic's line-number column.")

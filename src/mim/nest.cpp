@@ -9,29 +9,23 @@ namespace mim {
 Nest::Nest(Def* r)
     : world_(r->world())
     , root_(make_node(r)) {
-    populate();
+    populate(false);
     analyze();
 }
 
 Nest::Nest(World& world, fe::View<Def*> muts, bool transitive)
     : world_(world)
-    , root_(make_node(nullptr))
-    , transitive_(transitive) {
+    , root_(make_node(nullptr)) {
     for (auto mut : muts)
         make_node(mut, root_);
-    populate();
+    populate(transitive);
     analyze();
 }
 
 Nest::Nest(World& world)
-    : world_(world)
-    , root_(make_node(nullptr)) {
-    world.for_each(false, [this](Def* mut) { make_node(mut, root_); });
-    populate();
-    analyze();
-}
+    : Nest(world, world.externals().mutate(), true) {}
 
-void Nest::populate() {
+void Nest::populate(bool transitive) {
     std::queue<Node*> queue;
 
     if (root()->mut())
@@ -46,22 +40,11 @@ void Nest::populate() {
             for (auto local_mut : op->local_muts()) {
                 if (node(local_mut)) continue;
                 if (!contains(local_mut)) {
-                    if (transitive_ && local_mut->is_closed()) queue.push(make_node(local_mut, root_));
+                    if (transitive && local_mut->is_closed()) queue.push(make_node(local_mut, root_));
                     continue;
                 }
 
-                if (curr_node->level() < local_mut->free_vars().size()) {
-                    for (auto node = curr_node;; node = node->inest_) {
-                        if (auto var = node->mut()->has_var()) {
-                            if (local_mut->free_vars().contains(var)) {
-                                queue.push(make_node(local_mut, node));
-                                break;
-                            }
-                        }
-                    }
-                } else {
-                    queue.push(make_node(local_mut, innermost(local_mut)));
-                }
+                queue.push(make_node(local_mut, innermost(local_mut)));
             }
         }
     }
@@ -163,8 +146,7 @@ uint32_t Nest::Node::tarjan(uint32_t i, Stack& stack) {
             ++num;
 
             scc->emplace(node);
-            auto [_, ins] = inest_->SCCs_.emplace(node, scc);
-            assert_unused(ins);
+            node->scc_ = scc;
         } while (node != this);
 
         if (num == 1 && !this->sibl_deps_.contains(this)) this->recursive_ = false;

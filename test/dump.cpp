@@ -307,3 +307,52 @@ TEST_CASE("dump: precedence") {
         CHECK_RT(w.arr(w.call(plug::core::nat::add, Defs{w.lit_nat(2), w.lit_nat(3)}), nat));
     }
 }
+
+TEST_CASE("dump: scope") {
+    auto driver = Driver();
+    auto ast    = ast::AST(driver.world());
+    auto parser = ast::Parser(ast);
+    auto n      = 0;
+    auto parse  = [&](std::string code) {
+        auto is   = std::istringstream(std::move(code));
+        auto file = parser.import(is, std::format("scope{}.mim", n++));
+        file->compile(ast);
+        auto res = std::map<std::string, const Def*>();
+        for (auto decl : file->decls())
+            res[decl->def()->sym().str()] = decl->def();
+        return res;
+    };
+    auto dump = [](const Def* def, Def::Dump mode) {
+        auto os = std::ostringstream();
+        def->stream(os, mode);
+        return os.str();
+    };
+
+    auto defs = parse(R"(
+        lam g (n: Nat): Nat = n;
+        rec T = [Nat, [n: Nat] → «n; T»];
+        con f (x: T, n: Nat, c: Bool, k: Cn Nat) =
+            con loop (m: Nat) = loop (g m);
+            con done (m: Nat) = k (g (x#0_2));
+            (loop, done)#c n;
+    )");
+
+    // The recursion runs through an inline Pi that is no decl of its own.
+    auto t = dump(defs["T"], Def::Dump::Scope);
+    CHECK_MESSAGE(t.starts_with("rec "), t);
+
+    // A closed mutable lives outside f's scope, whereas a nested one does not.
+    auto scope = dump(defs["f"], Def::Dump::Scope);
+    auto all   = dump(defs["f"], Def::Dump::All);
+    CHECK_MESSAGE(scope.find("con done") != std::string::npos, scope);
+    CHECK_MESSAGE(scope.find("con loop") == std::string::npos, scope);
+    CHECK_MESSAGE(all.find("con loop") != std::string::npos, all);
+
+    for (auto name : {"g", "T"}) {
+        auto def = defs[name];
+        auto got = parse(dump(def, Def::Dump::Scope));
+        REQUIRE(got.size() == 1);
+        // Check::Mode::T tells even two parses of the same `rec` apart.
+        CHECK_MESSAGE(Check::alpha(def, got.begin()->second), std::string(name));
+    }
+}

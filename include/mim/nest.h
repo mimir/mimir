@@ -133,7 +133,7 @@ public:
         /// The SCC among its siblings this Node belongs to; the Nest::root() has none.
         const SCC& scc() const {
             assert(!is_root());
-            return *inest_->SCCs_.find(this)->second;
+            return *scc_;
         }
         ///@}
 
@@ -162,7 +162,7 @@ public:
         SiblDeps sibl_rev_deps_;
         Children children_;
         std::deque<std::unique_ptr<SCC>> topo_;
-        std::map<const Node*, const SCC*, GIDLt<const Node*>> SCCs_;
+        const SCC* scc_   = nullptr;
         const Node* idom_ = nullptr;
         // Nodes higher up in dominator tree within same sibling layer have higher postorder numbers.
         // This property is used to efficiently find the correct node for late code placement via [Nest::lca].
@@ -234,7 +234,7 @@ private:
 
     Node* innermost(const Def*) const;
     void analyze();
-    void populate();
+    void populate(bool transitive);
     Node* make_node(Def*, Node* inest = nullptr);
     void calc_sibl_deps(Node*, fe::Vector<Node*>& path);
     void calc_SCCs(Node*);
@@ -246,7 +246,6 @@ private:
     std::map<Def*, std::unique_ptr<Node>, detail::NullSafeDefGIDLt> mut2node_;
     Vars vars_;
     Node* root_;
-    bool transitive_ = false;
 };
 
 } // namespace mim
