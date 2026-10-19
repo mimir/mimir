@@ -37,13 +37,17 @@ private:
         fe::Bitset plan(const Def* type) const;
 
     private:
-        const Def* rewrite(const Def* old) final;
+        const Def* rewrite_mut_Lam(Lam*) final;
+        const Def* rewrite_imm_App(const App*) final;
+        const Def* rewrite_imm_Extract(const Extract*) final;
+        const Def* rewrite_imm_Insert(const Insert*) final;
 
-        void inspect(const Def* def);
+        /// Keeps @p tuple whole unless the outermost part of @p idx is constant.
+        void keep_indexed(const Def* tuple, const Def* idx);
         /// Keeps parameter @p dom of @p pi whole.
         void keep(const Pi* pi, size_t dom);
         /// Keeps @p def whole if it is a Lam's Var or one of its parameters.
-        void keep_param(const Def* def);
+        void keep_var(const Def* def);
         bool kept(const Pi* pi, size_t dom) const; ///< Is parameter @p dom of @p pi kept whole?
         /// Does coerce() see through @p type, i.e. split it or η-wrap it?
         /// The shape of whatever lies below any other type must be kept.

@@ -154,11 +154,11 @@ const Def* Analysis::rewrite(const Def* def) {
     return repr(Rewriter::rewrite(def));
 }
 
-Def* Analysis::rewrite_mut(Def* mut) {
+const Def* Analysis::rewrite_mut(Def* mut) {
     if (lookup(mut)) return mut; // already scheduled this round
     map(mut, mut);
     worklist_.emplace_back(mut);
-    return mut;
+    return Rewriter::rewrite_mut(mut);
 }
 
 void Analysis::drain() {

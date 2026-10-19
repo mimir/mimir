@@ -54,7 +54,7 @@ void Scalarize::Analysis::keep(const Pi* pi, size_t dom) {
     touch();
 }
 
-void Scalarize::Analysis::keep_param(const Def* def) {
+void Scalarize::Analysis::keep_var(const Def* def) {
     if (auto [var, i] = Var::isa_tproj(def); var) {
         if (auto pi = isa_flattenable(var->binder()->type())) {
             if (i)
@@ -75,37 +75,44 @@ void Scalarize::Analysis::pin_opaque(DefSet& structural, const Def* type) {
     }
 }
 
-void Scalarize::Analysis::inspect(const Def* def) {
-    // The interface's signature keeps its shape, which the body only meets via coerce().
-    if (auto lam = def->isa_mut<Lam>(); lam && !lam->is_rewritable()) {
-        auto structural = DefSet();
-        pin_opaque(structural, lam->type());
-    }
-
-    // `tensor.buf x` nominates `x` itself.
-    if (auto app = def->isa<App>(); app && app->axm() && is_polymorphic_arg(app)) keep_param(app->arg());
-
+void Scalarize::Analysis::keep_indexed(const Def* tuple, const Def* idx) {
     // Only the outermost index must be constant: `t#(0₂, i)` still splits.
-    const Def* idx_tuple = nullptr;
-    const Def* idx       = nullptr;
-    if (auto ex = def->isa<Extract>())
-        idx_tuple = ex->tuple(), idx = ex->index();
-    else if (auto in = def->isa<Insert>())
-        idx_tuple = in->tuple(), idx = in->index();
-    if (!idx_tuple) return;
     if (Idx::isa(idx->unfold_type())) {
         if (Lit::isa(idx)) return;
     } else if (auto r = Lit::isa(idx->unfold_type()->arity()); r && *r != 0 && Lit::isa(idx->proj(*r, 0))) {
         return;
     }
 
-    keep_param(idx_tuple);
+    keep_var(tuple);
 }
 
-const Def* Scalarize::Analysis::rewrite(const Def* old) {
-    // pin() maps `pi ↦ pi`, which would cut off the traversal into `old`.
-    auto res = mim::Analysis::rewrite(old);
-    inspect(old);
+const Def* Scalarize::Analysis::rewrite_mut_Lam(Lam* lam) {
+    // The interface's signature keeps its shape, which the body only meets via coerce().
+    if (!lam->is_rewritable()) {
+        auto structural = DefSet();
+        pin_opaque(structural, lam->type());
+    }
+    return mim::Analysis::rewrite_mut_Lam(lam);
+}
+
+// pin() maps `pi ↦ pi`, which would cut off the traversal into the old Def, so the hooks below inspect afterwards.
+
+const Def* Scalarize::Analysis::rewrite_imm_App(const App* app) {
+    auto res = mim::Analysis::rewrite_imm_App(app);
+    // `tensor.buf x` nominates `x` itself.
+    if (app->axm() && is_polymorphic_arg(app)) keep_var(app->arg());
+    return res;
+}
+
+const Def* Scalarize::Analysis::rewrite_imm_Extract(const Extract* ex) {
+    auto res = mim::Analysis::rewrite_imm_Extract(ex);
+    keep_indexed(ex->tuple(), ex->index());
+    return res;
+}
+
+const Def* Scalarize::Analysis::rewrite_imm_Insert(const Insert* ins) {
+    auto res = mim::Analysis::rewrite_imm_Insert(ins);
+    keep_indexed(ins->tuple(), ins->index());
     return res;
 }
 

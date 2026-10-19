@@ -60,6 +60,7 @@ public:
 private:
     /// Records what each value may carry: the allocations it aliases and the nested Lam%s in it.
     const Def* rewrite_imm(const Def*) override;
+    const Def* rewrite_imm_App(const App*) override;
     void leave() override;
 
     bool may_hold(const Def* type) const;

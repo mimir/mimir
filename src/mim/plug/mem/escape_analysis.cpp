@@ -18,7 +18,6 @@ void dedup(DefVec& defs) {
 const Def* EscapeAnalysis::rewrite_imm(const Def* def) {
     auto res = mim::Analysis::rewrite_imm(def);
     if (def->isa<Var>() || !def->type()) return res;
-    if (auto alloc = freed_alloc(def)) freed_.emplace(alloc);
 
     // A value whose type cannot hold a handle (a loaded scalar, say) cannot alias one.
     if (!may_hold(def->type())) {
@@ -48,6 +47,11 @@ const Def* EscapeAnalysis::rewrite_imm(const Def* def) {
     if (res != def) aliases_[res] = carried;
     aliases_[def] = std::move(carried);
     return res;
+}
+
+const Def* EscapeAnalysis::rewrite_imm_App(const App* app) {
+    if (auto alloc = freed_alloc(app)) freed_.emplace(alloc);
+    return mim::Analysis::rewrite_imm_App(app);
 }
 
 void EscapeAnalysis::leave() {

@@ -276,7 +276,13 @@ protected:
     /// Mutables are enqueued instead of recursed into; Analysis::drain then walks them in BFS order.
     /// The `mut -> mut` entry doubles as the per-round "already scheduled" marker (Rewriter::scopes_ are
     /// cleared by reset()), so each mutable's deps are visited at most once per fixed-point round.
-    Def* rewrite_mut(Def*) override;
+    /// Then dispatches to the rewrite_mut_* hook, which merely observes @p mut.
+    const Def* rewrite_mut(Def*) final;
+
+#define CODE_MUT(N) \
+    const Def* rewrite_mut_##N(N* mut) override { return mut; }
+    MIM_MUT_NODE(CODE_MUT)
+#undef CODE_MUT
     virtual void leave() {} ///< Called after curr_mut() has been completely dealt with.
     ///@}
 
