@@ -350,24 +350,31 @@ const Def* World::level(Defs types) {
     return lmax(levels);
 }
 
-const Def* World::inhabitant(const Def* type) {
-    if (auto s = Idx::isa(type)) return Lit::isa(s) == 1 ? lit_idx_1_0() : nullptr;
-    if (auto single = type->isa<Single>()) return wrap(single->op());
-    if (auto s = type->isa<Sigma>(); s && s->num_ops() == 0) return tuple(s, {});
-    if (auto sigma = type->isa_imm<Sigma>()) {
-        auto ops = DefVec();
-        for (auto op : sigma->ops())
-            if (auto i = inhabitant(op))
-                ops.emplace_back(i);
-            else
-                return nullptr;
-        return tuple(sigma, ops);
+const Def* World::inhabitant_(const Def* type) {
+    switch (type->node()) {
+        case Node::Single: return wrap(type->as<Single>()->op());
+        case Node::Sigma: {
+            auto sigma = type->as<Sigma>();
+            if (sigma->num_ops() == 0) return tuple(sigma, {});
+            if (sigma->isa_mut()) return nullptr;
+            auto ops = DefVec();
+            for (auto op : sigma->ops())
+                if (auto i = inhabitant(op))
+                    ops.emplace_back(i);
+                else
+                    return nullptr;
+            return tuple(sigma, ops);
+        }
+        case Node::Arr:
+            if (auto arr = type->isa_imm<Arr>())
+                if (auto i = inhabitant(arr->body())) return pack(arr->shape(), i);
+            return nullptr;
+        case Node::Variant:
+            if (auto lone = Variant::isa_lone(type))
+                if (auto i = inhabitant(lone)) return inj(type, 0, i);
+            return nullptr;
+        default: return nullptr;
     }
-    if (auto arr = type->isa_imm<Arr>())
-        if (auto i = inhabitant(arr->body())) return pack(arr->shape(), i);
-    if (auto lone = Variant::isa_lone(type))
-        if (auto i = inhabitant(lone)) return inj(type, 0, i);
-    return nullptr;
 }
 
 const Def* World::var(Def* mut) {
