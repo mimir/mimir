@@ -1,0 +1,22 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s --implicit-check-not='tensor.' --implicit-check-not='vec.'
+
+// A rank-1 right operand collapses every `«1; Idx 1»` in dot_product_impl to a scalar, so the index
+// vector `bc_2 : «m; Idx 1»` meets its η-form `‹m; 0₁›` inside otherwise identical stuck types.
+// Both are values of a singleton type and must compare equal, or the impl does not even bufferize.
+
+plugin core;
+plugin tensor;
+plugin math;
+
+let F32 = math.F32;
+let R: tensor.Ring = (F32, 0:F32, math.arith.add math.mode.contract, math.arith.mul math.mode.contract);
+
+// CHECK-LABEL: extern con gemv
+// CHECK: mem.malloc («64; {{.*}}»
+// CHECK: mem.store
+extern fun gemv (a: «64, 64; F32», b: «64; F32»): «64; F32» = return (tensor.dot_product R (1₂, 0₁, (), ()) (a, b));
+
+// CHECK-LABEL: extern con gemv_odd
+// CHECK: mem.malloc («513; {{.*}}»
+// CHECK: mem.store
+extern fun gemv_odd (a: «513, 2047; F32», b: «2047; F32»): «513; F32» = return (tensor.dot_product R (1₂, 0₁, (), ()) (a, b));

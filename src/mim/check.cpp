@@ -265,6 +265,8 @@ bool Check::alpha_impl_(const Def* d1, const Def* d2) {
         auto t1 = d1->type();
         auto t2 = d2->type();
         if (t1 && t2 && !alpha_<mode>(t1, t2)) return fail<mode>();
+        // η for singleton types: all their values are equal, cf. World::var.
+        if (t1 && world().inhabitant(t1)) return true;
 
         // Def::arity of a flex-rank Seq is its first extent, which needs the rank pinned down first.
         if constexpr (mode == C) {
