@@ -161,8 +161,8 @@ private:
     Analysis analysis_;
     Lam2Lam lam_old2new_;
     Lam2Lam lam_new2old_;
-    LamMap<Sig> lam2sig_; // a Sig& outlives nested rewrites
-    DefVec sloxies_;      // the eliminated sloxies; every Lam's phi candidates
+    ankerl::unordered_dense::segmented_map<Lam*, Sig, GIDHash<Lam*>> lam2sig_; // a Sig& outlives nested rewrites
+    DefVec sloxies_; // the eliminated sloxies; every Lam's phi candidates
 };
 
 } // namespace mim::plug::mem::phase

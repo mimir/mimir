@@ -1,5 +1,7 @@
 #pragma once
 
+#include <unordered_map>
+
 #include <ankerl/unordered_dense.h>
 
 namespace mim {
@@ -19,8 +21,9 @@ struct GIDLt {
 // clang-format off
 /// @name GID
 ///@{
-template<class K, class V> using GIDMap = ankerl::unordered_dense::map<K, V, GIDHash<K>>;
-template<class K>          using GIDSet = ankerl::unordered_dense::set<K,    GIDHash<K>>;
+template<class K, class V> using GIDMap     = ankerl::unordered_dense::map<K, V, GIDHash<K>>;
+template<class K>          using GIDSet     = ankerl::unordered_dense::set<K,    GIDHash<K>>;
+template<class K, class V> using GIDNodeMap = std::unordered_map<K, V, GIDHash<K>>;
 ///@}
 // clang-format on
 
