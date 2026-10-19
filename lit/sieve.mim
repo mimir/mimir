@@ -1,0 +1,14 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+plugin core;
+
+// With a single survivor the sigma degrades to it, so a projection to that survivor is the survivor itself.
+axm keep: ([[Bool, I32], «23»] → Bool) → Bool;
+axm pair: ([[Bool, I32], «23»] → [Bool, I32]) → Bool;
+axm swap: ([[Bool, I32], «23»] → [[Bool, I32], «23»]) → Bool;
+extern lam ext (): Bool = keep (lm (q: [[Bool, I32], «23»]) = q#0₂#0₂);
+extern lam prj (): Bool = pair (lm (q: [[Bool, I32], «23»]) = q#0₂);
+extern lam ins (): Bool = swap (lm (q: [[Bool, I32], «23»]) = q#0₂ ← (tt, 0I32));
+// CHECK-DAG: axm swap: ([Bool, I32] → [Bool, I32]) → Bool;
+// CHECK-DAG: lam {{[[:alnum:]_]+}} (_: Bool, _: I32) as [[Q:[[:alnum:]_]+]]: [Bool, I32] =
+// CHECK-DAG: [[Q]];
+// CHECK-DAG: (tt, 0I32);

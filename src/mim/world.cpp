@@ -476,6 +476,7 @@ const Def* World::raw_app(const Def* type, const Def* callee, const Def* arg) {
 }
 
 const Def* World::raw_app(const Axm* axm, u8 curry, u8 trip, const Def* type, const Def* callee, const Def* arg) {
+    if (auto inhabitant = this->inhabitant(type)) return inhabitant;
     return unify<App>(axm, curry, trip, type, callee, arg);
 }
 
@@ -672,7 +673,7 @@ const Def* World::extract_fused(const Def* d, Shape index) {
 
     // `d#is ← val` then `#is` -> `val`; cf. the same rule in World::extract1
     if (auto insert = d->isa<Insert>(); insert && insert->index() == *index) return insert->value();
-    return unify<Extract>(nary_elem_type(d, index), d, *index);
+    return unify_elim<Extract>(nary_elem_type(d, index), d, *index);
 }
 
 /// Type-checks a *scalar* @p index of `Idx size` against @p type.
@@ -725,16 +726,16 @@ const Def* World::extract1(const Def* d, const Def* index) {
 
         if (auto sigma = type->isa<Sigma>()) {
             if (auto var = sigma->has_var()) {
-                if (d == var) return unify<Extract>(sigma->op(*lidx), d, index); // `var -> var` is the identity
+                if (d == var) return unify_elim<Extract>(sigma->op(*lidx), d, index); // `var -> var` is the identity
                 // Frozen, only an already cached reduct can be replayed - rewriting would create nodes.
                 if (is_frozen()) {
                     auto t = cached_reduct(var, d, *lidx);
-                    return t ? unify<Extract>(t, d, index) : nullptr;
+                    return t ? unify_elim<Extract>(t, d, index) : nullptr;
                 }
-                return unify<Extract>(reduce(var, d, *lidx), d, index);
+                return unify_elim<Extract>(reduce(var, d, *lidx), d, index);
             }
 
-            return unify<Extract>(sigma->op(*lidx), d, index);
+            return unify_elim<Extract>(sigma->op(*lidx), d, index);
         }
     }
 
@@ -771,7 +772,7 @@ const Def* World::extract1(const Def* d, const Def* index) {
     }
 
     assert(d);
-    return unify<Extract>(elem_t, d, index);
+    return unify_elim<Extract>(elem_t, d, index);
 }
 
 const Def* World::insert(const Def* d, const Def* index_, const Def* val) {
@@ -809,6 +810,7 @@ const Def* World::insert(const Def* d, const Def* index_, const Def* val) {
         // `d#is ← d#is` -> `d` and `(d#is ← y)#is ← val` -> `d#is ← val`; cf. the scalar path below
         if (auto ex = new_val->isa<Extract>(); ex && ex->tuple() == d && ex->index() == *index) return d;
         if (auto insert = d->isa<Insert>(); insert && insert->index() == *index) d = insert->tuple();
+        if (auto inhabitant = this->inhabitant(d->type())) return inhabitant;
         return unify<Insert>(d, *index, new_val);
     }
 
@@ -854,6 +856,7 @@ const Def* World::insert(const Def* d, const Def* index_, const Def* val) {
         if (insert->index() == *index) d = insert->tuple();
     }
 
+    if (auto inhabitant = this->inhabitant(d->type())) return inhabitant;
     return unify<Insert>(d, *index, val);
 }
 
@@ -1032,7 +1035,7 @@ const Def* World::match(Defs ops_) {
         }
 
         if (auto inj = scrutinee->isa<Inj>()) return app(arms[inj->index()], inj->value());
-        return unify<Match>(type, ops);
+        return unify_elim<Match>(type, ops);
     }
 
     auto join = scrut_t->isa<Join>();
@@ -1080,7 +1083,7 @@ const Def* World::match(Defs ops_) {
         scrutinee->blame("injected value type `{}` is not a case of union type `{}`", type_of(value), join).bail();
     }
 
-    return unify<Match>(type, res);
+    return unify_elim<Match>(type, res);
 }
 
 const Def* World::single(const Def* op) {
@@ -1122,7 +1125,7 @@ const Def* World::name(const Def* n, const Def* value) {
 const Def* World::struc(const Def* value) {
     value = value->zonk();
     if (auto name = value->isa<Name>()) return name->op();
-    if (auto nom = value->isa_type<Nom>()) return unify<Struc>(nom->op(), value);
+    if (auto nom = value->isa_type<Nom>()) return unify_elim<Struc>(nom->op(), value);
     value->blame("operand of a nominal elimination is of type `{}` but must be of nominal type", type_of(value)).bail();
 }
 

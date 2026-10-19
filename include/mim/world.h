@@ -813,6 +813,14 @@ private:
         return def;
     }
 
+    /// Like World::unify but yields the sole inhabitant of a singleton @p type instead, as World::var does.
+    template<class T, class... Args>
+    const Def* unify_elim(const Def* type, Args&&... args) {
+        if (type) // nullptr in a frozen World
+            if (auto inhabitant = this->inhabitant(type)) return inhabitant;
+        return unify<T>(type, std::forward<Args>(args)...);
+    }
+
     template<class T>
     void deallocate(fe::Arena::State state, const T* ptr) {
         --state_.pod.curr_gid;

@@ -848,6 +848,9 @@ void AxmDecl::emit(Emitter& e) const {
     auto _                 = e.world().push(loc());
     auto type              = type_->emit(e);
     auto [n_curry, n_trip] = Axm::infer_curry_and_trip(type);
+    // An Axm cannot be replaced by the inhabitant, which all other values of a singleton type collapse to.
+    if (e.world().inhabitant(type))
+        e.error().e(type_->loc(), "axiom of singleton type `{}` carries no information", type).bail();
     if (curry_) {
         if (curry_.lit_u() > n_curry)
             e.error().e(curry_.loc(), "curry counter cannot be greater than {}", n_curry).bail();

@@ -86,7 +86,8 @@ const Def* SingleErasure::rewrite_imm_Extract(const Extract* extract) {
 
     if (auto sigma = extract->tuple()->type()->isa<Sigma>()) {
         auto keep = sieve(sigma);
-        if (!keep.all()) return new_world().extract(rewrite(extract->tuple()), remap(keep, extract->index()));
+        if (!keep.all())
+            return new_world().extract(rewrite(extract->tuple()), keep.num_new(), remap(keep, extract->index()));
     }
 
     return RWPhase::rewrite_imm_Extract(extract);
@@ -98,7 +99,8 @@ const Def* SingleErasure::rewrite_imm_Insert(const Insert* insert) {
     if (auto sigma = insert->tuple()->type()->isa<Sigma>()) {
         auto keep = sieve(sigma);
         if (!keep.all())
-            return new_world().insert(rewrite(insert->tuple()), remap(keep, insert->index()), rewrite(insert->value()));
+            return new_world().insert(rewrite(insert->tuple()), keep.num_new(), remap(keep, insert->index()),
+                                      rewrite(insert->value()));
     }
 
     return RWPhase::rewrite_imm_Insert(insert);

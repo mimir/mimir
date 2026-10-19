@@ -165,7 +165,10 @@ public:
     const auto& lattice() const { return lattice_; } ///< The whole map; used e.g. to diff two fixed-point runs.
 
     /// @returns the abstract value recorded for @p def, or `nullptr` if unknown.
-    const Def* lattice(const Def* def) const { return fe::lookup(lattice_, def); }
+    const Def* lattice(const Def* def) const {
+        if (auto abstr = fe::lookup(lattice_, def)) return abstr;
+        return is_singleton(def) ? def : nullptr;
+    }
 
     /// The representative of @p def: follows `def ↦ lattice(def)` to the end of its chain.
     ///
@@ -191,6 +194,9 @@ public:
 protected:
     /// @name lattice
     ///@{
+
+    /// The sole inhabitant of a singleton type is ⊤ and shared by all binders of that type, so it is never recorded.
+    static bool is_singleton(const Def* def) { return def->world().inhabitant(def->type()) == def; }
 
     /// **Non-monotone** write of `concr ↦ abstr` into lattice() and map().
     /// This is the escape hatch for analyses that must overwrite an earlier round's value (descending from ⊤ is fine).

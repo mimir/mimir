@@ -151,6 +151,12 @@ const Def* Eval::augment_lit(const Lit* lit, Lam* f, Lam*) {
     return lit;
 }
 
+const Def* Eval::pullback(const Def* aug, Lam* f) {
+    // A singleton has no tangent, and its sole inhabitant is shared by all functions.
+    if (world().inhabitant(aug->type()) == aug) return zero_pullback(aug->type(), f->dom(2, 0));
+    return partial_pullback[aug];
+}
+
 const Def* Eval::augment_var(const Var* var, Lam*, Lam*) {
     assert(augmented.count(var));
     auto aug_var = augmented[var];
@@ -225,8 +231,8 @@ const Def* Eval::augment_extract(const Extract* ext, Lam* f, Lam* f_diff) {
         // b = e#i
         // b* = \lambda (s:B). e* (insert s at i in (zero T))
         // ```
-        assert(partial_pullback.count(aug_tuple));
-        auto tuple_pb   = partial_pullback[aug_tuple];
+        auto tuple_pb = pullback(aug_tuple, f);
+        assert(tuple_pb);
         auto pb_ty      = pullback_type(ext->type(), f->dom(2, 0));
         auto pb_fun     = world().mut_lam(pb_ty)->set("extract_pb");
         auto pb_tangent = pb_fun->var(2, 0)->set("s");
@@ -246,7 +252,7 @@ const Def* Eval::augment_tuple(const Tuple* tup, Lam* f, Lam* f_diff) {
     auto aug_ops = tup->projs([&](const Def* op) -> const Def* { return augment(op, f, f_diff); });
     auto aug_tup = world().tuple(aug_ops);
 
-    auto pbs = DefVec(Defs(aug_ops), [&](const Def* op) { return partial_pullback[op]; });
+    auto pbs = DefVec(Defs(aug_ops), [&](const Def* op) { return pullback(op, f); });
     // shadow pb = tuple of pbs
     auto shadow_pb           = world().tuple(pbs);
     shadow_pullback[aug_tup] = shadow_pb;
@@ -280,9 +286,9 @@ const Def* Eval::augment_pack(const Pack* pack, Lam* f, Lam* f_diff) {
 
     auto aug_pack = world().pack(aug_arity, aug_body);
 
-    assert(partial_pullback[aug_body] && "pack pullback should exists");
     // TODO: or use scale axm
-    auto body_pb              = partial_pullback[aug_body];
+    auto body_pb = pullback(aug_body, f);
+    assert(body_pb && "pack pullback should exists");
     auto pb_pack              = world().pack(aug_arity, body_pb);
     shadow_pullback[aug_pack] = pb_pack;
 
@@ -332,7 +338,7 @@ const Def* Eval::augment_app(const App* app, Lam* f, Lam* f_diff) {
 
         // ret(e) => ret'(e, e*)
 
-        auto arg_pb  = partial_pullback[aug_arg];
+        auto arg_pb  = pullback(aug_arg, f);
         auto aug_app = world().app(aug_callee, {aug_arg, arg_pb});
         return aug_app;
     }
@@ -345,7 +351,7 @@ const Def* Eval::augment_app(const App* app, Lam* f, Lam* f_diff) {
         auto [aug_res, fun_pb] = aug_app->projs<2>();
         // We compose `fun_pb` with `argument_pb` to get the result pb
         // TODO: combine case with cps function case
-        auto arg_pb = partial_pullback[aug_arg];
+        auto arg_pb = pullback(aug_arg, f);
         assert(arg_pb);
         // `fun_pb: out_tan -> arg_tan`
         // `arg_pb: arg_tan -> fun_tan`
@@ -366,7 +372,7 @@ const Def* Eval::augment_app(const App* app, Lam* f, Lam* f_diff) {
     auto g_deriv = aug_callee;
 
     auto [real_aug_args, aug_cont] = aug_arg->projs<2>();
-    auto e_pb                      = partial_pullback[real_aug_args];
+    auto e_pb                      = pullback(real_aug_args, f);
 
     // TODO: better debug names
     auto ret_g_deriv_ty = g_deriv->type()->as<Pi>()->dom(2, 1);
