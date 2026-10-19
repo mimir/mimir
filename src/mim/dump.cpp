@@ -124,11 +124,10 @@ bool by_name(Ctx* ctx, const Extract* ex) {
     if (!ctx) return ex->tuple()->isa<Var>();
     if (ctx->bound.contains(ex)) return true;
     // A Var's component prints by name - unless the pattern that would have bound that name kept the Var whole.
-    auto split = fe::lookup(ctx->split, ex->tuple());
-    if (split && !*split) return false;
+    if (is_opaque(ctx, ex->tuple())) return false;
     // An aliased Var's component the Lam's Var does not hand out is spelled via the Lam's Var instead.
     if (ctx->aliases.contains(ex->tuple()) && !alias_proj(ctx, ex)) return false;
-    return ex->tuple()->isa<Var>() || (split && *split);
+    return ex->tuple()->isa<Var>() || ctx->split.contains(ex->tuple());
 }
 
 /// Def::unique_name - or a plain name while a World is dumped or a diagnostic is being formatted, where a gid is noise.
@@ -790,7 +789,7 @@ public:
         for (const auto& [_, __, annex] : annexes)
             for (auto mut : content(annex)->local_muts())
                 if (isa_decl(mut)) muts.emplace_back(mut);
-        dump_muts(annexes.front().def->world(), muts);
+        dump_muts(muts);
 
         sep(Prev::Decl);
         auto noms   = DefVec();
@@ -836,15 +835,15 @@ public:
     ///@{
     /// @p def and whatever Dumper::mode_ reaches from it.
     void dump(const Def* def) {
-        if (auto mut = isa_decl(def)) return dump_muts(def->world(), {mut});
+        if (auto mut = isa_decl(def)) return dump_muts({mut});
 
         auto muts = fe::Vector<Def*>();
         for (auto mut : def->local_muts())
             if (isa_decl(mut)) muts.emplace_back(mut);
-        dump_muts(def->world(), muts, def);
+        dump_muts(muts, def);
     }
 
-    void dump(World& world, fe::View<Def*> muts) { dump_muts(world, muts); }
+    void dump(fe::View<Def*> muts) { dump_muts(muts); }
     ///@}
 
 private:
@@ -867,7 +866,7 @@ private:
     ///@{
     /// The closed mutables @p muts reach, callees first: Mim binds a name before its uses.
     /// A non-decl @p tail ends the dump; it is spelled out after the `let`s it needs.
-    void dump_muts(World& world, fe::View<Def*> muts, const Def* tail = nullptr) {
+    void dump_muts(fe::View<Def*> muts, const Def* tail = nullptr) {
         if (muts.empty() && !tail) return;
         auto todo = fe::Vector<Def*>();
         for (auto mut : muts)
@@ -886,7 +885,7 @@ private:
         }
         if (mode_ == Dump::Scope) scope_.insert(muts.begin(), muts.end());
 
-        const auto nest = Nest(world, muts, true);
+        const auto nest = Nest(tail ? tail->world() : muts.front()->world(), muts, true);
         auto _          = fe::Restore(nest_, &nest);
         emit_top(roots);
         if (tail) {
@@ -1428,7 +1427,7 @@ void World::dump(std::ostream& os) {
     dumper.plain(reserved);
     dumper.live(seen);
     if (!annexes.empty()) dumper.dump_annexes(std::move(self), annexes);
-    dumper.dump(*this, externals().mutate());
+    dumper.dump(externals().mutate());
 
     assertf(old_gid == curr_gid(), "new nodes created during dump. old_gid: {}; curr_gid: {}", old_gid, curr_gid());
 }

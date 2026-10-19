@@ -4,7 +4,6 @@
 #include <memory>
 #include <optional>
 #include <ranges>
-#include <set>
 #include <stack>
 
 #include "mim/def.h"
@@ -73,7 +72,9 @@ public:
             ///@}
 
         private:
-            std::map<Def*, Node*, GIDLt<Def*>> mut2node_;
+            auto mut_nodes() { return mut2node_ | std::views::values; }
+
+            MutMap<Node*> mut2node_;
 
             friend class Nest;
         };
@@ -102,7 +103,7 @@ public:
             ///@}
 
         private:
-            std::set<Node*, GIDLt<Node*>> nodes_;
+            GIDSet<Node*> nodes_;
 
             friend class Nest;
         };
@@ -121,7 +122,7 @@ public:
         ///@}
 
         /// Strongly Connected Component.
-        using SCC = std::set<const Node*, GIDLt<const Node*>>;
+        using SCC = GIDSet<const Node*>;
         /// @name SCCs
         /// [SCCs](https://en.wikipedia.org/wiki/Strongly_connected_component) for all children dependencies.
         /// @note The Nest::root() cannot be is_mutually_recursive() by definition.
@@ -233,6 +234,7 @@ private:
     }
 
     Node* innermost(const Def*) const;
+    Node* innermost(Node*, Vars) const;
     void analyze();
     void populate(bool transitive);
     Node* make_node(Def*, Node* inest = nullptr);

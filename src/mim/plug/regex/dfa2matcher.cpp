@@ -88,9 +88,8 @@ extern "C" const Def* dfa2matcher(World& w, const DFA& dfa, const Def* n) {
     DFAMap<Lam*> state2matcher;
 
     auto pos_t = w.call<regex::Pos>(n);
-    auto np1   = Idx::isa(pos_t);
     auto end   = w.call<regex::pos>(n, n);
-    auto one   = w.call(core::conv::u, np1, w.lit_i64(1));
+    auto one   = w.call<regex::pos>(n, w.lit_nat_1());
     auto matcher
         = w.mut_fun({w.call<mem::M>(0), w.call<mem::Str>(n), pos_t}, {w.call<mem::M>(0), w.type_bool(), pos_t});
     matcher->debug_prefix(std::string("match_regex"));

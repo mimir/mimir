@@ -31,7 +31,7 @@ void Nest::populate(bool transitive) {
     if (root()->mut())
         queue.push(root_);
     else
-        for (auto child : root_->children_.mut2node_ | std::views::values)
+        for (auto child : root_->children_.mut_nodes())
             queue.push(child);
 
     while (!queue.empty()) {
@@ -50,10 +50,17 @@ void Nest::populate(bool transitive) {
     }
 }
 
-Nest::Node* Nest::innermost(const Def* def) const {
-    auto res = root_;
-    for (auto fv : def->free_vars())
+Nest::Node* Nest::innermost(Node* res, Vars vars) const {
+    for (auto fv : vars)
         if (auto n = node(fv->binder()); n && n->level() > res->level()) res = n;
+    return res;
+}
+
+Nest::Node* Nest::innermost(const Def* def) const {
+    if (auto mut = def->isa_mut()) return innermost(root_, mut->free_vars());
+    auto res = innermost(root_, def->local_vars());
+    for (auto mut : def->local_muts())
+        res = innermost(res, mut->free_vars());
     return res;
 }
 
@@ -76,13 +83,13 @@ void Nest::analyze() {
     if (root_->mut()) {
         number(root_, n);
     } else {
-        for (auto child : root_->children_.mut2node_ | std::views::values)
+        for (auto child : root_->children_.mut_nodes())
             number(child, n);
         root_->postorder_number_ = ++n;
     }
 
     for (auto& [mut, node] : mut2node_)
-        if (mut) calc_dominance(node.get());
+        if (mut && node->children().num() != 0) calc_dominance(node.get());
 }
 
 /// @p path holds the Node%s from the root() down to @p curr.
@@ -107,17 +114,17 @@ void Nest::calc_sibl_deps(Node* curr, fe::Vector<Node*>& path) {
         }
     }
 
-    for (auto child : curr->children_.mut2node_ | std::views::values)
+    for (auto child : curr->children_.mut_nodes())
         calc_sibl_deps(child, path);
     path.pop_back();
 }
 
 void Nest::calc_SCCs(Node* curr) {
     Node::Stack stack;
-    for (uint32_t i = 0; auto child : curr->children_.mut2node_ | std::views::values)
+    for (uint32_t i = 0; auto child : curr->children_.mut_nodes())
         if (child->idx_ == Node::Unvisited) i = child->tarjan(i, stack);
 
-    for (auto child : curr->children_.mut2node_ | std::views::values) {
+    for (auto child : curr->children_.mut_nodes()) {
         child->loop_depth_ = child->is_recursive() ? curr->loop_depth() + 1 : curr->loop_depth();
         calc_SCCs(child);
     }

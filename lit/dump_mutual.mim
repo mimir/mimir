@@ -45,6 +45,6 @@ extern fun g (x: Nat): Nat =
 // CHECK:      end
 // CHECK:      extern fun g
 // CHECK:      mutual
-// CHECK-NEXT: con head ({{.*}}
-// CHECK:      con next ({{.*}}
+// CHECK-NEXT: con {{head|next}} ({{.*}}
+// CHECK:      con {{head|next}} ({{.*}}
 // CHECK:      end
