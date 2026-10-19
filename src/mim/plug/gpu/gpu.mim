@@ -209,9 +209,9 @@ axm buf_copy_to_host: {r: Nat, s: «r; Nat», T: *}
 /// Launches a kernel function on the device with dynamic shared memory and module symbols.
 // TODO: refactor to {n m: N, Ts: «n; *»} as soon as type inference bug is fixed
 axm launch: {n: Nat, Ts: «n; *»}
-          → [n_groups n_items: Nat, Stream, m: Bool, MT: «core.bitcast Nat m; *»]
+          → [n_groups n_items: Nat, Stream, m: Bool, MT: «core.idx2nat m; *»]
           → Cn [GlobalM, SharedM, ConstM, LocalM, Idx n_groups, Idx n_items,
-                «i: core.bitcast Nat m; SharedPtr MT#i», «i: n; Ts#i»,
+                «i: core.idx2nat m; SharedPtr MT#i», «i: n; Ts#i»,
                 Cn [GlobalM, SharedM, ConstM, LocalM]]
           → «i: n; Ts#i»
           → Fn [mem.M 0, GlobalM, ConstM]

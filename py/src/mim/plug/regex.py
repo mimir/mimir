@@ -52,7 +52,7 @@ class RegBuilder(MimPlugin):
     def build(self):
         function_name = "match_func"
         mem_t = self.world.call(mem.M, self.world.lit_nat_0())
-        str_t = self.world.call(mem.Ptr0, [self.world.type_i8()])
+        str_t = self.world.call(mem.Ptr0, [self.world.annex(mem.Char)])
 
         strlen = self.world.mut_con([mem_t, str_t, self.world.cn([mem_t, self.world.type_i64()])]).set("strlen")
 
@@ -69,26 +69,21 @@ class RegBuilder(MimPlugin):
         self.match_func.app(False, strlen, [state_mem, c_str, match_len])
         state_mem, length = match_len.var().projs(2)
 
-        n = self.world.call(
-            core.nat.add,
-            [self.world.call(core.bitcast, self.world.type_nat(), length), self.world.lit_nat_1()],
-        )
+        n = self.world.call(core.bitcast, self.world.type_nat(), length)
         to_match = self.world.call(mem.assume, [c_str, n])
 
         regex_mem, matched, pos = self.world.implicit_app(
             self._final_def,
-            [state_mem, to_match, self.world.lit(self.world.type_idx(n), 0)],
+            [state_mem, to_match, self.world.call(regex.pos, n, self.world.lit_nat_0())],
         ).projs(3)
-        last_elem_ptr = self.world.call(mem.lea, [to_match, pos])
-        final_mem, last_elem = self.world.call(mem.load, [regex_mem, last_elem_ptr]).projs(2)
-        eq_zero = self.world.call(core.icmp.e, [last_elem, self.world.lit_i8(0)])
+        at_end = self.world.call(core.icmp.e, [pos, self.world.call(regex.pos, n, n)])
 
         matched_and_end = self.world.call(
             core.bit2.and_,
             self.world.lit_nat_0(),
-            [matched, eq_zero],
+            [matched, at_end],
         )
-        match_len.app(False, exit, [final_mem, matched_and_end])
+        match_len.app(False, exit, [regex_mem, matched_and_end])
 
         self.register_func(function_name, [ctypes.c_char_p], ctypes.c_bool)
 

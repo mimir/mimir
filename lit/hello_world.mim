@@ -5,10 +5,10 @@
 plugin core;
 plugin mem;
 
-extern fun println_str[mem.M 0, mem.Ptr0 I8]: mem.M 0;
+extern fun println_str[mem.M 0, mem.Ptr0 mem.Char]: mem.M 0;
 
-extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): [mem.M 0, I32] =
-    ret (m, p) = mem.slot («13; I8», 0) $ m;
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
+    ret (m, p) = mem.slot («13; mem.Char», 0) $ m;
     let m      = mem.store (m, p, "Hello World!\0");
     ret m      = println_str $ (m, mem.decay p);
     return (m, 0I32);

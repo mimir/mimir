@@ -9,7 +9,7 @@ use core.ops.u.w;
 
 lam f(a: I32): I32 = 2I32 + a;
 
-extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0)): [mem.M 0, I32] =
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (mem.Char, 0)», 0)): [mem.M 0, I32] =
     let c = f 40I32;
     return (m, c);
 

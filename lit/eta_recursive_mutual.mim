@@ -14,5 +14,5 @@ extern con foo (m: mem.M 0, c: Bool, d: Bool, return: Cn [mem.M 0, Nat]) =
     end
     (b1, b2)#d m;
 
-// CHECK: con b1 ([[M:[[:alnum:]_]+]]: mem.M 0) =
+// CHECK: con b1 ([[M:[[:alnum:]_]+]]: core.M 0) =
 // CHECK-NEXT: ({{[[:alnum:]_]+}}, {{[[:alnum:]_]+}})#c [[M]];

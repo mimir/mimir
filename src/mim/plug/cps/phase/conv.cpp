@@ -90,7 +90,7 @@ const Def* Conv::wire(size_t base, const Def* body) {
         auto [callee, arg, cont] = pending_.back();
         pending_.pop_back();
         cont->set_body(body);
-        body = w.app(callee, w.tuple({arg, cont}));
+        body = w.app(callee, Defs{arg, cont});
     }
     return body;
 }

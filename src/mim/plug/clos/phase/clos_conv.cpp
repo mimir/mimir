@@ -135,17 +135,18 @@ void ClosConv::finalize() {
 }
 
 const Def* ClosConv::rewrite_imm_Pi(const Pi* pi) {
+    if (is_telescope_cn(pi)) return rewrite_telescope_cn(pi);
     if (Pi::isa_cn(pi)) return clos_type_of(pi);
     return RWPhase::rewrite_imm_Pi(pi);
 }
 
 const Def* ClosConv::rewrite_mut_Pi(Pi* pi) {
-    if (Pi::isa_cn(pi)) return clos_type_of(pi);
+    if (Pi::isa_cn(pi) && !is_telescope_cn(pi)) return clos_type_of(pi);
     return RWPhase::rewrite_mut_Pi(pi);
 }
 
 const Def* ClosConv::rewrite_mut_Lam(Lam* old_lam) {
-    if (!Lam::isa_cn(old_lam)) return RWPhase::rewrite_mut_Lam(old_lam);
+    if (!Lam::isa_cn(old_lam) || is_telescope_cn(old_lam->type())) return RWPhase::rewrite_mut_Lam(old_lam);
 
     auto& w      = new_world();
     auto stub    = make_stub(old_lam);
@@ -205,7 +206,7 @@ const Def* ClosConv::rewrite_imm_Extract(const Extract* ex) {
     // Map such a projection onto the corresponding var of the enclosing Lam's converted stub.
     // This is a known workaround; the principled fix is to capture escaping enclosing BBs/ret_vars in the
     // environment (tracked by issue #117).
-    if (auto [var, lam] = isa_var_proj<Lam>(ex); var && lam && lam->ret_var() == var) {
+    if (auto [var, lam] = isa_var_proj<Lam>(ex); var && lam && lam->ret_var() == var && !is_telescope_cn(lam->type())) {
         auto new_fn  = make_stub(lam).fn;
         auto new_idx = skip_env(env_param(new_fn->type()->as<Pi>()), Lit::as(var->index()));
         return new_fn->var(new_fn->num_vars(), new_idx);
@@ -216,6 +217,20 @@ const Def* ClosConv::rewrite_imm_Extract(const Extract* ex) {
 const Pi* ClosConv::rewrite_ret_cn(const Pi* pi) {
     assert(Pi::isa_basicblock(pi));
     return new_world().cn(DefVec(pi->num_doms(), [&, nd = pi->num_doms()](auto i) { return rewrite(pi->dom(nd, i)); }));
+}
+
+const Pi* ClosConv::rewrite_telescope_cn(const Pi* pi) {
+    auto& w  = new_world();
+    auto sig = pi->dom()->as_mut<Sigma>();
+    if (auto new_sig = lookup(sig)) return w.cn(new_sig);
+
+    auto new_sig = w.mut_sigma(rewrite(sig->type()), sig->num_ops());
+    map(sig, new_sig);
+    auto _   = enter(sig);
+    auto ret = Pi::isa_returning(pi) ? sig->num_ops() - 1 : sig->num_ops();
+    for (size_t i = 0, e = sig->num_ops(); i != e; ++i)
+        new_sig->set(i, i == ret ? rewrite_ret_cn(sig->op(i)->as<Pi>()) : rewrite(sig->op(i)));
+    return w.cn(seal(sig, new_sig));
 }
 
 const Def* ClosConv::clos_type_of(const Pi* pi, const Def* env_type) {

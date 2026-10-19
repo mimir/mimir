@@ -333,6 +333,10 @@ void SingleExpr::bind(Scopes& s) const { body()->bind(s); }
  * Decl
  */
 
+static Sym loc2plugin(AST& ast, Loc loc) {
+    return loc.src ? ast.sym(fs::path(loc.src->path()).stem().string()) : ast.sym_error();
+}
+
 AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id) {
     if (!dbg) return nullptr;
 
@@ -342,7 +346,7 @@ AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id) {
         return nullptr;
     }
 
-    auto plugin_s = dbg.loc().src ? sym(fs::path(dbg.loc().src->path()).stem().string()) : sym_error();
+    auto plugin_s = loc2plugin(*this, dbg.loc());
     auto tag_s    = depth == 0 ? dbg.sym() : s.enclosing_mod();
     Sym sub_s     = depth == 0 ? Sym() : dbg.sym();
 
@@ -450,6 +454,14 @@ void AliasDecl::bind(Scopes& s) const {
     std::tie(annex_, sub_) = target->annex_sub();
     if (!annex_) {
         s.error().e(loc(), "`{}` must alias a compiler-exposed (`anx`) declaration", dbg());
+        return;
+    }
+
+    auto& ast = s.ast();
+    if (auto plugin = loc2plugin(ast, dbg().loc());
+        plugin != ast.sym_error() && plugin != annex_->sym.plugin && s.mod_depth() == 0) {
+        foreign_ = ast.sym(plugin.str() + "." + dbg().sym().str());
+        ast.add_foreign_alias(plugin, {dbg().sym(), annex_, sub_});
         return;
     }
 

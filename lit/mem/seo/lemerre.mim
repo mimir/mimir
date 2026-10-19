@@ -54,9 +54,9 @@ extern fun test(m: mem.M 0): [mem.M 0, Nat] =
 // CHECK-NOT: mem.slot
 // CHECK-NOT: mem.load
 // CHECK-NOT: mem.store
-// CHECK-DAG: con head ({{[_a-z0-9]+}}: mem.M 0, [[T:[_a-z0-9]+]]: Nat)
+// CHECK-DAG: con head ({{[_a-z0-9]+}}: core.M 0, [[T:[_a-z0-9]+]]: Nat)
 // CHECK-DAG: core.nat.div ([[T]], 3600)
-// CHECK-DAG: con [[N:n[_0-9]*]] ({{[_a-z0-9]+}}: mem.M 0, {{[_a-z0-9]+}}: Nat, {{[_a-z0-9]+}}: Nat)
+// CHECK-DAG: con [[N:n[_0-9]*]] ({{[_a-z0-9]+}}: core.M 0, {{[_a-z0-9]+}}: Nat, {{[_a-z0-9]+}}: Nat)
 // CHECK-DAG: [[N]] ({{[_a-z0-9]+}}, 0, 0);
 // CHECK-DAG: core.nat.add (2,
 // CHECK-DAG: head (m, 0);

@@ -780,6 +780,11 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         }
 
         return bb.assign(name, "{} {} {} to {}", op, t_src, v_src, t_dst);
+    } else if (auto i2n = Axm::isa<core::idx2nat>(def)) {
+        auto v_src = emit(i2n->arg());
+        auto w_src = idx_bitwidth(i2n->arg()->type());
+        if (w_src == 64) return v_src;
+        return bb.assign(name, "zext {} {} to {}", convert(i2n->arg()->type()), v_src, convert(i2n->type()));
     } else if (auto bitcast = Axm::isa<core::bitcast>(def)) {
         auto dst_type_ptr = Axm::isa<mem::Ptr>(bitcast->type());
         auto src_type_ptr = Axm::isa<mem::Ptr>(bitcast->arg()->type());

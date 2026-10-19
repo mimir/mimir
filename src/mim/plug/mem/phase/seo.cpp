@@ -528,6 +528,7 @@ void SEO::Analysis::analyze(const Def* def) {
     } else if (auto [lam, var] = def->isa_binder<Lam>(); lam) {
         log().d("unknown lam: {}", lam);
         unknowns_.emplace(lam);
+        pin(var); // apply_known's whole-var tuple would otherwise resurface an earlier round's value via repr
         for (auto v : var->tprojs())
             pin(v);
     }

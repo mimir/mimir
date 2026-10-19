@@ -106,7 +106,7 @@ let _ = refly.struc.e (subs_2, (2, 1));
 let s_red   = ‹i: nc; s1#(c1#i)›;
 let s_full  = vec.cat (s_out, s_red);
 let dot = map_reduce (s_out, s_full) (f, 0)
-    (proj_map ‹i: r_out; core.bitcast Nat i›)
+    (proj_map ‹i: r_out; core.idx2nat i›)
     (proj_map subs_1, proj_map subs_2)
     (t1, t2);
 

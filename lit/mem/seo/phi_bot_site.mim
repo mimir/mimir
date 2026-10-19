@@ -38,5 +38,5 @@ extern fun test(m: mem.M 0, c: Bool): [mem.M 0, Nat] =
     end;
 
 // CHECK-NOT: mem.slot
-// CHECK-DAG: con exit (m{{.*}}: mem.M 0, v: Nat)
+// CHECK-DAG: con exit (m{{.*}}: core.M 0, v: Nat)
 // CHECK-DAG: exit (m{{.*}}, ⊥:Nat)

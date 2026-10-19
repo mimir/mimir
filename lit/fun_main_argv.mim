@@ -1,0 +1,16 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: %FileCheck %s < %{s:stem}.ll
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t A; test $? -eq 65
+// RUN: %t a b; test $? -eq 97
+
+plugin core;
+plugin mem;
+
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
+    let (m, s) = mem.load (m, mem.lea (argv, core.idx 0 (core.idx2nat argc) 1));
+    let (m, c) = mem.load (m, s);
+    return (m, core.conv.u i32 c);
+
+// CHECK: define i32 @main(i32 %{{[a-z_0-9]+}}, [0 x i8 addrspace(0)*] addrspace(0)* %{{[a-z_0-9]+}})

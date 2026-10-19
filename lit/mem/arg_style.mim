@@ -56,7 +56,7 @@ extern con e2 (m: mem.M 0, (a: I32, ()), return: Cn [mem.M 0, I32]) =
 extern con e3 ((m: mem.M 0, (a: I32, ())), return: Cn [mem.M 0, I32]) =
     return (m, a);
 
-extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (mem.Char, 0)», 0), return: Cn [mem.M 0, I32]) =
     let (m, p) = mem.alloc Tas m;
     // let mem = mem.store Tas (mem, p, argc);
 

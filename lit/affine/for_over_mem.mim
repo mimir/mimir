@@ -10,8 +10,8 @@ plugin mem;
 
 use core.ops.u.w;
 
-extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8), return: Cn [mem.M 0, I32]) =
-    let n        = core.bitcast Nat argc;
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char», return: Cn [mem.M 0, I32]) =
+    let n        = core.idx2nat argc;
     let (m, ptr) = mem.alloc («n; I32», 0) (m);
     affine.For for_body for_exit (0I32, argc, 1I32, (m, 0I32, 0I32))
     where

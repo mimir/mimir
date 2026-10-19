@@ -1,7 +1,6 @@
 #include <type_traits>
 
 #include <mim/plug/math/math.h>
-#include <mim/plug/mem/mem.h>
 
 #include "mim/plug/core/core.h"
 
@@ -733,6 +732,7 @@ const Def* normalize_idx(const Def* type, const Def* c, const Def* arg) {
     auto& world = type->world();
     auto callee = c->as<App>();
     if (auto i = Lit::isa(arg)) {
+        if (*i == 0) return world.lit(type, 0); // inhabits every `Idx s`, even a symbolic one
         if (auto s = Lit::isa(Idx::isa(type))) {
             if (*s == 0 || *i < *s) return world.lit_idx(*s, *i);
             if (auto m = Lit::isa(callee->decurry()->arg())) return *m ? world.bot(type) : world.lit_idx_mod(*s, *i);
@@ -908,6 +908,16 @@ const Def* normalize_conv(const Def* dst_t, const Def*, const Def* x) {
     return {};
 }
 
+const Def* normalize_idx2nat(const Def* type, const Def*, const Def* x) {
+    auto& world = type->world();
+
+    if (x->isa<Bot>()) return world.bot(type);
+    if (auto l = Lit::isa(x)) return world.lit_nat(*l);
+    if (Idx::isa_lit(x->type()) == 1) return world.lit_nat_0();
+
+    return {};
+}
+
 const Def* normalize_bitcast(const Def* dst_t, const Def*, const Def* src) {
     auto& world = dst_t->world();
     auto src_t  = src->type();
@@ -917,6 +927,9 @@ const Def* normalize_bitcast(const Def* dst_t, const Def*, const Def* src) {
 
     if (auto other = Axm::isa<bitcast>(src))
         return other->arg()->type() == dst_t ? other->arg() : world.call<bitcast>(dst_t, other->arg());
+
+    if (auto i2n = Axm::isa<idx2nat>(src); i2n && Idx::isa(dst_t))
+        return i2n->arg()->type() == dst_t ? i2n->arg() : world.call<bitcast>(dst_t, i2n->arg());
 
     if (auto l = Lit::isa(src)) {
         if (dst_t->isa<Nat>()) return world.lit(dst_t, *l);
@@ -936,7 +949,7 @@ const Def* normalize_bitcast(const Def* dst_t, const Def*, const Def* src) {
 template<trait id>
 const Def* normalize_trait(const Def*, const Def*, const Def* type) {
     auto& world = type->world();
-    if (Axm::isa<mem::Ptr>(type)) {
+    if (Axm::isa<Ptr>(type)) {
         return world.lit_nat(8);
     } else if (type->isa<Pi>()) {
         return world.lit_nat(8); // Gets lowered to function ptr

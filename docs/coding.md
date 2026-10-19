@@ -324,7 +324,7 @@ You can directly invoke several MimIR dump helpers from within GDB, for example:
 ```gdb
 (gdb) call def->dump()
 (gdb) call def->dump(0)
-(gdb) call def->dump(3)
+(gdb) call def->dump(2)
 (gdb) call world().write("out.mim")
 ```
 
@@ -333,7 +333,7 @@ In particular, note the different output levels of [`mim::Def::dump`](@ref mim::
 You can also tweak the output behavior directly from within GDB by changing [`mim::World::flags`](@ref mim::World::flags) or [`mim::World::log`](@ref mim::World::log):
 
 ```gdb
-(gdb) call world().flags().mim_local = 1
+(gdb) call world().flags().mim_typed_let = 1
 (gdb) call world().log.max_level_ = 4
 ```
 

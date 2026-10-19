@@ -10,3 +10,6 @@ let _ = refly.struc.e (f0 (42, 23), 23₄₂);
 let _ = refly.struc.e (f1 (42, 23), 23₄₂);
 let _ = refly.struc.e (f0 (23, 42), 19₂₃); // mode 0 wraps
 let _ = refly.check_bot      (f1 (23, 42));       // mode 1 traps
+
+// `0` inhabits every `Idx s`, so it folds even for a symbolic `s`.
+lam z (s: Nat): Idx s = refly.struc.e (core.idx 1 s 0, 0:(Idx s));

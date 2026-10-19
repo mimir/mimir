@@ -31,7 +31,7 @@ con f(m: mem.M 0, p: mem.Ptr0 I32, return: Cn [mem.M 0, I32]) =
             end;
     end;
 
-extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8), return: Cn [mem.M 0, I32]) =
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char», return: Cn [mem.M 0, I32]) =
     let (m, p) = mem.alloc Tas m;
     let m      = mem.store (m, p, argc);
     f (m, p, return);

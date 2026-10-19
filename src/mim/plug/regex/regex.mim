@@ -17,13 +17,14 @@ plugin cps;
 ///
 /// ### RE
 ///
-/// Char and string types:
-pub let Char = I8;
-lam Str (n: Nat): * = mem.Ptr0 «n; Char»;
+/// A position in a `mem.Str n`; position `n` is the end of the string.
+anx lam Pos (n: Nat): * = Idx (core.nat.add (n, 1));
+/// The `i`-th position in a `mem.Str n`.
+anx lam pos (n: Nat) (i: Nat): Pos n = core.idx 0 (core.nat.add (n, 1)) i;
 /// `Res n` is a match result: the memory, a success flag, and the new position.
-lam Res (n: Nat): * = [mem.M 0, Bool, Idx n];
+anx lam Res (n: Nat): * = [mem.M 0, Bool, Pos n];
 /// `RE` is the matcher itself: it takes the memory, the string, and the current position.
-let RE = {n: Nat} → [mem.M 0, Str n, Idx n] → Res n;
+anx let RE = {n: Nat} → [mem.M 0, mem.Str n, Pos n] → Res n;
 ///
 /// ## Meta
 ///
@@ -46,13 +47,13 @@ axm disj: {n: Nat} → «n; RE» → RE, normalize_disj, 2;
 /// Wraps a range of literals.
 /// E.g., use `regex.range ('a', 'z')` to match all lower-case letters.
 ///
-axm range: «2; Char» → RE, normalize_range, 1;
+axm range: «2; mem.Char» → RE, normalize_range, 1;
 ///
 /// ### lit
 ///
 /// Wraps a literal.
 ///
-anx lam lit (val: Char): RE = range (val, val);
+anx lam lit (val: mem.Char): RE = range (val, val);
 ///
 /// ### not_
 ///

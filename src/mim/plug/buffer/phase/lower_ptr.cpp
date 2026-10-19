@@ -75,10 +75,10 @@ const Def* LowerPtr::rewrite_imm_App(const App* app) {
         return w.tuple({mem3, ptr});
     } else if (auto buf_alloc_copy = Axm::isa<gpu::buf_alloc_copy>(app)) {
         auto [m0, m1, ptr] = buf_alloc_copy->args<3>([this](const Def* d) { return rewrite(d); });
-        return w.call(gpu::alloc_copy::block, w.tuple({m0, m1, ptr}));
+        return w.call(gpu::alloc_copy::block, Defs{m0, m1, ptr});
     } else if (auto buf_copy_to_host = Axm::isa<gpu::buf_copy_to_host>(app)) {
         auto [m0, m1, d_ptr, h_ptr] = buf_copy_to_host->args<4>([this](const Def* d) { return rewrite(d); });
-        return w.call(gpu::copy_to_host::block, w.tuple({m0, m1, d_ptr, h_ptr}));
+        return w.call(gpu::copy_to_host::block, Defs{m0, m1, d_ptr, h_ptr});
     }
 
     return RWPhase::rewrite_imm_App(app);

@@ -103,7 +103,7 @@ inline const Def* folded_idx(const Def* shape, Defs iters) {
 /// Clamps the i64 @p x into `[0, hi]`.
 inline const Def* clamp(const Def* x, const Def* hi) {
     auto& w = x->world();
-    return w.call(core::extrema::smax, w.tuple({w.lit_i64(0), w.call(core::extrema::smin, w.tuple({x, hi}))}));
+    return w.call(core::extrema::smax, Defs{w.lit_i64(0), w.call(core::extrema::smin, Defs{x, hi})});
 }
 
 /// The read coordinates `o#d − lo#d` of a `pad` into `Idx s_in#d` - clamped to the nearest edge if @p replicate, or
@@ -122,7 +122,7 @@ inline std::pair<DefVec, const Def*> pad_coords(Defs iters, const Def* lo, const
         if (replicate) {
             idx_i64 = clamp(in_d, w.call(core::wrap::sub, core::Mode::none, Defs{sin_d, w.lit_i64(1)}));
         } else { // a single unsigned `<` covers both bounds since underflow wraps high
-            auto v_d = w.call(core::icmp::ul, w.tuple({in_d, sin_d}));
+            auto v_d = w.call(core::icmp::ul, Defs{in_d, sin_d});
             valid.push_back(v_d);
             idx_i64 = w.select(v_d, in_d, w.lit_i64(0));
         }
@@ -159,7 +159,7 @@ inline const Def* concat_select(const Def* o_ax, const fe::Vector<u64>& exts, au
     auto result = read_i(0);
     for (u64 i = 1; i < exts.size(); ++i) {
         off += exts[i - 1];
-        auto cond = w.call(core::icmp::uge, w.tuple({o_ax, w.lit_i64(off)}));
+        auto cond = w.call(core::icmp::uge, Defs{o_ax, w.lit_i64(off)});
         result    = w.select(cond, read_i(i), result);
     }
     return result;

@@ -28,10 +28,12 @@ Lam* LowerTypedClos::make_stub(Lam* lam, Mode mode, bool adjust_bb_type) {
     assert(lam && "make_stub: not a lam");
     if (auto i = lookup(lam); i && i->isa_mut<Lam>()) return i->as_mut<Lam>();
 
-    auto& w      = new_world();
-    auto ep      = env_param(lam->type()->as<Pi>());
-    auto nd      = lam->num_doms();
-    auto new_dom = w.sigma(DefVec(nd, [&](auto i) -> const Def* {
+    auto& w        = new_world();
+    auto ep        = env_param(lam->type()->as<Pi>());
+    auto nd        = lam->num_doms();
+    auto telescope = is_telescope_cn(lam->type());
+    assert(!telescope || mode == No_Env);
+    auto new_dom = telescope ? rewrite(lam->dom()) : w.sigma(DefVec(nd, [&](auto i) -> const Def* {
         auto new_dom = rewrite(lam->dom(nd, i));
         if (i == ep) {
             if (mode == Unbox) return env_type();

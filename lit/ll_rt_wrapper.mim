@@ -32,7 +32,7 @@ use core.ops.u.w;
 
 let pb_type = Cn [mem.M 0];
 
-extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8), return: Cn [mem.M 0, I32]) =
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char», return: Cn [mem.M 0, I32]) =
     con end_ (m: mem.M 0) = return (m, 1I32); // <-- end_ backward pass
 
     let (alloc_pb_mem, lea_pb) = mem.malloc (pb_type, 0) (m, 100);

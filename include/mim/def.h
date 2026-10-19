@@ -727,12 +727,10 @@ public:
     /// The output uses Mim syntax and - decls aside - reads back again.
     ///@{
     /// How much of a Def's context a dump reproduces.
-    /// Def::dump is what you reach for in a debugger, so the cheap modes come first: Dump::Expr and Dump::Local
-    /// only walk Def::deps, while the others ask for free Var%s to find out where a Def belongs.
+    /// Only Dump::Expr asks no analysis, so that is the one to reach for while a Nest would choke.
     enum class Dump {
         Expr,  ///< Only this Def; whatever does not inline is referenced by its name.
-        Local, ///< Its operands as `let`s as well - but stops at every other mutable.
-        Scope, ///< Plus the mutables that live in this Def's scope.
+        Scope, ///< Plus its operands as `let`s and the mutables that live in its scope.
         All,   ///< Plus everything else that is reachable.
     };
 
