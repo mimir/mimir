@@ -4,6 +4,8 @@
 
 #include "mim/phase.h"
 
+#include "mim/util/gid.h"
+
 namespace mim {
 
 /// Scalarization (= argument simplification):
@@ -50,7 +52,7 @@ private:
         void pin_opaque(DefSet& structural, const Def* type);
 
         /// Not in lattice(), as its map() of the Pi would break type arguments like `mem.slot (H, 0)`.
-        DefMap<fe::Bitset> keeps_;
+        GIDMap<const Pi*, fe::Bitset> keeps_;
     };
 
 public:

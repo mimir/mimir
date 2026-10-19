@@ -161,8 +161,8 @@ private:
     Analysis analysis_;
     Lam2Lam lam_old2new_;
     Lam2Lam lam_new2old_;
-    GIDNodeMap<Lam*, Sig> lam2sig_; // a Sig& outlives nested rewrites
-    DefVec sloxies_;                // the eliminated sloxies; every Lam's phi candidates
+    LamMap<Sig> lam2sig_; // a Sig& outlives nested rewrites
+    DefVec sloxies_;      // the eliminated sloxies; every Lam's phi candidates
 };
 
 } // namespace mim::plug::mem::phase
