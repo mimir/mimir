@@ -996,6 +996,13 @@ const Def* NomDecl::emit_ahead(Emitter& e) const {
     return def_;
 }
 
+void NomDecl::emit_sugar(Emitter& e, Lam* lam) const {
+    // `I dom` then resolves to this very instance as an application of a Lam to its own Var.
+    emit_decl(e);
+    lam->set_body(emit_ahead(e));
+    emit_body(e);
+}
+
 void NomDecl::emit_nom(Emitter& e, const Def* body) const {
     // World::dump finds a file's annexes by their qualified sym.
     auto sym = annex_ ? annex_->qualified(e.driver(), dbg().sym()) : dbg().sym();
@@ -1056,7 +1063,11 @@ void LamDecl::emit_body(Emitter& e) const {
     auto _ = e.world().push(loc());
     {
         auto _body = e.world().push(body()->loc());
-        doms().back()->lam_->set_body(body()->emit(e));
+        auto lam   = doms().back()->lam_;
+        if (auto nom = nom_sugar())
+            nom->emit_sugar(e, lam);
+        else
+            lam->set_body(body()->emit(e));
     }
 
     // rewrite holes
