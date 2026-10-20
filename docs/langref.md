@@ -582,7 +582,7 @@ A `nom` declaration is the one place where Mim is not structurally typed: two `n
 - If `e` is a sigma, a [variant](@ref variant), or a function type, `I` is already in scope inside `e`, so such a `nom` may be recursive, and a `mutual` block makes a group of them mutually recursive.
 - `anx nom` additionally makes `I` an [annex](@ref annex).
 - `nom I ndom+ = e` declares a type constructor; it is sugar for `lam I ndom+ = nom I = e; I`.
-  Each instance is a `nom` of its own, and within `e`, `I` names that very instance, so a recursive one refers to itself without arguments.
+  Each instance is a `nom` of its own, and within `e`, `I` names the type constructor, so a recursive instance refers to itself as `I ndom+`.
 - `e inj I` wraps a value of the underlying type into `I`, and the prefix `#` unwraps it again, so `#(e inj I)` is `e`.
 - `inj` and `#` on a `nom` are private to the `mod` that declares the `nom` - or its file, outside of any `mod` -, whatever its visibility; the _type_ crosses a module boundary like any other, so an importer sees it as abstract and has to go through whatever the declaring module exports.
 - The named constructors of a `nom` over a [variant](@ref variant) - `I#C` and a `match` arm `| C x` - and the [field names](@ref field) of a `nom` over a sigma - `x#f` and `x#f ← v` - are as visible as the `nom` itself, so a `pub` or `anx` one exports them; a `nom` declared within a body takes the visibility of the enclosing top-level declaration.
@@ -596,7 +596,7 @@ lam to_foot (m: Meter): Foot = #m inj Foot; // Meter and Foot do not unify
 
 nom List = | Nil | Cons: [I32, List];
 
-nom Tree (T: *) = | Leaf | Node: [Tree, T, Tree]; // `Tree Nat` and `Tree Bool` are distinct `nom`s
+nom Tree (T: *) = | Leaf | Node: [Tree T, T, Tree T]; // `Tree Nat` and `Tree Bool` are distinct `nom`s
 ```
 
 @note A `--output-mim` dump flattens a program into one file, so a wrapping that an inliner carried across a module boundary lands in a dump that no longer re-parses.

@@ -220,9 +220,9 @@ lam to_foot (m: Meter): Foot = #m inj Foot;
 let _ = refly.struc.e (#(23I32 inj Meter), 23I32);
 /// Like `rec`, a `nom` is in scope in its own body, and `anx nom` makes it an annex.
 nom Chain = | End | Link: [I32, Chain];
-/// With domains, `nom` declares a type constructor; within its body, `Bin` is the instance at hand.
+/// With domains, `nom` declares a type constructor; within its body, `Bin T` is the instance at hand.
 /// Named constructors and fields are as visible as the `nom`, and `match` sees through it.
-nom Bin (T: *) = | Leaf | Node: [Bin, T, Bin];
+nom Bin (T: *) = | Leaf | Node: [Bin T, T, Bin T];
 let NatBin = Bin Nat;
 let _ = refly.struc.e (match NatBin#Node (NatBin#Leaf, 23, NatBin#Leaf) with | Leaf => 0 | Node (_, x, _) => x, 23);
 ///

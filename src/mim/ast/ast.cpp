@@ -265,19 +265,6 @@ Sym TuplePtrn::field(size_t i) const {
     return (p->isa<IdPtrn>() || p->isa<GrpPtrn>()) && !p->dbg().is_anon() ? p->dbg().sym() : Sym();
 }
 
-const NomDecl* LamDecl::nom_sugar() const {
-    if (tag() != Tok::Tag::K_lam || codom()
-        || std::ranges::any_of(doms(), [](const auto& dom) { return dom->filter(); }))
-        return nullptr;
-    if (auto decl_expr = body() ? body()->isa<DeclExpr>() : nullptr;
-        decl_expr && !decl_expr->is_where() && decl_expr->decls().size() == 1)
-        if (auto nom = decl_expr->decls().front()->isa<NomDecl>(); nom && nom->dbg().sym() == dbg().sym())
-            if (auto path = decl_expr->expr()->isa<PathExpr>();
-                path && path->path()->dbgs().size() == 1 && path->dbg().sym() == dbg().sym())
-                return nom;
-    return nullptr;
-}
-
 LamExpr::LamExpr(Ptr<LamDecl> lam)
     : Expr(lam->loc())
     , lam_(lam) {}

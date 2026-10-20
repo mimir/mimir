@@ -539,9 +539,9 @@ void RecDecl::bind_decl(Scopes& s) const {
 
 void RecDecl::bind_body(Scopes& s) const { body()->bind(s); }
 
-void NomDecl::bind_decl(Scopes& s) const {
-    RecDecl::bind_decl(s);
+void NomDecl::bind_body(Scopes& s) const {
     named_vis_ = s.top_decl() ? s.top_decl()->vis() : Vis::Pub;
+    RecDecl::bind_body(s);
 }
 
 void LamDecl::Dom::bind(Scopes& s, bool quiet) const {
@@ -584,7 +584,10 @@ void LamDecl::bind_body(Scopes& s) const {
     s.push();
     for (auto dom : doms())
         dom->bind(s, true);
-    if (body()) body()->bind(s);
+    if (auto nom = nom_sugar())
+        nom->bind_body(s);
+    else if (body())
+        body()->bind(s);
     s.pop();
 }
 
