@@ -121,6 +121,7 @@ const Def* Analysis::lookup(const Def* def) {
 }
 
 bool Analysis::lattice_force(const Def* concr, const Def* abstr) {
+    if (is_singleton(concr)) return false;
     map(concr, abstr);
 
     if (auto [i, ins] = lattice_.emplace(concr, abstr); !ins) {
@@ -131,6 +132,7 @@ bool Analysis::lattice_force(const Def* concr, const Def* abstr) {
 }
 
 bool Analysis::lattice(const Def* concr, const Def* abstr) {
+    if (is_singleton(concr)) return false;
     map(concr, abstr);
 
     if (auto [i, ins] = lattice_.emplace(concr, abstr); !ins) {

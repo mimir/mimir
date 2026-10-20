@@ -1,0 +1,43 @@
+// RUN: %mim %s -o -
+
+// The Var of `f`'s Pi collapses to `0₁`, so each stuck value of type `Idx 1` must too.
+axm N: Idx 1 → Nat;
+axm f: [x: Idx 1] → «N x; Nat»;
+
+axm g: Nat → Idx 1;
+let r_app: «N (g 0); Nat» = f (g 0);
+
+axm p: [Idx 1, Nat];
+let r_extract: «N (p#0₂); Nat» = f (p#0₂);
+
+axm q: «2; [Idx 1, Nat]»;
+axm i: Idx 2;
+let r_extract_dyn: «N (q#i#0₂); Nat» = f (q#i#0₂);
+
+axm u: Idx 1 ∪ Nat;
+let r_match_join: «N (match u with | x: Idx 1 => x | _: Nat => 0₁); Nat»
+    = f (match u with | x: Idx 1 => x | _: Nat => 0₁);
+
+axm v: | A: Idx 1 | B: Nat;
+let r_match_variant: «N (match v with | A x => x | B _ => 0₁); Nat» = f (match v with | A x => x | B _ => 0₁);
+
+nom M = Idx 1;
+axm m: M;
+let r_struc: «N (#m); Nat» = f (#m);
+
+axm N2: «2; Idx 1» → Nat;
+axm f2: [x: «2; Idx 1»] → «N2 x; Nat»;
+axm g2: Nat → «2; Idx 1»;
+let t = g2 0;
+let r_insert: «N2 (t#0₂ ← 0₁); Nat» = f2 (t#0₂ ← 0₁);
+
+axm N0: «0» → Nat;
+axm f0: [x: «0»] → «N0 x; Nat»;
+axm g0: Nat → «0»;
+let r_single: «N0 (g0 0); Nat» = f0 (g0 0);
+
+axm sn: {n: Nat} → Idx n;
+axm Nn: {n: Nat} → Idx n → Nat;
+axm fd: {n: Nat} → [x: Idx n] → «Nn x; Nat»;
+lam k (n: Nat): [«Nn (sn @n); Nat», Nat] = (fd (sn @n), 0);
+let r_subst = k 1;

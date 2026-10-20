@@ -36,6 +36,8 @@ public:
     const Def* augment_lit(const Lit*, Lam*, Lam*);
     const Def* augment_tuple(const Tuple*, Lam*, Lam*);
     const Def* augment_pack(const Pack* pack, Lam* f, Lam* f_diff);
+    /// The partial pullback of @p aug in the closed function @p f.
+    const Def* pullback(const Def* aug, Lam* f);
 
 private:
     /// derive()/augment() run entirely in the new world: the `autodiff.ad` argument is rewritten first, and the

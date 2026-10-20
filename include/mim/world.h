@@ -338,8 +338,21 @@ public:
             return type(lit_level(level));
     }
     const Def* var(Def* mut);
-    const Def*
-    inhabitant(const Def* type); ///< The sole inhabitant of @p type, if it has exactly one, `nullptr` otherwise.
+    /// The sole inhabitant of @p type, if it has exactly one, `nullptr` otherwise.
+    const Def* inhabitant(const Def* type) {
+        // Every elimination asks, so the common case is decided inline.
+        switch (type->node()) {
+            case Node::App: {
+                auto app = type->as<App>();
+                return app->callee()->isa<Idx>() && Lit::isa(app->arg()) == 1 ? lit_idx_1_0() : nullptr;
+            }
+            case Node::Single:
+            case Node::Sigma:
+            case Node::Arr:
+            case Node::Variant: return inhabitant_(type);
+            default: return nullptr;
+        }
+    }
     /// @see Proxy::tracks_vars, Proxy::tracks_muts
     const Proxy* proxy(const Def* type, Defs ops, u32 tag, bool vars = false, bool muts = false) {
         return unify<Proxy>(type, Proxy::mk_flags(tag, vars, muts), ops);
@@ -762,6 +775,7 @@ private:
     bool is_folded_axis(const Def* type, const Def* index, const Def* size);
     const Def* extract1(const Def* d, const Def* i); ///< World::extract for a *scalar* @p i.
     const Def* extract_fused(const Def* d, Shape i); ///< World::extract for an @p i that no longer folds.
+    const Def* inhabitant_(const Def* type);         ///< World::inhabitant for an aggregate or Single @p type.
 
     /// @name Put into Sea of Nodes
     ///@{
@@ -811,6 +825,14 @@ private:
         if (!flags().reeval_breakpoints && breakpoints().contains(def->gid())) fe::breakpoint();
 #endif
         return def;
+    }
+
+    /// Like World::unify but yields the sole inhabitant of a singleton @p type instead, as World::var does.
+    template<class T, class... Args>
+    const Def* unify_elim(const Def* type, Args&&... args) {
+        if (type) // nullptr in a frozen World
+            if (auto inhabitant = this->inhabitant(type)) return inhabitant;
+        return unify<T>(type, std::forward<Args>(args)...);
     }
 
     template<class T>
