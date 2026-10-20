@@ -129,6 +129,10 @@ let _ = refly.struc.e (transpose (0₃, 1₃, 2₃) m2#0₂, m2#0₂);
 let _ = refly.struc.e (transpose (2₃, 0₃, 1₃) (transpose (1₃, 2₃, 0₃) m2#0₂), m2#0₂);
 let _ = refly.struc.e (transpose (1₃, 2₃, 0₃) (transpose (1₃, 2₃, 0₃) m2#0₂), transpose (2₃, 0₃, 1₃) m2#0₂);
 
+let _ = refly.struc.e (tensor.shape 1 (10, 20, 30, 40), 4);
+let _ = refly.struc.e (tensor.shape 2 m1, (2, 3));
+let _ = refly.struc.e (tensor.shape 3 (((1, 2), (3, 4)), ((5, 6), (7, 8))), (2, 2, 2));
+
 // Reading *through* a broadcast / repeat is `tensor.lower_tensor`'s job; see read_through.mim.
 
 extern fun main() = return dot;

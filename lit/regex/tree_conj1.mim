@@ -1,6 +1,0 @@
-// RUN: %mim %s
-
-plugin regex;
-plugin refly;
-
-let _ = refly.struc.e (regex.conj ‹4; regex.cls.d›, regex.conj (regex.cls.d, regex.cls.d, regex.cls.d, regex.cls.d));

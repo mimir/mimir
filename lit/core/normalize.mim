@@ -1,0 +1,393 @@
+// RUN: %mim -p opt %s
+plugin core;
+plugin mem;
+plugin refly;
+
+mod nat
+    use core.ops.n;
+
+    lam add0 (a b: Nat): Nat = refly.struc.e (b + 0, b);
+
+    // a / 0 = 0, a % 0 = a, a % a = 0
+    lam div_rem (x: Nat): «5; Nat» = refly.struc.e ((x / 0, 7 % 0, 10 / 3, 10 % 3, x % x), (0, 7, 3, 1, 0));
+
+    lam f1 (a b: Nat): Nat = a + b;
+    lam f2 (ab: «2; Nat»): Nat =
+        let b = ab#1₂; // this provokes b->gid() < a->gid()
+        let a = ab#0₂;
+        a + b;
+
+    lam g1 (a: Nat) (b: Nat): Nat = a + b;
+    lam g2 (a: Nat) (b: Nat): Nat = a + b;
+
+    let _ = refly.struc.e (f1, f2);
+    let _ = refly.alpha.e (f1, f2);
+    let _ = refly.struc.e (g1, g2);
+    let _ = refly.alpha.e (g1, g2);
+end
+
+mod idx
+    lam f0 (s i: Nat): Idx s = core.idx 0 s i;
+    lam f1 (s i: Nat): Idx s = core.idx 1 s i;
+
+    let _ = refly.struc.e (f0 (42, 23), 23₄₂);
+    let _ = refly.struc.e (f1 (42, 23), 23₄₂);
+    let _ = refly.struc.e (f0 (23, 42), 19₂₃); // mode 0 wraps
+    let _ = refly.check_bot (f1 (23, 42));     // mode 1 traps
+
+    // `0` inhabits every `Idx s`, so it folds even for a symbolic `s`.
+    lam z (s: Nat): Idx s = refly.struc.e (core.idx 1 s 0, 0:(Idx s));
+
+    let _ = refly.struc.e (core.idx2nat 42I8, 42);
+    lam idx2nat_unit (x: Idx 1): Nat = refly.struc.e (core.idx2nat x, 0);
+end
+
+mod bitcast
+    lam bitcast_bitcast (i: mem.Ptr (I8, 0)): I32 = refly.struc.e (core.bitcast I32 (core.bitcast Nat i), core.bitcast I32 i);
+    lam bitcast_idx2nat (i: I64): [I64, I8] =
+        (refly.struc.e (core.bitcast I64 (core.idx2nat i), i), refly.struc.e (core.bitcast I8 (core.idx2nat i), core.bitcast I8 i));
+end
+
+mod wrap
+    use core.ops.u.w;
+
+    let _ = refly.struc.e (250I8 + 10I8, 4I8);
+    let _ = refly.struc.e (0I8 + 0I8, 0I8);
+    let _ = refly.struc.e (255I8 + 1I8, 0I8);
+    let _ = refly.struc.e (127I8 + 1I8, 128I8);
+    let _ = refly.struc.e (128I8 + 128I8, 0I8);
+    let _ = refly.struc.e (1I8 + 2I8, 3I8);
+    let _ = refly.struc.e (6I8 + 0I8, 6I8);
+    let _ = refly.struc.e (255I8 + 255I8, 254I8);
+    let _ = refly.struc.e (0I1 + 0I1, 0I1);
+    let _ = refly.struc.e (0I1 + 1I1, 1I1);
+    let _ = refly.struc.e (1I1 + 1I1, 0I1);
+    let _ = refly.struc.e (18446744073709551615I64 + 1I64, 0I64);
+    let _ = refly.struc.e (9223372036854775807I64 + 1I64, 9223372036854775808I64);
+
+    let _ = refly.struc.e (7I8 - 3I8, 4I8);
+    let _ = refly.struc.e (0I8 - 1I8, 255I8);
+    let _ = refly.struc.e (0I8 - 0I8, 0I8);
+    let _ = refly.struc.e (128I8 - 1I8, 127I8);
+    let _ = refly.struc.e (1I1 - 1I1, 0I1);
+    let _ = refly.struc.e (0I1 - 1I1, 1I1);
+    let _ = refly.struc.e (0I64 - 1I64, 18446744073709551615I64);
+
+    let _ = refly.struc.e (0I8 * 123I8, 0I8);
+    let _ = refly.struc.e (1I8 * 123I8, 123I8);
+    let _ = refly.struc.e (16I8 * 16I8, 0I8);
+    let _ = refly.struc.e (255I8 * 255I8, 1I8);
+    let _ = refly.struc.e (128I8 * 2I8, 0I8);
+    let _ = refly.struc.e (1I1 * 1I1, 1I1);
+    let _ = refly.struc.e (0I1 * 1I1, 0I1);
+    let _ = refly.struc.e (18446744073709551615I64 * 2I64, 18446744073709551614I64);
+    let _ = refly.struc.e (18446744073709551615I64 * 18446744073709551615I64, 1I64);
+
+    let _ = refly.struc.e (1I8 << 0I8, 1I8);
+    let _ = refly.struc.e (1I8 << 1I8, 2I8);
+    let _ = refly.struc.e (1I8 << 7I8, 128I8);
+    let _ = refly.struc.e (128I8 << 1I8, 0I8);
+    let _ = refly.struc.e (255I8 << 1I8, 254I8);
+    let _ = refly.struc.e (1I1 << 0I1, 1I1);
+    let _ = refly.check_bot (1I8 << 8I8);
+
+    let _ = refly.struc.e (0₁ + 0₁, 0₁);
+    let _ = refly.struc.e (0₁ - 0₁, 0₁);
+    let _ = refly.struc.e (0₁ * 0₁, 0₁);
+    let _ = refly.struc.e (0₁ << 0₁, 0₁);
+
+    let _ = refly.struc.e (4₅ + 1₅, 0₅);
+    let _ = refly.struc.e (3₅ + 4₅, 2₅);
+    let _ = refly.struc.e (0₅ - 1₅, 4₅);
+    let _ = refly.struc.e (2₅ - 4₅, 3₅);
+    let _ = refly.struc.e (3₅ * 4₅, 2₅);
+    let _ = refly.struc.e (1₅ << 1₅, 2₅);
+    let _ = refly.struc.e (4₅ << 1₅, 3₅);
+    let _ = refly.struc.e (3₅ << 2₅, 2₅);
+    let _ = refly.check_bot (1₅ << 3₅);
+
+    let _ = refly.struc.e (9₁₀ + 1₁₀, 0₁₀);
+    let _ = refly.struc.e (0₁₀ - 1₁₀, 9₁₀);
+    let _ = refly.struc.e (7₁₀ * 8₁₀, 6₁₀);
+    let _ = refly.struc.e (7₁₀ << 2₁₀, 8₁₀);
+
+    lam add0 (i: I8): I8 = refly.struc.e (i + 0I8, i);
+    lam reassoc (w: I32): I32 = refly.struc.e (23I32 + (42I32 + w), 65I32 + w);
+
+    // Only the wrapping mode may turn `a - 1` into `a + 255`; see https://github.com/mimir/mimir/issues/253.
+    lam sub1 (a: I8): I8 = refly.struc.e (a - 1I8, 255I8 + a);
+end
+
+mod nuw
+    use core.ops.u.nw;
+
+    let _ = refly.struc.e (1I8 + 2I8, 3I8);
+    let _ = refly.struc.e (7I8 - 3I8, 4I8);
+    let _ = refly.struc.e (3I8 * 5I8, 15I8);
+    let _ = refly.check_bot (255I8 + 1I8);
+    let _ = refly.check_bot (0I8 - 1I8);
+    let _ = refly.check_bot (16I8 * 16I8);
+    let _ = refly.check_bot (128I8 << 1I8);
+
+    let _ = refly.struc.e (1₅ + 2₅, 3₅);
+    let _ = refly.struc.e (4₅ - 2₅, 2₅);
+    let _ = refly.struc.e (2₅ * 2₅, 4₅);
+    let _ = refly.struc.e (1₅ << 1₅, 2₅);
+    let _ = refly.check_bot (4₅ + 1₅);
+    let _ = refly.check_bot (0₅ - 1₅);
+    let _ = refly.check_bot (3₅ * 4₅);
+    let _ = refly.check_bot (4₅ << 1₅);
+
+    lam sub1 (a: I8): I8 = refly.struc.ne (a - 1I8, 255I8 + a);
+end
+
+mod nsw
+    use core.ops.s.nw;
+
+    let _ = refly.struc.e (1I8 + 2I8, 3I8);
+    let _ = refly.struc.e (127I8 + 0I8, 127I8);
+    let _ = refly.struc.e (255I8 + 0I8, 255I8);
+    let _ = refly.struc.e (7I8 - 3I8, 4I8);
+    let _ = refly.struc.e (255I8 - 1I8, 254I8);
+    let _ = refly.struc.e (3I8 * 5I8, 15I8);
+    let _ = refly.struc.e (255I8 * 255I8, 1I8);
+    let _ = refly.struc.e (128I8 * 1I8, 128I8);
+    let _ = refly.struc.e (255I8 << 1I8, 254I8);
+    let _ = refly.check_bot (127I8 + 1I8);
+    let _ = refly.check_bot (128I8 - 1I8);
+    let _ = refly.check_bot (20I8 * 20I8);
+    let _ = refly.check_bot (128I8 * 255I8);
+    let _ = refly.check_bot (64I8 << 1I8);  // 64 -> 128 overflows signed
+    let _ = refly.check_bot (128I8 << 1I8); // -128 * 2 overflows
+
+    let _ = refly.check_bot (9223372036854775807I64 + 1I64);
+    let _ = refly.check_bot (9223372036854775808I64 - 1I64);
+    let _ = refly.check_bot (9223372036854775808I64 * 18446744073709551615I64);
+
+    let _ = refly.struc.e (1₅ << 1₅, 2₅);
+    let _ = refly.check_bot (1₅ + 2₅);
+    let _ = refly.check_bot (2₅ << 1₅);
+
+    lam sub1 (a: I8): I8 = refly.struc.ne (a - 1I8, 255I8 + a);
+end
+
+mod nsuw
+    let `+ = core.wrap.add core.mode.nsuw;
+    let `- = core.wrap.sub core.mode.nsuw;
+
+    let _ = refly.struc.e (1I8 + 2I8, 3I8);
+    let _ = refly.check_bot (255I8 + 1I8);
+    let _ = refly.check_bot (127I8 + 1I8);
+
+    lam sub1 (a: I8): I8 = refly.struc.ne (a - 1I8, 255I8 + a);
+end
+
+mod unsigned
+    use core.ops.u;
+
+    let _ = refly.struc.e (255I8 >> 0I8, 255I8);
+    let _ = refly.struc.e (255I8 >> 1I8, 127I8);
+    let _ = refly.struc.e (128I8 >> 7I8, 1I8);
+    let _ = refly.struc.e (1I8 >> 1I8, 0I8);
+    let _ = refly.struc.e (0₁ >> 0₁, 0₁);
+    let _ = refly.struc.e (4₅ >> 1₅, 2₅);
+    let _ = refly.struc.e (9₁₀ >> 3₁₀, 1₁₀);
+    let _ = refly.check_bot (1I8 >> 8I8);
+    let _ = refly.check_bot (4₅ >> 3₅);
+
+    let _ = refly.struc.e (42I8 == 42I8, tt);
+    let _ = refly.struc.e (42I8 != 43I8, tt);
+    let _ = refly.struc.e (42I8 == 43I8, ff);
+    let _ = refly.struc.e (core.icmp.t (42I8, 43I8), tt);
+    let _ = refly.struc.e (core.icmp.f (42I8, 43I8), ff);
+
+    let _ = refly.struc.e (1I8   <  255I8, tt);
+    let _ = refly.struc.e (255I8 >  1I8,   tt);
+    let _ = refly.struc.e (255I8 <= 255I8, tt);
+    let _ = refly.struc.e (128I8 >= 127I8, tt);
+
+    let _ = refly.struc.e (0₁ == 0₁, tt);
+    let _ = refly.struc.e (0₁ != 0₁, ff);
+    let _ = refly.struc.e (core.icmp.t (0₁, 0₁), tt);
+    let _ = refly.struc.e (core.icmp.f (0₁, 0₁), ff);
+
+    let _ = refly.struc.e (0₅ == 0₅, tt);
+    let _ = refly.struc.e (0₅ != 1₅, tt);
+    let _ = refly.struc.e (4₅ == 4₅, tt);
+    let _ = refly.struc.e (4₅ != 4₅, ff);
+    let _ = refly.struc.e (1₅ <  4₅, tt);
+    let _ = refly.struc.e (4₅ >  1₅, tt);
+    let _ = refly.struc.e (2₅ <= 3₅, tt);
+    let _ = refly.struc.e (3₅ <= 4₅, tt);
+    let _ = refly.struc.e (4₅ >= 3₅, tt);
+
+    let _ = refly.struc.e (8₉ == 8₉, tt);
+    let _ = refly.struc.e (8₉ != 8₉, ff);
+    let _ = refly.struc.e (4₉ <  8₉, tt);
+    let _ = refly.struc.e (8₉ >  4₉, tt);
+    let _ = refly.struc.e (5₉ <= 8₉, tt);
+    let _ = refly.struc.e (8₉ >= 5₉, tt);
+
+    let _ = refly.struc.e ((tt >= ff) == (tt > ff), tt);
+
+    lam a (x: Idx 23): Bool = refly.struc.e (x == x,  tt);
+    lam b (x: Idx 23): Bool = refly.struc.e (x <= x,  tt);
+    lam d (x: Idx 23): Bool = refly.struc.e (x != x,  ff);
+    // these are not folded and stay comparisons
+    lam c (x: Idx 23): Bool = refly.struc.ne (x < x,   ff);
+    lam e (x: Idx 23): Bool = refly.struc.ne (x != 7₂₃, ff);
+end
+
+mod signed
+    use core.ops.s;
+
+    let _ = refly.struc.e (255I8 >> 1I8, 255I8);
+    let _ = refly.struc.e (254I8 >> 1I8, 255I8);
+    let _ = refly.struc.e (128I8 >> 1I8, 192I8);
+    let _ = refly.struc.e (127I8 >> 1I8, 63I8);
+    let _ = refly.struc.e (1I8   >> 1I8, 0I8);
+    let _ = refly.struc.e (0₁ >> 0₁, 0₁);
+    let _ = refly.struc.e (4₅ >> 1₅, 4₅);
+    let _ = refly.struc.e (3₅ >> 1₅, 4₅);
+    let _ = refly.struc.e (9₁₀ >> 3₁₀, 9₁₀);
+    let _ = refly.check_bot (1I8 >> 8I8);
+    let _ = refly.check_bot (4₅ >> 3₅);
+
+    let _ = refly.struc.e (1I8   >  255I8, tt);
+    let _ = refly.struc.e (255I8 <  1I8,   tt);
+    let _ = refly.struc.e (255I8 >= 255I8, tt);
+    let _ = refly.struc.e (128I8 <= 127I8, tt);
+
+    let _ = refly.struc.e (1₅ >  4₅, tt);
+    let _ = refly.struc.e (4₅ <  1₅, tt);
+    let _ = refly.struc.e (3₅ <  4₅, tt);
+    let _ = refly.struc.e (4₅ >  3₅, tt);
+    let _ = refly.struc.e (2₅ >= 3₅, tt);
+    let _ = refly.struc.e (3₅ <= 4₅, tt);
+    let _ = refly.struc.e (4₅ >= 3₅, tt);
+
+    let _ = refly.struc.e (4₉ >  8₉, tt);
+    let _ = refly.struc.e (8₉ <  4₉, tt);
+    let _ = refly.struc.e (5₉ <  8₉, tt);
+    let _ = refly.struc.e (8₉ >  5₉, tt);
+    let _ = refly.struc.e (5₉ <= 8₉, tt);
+    let _ = refly.struc.e (8₉ >= 5₉, tt);
+
+    let _ = refly.struc.e (4₁₀ > 5₁₀, tt);
+    let _ = refly.struc.e (5₁₀ < 4₁₀, tt);
+    let _ = refly.struc.e (5₁₀ < 9₁₀, tt);
+    let _ = refly.struc.e (9₁₀ > 5₁₀, tt);
+end
+
+mod bit
+    use core.ops.u;
+
+    let and = core.bit2.and 0;
+
+    let _ = refly.struc.e (and (tt, tt), tt);
+    let _ = refly.struc.e (and (ff, tt), ff);
+    let _ = refly.struc.e (and (and (and (tt, tt), and (ff, ff)), and (and (ff, tt), and (tt, ff))), ff);
+    let _ = refly.struc.e (and (tt >= ff, tt > ff), tt);
+
+    lam and_tt (i: Bool): Bool = refly.struc.e (and (i, tt), i);
+    lam and_ff (i: Bool): Bool = refly.struc.e (and (i, ff), ff);
+    lam and_icmps (a b: Bool): Bool = refly.struc.e (and (a >= b, a > b), a > b);
+    lam and_lit (i: I8): Bool = refly.struc.e (and (i >= 'a', i <= 'a'), i == 'a');
+end
+
+mod extrema
+    let _ = refly.struc.e (core.extrema.umin (3I8, 250I8), 3I8);
+    let _ = refly.struc.e (core.extrema.umax (3I8, 250I8), 250I8);
+    let _ = refly.struc.e (core.extrema.umin (1₅, 4₅), 1₅);
+    let _ = refly.struc.e (core.extrema.umax (1₅, 4₅), 4₅);
+    let _ = refly.struc.e (core.extrema.umin (8₉, 5₉), 5₉);
+    let _ = refly.struc.e (core.extrema.umax (8₉, 5₉), 8₉);
+    let _ = refly.struc.e (core.extrema.umin (0₁, 0₁), 0₁);
+    let _ = refly.struc.e (core.extrema.umax (0₁, 0₁), 0₁);
+
+    let _ = refly.struc.e (core.extrema.smin (1I8, 255I8), 255I8);
+    let _ = refly.struc.e (core.extrema.smax (1I8, 255I8), 1I8);
+    let _ = refly.struc.e (core.extrema.smin (128I8, 127I8), 128I8);
+    let _ = refly.struc.e (core.extrema.smax (128I8, 127I8), 127I8);
+    let _ = refly.struc.e (core.extrema.smin (254I8, 255I8), 254I8);
+    let _ = refly.struc.e (core.extrema.smax (254I8, 255I8), 255I8);
+end
+
+mod conv
+    let _ = refly.struc.e (core.conv.u i16 255I8, 255I16);
+    let _ = refly.struc.e (core.conv.s i16 255I8, 65535I16);
+    let _ = refly.struc.e (core.conv.u i8 65535I16, 255I8);
+    let _ = refly.struc.e (core.conv.s i8 65535I16, 255I8);
+    let _ = refly.struc.e (core.conv.u 10 4₅, 4₁₀);
+    let _ = refly.struc.e (core.conv.s 10 4₅, 9₁₀);
+    let _ = refly.struc.e (core.conv.s 10 3₅, 8₁₀);
+    let _ = refly.struc.e (core.conv.u 3 4₅, 1₃);
+    let _ = refly.struc.e (core.conv.s 3 4₅, 2₃);
+    let _ = refly.struc.e (core.conv.s 3 3₅, 1₃);
+
+    // Widening then narrowing back to the original size is the identity; literal chains already fold above.
+    lam uu_widen  (x: I8):    I8    = refly.struc.e (core.conv.u i8 (core.conv.u i16 x), x);
+    lam ss_widen  (x: I8):    I8    = refly.struc.e (core.conv.s i8 (core.conv.s i16 x), x);
+    lam uu_to_i64 (x: I8):    I8    = refly.struc.e (core.conv.u i8 (core.conv.u i64 x), x);
+    lam uu_idx5   (x: Idx 5): Idx 5 = refly.struc.e (core.conv.u 5 (core.conv.u i16 x), x);
+    lam ss_idx5   (x: Idx 5): Idx 5 = refly.struc.e (core.conv.s 5 (core.conv.s i16 x), x);
+end
+
+lam div_rem (m: mem.M 0): mem.M 0 =
+    let (m, _) = refly.struc.e (core.div.udiv (m, (7I8, 2I8)), (m, 3I8));
+    let (m, _) = refly.struc.e (core.div.udiv (m, (255I8, 2I8)), (m, 127I8));
+    let (m, _) = refly.struc.e (core.div.udiv (m, (0I8, 7I8)), (m, 0I8));
+    let (m, r) = core.div.udiv (m, (7I8, 0I8));
+    let _ = refly.check_bot r;
+
+    let (m, _) = refly.struc.e (core.div.urem (m, (7I8, 2I8)), (m, 1I8));
+    let (m, _) = refly.struc.e (core.div.urem (m, (255I8, 2I8)), (m, 1I8));
+    let (m, _) = refly.struc.e (core.div.urem (m, (8I8, 2I8)), (m, 0I8));
+    let (m, r) = core.div.urem (m, (7I8, 0I8));
+    let _ = refly.check_bot r;
+
+    let (m, _) = refly.struc.e (core.div.sdiv (m, (254I8, 2I8)), (m, 255I8));
+    let (m, _) = refly.struc.e (core.div.sdiv (m, (255I8, 2I8)), (m, 0I8));
+    let (m, _) = refly.struc.e (core.div.sdiv (m, (127I8, 255I8)), (m, 129I8));
+    let (m, r) = core.div.sdiv (m, (7I8, 0I8));
+    let (m, s) = core.div.sdiv (m, (128I8, 255I8));
+    let _ = refly.check_bot r;
+    let _ = refly.check_bot s;
+
+    let (m, _) = refly.struc.e (core.div.srem (m, (254I8, 2I8)), (m, 0I8));
+    let (m, _) = refly.struc.e (core.div.srem (m, (255I8, 2I8)), (m, 255I8));
+    let (m, _) = refly.struc.e (core.div.srem (m, (127I8, 255I8)), (m, 0I8));
+    let (m, r) = core.div.srem (m, (7I8, 0I8));
+    let (m, s) = core.div.srem (m, (128I8, 255I8));
+    let _ = refly.check_bot r;
+    let _ = refly.check_bot s;
+
+    let (m, _) = refly.struc.e (core.div.udiv (m, (9₁₀, 2₁₀)), (m, 4₁₀));
+    let (m, _) = refly.struc.e (core.div.urem (m, (9₁₀, 2₁₀)), (m, 1₁₀));
+    let (m, _) = refly.struc.e (core.div.udiv (m, (4₅, 2₅)), (m, 2₅));
+    let (m, _) = refly.struc.e (core.div.urem (m, (4₅, 3₅)), (m, 1₅));
+
+    let (m, r) = core.div.udiv (m, (0₁, 0₁));
+    let (m, s) = core.div.urem (m, (0₁, 0₁));
+    let (m, t) = core.div.sdiv (m, (0₁, 0₁));
+    let (m, u) = core.div.srem (m, (0₁, 0₁));
+    let _ = refly.check_bot r;
+    let _ = refly.check_bot s;
+    let _ = refly.check_bot t;
+    let _ = refly.check_bot u;
+
+    let (m, r) = core.div.sdiv (m, (9223372036854775808I64, 18446744073709551615I64));
+    let (m, s) = core.div.srem (m, (9223372036854775808I64, 18446744073709551615I64));
+    let _ = refly.check_bot r;
+    let _ = refly.check_bot s;
+
+    let (m, _) = refly.struc.e (core.abs (m, 0I8), (m, 0I8));
+    let (m, _) = refly.struc.e (core.abs (m, 255I8), (m, 1I8));
+    let (m, _) = refly.struc.e (core.abs (m, 128I8), (m, 128I8));
+    let (m, _) = refly.struc.e (core.abs (m, 0₁), (m, 0₁));
+    let (m, _) = refly.struc.e (core.abs (m, 4₅), (m, 1₅));
+    let (m, _) = refly.struc.e (core.abs (m, 3₅), (m, 2₅));
+    let (m, _) = refly.struc.e (core.abs (m, 9₁₀), (m, 1₁₀));
+    let (m, _) = refly.struc.e (core.abs (m, 5₁₀), (m, 5₁₀));
+    let (m, _) = refly.struc.e (core.abs (m, 9223372036854775808I64), (m, 9223372036854775808I64));
+    m;

@@ -1,6 +1,0 @@
-// RUN: %mim %s
-
-plugin core;
-plugin refly;
-
-let _ = refly.struc.e (core.bit2.and 0 (ff, tt), ff);

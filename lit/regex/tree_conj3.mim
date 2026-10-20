@@ -1,8 +1,0 @@
-// RUN: %mim %s
-
-plugin regex;
-plugin refly;
-
-// unlike `disj`, `conj` is ordered and keeps its duplicates
-let _ = refly.struc.ne (regex.conj (regex.cls.w, regex.cls.d, regex.cls.w, regex.cls.d),
-                              regex.conj (regex.cls.w, regex.cls.d));

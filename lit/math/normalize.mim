@@ -1,0 +1,46 @@
+// RUN: %mim -p opt %s
+plugin math;
+plugin core;
+plugin refly;
+
+let _ = refly.struc.e (math.inf     math.f32, 0x7F800000:math.F32);
+let _ = refly.struc.e (math.neg_inf math.f32, 0xFF800000:math.F32);
+let _ = refly.struc.e (math.nan     math.f32, 0x7FC00000:math.F32);
+let _ = refly.struc.e (math.inf     math.f64, 0x7FF0000000000000:math.F64);
+let _ = refly.struc.e (math.neg_inf math.f64, 0xFFF0000000000000:math.F64);
+let _ = refly.struc.e (math.nan     math.f64, 0x7FF8000000000000:math.F64);
+
+mod fold
+    use math.ops.none;
+
+    let f32_1   = math.conv.u2f math.f32 1I32;
+    let f32_2   = math.conv.u2f math.f32 2I32;
+    let f64_2   = math.conv.u2f math.f64 2I32;
+    let f64_3   = math.conv.u2f math.f64 3I32;
+    let f64_4   = math.conv.u2f math.f64 4I32;
+    let f64_42  = math.conv.u2f math.f64 42I32;
+    let f64_m1  = math.conv.s2f math.f64 255I8;
+    let f64_m15 = math.conv.s2f math.f64 241I8;
+
+    let _ = refly.struc.e (math.conv.f2u i32 (f32_1 + f32_2), 3I32);
+    let _ = refly.struc.e (math.conv.f2u i32 (f64_3 * f64_2), 6I32);
+    let _ = refly.struc.e (math.conv.f2u i32 (math.pow math.mode.none (f64_2, f64_3)), 8I32);
+    let _ = refly.struc.e (math.conv.f2u i32 (math.abs math.mode.none f64_m1), 1I32);
+    let _ = refly.struc.e (math.conv.f2s i8 (math.round.t math.mode.none (f64_m15 / f64_4)), 253I8);
+    let _ = refly.struc.e (math.conv.f2u i32 f64_42, 42I32);
+    let _ = refly.struc.e (math.conv.f2s i8 f64_m1, 255I8);
+    let _ = refly.struc.e (math.conv.f2u i32 (math.conv.f2f math.f32 f64_42), 42I32);
+    let _ = refly.struc.e (math.conv.f2u i32 (math.conv.u2f math.f64 171I32 / f64_4), 42I32);
+end
+
+mod fast
+    use math.ops.fast;
+
+    // `f - 0` folds, `0 - f` must not
+    lam minus (f: math.F32): math.F32 = refly.struc.ne (math.minus math.mode.fast f, f);
+    lam sub0  (f: math.F32): math.F32 = refly.struc.e (f - 0.0:math.F32, f);
+    lam add0  (f: math.F32): math.F32 = refly.struc.e (f + 0.0:math.F32, f);
+    lam add0f (f: math.F32): math.F32 = refly.struc.e (0.0:math.F32 + f, f);
+    lam mul0  (f: math.F32): math.F32 = refly.struc.e (f * 0.0:math.F32, 0.0:math.F32);
+    lam mul0f (f: math.F32): math.F32 = refly.struc.e (0.0:math.F32 * f, 0.0:math.F32);
+end

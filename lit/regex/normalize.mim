@@ -1,0 +1,48 @@
+// RUN: %mim %s
+plugin regex;
+plugin refly;
+
+use regex;
+use regex.quant;
+
+let _ = refly.struc.e (lit '0', range ('0', '0'));
+let _ = refly.struc.e (range ('2', '0'), range ('0', '2'));
+
+let _ = refly.struc.e (optional (optional cls.d), optional cls.d);
+let _ = refly.struc.e (optional (plus     cls.d), star     cls.d);
+let _ = refly.struc.e (optional (star     cls.d), star     cls.d);
+let _ = refly.struc.e (plus     (optional cls.d), star     cls.d);
+let _ = refly.struc.e (plus     (plus     cls.d), plus     cls.d);
+let _ = refly.struc.e (plus     (star     cls.d), star     cls.d);
+let _ = refly.struc.e (star     (optional cls.d), star     cls.d);
+let _ = refly.struc.e (star     (plus     cls.d), star     cls.d);
+let _ = refly.struc.e (star     (star     cls.d), star     cls.d);
+
+let _ = refly.struc.e (disj (cls.d, cls.w), cls.w);
+let _ = refly.struc.e (disj (cls.w, disj (cls.d, cls.s), cls.d), disj (cls.w, cls.s));
+let _ = refly.struc.e (disj (lit '0', lit '5', lit '9'), disj (range ('0', '0'), range ('5', '5'), range ('9', '9')));
+let _ = refly.struc.e (disj (cls.d, lit '0', lit '5', lit '9'), cls.d);
+let _ = refly.struc.e (disj (cls.w, cls.d, lit '0', lit '5', lit '9', lit 'Z', lit '_', lit 'a'), cls.w);
+let _ = refly.struc.e (disj (range ('4', '5'), range ('0', '2'), range ('1', '6'), range ('7', '8'), lit '9'), cls.d);
+let _ = refly.struc.e (disj (lit '\t', lit '\n', lit '\r', lit ' '), cls.s);
+let _ = refly.struc.e (disj (lit '1', lit '0', lit '2', lit '3', lit '4', lit '5', lit '6', lit '7', lit '8'), range ('0', '8'));
+let _ = refly.struc.e (disj (lit '1', cls.d, cls.d, lit '0', lit '2', lit '3', lit '4', lit '5', lit '6', lit '7', lit '8', lit '9'), cls.d);
+let _ = refly.struc.e
+    (disj (lit '1', lit '0', lit '2', lit '3', lit '4', lit '5', lit '6', lit '7', lit '8', lit '9',
+           lit 'A', lit 'B', lit 'C', lit 'D', lit 'E', lit 'F', lit 'G', lit 'H', lit 'I', lit 'J', lit 'K', lit 'L', lit 'M',
+           lit 'N', lit 'O', lit 'P', lit 'Q', lit 'R', lit 'S', lit 'T', lit 'U', lit 'V', lit 'W', lit 'X', lit 'Y', lit 'Z',
+           lit '_',
+           lit 'a', lit 'b', lit 'c', lit 'd', lit 'e', lit 'f', lit 'g', lit 'h', lit 'i', lit 'j', lit 'k', lit 'l', lit 'm',
+           lit 'n', lit 'o', lit 'p', lit 'q', lit 'r', lit 's', lit 't', lit 'u', lit 'v', lit 'w', lit 'x', lit 'y', lit 'z'),
+     cls.w);
+
+// `empty` is not absorbed into `any`
+let _ = refly.struc.ne (disj (any, empty), any);
+
+let _ = refly.struc.e (conj (empty), empty);
+let _ = refly.struc.e (conj (lit 'a', empty), range ('a', 'a'));
+let _ = refly.struc.e (conj ‹4; cls.d›, conj (cls.d, cls.d, cls.d, cls.d));
+let _ = refly.struc.e (conj (cls.d, conj (cls.d, cls.d), cls.d), conj ‹4; cls.d›);
+// unlike `disj`, `conj` is ordered and keeps its duplicates
+let _ = refly.struc.ne (conj (cls.w, cls.d, cls.w, cls.d), conj (cls.w, cls.d));
+let _ = refly.struc.e (conj (disj (cls.d, cls.D), disj (cls.w, cls.W), disj (cls.s, cls.S)), conj (any, any, any));
