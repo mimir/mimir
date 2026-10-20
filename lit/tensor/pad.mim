@@ -23,7 +23,7 @@ extern fun pad1d_const (input: «3; I32»): «6; I32» =
 
 // 2-D constant pad: out[i][j] = in_region ? input[i−1][j−2] : 0. The two per-axis bounds checks are AND-combined.
 // CHECK-DAG: extern con pad2d_const
-// CHECK-DAG: core.bit2.and_
+// CHECK-DAG: core.bit2.and
 extern fun pad2d_const (input: «2, 3; I32»): «4, 7; I32» =
     let input = buf input;
     return (pad (2, 3) (0, (1, 2), (1, 2)) (input, 0I32));

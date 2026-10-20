@@ -350,6 +350,13 @@ static bool is_block(const Expr* expr) {
 }
 
 void LamDecl::stream_(fe::Tab& tab, std::ostream& os) const {
+    if (auto nom = nom_sugar()) {
+        std::print(os, "nom {}", dbg());
+        for (auto dom : doms())
+            std::print(os, " {}", S(tab, dom.get()));
+        std::print(os, " = {}", S(tab, nom->body()));
+        return;
+    }
     std::print(os, "{}", tag());
     if (dbg()) std::print(os, " {}", dbg());
     for (auto dom : doms())

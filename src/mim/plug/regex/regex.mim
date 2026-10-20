@@ -55,11 +55,11 @@ axm range: «2; mem.Char» → RE, normalize_range, 1;
 ///
 anx lam lit (val: mem.Char): RE = range (val, val);
 ///
-/// ### not_
+/// ### not
 ///
 /// Matches anything but the ranges in the parameter - the parameter must only contain `regex.disj`s and `regex.range`s.
 ///
-axm not_: RE → RE, normalize_not, 1;
+axm not: RE → RE, normalize_not, 1;
 ///
 /// ### neg_lookahead
 ///
@@ -80,11 +80,11 @@ axm neg_lookahead: RE → RE, 1;
 ///
 pub mod cls
     anx let d = range ('0', '9');
-    anx let D = not_ d;
+    anx let D = not d;
     anx let w = disj (range ('0', '9'), range ('a', 'z'), range ('A', 'Z'), lit '_');
-    anx let W = not_ w;
+    anx let W = not w;
     anx let s = disj (range ('\t', '\n'), lit '\r', lit ' ');
-    anx let S = not_ s;
+    anx let S = not s;
 end
 ///
 /// ### any

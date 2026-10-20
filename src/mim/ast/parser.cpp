@@ -801,9 +801,24 @@ Ptr<RecDecl> Parser::parse_nom_decl(Tracker track, Mods mods) {
     check_no_extern(mods, "nominal type declaration");
     eat(Tag::K_nom);
     auto dbg = parse_id("nominal type declaration");
+    if (accept(Tag::T_assign)) {
+        auto body = parse_expr("underlying type of a nominal type declaration");
+        return ptr<NomDecl>(track, mods, dbg, body);
+    }
+
+    // `nom I (dom)+ = e` is sugar for `lam I (dom)+ = nom I = e; I`; within `e`, `I` names this very instance.
+    Ptrs<LamDecl::Dom> doms;
+    do {
+        auto dom_track = tracker();
+        auto ptrn      = parse_ptrn({.implicit = true}, Prec::Pi, "domain pattern of a nominal type declaration");
+        doms.emplace_back(ptr<LamDecl::Dom>(dom_track, ptrn, nullptr, nullptr, nullptr));
+    } while (ISA(ahead().tag(), C_CURRIED_P));
     expect(Tag::T_assign, "nominal type declaration");
-    auto body = parse_expr("underlying type of a nominal type declaration");
-    return ptr<NomDecl>(track, mods, dbg, body);
+    auto body  = parse_expr("underlying type of a nominal type declaration");
+    auto decls = Ptrs<ValDecl>();
+    decls.emplace_back(ptr<NomDecl>(track, Mods{}, dbg, body));
+    auto inst = ptr<DeclExpr>(track, ptr<PathExpr>(ptr<Path>(dbg.loc(), Dbgs{dbg})), false, decls);
+    return ptr<LamDecl>(track, mods, Tag::K_lam, dbg, nullptr, inst, doms);
 }
 
 Ptr<ValDecl> Parser::parse_rule_decl(Tracker track, Mods mods) {

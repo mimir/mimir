@@ -217,7 +217,7 @@ const Def* any_unwanted_for_not(const Def* arg) {
 
 const Def* normalize_not(const Def*, const Def* callee, const Def* arg) {
     if (auto unwanted = any_unwanted_for_not(arg)) {
-        arg->blame("regex.not_ must only be used with regex.disj, regex.range, regex.any and regex.not_: {} {}", callee,
+        arg->blame("regex.not must only be used with regex.disj, regex.range, regex.any and regex.not: {} {}", callee,
                    arg)
             .n("found unwanted: {}", unwanted)
             .bail();

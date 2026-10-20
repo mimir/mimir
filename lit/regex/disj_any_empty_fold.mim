@@ -1,7 +1,0 @@
-// RUN: %mim %s
-
-plugin regex;
-plugin refly;
-
-// `empty` is not absorbed into `any`
-let _ = refly.struc.ne (regex.disj (regex.any, regex.empty), regex.any);

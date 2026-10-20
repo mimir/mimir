@@ -13,7 +13,7 @@ plugin cps;
 
 use core.ops.u;
 
-let re = regex.not_ (regex.disj (regex.lit('a'), regex.cls.W));
+let re = regex.not (regex.disj (regex.lit('a'), regex.cls.W));
 
 extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char», exit: Cn [mem.M 0, I32]) =
     (exit, match_argument) # (argc > 1I32) (m, 0I32)

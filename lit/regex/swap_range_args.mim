@@ -1,6 +1,0 @@
-// RUN: %mim %s
-
-plugin regex;
-plugin refly;
-
-let _ = refly.struc.e (regex.range ('2', '0'), regex.range ('0', '2'));

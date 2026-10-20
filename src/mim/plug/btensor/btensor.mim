@@ -350,7 +350,7 @@ anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
         let win = range_unroll (r, Sr) To (u_lo, r) cell_at;
         // `vd` is `vdim` clamped through the dispatch condition: the non-selected branch is still
         // ELABORATED, so its body must be type-sane even when `vdim` is the out-of-range sentinel.
-        let vec_ok = core.bit2.and_ 2 (vdim + 1 == ro, Sr#(core.idx 0 r ((0, vdim)#(vdim < r))) != 1);
+        let vec_ok = core.bit2.and 2 (vdim + 1 == ro, Sr#(core.idx 0 r ((0, vdim)#(vdim < r))) != 1);
         let vd = (0, vdim)#vec_ok;
 
         // CLASSIC: reduction loops inside all output loops, one accumulator cell at a time; the
@@ -403,8 +403,8 @@ anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
         let pd_c    = (0, vdim)#(vdim < r);
         let sd_r    = vdim + 1;
         let sd_c    = (0, sd_r)#(sd_r < r);
-        let block_ok = core.bit2.and_ 2 (vdim + 2 == ro,
-                       core.bit2.and_ 2 (Sr#(core.idx 0 r pd_c) != 1, Sr#(core.idx 0 r sd_c) != 1));
+        let block_ok = core.bit2.and 2 (vdim + 2 == ro,
+                       core.bit2.and 2 (Sr#(core.idx 0 r pd_c) != 1, Sr#(core.idx 0 r sd_c) != 1));
 
         con blocked (m: mem.M 0, u: U, done: Cn [mem.M 0, U])@tt =
             let Sp = Sr#(core.idx 0 r pd_c);
@@ -461,9 +461,9 @@ anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
         let rv_j      = (1, unroll)#(1 <= unroll);
         let rv_bd     = (0, ro - rv_j)#(rv_j <= ro);
         let rv_vd     = (0, vdim)#(vdim < r);
-        let redvec_ok = core.bit2.and_ 2 (ro <= vdim, core.bit2.and_ 2 (vdim + 1 == r, rv_j <= ro));
+        let redvec_ok = core.bit2.and 2 (ro <= vdim, core.bit2.and 2 (vdim + 1 == r, rv_j <= ro));
         let Sr_rv     = ‹j: r; let jj = core.idx2nat j;
-                               (Sr#j, (1, Sr#j)#redvec_ok)#(core.bit2.and_ 2 (rv_bd <= jj, jj < ro))›;
+                               (Sr#j, (1, Sr#j)#redvec_ok)#(core.bit2.and 2 (rv_bd <= jj, jj < ro))›;
         lam rv_mul (d: Nat, acc: Nat): Nat = acc * Sr_rv#(core.idx 0 r d);
         let rv_ds = ‹i: rv_j; rv_bd + core.idx2nat i›;
         let Sb    = vec.fold.r @(Nat, Nat) @rv_j rv_mul (rv_ds, 1);

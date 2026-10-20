@@ -16,6 +16,7 @@
 namespace mim::ast {
 
 class Decl;
+class Expr;
 class LamDecl;
 class File;
 class Scopes;
@@ -94,6 +95,9 @@ struct AnnexInfo {
     } id;
 
     fe::Vector<fe::Vector<Sym>> subs; ///< List of subs which is a list of aliases.
+    /// The constructor or field names its variant or sigma declares, by index; an unnamed field is the empty Sym.
+    fe::Vector<Sym> names;
+    bool fields = false; ///< Are AnnexInfo::names the fields of a sigma rather than the constructors of a variant?
     Dbg normalizer;
     std::optional<bool> pi;
     bool fresh = true;
@@ -152,7 +156,8 @@ public:
     /// Registers @p dbg as an annex, deriving `plugin`/`tag`/`sub` from @p dbg's source file and @p s's current
     /// `mod`-nesting (Scopes::mod_depth/Scopes::enclosing_mod); @p sub_id receives @p dbg's `sub` index within its
     /// tag. `nullptr` if @p dbg is anonymous or nests more than one `mod` deep.
-    AnnexInfo* name2annex(Scopes& s, Dbg dbg, sub_t* sub_id);
+    /// @p type, if given, is the declared body whose constructor or field names become AnnexInfo::names.
+    AnnexInfo* name2annex(Scopes& s, Dbg dbg, sub_t* sub_id, const Expr* type = nullptr);
     const auto& plugin2annexes(Sym plugin) { return plugin2sym2annex_[plugin]; }
 
     /// An `anx` alias in one plugin for an annex of another, e.g. `anx M = core.M;` in `mem`.
@@ -431,6 +436,7 @@ public:
 
     auto ptrns() const { return vla<0>(); }
     const Ptrn* ptrn(size_t i) const { return ptrns()[i].get(); }
+    Sym field(size_t i) const; ///< The field name of ptrn(@p i), or the empty Sym if it binds none.
     size_t num_ptrns() const { return ptrns().size(); }
 
     void bind(Scopes&, bool rebind, bool quiet) const override;
@@ -1166,6 +1172,10 @@ public:
     NomDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr> body)
         : RecDecl(loc, mods, dbg, body) {}
 
+    /// The visibility of the named constructors and fields: that of the enclosing top-level declaration.
+    Vis named_vis() const { return named_vis_; }
+
+    void bind_decl(Scopes&) const override;
     void emit_decl(Emitter&) const override;
     void emit_body(Emitter&) const override;
     /// Emits a `nom` without a mutable body as soon as a sibling refers to it; `nullptr` on a cycle.
@@ -1176,6 +1186,7 @@ private:
     void emit_nom(Emitter&, const Def* body) const;
 
     mutable bool emitting_ = false;
+    mutable Vis named_vis_ = Vis::Pub;
 };
 
 /// `tag dbg dom_0 ... dom_n-1: codom = body;` with LamDecl::tag `lam`/`con`/`fun` or anonymous `λ`/`cn`/`fn`.
@@ -1216,6 +1227,8 @@ public:
     const Dom* dom(size_t i) const { return doms()[i].get(); }
     size_t num_doms() const { return doms().size(); }
     const Expr* codom() const { return codom_.get(); }
+    /// The `nom` if this is `lam I dom+ = nom I = e; I`, which `nom I dom+ = e` desugars to.
+    const NomDecl* nom_sugar() const;
 
     void bind_decl(Scopes&) const override;
     void bind_body(Scopes&) const override;

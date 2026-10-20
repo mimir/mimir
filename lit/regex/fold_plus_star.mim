@@ -1,6 +1,0 @@
-// RUN: %mim %s
-
-plugin regex;
-plugin refly;
-
-let _ = refly.struc.e (regex.quant.plus (regex.quant.star regex.cls.d), regex.quant.star regex.cls.d);

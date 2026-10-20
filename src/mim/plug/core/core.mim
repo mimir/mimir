@@ -119,21 +119,21 @@ axm bit1.(f, neg, id, t): [m: Nat] → {s: Nat} → Idx s → Idx s, normalize_b
 /// | nfst   |  o |  o |  x |  x | not first argument           |
 /// | niff   |  o |  x |  o |  o | not implication              |
 /// | nsnd   |  o |  x |  o |  x | not second argument          |
-/// | xor_   |  o |  x |  x |  o | exclusive or                 |
+/// | xor    |  o |  x |  x |  o | exclusive or                 |
 /// | nand   |  o |  x |  x |  x | not and                      |
-/// | and_   |  x |  o |  o |  o | and                          |
+/// | and    |  x |  o |  o |  o | and                          |
 /// | nxor   |  x |  o |  o |  x | not exclusive or             |
 /// | snd    |  x |  o |  x |  o | second argument              |
 /// | iff    |  x |  o |  x |  x | implication                  |
 /// | fst    |  x |  x |  o |  o | first argument               |
 /// | ciff   |  x |  x |  o |  x | converse implication         |
-/// | or_    |  x |  x |  x |  o | or                           |
+/// | or     |  x |  x |  x |  o | or                           |
 /// | t      |  x |  x |  x |  x | always true                  |
 ///
 /// @todo Add type constraint that `bit2` is only allowed for powers of two.
 ///
-axm bit2.( f,      nor, nciff, nfst, niff, nsnd, xor_, nand,
-           and_,  nxor,   snd,  iff,  fst, ciff,  or_,    t):
+axm bit2.( f,   nor, nciff, nfst, niff, nsnd, xor, nand,
+           and, nxor,  snd,  iff,  fst, ciff,  or,    t):
     [m: Nat] → {s: Nat} → «2; Idx s» → Idx s, normalize_bit2;
 ///
 /// ### shr

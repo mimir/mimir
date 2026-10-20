@@ -28,7 +28,7 @@ fe::Bitset gather_chars(const Def* regex) {
         } else {
             auto rng_match = Axm::isa<regex::range, false>(arg);
             assert(rng_match
-                   && "as per normalizer, if we're in a 'not_' argument, we must only have disjs, not_ and ranges!");
+                   && "as per normalizer, if we're in a 'not' argument, we must only have disjs, nots and ranges!");
 
             auto lb = Lit::as<std::uint8_t>(rng_match->arg(2, 0));
             auto ub = Lit::as<std::uint8_t>(rng_match->arg(2, 1));

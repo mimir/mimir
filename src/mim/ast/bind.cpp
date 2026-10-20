@@ -1,3 +1,5 @@
+#include <fe/restore.h>
+
 #include "mim/ast/ast.h"
 
 #include "family.h"
@@ -56,6 +58,10 @@ public:
     /// @name Annex nesting
     /// Tracked by ModDecl::bind so AST::name2annex can derive `tag`/`sub` from lexical nesting.
     ///@{
+    /// The top-level declaration being bound, if any; see NomDecl::named_vis.
+    const Decl* top_decl() const { return top_decl_; }
+    auto enter_top_decl(const Decl* decl) { return fe::Restore(top_decl_, decl); }
+
     void push_mod(Sym name) { mod_stack_.emplace_back(name); }
     void pop_mod() { mod_stack_.pop_back(); }
     size_t mod_depth() const { return mod_stack_.size() - mod_barrier_; }
@@ -133,8 +139,9 @@ private:
     Ptr<DummyDecl> dummy_;
     fe::Vector<Frame> scopes_;
     fe::Vector<Sym> mod_stack_;
-    size_t barrier_     = 0;
-    size_t mod_barrier_ = 0;
+    const Decl* top_decl_ = nullptr;
+    size_t barrier_       = 0;
+    size_t mod_barrier_   = 0;
 };
 
 /*
@@ -337,7 +344,19 @@ static Sym loc2plugin(AST& ast, Loc loc) {
     return loc.src ? ast.sym(fs::path(loc.src->path()).stem().string()) : ast.sym_error();
 }
 
-AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id) {
+/// Records the constructor or field names that @p type - the body of an annex declaration - spells out.
+static void add_names(AnnexInfo& annex, const Expr* type) {
+    if (auto variant = type->isa<VariantExpr>()) {
+        annex.names  = fe::Vector<Sym>(variant->ctors(), [](const auto& ctor) { return ctor->dbg().sym(); });
+        annex.fields = false;
+    } else if (auto sigma = type->isa<SigmaExpr>()) {
+        auto tuple   = sigma->ptrn();
+        annex.names  = fe::Vector<Sym>(tuple->num_ptrns(), [tuple](size_t i) { return tuple->field(i); });
+        annex.fields = true;
+    }
+}
+
+AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id, const Expr* type) {
     if (!dbg) return nullptr;
 
     auto depth = s.mod_depth();
@@ -376,6 +395,7 @@ AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id) {
     }
 
     if (!fresh) annex->fresh = false;
+    if (type) add_names(*annex, type);
     return annex;
 }
 
@@ -480,7 +500,7 @@ void LetDecl::bind(Scopes& s) const {
         id->anx_ = is_anx();
     }
     ptrn()->bind(s, true, false);
-    if (id && is_anx()) id->annex_ = s.ast().name2annex(s, id->dbg(), &id->sub_);
+    if (id && is_anx()) id->annex_ = s.ast().name2annex(s, id->dbg(), &id->sub_, value());
 }
 
 void RecDecl::bind(Scopes& s) const {
@@ -489,10 +509,16 @@ void RecDecl::bind(Scopes& s) const {
 }
 
 void MutualDecl::bind(Scopes& s) const {
-    for (auto decl : decls())
+    // Only a top-level `mutual` makes its members top-level.
+    auto is_top = s.top_decl() == this;
+    for (auto decl : decls()) {
+        auto _ = s.enter_top_decl(is_top ? decl.get() : s.top_decl());
         decl->bind_decl(s);
-    for (auto decl : decls())
+    }
+    for (auto decl : decls()) {
+        auto _ = s.enter_top_decl(is_top ? decl.get() : s.top_decl());
         decl->bind_body(s);
+    }
 }
 
 bool RecDecl::has_mut_body() const {
@@ -508,10 +534,15 @@ void RecDecl::bind_decl(Scopes& s) const {
             .n("must be a sigma, a variant, or a function type; use `lam`/`con`/`fun` to declare a recursive function");
 
     s.bind(dbg(), this);
-    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_);
+    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_, body());
 }
 
 void RecDecl::bind_body(Scopes& s) const { body()->bind(s); }
+
+void NomDecl::bind_decl(Scopes& s) const {
+    RecDecl::bind_decl(s);
+    named_vis_ = s.top_decl() ? s.top_decl()->vis() : Vis::Pub;
+}
 
 void LamDecl::Dom::bind(Scopes& s, bool quiet) const {
     PiExpr::Dom::bind(s, quiet);
@@ -546,7 +577,7 @@ void LamDecl::bind_decl(Scopes& s) const {
 
     s.pop();
     s.bind(dbg(), this);
-    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_);
+    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_, nom_sugar() ? nom_sugar()->body() : nullptr);
 }
 
 void LamDecl::bind_body(Scopes& s) const {
@@ -558,8 +589,10 @@ void LamDecl::bind_body(Scopes& s) const {
 }
 
 void ModDecl::bind_decls(Scopes& s) const {
-    for (auto decl : decls())
+    for (auto decl : decls()) {
+        auto _ = s.enter_top_decl(decl.get());
         decl->bind(s);
+    }
 }
 
 void ModDecl::bind(Scopes& s) const {
