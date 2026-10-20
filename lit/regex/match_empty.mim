@@ -22,7 +22,7 @@ extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.P
             let (m, to_match)     = mem.load (m, mem.lea (argv, core.idx 0 (core.idx2nat argc) 1));
             ret (m, n, to_match)  = mem.cstr $ (m, to_match);
             let (m, matched, pos) = re (m, to_match, regex.pos n 0);
-            let matched           = core.bit2.and_ core.mode.us (matched, pos == regex.pos n n);
+            let matched           = core.bit2.and core.mode.us (matched, pos == regex.pos n n);
             exit (m, core.conv.u i32 matched);
     end
 

@@ -344,7 +344,19 @@ static Sym loc2plugin(AST& ast, Loc loc) {
     return loc.src ? ast.sym(fs::path(loc.src->path()).stem().string()) : ast.sym_error();
 }
 
-AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id) {
+/// Records the constructor or field names that @p type - the body of an annex declaration - spells out.
+static void add_names(AnnexInfo& annex, const Expr* type) {
+    if (auto variant = type->isa<VariantExpr>()) {
+        annex.names  = fe::Vector<Sym>(variant->ctors(), [](const auto& ctor) { return ctor->dbg().sym(); });
+        annex.fields = false;
+    } else if (auto sigma = type->isa<SigmaExpr>()) {
+        auto tuple   = sigma->ptrn();
+        annex.names  = fe::Vector<Sym>(tuple->num_ptrns(), [tuple](size_t i) { return tuple->field(i); });
+        annex.fields = true;
+    }
+}
+
+AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id, const Expr* type) {
     if (!dbg) return nullptr;
 
     auto depth = s.mod_depth();
@@ -383,6 +395,7 @@ AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id) {
     }
 
     if (!fresh) annex->fresh = false;
+    if (type) add_names(*annex, type);
     return annex;
 }
 
@@ -487,7 +500,7 @@ void LetDecl::bind(Scopes& s) const {
         id->anx_ = is_anx();
     }
     ptrn()->bind(s, true, false);
-    if (id && is_anx()) id->annex_ = s.ast().name2annex(s, id->dbg(), &id->sub_);
+    if (id && is_anx()) id->annex_ = s.ast().name2annex(s, id->dbg(), &id->sub_, value());
 }
 
 void RecDecl::bind(Scopes& s) const {
@@ -521,7 +534,7 @@ void RecDecl::bind_decl(Scopes& s) const {
             .n("must be a sigma, a variant, or a function type; use `lam`/`con`/`fun` to declare a recursive function");
 
     s.bind(dbg(), this);
-    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_);
+    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_, body());
 }
 
 void RecDecl::bind_body(Scopes& s) const { body()->bind(s); }
@@ -564,7 +577,7 @@ void LamDecl::bind_decl(Scopes& s) const {
 
     s.pop();
     s.bind(dbg(), this);
-    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_);
+    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_, nom_sugar() ? nom_sugar()->body() : nullptr);
 }
 
 void LamDecl::bind_body(Scopes& s) const {

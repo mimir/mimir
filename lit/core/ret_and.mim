@@ -20,6 +20,6 @@ extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.P
             atoi (m, val, atoi_cont_b)
             where
                 con atoi_cont_b(m: mem.M 0, b: I32) =
-                    return (m, core.bit2.and_ 0 (a, b));
+                    return (m, core.bit2.and 0 (a, b));
             end
     end

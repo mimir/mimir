@@ -31,7 +31,7 @@ extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.P
                         where
                             con not_end(m: mem.M 0, i: regex.Pos n) =
                                 let (m, c) = mem.load (m, mem.lea (to_match, core.conv.u n i));
-                                (error, state1)#(core.bit2.or_ 2 (c == 'a', c == 'b')) (m, i + one);
+                                (error, state1)#(core.bit2.or 2 (c == 'a', c == 'b')) (m, i + one);
                         end
                     con state1(m: mem.M 0, i: regex.Pos n) =
                         (not_end, error)#(i == end_) (m, i)

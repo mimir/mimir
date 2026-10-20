@@ -18,6 +18,6 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.
             let argv_load_b = mem.load (m, argv_ptr_b);
             atoi (argv_load_b#0₂, argv_load_b#1₂, atoi_cont_b)
             where
-                con atoi_cont_b (m: mem.M 0, b: I32) = return (m, core.bit2.and_ 0 (0b00000000000000000000000000001111I32, core.bit2.nand 0 (a, b)));
+                con atoi_cont_b (m: mem.M 0, b: I32) = return (m, core.bit2.and 0 (0b00000000000000000000000000001111I32, core.bit2.nand 0 (a, b)));
             end;
     end;

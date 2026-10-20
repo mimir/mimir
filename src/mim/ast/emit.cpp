@@ -302,8 +302,7 @@ const Def* TuplePtrn::emit_body(Emitter& e, const Def* decl) const {
     for (size_t i = 0; i != n; ++i) {
         sigma->set(i, ptrn(i)->emit_type(e));
         ptrn(i)->emit_proj(e, var, n, i);
-        if (auto p = ptrn(i); (p->isa<IdPtrn>() || p->isa<GrpPtrn>()) && !p->dbg().is_anon())
-            sym2idx[p->dbg().sym()] = i;
+        if (auto sym = field(i)) sym2idx[sym] = i;
     }
 
     e.add_names(sigma, sym2idx);

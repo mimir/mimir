@@ -40,9 +40,9 @@ const Def* normalize_get(const Def* type, const Def*, const Def* arg) {
         if (auto n = Lit::isa(init->decurry()->arg())) {
             auto kvs = init->arg();
             for (auto kv : kvs->projs(*n))
-                if (auto [key, val] = kv->projs<2>(); key == k) return w.inj(type, option::Some, val);
+                if (auto [key, val] = kv->projs<2>(); key == k) return w.inj(type, option::Opt_ctor::Some, val);
             // FIXME a closed kvs doesn't rule out an open k matching at runtime.
-            if (kvs->is_closed()) return w.inj(type, option::None, w.tuple());
+            if (kvs->is_closed()) return w.inj(type, option::Opt_ctor::None, w.tuple());
         }
     }
 

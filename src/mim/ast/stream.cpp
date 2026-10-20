@@ -349,22 +349,8 @@ static bool is_block(const Expr* expr) {
     return expr->isa<RetExpr>();
 }
 
-/// The `nom` of @p lam if it has the shape `lam I (dom)+ = nom I = e; I` that `nom I (dom)+ = e` desugars to.
-static const NomDecl* isa_nom_sugar(const LamDecl* lam) {
-    if (lam->tag() != Tag::K_lam || lam->codom()
-        || std::ranges::any_of(lam->doms(), [](const auto& dom) { return dom->filter(); }))
-        return nullptr;
-    if (auto decl_expr = lam->body() ? lam->body()->isa<DeclExpr>() : nullptr;
-        decl_expr && !decl_expr->is_where() && decl_expr->decls().size() == 1)
-        if (auto nom = decl_expr->decls().front()->isa<NomDecl>(); nom && nom->dbg().sym() == lam->dbg().sym())
-            if (auto path = decl_expr->expr()->isa<PathExpr>();
-                path && path->path()->dbgs().size() == 1 && path->dbg().sym() == lam->dbg().sym())
-                return nom;
-    return nullptr;
-}
-
 void LamDecl::stream_(fe::Tab& tab, std::ostream& os) const {
-    if (auto nom = isa_nom_sugar(this)) {
+    if (auto nom = nom_sugar()) {
         std::print(os, "nom {}", dbg());
         for (auto dom : doms())
             std::print(os, " {}", S(tab, dom.get()));
