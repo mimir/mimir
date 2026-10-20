@@ -1,0 +1,17 @@
+// RUN: %mim -p opt %s
+
+plugin option as o;
+plugin refly;
+
+// `Opt []` keeps both cases.
+let _ = refly.struc.e (o.is_some (o.some ()), tt);
+let _ = refly.struc.e (o.is_some (o.none []), ff);
+let _ = refly.struc.e (o.is_some (o.some_if (tt, ())), tt);
+let _ = refly.struc.e (o.is_some (o.some_if (ff, ())), ff);
+
+// `Opt (Opt T)` does not flatten to `Opt T`.
+let _ = refly.struc.e (o.is_some (o.some (o.none Nat)), tt);
+let _ = refly.struc.e (o.unwrap_or (o.some (o.none Nat)) (o.some 7), o.none Nat);
+let _ = refly.struc.e (o.unwrap_or (o.none (o.Opt Nat)) (o.some 7), o.some 7);
+
+extern lam f (b: Bool): Bool = o.is_some (o.some_if (b, ()));
