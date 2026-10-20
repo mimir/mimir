@@ -58,7 +58,7 @@ public:
     /// @name Annex nesting
     /// Tracked by ModDecl::bind so AST::name2annex can derive `tag`/`sub` from lexical nesting.
     ///@{
-    /// The top-level declaration being bound, if any; see NomDecl::named_vis.
+    /// The top-level declaration being bound, if any; see NomDecl::rep_vis.
     const Decl* top_decl() const { return top_decl_; }
     auto enter_top_decl(const Decl* decl) { return fe::Restore(top_decl_, decl); }
 
@@ -540,7 +540,7 @@ void RecDecl::bind_decl(Scopes& s) const {
 void RecDecl::bind_body(Scopes& s) const { body()->bind(s); }
 
 void NomDecl::bind_body(Scopes& s) const {
-    named_vis_ = s.top_decl() ? s.top_decl()->vis() : Vis::Pub;
+    rep_vis_ = s.top_decl() ? s.top_decl()->vis() : Vis::Pub;
     RecDecl::bind_body(s);
 }
 

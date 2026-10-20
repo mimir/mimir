@@ -539,6 +539,7 @@ e   ::= "|" (I (":" e)? ("|" I (":" e)?)*)?
 - Its last payload extends as far right as it can, and `|` never starts an application argument: write `f (| A | B)`, and parenthesize a variant inside a `match` arm.
 - `T#I` or `T#n` on a variant type `T` selects a case by constructor name or by index, counting from `0`.
   That is a value for a `[]` payload, and a function from the payload into `T` otherwise.
+- Like an application, `#` first fills the implicit domains of its left-hand side with holes, so for `nom Opt {T: *} = | None | Some: T`, `Opt#Some 23` infers `T`.
 - In a `match` on a variant, each arm names a constructor or gives its index, optionally followed by a pattern for its payload.
   `| 1 (h, t) => e` selects the same case as `| Cons (h, t) => e`, just as `T#1` and `T#Cons` do.
   Every constructor needs an arm; a second arm for the same one is unreachable and warned about.
@@ -584,15 +585,23 @@ A `nom` declaration is the one place where Mim is not structurally typed: two `n
 - `nom I ndom+ = e` declares a type constructor; it is sugar for `lam I ndom+ = nom I = e; I`.
   Each instance is a `nom` of its own, and within `e`, `I` names the type constructor, so a recursive instance refers to itself as `I ndom+`.
 - `e inj I` wraps a value of the underlying type into `I`, and the prefix `#` unwraps it again, so `#(e inj I)` is `e`.
-- `inj` and `#` on a `nom` are private to the `mod` that declares the `nom` - or its file, outside of any `mod` -, whatever its visibility; the _type_ crosses a module boundary like any other, so an importer sees it as abstract and has to go through whatever the declaring module exports.
-- The named constructors of a `nom` over a [variant](@ref variant) - `I#C` and a `match` arm `| C x` - and the [field names](@ref field) of a `nom` over a sigma - `x#f` and `x#f ← v` - are as visible as the `nom` itself, so a `pub` or `anx` one exports them; a `nom` declared within a body takes the visibility of the enclosing top-level declaration.
-  Such an access unwraps and, for an update, rewraps the `nom` by itself; access by index still needs `#`.
+  Like `I#C`, `e inj I` fills the implicit domains of a type constructor `I` with holes.
+- The named constructors of a `nom` over a [variant](@ref variant) - `I#C` and a `match` arm `| C x` - and the [field names](@ref field) of a `nom` over a sigma - `x#f` and `x#f ← v` - unwrap and, for an update, rewrap the `nom` by themselves; access by index still needs `#`.
+- `inj`, `#`, and the named constructors and fields are as visible as the `nom` itself: a `pub` or `anx` `nom` is transparent, while a `priv` one confines them to the `mod` that declares it - or its file, outside of any `mod`.
+  A `nom` declared within a body takes the visibility of the enclosing top-level declaration.
+- The _type_ crosses a module boundary like any other value, so `pub let I = I;` exports a `priv` `nom` as an _abstract_ type: an importer may name it but has to go through whatever the declaring module exports to build or inspect a value of it.
 
 ```mim
 nom Meter = I32;
 nom Foot  = I32;
 
 lam to_foot (m: Meter): Foot = #m inj Foot; // Meter and Foot do not unify
+
+mod units
+    nom Kelvin = Nat;
+    pub let Kelvin = Kelvin;                   // abstract outside of `units`
+    pub lam kelvin (n: Nat): Kelvin = n inj Kelvin;
+end
 
 nom List = | Nil | Cons: [I32, List];
 

@@ -386,14 +386,18 @@ const Def* World::var(Def* mut) {
     return mut->var_ = unify<Var>(mut);
 }
 
-template<bool Normalize>
-const Def* World::implicit_app(const Def* callee, const Def* arg) {
+const Def* World::implicit_holes(const Def* callee) {
     while (auto type = callee->unfold_type()) // Level has no type at all and takes no implicit arguments
-        if (auto pi = Pi::isa_implicit(type))
+        if (auto pi = Pi::isa_implicit(type->zonk()))
             callee = app(callee, mut_hole(pi->dom()));
         else
             break;
-    return app<Normalize>(callee, arg);
+    return callee;
+}
+
+template<bool Normalize>
+const Def* World::implicit_app(const Def* callee, const Def* arg) {
+    return app<Normalize>(implicit_holes(callee), arg);
 }
 
 template<bool Normalize>

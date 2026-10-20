@@ -35,7 +35,7 @@ let Key = (I32, `<);
 let Ord = [
     Map:      o.Key → * → *,
     init:     [K: o.Key] → {V: *} → {n: Nat} → [«n; [K#T, V]»] → Map K V,
-    get:      {K: o.Key} → {V: *} → [Map K V, K#T     ] → option.Opt V,
+    get:      {K: o.Key} → {V: *} → [Map K V, K#T     ] → option.Opt@V,
     insert:   {K: o.Key} → {V: *} → [Map K V, [K#T, V]] → Map K V,
     contains: {K: o.Key} → {V: *} → [Map K V, K#T     ] → Bool,
 ];

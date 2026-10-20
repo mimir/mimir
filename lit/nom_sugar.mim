@@ -38,3 +38,12 @@ mod m
     pub lam mk (x: Nat): Hidden Nat = (Hidden Nat)#B x;
 end
 let _ = refly.struc.e (match (m.Opt2 Nat)#Some 4 with | None => 0 | Some x => x, 4);
+
+// `#` and `inj` fill implicit domains with holes, like an application.
+nom Wrap {T: *} = T;
+nom Maybe {T: *} = | Nothing | Just: T;
+lam unwrap (w: Wrap@Nat): Nat = #w;
+lam from (m: Maybe@Nat): Nat = match m with | Nothing => 0 | Just x => x;
+let _ = refly.struc.e (unwrap (23 inj Wrap), 23);
+let _ = refly.struc.e (from Maybe#Nothing, 0);
+let _ = refly.struc.e (from (Maybe#Just 5), 5);

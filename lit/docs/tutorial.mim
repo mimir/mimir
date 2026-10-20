@@ -214,14 +214,14 @@ lam extracts (t: «2; Nat», i: Idx 2): Nat = refly.struc.e (t #i, t#i);
 /// `nom` wraps a type into a fresh one; two `nom`s over the same type stay distinct.
 nom Meter = I32;
 nom Foot  = I32;
-/// `inj` wraps a value and the prefix `#` unwraps it again - both only in the `mod` (or file) that declared the `nom`.
-/// An importer therefore sees the type as abstract.
+/// `inj` wraps a value and the prefix `#` unwraps it again - for a `priv` `nom` only in the `mod` (or file) that declared it.
+/// `pub let Meter = Meter;` would export it as an abstract type that an importer may name but not unwrap.
 lam to_foot (m: Meter): Foot = #m inj Foot;
 let _ = refly.struc.e (#(23I32 inj Meter), 23I32);
 /// Like `rec`, a `nom` is in scope in its own body, and `anx nom` makes it an annex.
 nom Chain = | End | Link: [I32, Chain];
 /// With domains, `nom` declares a type constructor; within its body, `Bin T` is the instance at hand.
-/// Named constructors and fields are as visible as the `nom`, and `match` sees through it.
+/// Named constructors and fields unwrap by themselves, and `match` sees through it.
 nom Bin (T: *) = | Leaf | Node: [Bin T, T, Bin T];
 let NatBin = Bin Nat;
 let _ = refly.struc.e (match NatBin#Node (NatBin#Leaf, 23, NatBin#Leaf) with | Leaf => 0 | Node (_, x, _) => x, 23);
