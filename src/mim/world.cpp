@@ -991,6 +991,7 @@ const Def* World::inj(const Def* type, nat_t index, const Def* value) {
     type  = type->zonk();
     value = value->zonk();
 
+    if (auto nom = type->isa<Nom>()) return unify<Name>(nom, inj(nom->op(), index, value));
     auto variant = type->isa<Variant>();
     if (!variant) value->blame("cannot inject into case {} of non-variant type `{}`", index, type).bail();
     if (index >= variant->num_ops())

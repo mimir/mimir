@@ -1,3 +1,5 @@
+#include <fe/restore.h>
+
 #include "mim/ast/ast.h"
 
 #include "family.h"
@@ -56,6 +58,10 @@ public:
     /// @name Annex nesting
     /// Tracked by ModDecl::bind so AST::name2annex can derive `tag`/`sub` from lexical nesting.
     ///@{
+    /// The top-level declaration being bound, if any; see NomDecl::named_vis.
+    const Decl* top_decl() const { return top_decl_; }
+    auto enter_top_decl(const Decl* decl) { return fe::Restore(top_decl_, decl); }
+
     void push_mod(Sym name) { mod_stack_.emplace_back(name); }
     void pop_mod() { mod_stack_.pop_back(); }
     size_t mod_depth() const { return mod_stack_.size() - mod_barrier_; }
@@ -133,8 +139,9 @@ private:
     Ptr<DummyDecl> dummy_;
     fe::Vector<Frame> scopes_;
     fe::Vector<Sym> mod_stack_;
-    size_t barrier_     = 0;
-    size_t mod_barrier_ = 0;
+    const Decl* top_decl_ = nullptr;
+    size_t barrier_       = 0;
+    size_t mod_barrier_   = 0;
 };
 
 /*
@@ -489,10 +496,16 @@ void RecDecl::bind(Scopes& s) const {
 }
 
 void MutualDecl::bind(Scopes& s) const {
-    for (auto decl : decls())
+    // Only a top-level `mutual` makes its members top-level.
+    auto is_top = s.top_decl() == this;
+    for (auto decl : decls()) {
+        auto _ = s.enter_top_decl(is_top ? decl.get() : s.top_decl());
         decl->bind_decl(s);
-    for (auto decl : decls())
+    }
+    for (auto decl : decls()) {
+        auto _ = s.enter_top_decl(is_top ? decl.get() : s.top_decl());
         decl->bind_body(s);
+    }
 }
 
 bool RecDecl::has_mut_body() const {
@@ -512,6 +525,11 @@ void RecDecl::bind_decl(Scopes& s) const {
 }
 
 void RecDecl::bind_body(Scopes& s) const { body()->bind(s); }
+
+void NomDecl::bind_decl(Scopes& s) const {
+    RecDecl::bind_decl(s);
+    named_vis_ = s.top_decl() ? s.top_decl()->vis() : Vis::Pub;
+}
 
 void LamDecl::Dom::bind(Scopes& s, bool quiet) const {
     PiExpr::Dom::bind(s, quiet);
@@ -558,8 +576,10 @@ void LamDecl::bind_body(Scopes& s) const {
 }
 
 void ModDecl::bind_decls(Scopes& s) const {
-    for (auto decl : decls())
+    for (auto decl : decls()) {
+        auto _ = s.enter_top_decl(decl.get());
         decl->bind(s);
+    }
 }
 
 void ModDecl::bind(Scopes& s) const {

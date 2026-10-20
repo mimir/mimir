@@ -1166,6 +1166,10 @@ public:
     NomDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr> body)
         : RecDecl(loc, mods, dbg, body) {}
 
+    /// The visibility of the named constructors and fields: that of the enclosing top-level declaration.
+    Vis named_vis() const { return named_vis_; }
+
+    void bind_decl(Scopes&) const override;
     void emit_decl(Emitter&) const override;
     void emit_body(Emitter&) const override;
     /// Emits a `nom` without a mutable body as soon as a sibling refers to it; `nullptr` on a cycle.
@@ -1176,6 +1180,7 @@ private:
     void emit_nom(Emitter&, const Def* body) const;
 
     mutable bool emitting_ = false;
+    mutable Vis named_vis_ = Vis::Pub;
 };
 
 /// `tag dbg dom_0 ... dom_n-1: codom = body;` with LamDecl::tag `lam`/`con`/`fun` or anonymous `λ`/`cn`/`fn`.

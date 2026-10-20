@@ -667,8 +667,8 @@ anx lam interchange (t: Tileable, perm: «t#Ro + t#Rr; Nat»): Tileable =
                                        "interchange: permutation must not mix parallel and reduction dims")›;
     let sr_n   = ‹i: r; t#Sr#(core.idx 0 r (perm_ok#i))›;
     let vdim_n = match vec.first `== (perm_ok, t#vdim) with
-                     | j: Idx r => core.idx2nat j
-                     | _: []    => t#vdim;
+                     | Some j => core.idx2nat j
+                     | None   => t#vdim;
     // The parallel dims permute among themselves (checked above), so the new dim j writes the
     // output axis its old dim perm#j wrote.
     let oax_n = ‹j: t#Ro; t#oax#(core.idx 0 (t#Ro) (perm_ok#(core.idx 0 r (core.idx2nat j))))›;
@@ -1339,12 +1339,12 @@ pub fun dot_general_fun (R: Ring) (x: R#T, (y z: R#T))@tt: R#T = return (R#add (
 /// the remaining free axes.
 pub lam dot_general_pick {n: Nat} {na nb nc: Nat} (a: «na; Idx n», b: «nb; Idx n», c: «nc; Idx n») (off_1 off_2: Nat) (i: Idx n): Nat =
     match vec.first core.icmp.e (b, i) with
-        | bi: Idx nb => core.idx2nat bi
-        | _:  []     => match vec.first core.icmp.e (c, i) with
-            | ci: Idx nc => off_2 + core.idx2nat ci
-            | _:  []     => match vec.first core.icmp.e (a, i) with
-                | ai: Idx na => off_1 + core.idx2nat ai
-                | _:  []     => 0;
+        | Some bi => core.idx2nat bi
+        | None    => match vec.first core.icmp.e (c, i) with
+            | Some ci => off_2 + core.idx2nat ci
+            | None    => match vec.first core.icmp.e (a, i) with
+                | Some ai => off_1 + core.idx2nat ai
+                | None    => 0;
 ///
 /// ### dot_product_impl
 ///

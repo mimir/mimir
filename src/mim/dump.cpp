@@ -732,7 +732,7 @@ void printed_deps(const Def* def, bool typed_let, F f) {
             f(op);
         return;
     }
-    if (typed_let || def->isa<Lit>() || def->isa<Ext>() || def->isa<Inj>()) f(def->type());
+    if (typed_let || def->isa<Lit>() || def->isa<Ext>() || def->isa<Inj>() || def->isa<Name>()) f(def->type());
     for (auto op : def->ops())
         f(op);
 }

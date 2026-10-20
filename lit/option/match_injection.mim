@@ -5,8 +5,8 @@ plugin refly;
 
 let _ = refly.struc.e
     (match (o.none Nat) with
-        | value: Nat => value
-        | _: [] => 7,
+        | Some value => value
+        | None       => 7,
      7);
 
 // The option library is a client of the same generic reduction: its lambda
@@ -18,6 +18,6 @@ lam unwrap_or_some (x: Nat): Nat = refly.struc.e (o.unwrap_or (o.some x) 7, x);
 lam unwrap_some (x: Nat): Nat =
     refly.struc.e
         (match (o.some x) with
-            | value: Nat => value
-            | _: [] => 7,
+            | Some value => value
+            | None       => 7,
          x);

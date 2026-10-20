@@ -45,7 +45,7 @@ public:
 
     /// Copies the names of @p nom's declaration onto the corresponding parts of @p nom - an instance of it.
     void adopt_names(const Nom* nom) {
-        auto decl = nom_decl(nom).first;
+        auto decl = nom_decl(nom).decl;
         if (decl == nom || !adopted_.emplace(nom).second) return;
         auto visited = DefSet();
         adopt_names(decl->op(), nom->op(), visited);
@@ -121,18 +121,25 @@ public:
 
     /// @name Nominal scope
     /// Only the `mod` declaring a `nom` - or one nested in it - may use `inj` and `#` on it.
+    /// Its named constructors and fields have NomDecl::named_vis.
     ///@{
     void push_mod(const ModDecl* mod) { mods_.emplace_back(mod); }
     void pop_mod() { mods_.pop_back(); }
     fe::Vector<const ModDecl*> reset_mods() { return std::exchange(mods_, {}); }
     void restore_mods(fe::Vector<const ModDecl*> mods) { mods_ = std::move(mods); }
 
-    void add_nom(const Nom* nom) { key2nom_[nom->key()] = {nom, mods_.back()}; }
+    struct NomInfo {
+        const Nom* decl;
+        const ModDecl* owner;
+        Vis named_vis;
+    };
 
-    /// The declared `nom` that @p nom instantiates and the `mod` owning it.
-    std::pair<const Nom*, const ModDecl*> nom_decl(const Nom* nom) const {
+    void add_nom(const Nom* nom, const NomDecl* decl) { key2nom_[nom->key()] = {nom, mods_.back(), decl->named_vis()}; }
+
+    /// The declared `nom` that @p nom instantiates, the `mod` owning it, and NomDecl::named_vis.
+    NomInfo nom_decl(const Nom* nom) const {
         auto i = key2nom_.find(nom->key());
-        return i != key2nom_.end() ? i->second : std::pair<const Nom*, const ModDecl*>{nom, nullptr};
+        return i != key2nom_.end() ? i->second : NomInfo{nom, nullptr, Vis::Pub};
     }
 
     bool within(const ModDecl* mod) const { return std::ranges::find(mods_, mod) != mods_.end(); }
@@ -170,7 +177,7 @@ private:
     AST& ast_;
     DefMap<fe::SymMap<size_t>> def2sym2idx_;
     fe::Vector<const ModDecl*> mods_;
-    ankerl::unordered_dense::map<flags_t, std::pair<const Nom*, const ModDecl*>> key2nom_;
+    ankerl::unordered_dense::map<flags_t, NomInfo> key2nom_;
     DefSet adopted_;
 };
 
@@ -357,7 +364,7 @@ const Def* RuleExpr::emit_(Emitter& e) const {
     return e.world().reform(m);
 }
 
-const Def* PrimaryExpr ::emit_(Emitter& e) const {
+const Def* PrimaryExpr::emit_(Emitter& e) const {
     // clang-format off
     switch (tag()) {
         case Tag::K_Level: return e.world().type_level();
@@ -486,15 +493,34 @@ const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
 }
 
 /// A `nom`'s intro and elim are private to the `mod` that declared it; the type itself is not.
-static void check_nom_scope(Emitter& e, Loc loc, const Nom* nom) {
-    auto [decl, owner] = e.nom_decl(nom);
-    if (!owner || e.within(owner)) return;
+/// @p named: access through a named constructor or field rather than `inj` or `#`.
+static void check_nom_scope(Emitter& e, Loc loc, const Nom* nom, bool named = false) {
+    auto [decl, owner, named_vis] = e.nom_decl(nom);
+    if (!owner || (named && named_vis == Vis::Pub) || e.within(owner)) return;
     auto where = owner->isa<File>() ? fe::format_cite("file `{}`", owner->loc().src->path().filename().string())
                                     : fe::format_cite("module `{}`", owner->dbg());
     e.error()
-        .e(loc, "`inj` and `#` on nominal type `{}` are only allowed within {}", nom, where)
+        .e(loc, "{} nominal type `{}` are only allowed within {}",
+           named ? "constructors and fields of private" : "`inj` and `#` on", nom, where)
         .n(decl->loc(), "declared here")
         .bail();
+}
+
+/// Checks and prepares access to @p nom through its named constructors or fields.
+static void open_nom(Emitter& e, Loc loc, const Nom* nom) {
+    check_nom_scope(e, loc, nom, true);
+    e.adopt_names(nom);
+}
+
+/// Unwraps @p tup if it is a value of a `nom` and @p ex names one of its fields; `nullptr` otherwise.
+static const Def* unwrap_field(Emitter& e, const InfixExpr* ex, const Def* tup) {
+    auto nom  = tup->isa_type<Nom>();
+    auto path = ex->rhs()->isa<PathExpr>();
+    if (!nom || !path || path->path()->dbgs().size() != 1) return nullptr;
+    e.adopt_names(nom);
+    if (!e.find_name(nom->op(), path->dbg())) return nullptr;
+    open_nom(e, ex->loc(), nom);
+    return e.world().struc(tup);
 }
 
 const Def* PrefixExpr::emit_(Emitter& e) const {
@@ -519,7 +545,7 @@ const Def* PrefixExpr::emit_(Emitter& e) const {
 }
 
 /// `T#C` or `T#i` selects case `C` or `i` of the Variant `T`: a constructor function - or its value for a `[]` payload.
-/// If @p nom is given, `T` is its body and the constructor wraps its result into @p nom.
+/// If @p nom is given, `T` is its body and the constructor yields @p nom.
 static const Def* emit_ctor(Emitter& e, const Variant* variant, const Expr* index, const Nom* nom = nullptr) {
     auto& w = e.world();
     auto i  = std::optional<nat_t>();
@@ -539,11 +565,11 @@ static const Def* emit_ctor(Emitter& e, const Variant* variant, const Expr* inde
                variant->num_ops(), *i)
             .bail();
 
-    auto wrap    = [&](const Def* val) { return nom ? w.name(nom, val) : val; };
+    auto type    = nom ? static_cast<const Def*>(nom) : variant;
     auto payload = variant->op(*i);
-    if (payload == w.sigma()) return wrap(w.inj(variant, *i, w.tuple()));
-    auto ctor = w.mut_lam(w.pi(payload, nom ? static_cast<const Def*>(nom) : variant));
-    return ctor->set(true, wrap(w.inj(variant, *i, ctor->var())));
+    if (payload == w.sigma()) return w.inj(type, *i, w.tuple());
+    auto ctor = w.mut_lam(w.pi(payload, type));
+    return ctor->set(true, w.inj(type, *i, ctor->var()));
 }
 
 const Def* InfixExpr::emit_(Emitter& e) const {
@@ -560,11 +586,11 @@ const Def* InfixExpr::emit_(Emitter& e) const {
             if (auto variant = tup->isa<Variant>()) return emit_ctor(e, variant, rhs());
             if (auto nom = tup->isa<Nom>()) {
                 if (auto variant = nom->op()->isa<Variant>()) {
-                    check_nom_scope(e, loc(), nom);
-                    e.adopt_names(nom);
+                    open_nom(e, loc(), nom);
                     return emit_ctor(e, variant, rhs(), nom);
                 }
             }
+            if (auto value = unwrap_field(e, this, tup)) tup = value;
             return w.extract(tup, emit_index(e, tup));
         }
         case Tag::T_arrow_l: {
@@ -583,7 +609,11 @@ const Def* InfixExpr::emit_(Emitter& e) const {
 
             auto tup = base->emit(e);
             DefVec tups, idxs;
+            fe::Vector<const Nom*> noms;
             for (auto ex : exs | std::views::reverse) {
+                auto value = unwrap_field(e, ex, tup);
+                noms.emplace_back(value ? tup->isa_type<Nom>() : nullptr);
+                if (value) tup = value;
                 auto idx = ex->emit_index(e, tup);
                 tups.emplace_back(tup);
                 idxs.emplace_back(idx);
@@ -591,8 +621,10 @@ const Def* InfixExpr::emit_(Emitter& e) const {
             }
 
             auto val = rhs()->emit(e);
-            for (size_t i = tups.size(); i-- != 0;)
+            for (size_t i = tups.size(); i-- != 0;) {
                 val = w.insert(tups[i], idxs[i], val);
+                if (noms[i]) val = w.name(noms[i], val);
+            }
             return val;
         }
         default: break;
@@ -670,6 +702,12 @@ const Def* MatchExpr::emit_(Emitter& e) const {
     DefVec ops;
     ops.emplace_back(scrutinee()->emit(e));
     if (auto variant = ops.front()->isa_type<Variant>()) return emit_variant(e, ops.front(), variant);
+    if (auto nom = ops.front()->isa_type<Nom>())
+        if (auto variant = nom->op()->isa<Variant>();
+            variant && std::ranges::any_of(arms(), [](const auto& arm) { return arm->index() || arm->ctor(); })) {
+            open_nom(e, loc(), nom);
+            return emit_variant(e, e.world().struc(ops.front()), variant);
+        }
 
     for (auto arm : arms()) {
         if (arm->index() || arm->ctor())
@@ -964,7 +1002,7 @@ void NomDecl::emit_nom(Emitter& e, const Def* body) const {
     auto sym = annex_ ? annex_->qualified(e.driver(), dbg().sym()) : dbg().sym();
     auto nom = e.world().nom(e.world().next_gid(), body);
     nom->set(sym);
-    e.add_nom(nom);
+    e.add_nom(nom, this);
     def_ = nom;
 }
 

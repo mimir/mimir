@@ -32,19 +32,17 @@ const Def* normalize_size(const Def*, const Def*, const Def* arg) {
     return nullptr;
 }
 
-const Def* normalize_get(const Def*, const Def* callee, const Def* arg) {
+const Def* normalize_get(const Def* type, const Def*, const Def* arg) {
     auto& w       = arg->world();
     auto [map, k] = arg->projs<2>();
-    auto V        = callee->as<App>()->arg();
 
     if (auto init = Axm::isa<ord::init>(map)) {
         if (auto n = Lit::isa(init->decurry()->arg())) {
-            auto kvs   = init->arg();
-            auto opt_V = w.call<option::Opt>(V);
+            auto kvs = init->arg();
             for (auto kv : kvs->projs(*n))
-                if (auto [key, val] = kv->projs<2>(); key == k) return w.inj(opt_V, val);
+                if (auto [key, val] = kv->projs<2>(); key == k) return w.inj(type, option::Some, val);
             // FIXME a closed kvs doesn't rule out an open k matching at runtime.
-            if (kvs->is_closed()) return w.inj(opt_V, w.tuple(Defs{}));
+            if (kvs->is_closed()) return w.inj(type, option::None, w.tuple());
         }
     }
 
