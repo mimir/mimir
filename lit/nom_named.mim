@@ -3,7 +3,7 @@
 plugin core;
 plugin refly;
 
-// Named constructors and fields are as visible as their `nom`; a local one inherits its enclosing declaration's.
+// `inj`, `#`, named constructors, and fields are as visible as their `nom`; a local one inherits its enclosing declaration's.
 mod m
     pub nom List = | Nil | Cons: [Nat, List];
     pub nom P    = [x: Nat, y: Nat];
@@ -41,3 +41,5 @@ let _ = refly.struc.e (sum (m.mk (2, 3)), 5);
 let _ = refly.struc.e ((swap (m.mk (2, 3)))#x, 3);
 let _ = refly.struc.e ((m.box 4)#inner#a, 4);
 let _ = refly.struc.e (((m.box 4)#inner#a ← 9)#inner#a, 9);
+let _ = refly.struc.e (#((2, 3) inj m.P), (2, 3));
+let _ = refly.struc.e ((((1, ff), 2) inj m.Box Nat)#tag, 2);

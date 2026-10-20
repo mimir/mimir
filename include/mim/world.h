@@ -649,6 +649,7 @@ public:
     /// @name implicit_app - Cope with implicit Arguments
     /// Places Hole%s as demanded by Pi::is_implicit() and then apps @p arg.
     ///@{
+    const Def* implicit_holes(const Def* callee); ///< Only places the Hole%s.
     template<bool Normalize = true>
     const Def* implicit_app(const Def* callee, const Def* arg);
     template<bool Normalize = true>
