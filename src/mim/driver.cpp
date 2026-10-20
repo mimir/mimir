@@ -7,7 +7,6 @@
 #include <filesystem>
 #include <iostream>
 #include <optional>
-#include <sstream>
 #include <stdexcept>
 
 #include <fe/dl.h>
@@ -70,19 +69,6 @@ Driver::Driver(std::string name)
     MIM_SUBST(CODE)
 #undef CODE
 
-    auto from_env = [](const char* var, auto&& add) {
-        if (auto env = std::getenv(var)) {
-            auto stream = std::stringstream{env};
-            auto path   = std::string{};
-            while (std::getline(stream, path, fe::sys::Path_Sep))
-                add(fs::path{path});
-        }
-    };
-
-    from_env("MIM_PLUGIN_PATH", [this](fs::path path) { add_plugin_path(std::move(path)); });
-    from_env("MIM_IMPORT_PATH", [this](fs::path path) { add_import_path(std::move(path)); });
-    from_env("MIM_PREFIX_PATH", [this](fs::path path) { add_prefix_path(std::move(path)); });
-
     if (auto path = path_to_libmim()) {
         // A layout that keeps the plugins right next to libmim has no prefix to derive them from.
         add_plugin_path(path->parent_path() / "mim");
@@ -91,7 +77,7 @@ Driver::Driver(std::string name)
 
     add_prefix_path(fs::path{MIM_INSTALL_PREFIX});
 
-    // User paths are added later and must be searched before the environment and derived ones.
+    // User paths are added later and must be searched before these derived ones.
     plugin_dirs_.seal();
     import_dirs_.seal();
     prefixes_.seal();

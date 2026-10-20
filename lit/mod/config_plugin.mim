@@ -1,0 +1,34 @@
+// RUN: rm -rf %t && mkdir -p %t/sub && cp %s %t/sub/test.mim && printf '%%s\n' 'plugin = mim/demo' 'plugin-path = %libdir' > %t/mim.ini
+//
+// The manifest's `plugin` and the CLI's `-p` add up:
+// RUN: env -u MIM_PLUGIN_PATH -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH %mim -VV %t/sub/test.mim -p clos -o - > %t/with-cli.txt 2>&1
+// RUN: %FileCheck %s --input-file %t/with-cli.txt
+//
+// The manifest's `plugin` still applies on its own:
+// RUN: env -u MIM_PLUGIN_PATH -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH %mim -VV %t/sub/test.mim -o - > %t/ini.txt 2>&1
+// RUN: %FileCheck %s --check-prefix=INI --input-file %t/ini.txt
+//
+// A `plugin-arg` from the manifest reaches the plugin. One manifest exercises comma lists,
+// repeated keys, and both a full-line and a trailing comment:
+// RUN: mkdir -p %t/arg
+// RUN: printf '%%s\n' '# plugins may repeat and take comma lists' 'plugin = mim/ll, mim/demo # trailing comment' 'plugin = mim/mem' 'plugin-path = %libdir' 'plugin-arg = ll:o=%t/arg/out.ll' > %t/arg/mim.ini
+// RUN: printf '%%s\n' 'plugin core;' '' 'extern con test(return: Cn [I32]) = return 0I32;' > %t/arg/test.mim
+// RUN: env -u MIM_PLUGIN_PATH -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH %mim %t/arg/test.mim > %t/arg/stdout.txt
+// RUN: test -s %t/arg/out.ll
+// RUN: %FileCheck %s --check-prefix=ARG-LL --input-file %t/arg/out.ll
+
+plugin core;
+
+extern lam f(): I32 = 0i32;
+
+// CHECK: load plugin `clos`
+// CHECK: load plugin `mim/demo`
+// CHECK: plugin {{.*}}/mim/demo.mim";
+// CHECK: 0I32;
+
+// INI: load plugin `mim/demo`
+// INI-NOT: load plugin `clos`
+// INI: plugin {{.*}}/mim/demo.mim";
+// INI: 0I32;
+
+// ARG-LL: define i32 @test()

@@ -35,6 +35,8 @@ config.substitutions.append(('%FileCheck', '"{}"'.format(config.filecheck)))
 # Parent of the plugin directory, so that a test can spell a plugin as the path `mim/<plugin>`.
 # os.path.join would mix in a backslash on Windows, which the external bash then swallows as an escape.
 config.substitutions.append(('%libdir', config.my_obj_root + '/lib'))
+# Path-list separator (`:` on Unix, `;` on Windows).
+config.substitutions.append(('%pathsep', os.pathsep))
 
 # inherit env vars
 config.environment = os.environ

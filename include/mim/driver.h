@@ -130,7 +130,9 @@ public:
     /// A *plain directory* is probed as-is; a *prefix root* stands for an install tree and derives
     /// `<root>/<libdir>/mim` (plugins), `<root>/<datadir>/mim` (imports), and `<root>/<libdir>/mim/rt` (runtimes).
     /// Each lookup starts with the empty path, which probes the current working directory without an absolute path.
-    /// Within a list, paths added first are searched first; CLI paths precede the environment and derived ones.
+    /// Within a list, paths added first are searched first; user paths precede the derived ones.
+    /// The constructor does not read `MIM_PLUGIN_PATH`, `MIM_IMPORT_PATH`, or `MIM_PREFIX_PATH`:
+    /// environment pickup is a CLI policy, so CLI callers resolve them with paths_from_env() and add the results here.
     ///@{
     void add_plugin_path(fs::path path) { plugin_dirs_.add(std::move(path)); }
     void add_import_path(fs::path path) { import_dirs_.add(std::move(path)); }
