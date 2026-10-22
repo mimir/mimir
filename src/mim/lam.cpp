@@ -50,13 +50,25 @@ const Def* Lam::isa_ret_arg(const Def* d) {
     return app && app->callee() == lam->ret_var() ? app->arg() : nullptr;
 }
 
-static const Def* eta_step(const Def* def) {
-    if (auto lam = def->isa<Lam>(); lam && lam->is_set())
+static const Def* eta_callee(const Lam* lam) {
+    if (lam->is_set())
         if (auto app = lam->body()->isa<App>()) {
             auto var = lam->has_var();
-            if (var && app->callee()->has_free_var(var)) return def;
+            if (var && app->callee()->has_free_var(var)) return nullptr;
             // The sole inhabitant of a singleton dom is η-equal to the Var.
             if (app->arg() == var || app->arg() == lam->world().inhabitant(lam->dom())) return app->callee();
+        }
+    return nullptr;
+}
+
+static const Def* eta_step(const Def* def) {
+    if (auto lam = def->isa<Lam>())
+        if (auto f = eta_callee(lam)) {
+            if (f->isa_mut()) return f;
+            // Reducing to `(e, b)#c` with `b` an η-redex as well might unfold a recursion through `b`.
+            for (auto mut : f->local_muts())
+                if (auto l = mut->isa<Lam>(); l && eta_callee(l)) return def;
+            return f;
         }
     return def;
 }

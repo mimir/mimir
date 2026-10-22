@@ -1,0 +1,12 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+// The fields of a private `nom` stay private, even on a value that escapes through a `pub` function.
+mod m
+    nom P = [x: Nat, y: Nat];
+    pub lam mk (x y: Nat): P = (x, y) inj P;
+end
+
+lam get (x: Nat): Nat = (m.mk (x, x))#x;
+
+// CHECK: {{.*}}nom_field_scope.mim:9:25-9:39: error: the representation of private nominal type `P` is only accessible within module `m`
+// CHECK: {{.*}}nom_field_scope.mim:5:5-5:28: note: declared here

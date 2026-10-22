@@ -81,9 +81,9 @@ If a freshly built compiler seems to behave like the old one, reload while bypas
 
 ## Using it
 
-The editor compiles on every keystroke, half a second after you stop typing; **Run** turns into **Stop** while a run is in flight and kills a program that does not terminate.
+The editor compiles on every keystroke, half a second after you stop typing; **Compile** turns into **Stop** while a compile is in flight and kills a program that does not terminate.
 _optimize_ runs the [opt](@ref opt) pipeline and the [ll](@ref ll) backend; without it the program is only parsed and emitted again.
-The **Mim** tab's _typed lets_ box is `--mim-typed-let` and its _local blocks_ box is `--mim-local`; see @ref cli for what each one does.
+The **Mim** tab's _typed lets_ box is `--mim-typed-let`; see @ref cli for what it does.
 _ASCII_ is `-a`, which is a global flag rather than a Mim-only one: it swaps the UTF-8 spellings out of every output, the graph's labels included.
 
 The _vi_ box in the editor bar switches the editor to vi keybindings — [@replit/codemirror-vim](https://github.com/replit/codemirror-vim), fetched from a CDN the first time you tick it.

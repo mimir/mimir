@@ -13,16 +13,15 @@ plugin cps;
 
 use core.ops.u;
 
-let Top = ⊤:Nat;
-let re  = regex.conj (regex.lit 'a', regex.empty);
+let re = regex.conj (regex.lit 'a', regex.empty);
 
-extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [mem.M 0, I32]) =
+extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char», exit: Cn [mem.M 0, I32]) =
     (exit, match_argument) # (argc > 1I32) (m, 0I32)
     where
         con match_argument(m: mem.M 0, _: I32) =
-            let arg1 = mem.lea (argv, core.idx_unsafe 1);
-            let (m, to_match) = mem.load (m, arg1);
-            let (m, matched, pos) = re (m, to_match, 0:(Idx Top));
+            let (m, to_match)     = mem.load (m, mem.lea (argv, core.idx 0 (core.idx2nat argc) 1));
+            ret (m, n, to_match)  = mem.cstr $ (m, to_match);
+            let (m, matched, pos) = re (m, to_match, regex.pos n 0);
             exit (m, core.conv.u i32 matched);
     end
 

@@ -1,0 +1,17 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+plugin core;
+plugin cps;
+plugin mem;
+
+use core.ops.u.w;
+
+extern con g [I32, Cn I32];
+
+/// The lifted continuation of a call shared by two continuations must not leak from one into the other.
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (mem.Char, 0)», 0), return: Cn [mem.M 0, I32]) =
+    let x = cps.cps2ds g 40I32;
+    con t (m: mem.M 0) = return (m, x);
+    con e (m: mem.M 0) = return (m, x + 1I32);
+    (e, t)#(argc == 1I32) m;
+
+// CHECK-COUNT-2: g (40I32, g_cont

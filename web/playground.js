@@ -110,7 +110,7 @@ async function run() {
 
     running = false;
     $('run').classList.remove('running');
-    $('run').lastChild.textContent = 'Run';
+    $('run').lastChild.textContent = 'Compile';
     if (queued) { queued = false; run(); }
 }
 
@@ -156,22 +156,23 @@ function showLog(text) {
 // Layout runs on the page, so a graph big enough to freeze it is refused.
 const MAX_DOT = 512 * 1024;
 
-// Laid out only while its pane is up or a pop-out is watching: layout blocks the editor.
+// Laid out only while its pane is up or its pop-out is watching: layout blocks the editor.
 class Layout {
+    #name;
+    #title;
     #pane;
     #view;
-    #post;
-    #watched;
+    #popout = null;
     #dot = null;
     #laidOut;          // the `dot` the pane already shows
-    svg = null;        // what came out of the layout, or null with `msg` saying why there is none
-    msg = '';
+    #svg = null;       // what came out of the layout, or null with `msg` saying why there is none
+    #msg = '';
 
-    constructor(pane, view, post = () => {}, watched = () => false) {
-        this.#pane = pane;
-        this.#view = view;
-        this.#post = post;
-        this.#watched = watched;
+    constructor(name, title) {
+        this.#name = name;
+        this.#title = title;
+        this.#pane = $(`pane-${name}`);
+        this.#view = new GraphView($(name), () => this.#popOut());
     }
 
     async show(latest) {
@@ -190,34 +191,36 @@ class Layout {
         this.#render(graphviz.layout(dot, 'svg', 'dot'));
     }
 
+    owns(win) { return win === this.#popout; }
+
     #render(svg, msg) {
-        this.svg = svg;
-        this.msg = msg;
+        this.#svg = svg;
+        this.#msg = msg;
         svg ? this.#view.render(svg) : this.#view.message(msg);
         this.#post();
     }
-}
 
-// The pop-out shows the very SVG this page laid out, so it needs neither Graphviz nor the compiler.
-let popout = null;
-const poppedOut = () => popout && !popout.closed;
+    // The pop-out shows the very SVG this page laid out, so it needs neither Graphviz nor the compiler.
+    #watched() { return this.#popout && !this.#popout.closed; }
+
+    #popOut() {
+        if (this.#watched()) return this.#popout.focus();
+        this.#popout = window.open('graph.html', `mim-${this.#name}`, 'popup,width=1000,height=800');
+    }
+
+    #post() {
+        if (this.#watched()) this.#popout.postMessage({ svg: this.#svg, msg: this.#msg, dark, title: this.#title }, '*');
+    }
+}
 
 const layouts = {
-    graph: new Layout($('pane-graph'), new GraphView($('graph'), $('graph-nav')), post, poppedOut),
-    nest:  new Layout($('pane-nest'),  new GraphView($('nest'),  $('nest-nav'))),
+    graph: new Layout('graph', 'MimIR Graph'),
+    nest:  new Layout('nest',  'MimIR Nest'),
 };
 
-function post() {
-    const { svg, msg } = layouts.graph;
-    if (poppedOut()) popout.postMessage({ svg, msg, dark }, '*');
-}
-
-function popOut() {
-    if (poppedOut()) return popout.focus();
-    popout = window.open('graph.html', 'mim-graph', 'popup,width=1000,height=800');
-}
-
-window.addEventListener('message', e => { if (e.source === popout && e.data?.ready) layouts.graph.layout(); });
+window.addEventListener('message', e => {
+    if (e.data?.ready) Object.values(layouts).find(l => l.owns(e.source))?.layout();
+});
 
 let userPane = 'graph'; // the tab that was picked by hand; showing the Log of a failing run does not count
 
@@ -389,7 +392,6 @@ $('vi').onchange = toggleVi;
 $('optimize').onchange = run;
 $('dot-opts').onchange = run;
 $('mim-opts').onchange = run;
-$('popout').onclick = popOut;
 for (const tab of document.querySelectorAll('#tabs button'))
     tab.onclick = () => select(userPane = tab.dataset.pane);
 

@@ -1,0 +1,17 @@
+// RUN: %mim %s -o - | %FileCheck %s
+plugin core;
+plugin mem;
+
+// The tail's callee is the very `(exit, body)#cond` that `n1` jumps to, so `cond` must precede the `mutual` group.
+extern con foo (m: mem.M 0, x: Nat, return: Cn [mem.M 0, Nat]) =
+    con exit (m: mem.M 0) = return (m, 1);
+    let cond = core.ncmp.e (3, x);
+    mutual
+        con body (m: mem.M 0) = n1 m;
+        con n1 (m: mem.M 0) = (exit, body)#cond m;
+    end
+    (exit, body)#cond m;
+
+// CHECK: let cond =
+// CHECK: mutual
+// CHECK: (exit, body)#cond

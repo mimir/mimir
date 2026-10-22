@@ -26,7 +26,7 @@ def test_regbuilder_jit_match(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     driver = mim.Driver()
-    b = regex.RegBuilder(driver, "regex_test", mim.Level.Error)
+    b = regex.RegBuilder(driver, "regex_test", mim.LogLevel.Error)
     pattern = b.lit("a") + b.lit("b") + b.lit("c")
     library = pattern.jit()
 

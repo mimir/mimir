@@ -235,14 +235,14 @@ Free variables also underpin MimIR's scopeless nesting queries:
 - [`mim::Def::nests`](@ref mim::Def::nests) answers whether a mutable statically nests another [`Def`](@ref mim::Def).
   The relation is **strict**: `f->nests(f)` is `false`, and a `def` that only uses `f`'s own [`Var`](@ref mim::Var) sits at `f`'s level and is likewise _not_ nested.
 
-##### `Dep`
+##### Local Yes/No Queries
 
-When you only need a yes/no answer — _does this subtree contain **any** [`Var`](@ref mim::Var), [`Hole`](@ref mim::Hole), mutable, or [`Proxy`](@ref mim::Proxy)?_ — [`mim::Def::has_dep`](@ref mim::Def::has_dep) is far cheaper than materializing `free_vars()`.
-Like `local_vars()`, it is a per-node bitset (see [`mim::Dep`](@ref mim::Dep)) that only looks up to the next mutable:
+When you only need a yes/no answer up to the next mutable, test the cached local sets instead of materializing `free_vars()`:
 
 ```cpp
-if (def->has_dep(Dep::Var)) { /* def mentions some Var before the next mutable */ }
-if (!def->has_dep())        { /* def is a fully closed, ground term */ }
+if (def->local_vars()) { /* def mentions some Var before the next mutable */ }
+if (def->is_ground())  { /* def contains neither mutables nor Vars */ }
+if (def->has_hole())   { /* def is or reaches a Hole before the next mutable */ }
 ```
 
 ## Matching IR

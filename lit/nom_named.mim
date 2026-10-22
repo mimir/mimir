@@ -1,0 +1,45 @@
+// RUN: %mim %s
+
+plugin core;
+plugin refly;
+
+// `inj`, `#`, named constructors, and fields are as visible as their `nom`; a local one inherits its enclosing declaration's.
+mod m
+    pub nom List = | Nil | Cons: [Nat, List];
+    pub nom P    = [x: Nat, y: Nat];
+
+    pub lam Opt (T: *): * =
+        nom O = | None | Some: T;
+        O;
+    pub lam Box (T: *): * =
+        nom B = [inner: [a: T, b: Bool], tag: Nat];
+        B;
+    pub lam Parity (T: *): * =
+        mutual
+            nom Even = | Zero | ESucc: Odd;
+            nom Odd  = | OSucc: Even;
+        end
+        Even;
+
+    pub lam mk (x y: Nat): P = (x, y) inj P;
+    pub lam box (a: Nat): Box Nat = ((a, tt), 7) inj Box Nat;
+end
+
+lam head (l: m.List): Nat =
+    match l with
+        | Nil         => 0
+        | Cons (h, _) => h;
+
+let _ = refly.struc.e (head (m.List#Cons (23, m.List#Nil)), 23);
+let _ = refly.struc.e (match (m.Opt Nat)#Some 23 with | None => 0 | Some x => x, 23);
+let _ = refly.struc.e (match (m.Parity Nat)#Zero with | Zero => 0 | ESucc _ => 1, 0);
+
+lam sum (p: m.P): Nat = core.nat.add (p#x, p#y);
+lam swap (p: m.P): m.P = p#x ← p#y;
+
+let _ = refly.struc.e (sum (m.mk (2, 3)), 5);
+let _ = refly.struc.e ((swap (m.mk (2, 3)))#x, 3);
+let _ = refly.struc.e ((m.box 4)#inner#a, 4);
+let _ = refly.struc.e (((m.box 4)#inner#a ← 9)#inner#a, 9);
+let _ = refly.struc.e (#((2, 3) inj m.P), (2, 3));
+let _ = refly.struc.e ((((1, ff), 2) inj m.Box Nat)#tag, 2);

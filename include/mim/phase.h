@@ -12,10 +12,8 @@
 
 namespace mim {
 
-class Nest;
 class Phase;
 class PhaseMan;
-class World;
 
 using Phases = std::deque<std::unique_ptr<Phase>>;
 
@@ -47,24 +45,7 @@ public:
     } ///< The Phase to use instead; `nullptr` means *elide*.
     ///@}
 
-    static std::unique_ptr<Phase> create(const Flags2Phases& phases, const Def* def) {
-        auto& world = def->world();
-        auto p_def  = App::uncurry_callee(def);
-        world.log().d("apply phase {}", p_def);
-
-        if (auto axm = p_def->isa<Axm>())
-            if (auto i = phases.find(axm->flags()); i != phases.end()) {
-                auto phase = i->second(world);
-                if (phase) {
-                    phase->apply(def->isa<App>());
-                    if (phase->redirects()) return phase->take_resolved();
-                }
-                return phase;
-            } else
-                fe::throwf("phase `{}` not found", axm->sym());
-        else
-            fe::throwf("unsupported callee for a phase: `{}`", p_def);
-    }
+    static std::unique_ptr<Phase> create(const Flags2Phases& phases, const Def* def);
 
     template<class A, class P>
     static void hook(Flags2Phases& phases) {
@@ -172,9 +153,6 @@ public:
 
     /// @name Sparse Fixed-Point Iteration
     ///@{
-    bool is_sparse() const {
-        return curr_sparse_;
-    } ///< Does the current round only re-drain last round's dirty mutables?
     void make_dense() { dense_ = true; } ///< Forces whole-World rounds unconditionally.
     /// Bumped on every observable lattice change; snapshot it around a code region to detect changes.
     size_t version() const { return version_; }
@@ -188,8 +166,8 @@ public:
 
     /// @returns the abstract value recorded for @p def, or `nullptr` if unknown.
     const Def* lattice(const Def* def) const {
-        if (auto i = lattice_.find(def); i != lattice_.end()) return i->second;
-        return nullptr;
+        if (auto abstr = fe::lookup(lattice_, def)) return abstr;
+        return is_singleton(def) ? def : nullptr;
     }
 
     /// The representative of @p def: follows `def ↦ lattice(def)` to the end of its chain.
@@ -217,19 +195,22 @@ protected:
     /// @name lattice
     ///@{
 
+    /// The sole inhabitant of a singleton type is ⊤ and shared by all binders of that type, so it is never recorded.
+    static bool is_singleton(const Def* def) { return def->world().inhabitant(def->type()) == def; }
+
     /// **Non-monotone** write of `concr ↦ abstr` into lattice() and map().
     /// This is the escape hatch for analyses that must overwrite an earlier round's value (descending from ⊤ is fine).
     /// invalidate()s iff the stored value changed; an *absent* entry counts as changed - even for ⊤ -
     /// since a non-monotone lattice's consumers may well distinguish ⊥ from ⊤.
     /// Every change also touch()es curr_mut() - the seed set of the next sparse round.
     /// @returns `true` iff this changed the entry - i.e. iff it invalidate()d.
-    bool lattice_force(const Def* concr, const Def* abstr) {
-        map(concr, abstr);
+    bool lattice_force(const Def* concr, const Def* abstr);
 
-        if (auto [i, ins] = lattice_.emplace(concr, abstr); !ins) {
-            if (i->second == abstr) return false;
-            i->second = abstr;
-        }
+    /// **Non-monotone** removal of @p concr from lattice(), so no later sparse round replays it.
+    /// Like lattice_force, a removal invalidate()s and touch()es curr_mut().
+    /// @returns `true` iff @p concr had an entry.
+    bool lattice_erase(const Def* concr) {
+        if (!lattice_.erase(concr)) return false;
         return touch(), true;
     }
 
@@ -239,25 +220,14 @@ protected:
     /// Freshly inserting ⊤ (`concr ↦ concr`) stays silent, as it is indistinguishable from *absent* for consumers.
     /// Every change also touch()es curr_mut() - the seed set of the next sparse round.
     /// @returns `true` iff this changed observable information - i.e. iff it invalidate()d.
-    bool lattice(const Def* concr, const Def* abstr) {
-        map(concr, abstr);
-
-        if (auto [i, ins] = lattice_.emplace(concr, abstr); !ins) {
-            assert((i->second != concr || abstr == concr) && "monotonicity violation: must not descend from ⊤");
-            if (i->second == abstr) return false;
-            i->second = abstr;
-        } else if (concr == abstr) {
-            return false;
-        }
-        return touch(), true;
-    }
+    bool lattice(const Def* concr, const Def* abstr);
 
     /// Monotonically forces @p def to ⊤ (keep as is).
     /// @returns `true` iff this changed observable information - i.e. iff it invalidate()d.
     bool pin(const Def* def) { return lattice(def, def); }
 
     /// pin%s every def in @p def%'s immutable subgraph for which @p pinnable holds.
-    /// Mutables are visited but not descended into; defs already in @p visited are skipped - seed it to exempt them.
+    /// Mutables are visited but not descended into; defs already in @p visited are skipped.
     void pin_imm(DefSet& visited, const Def* def, DefPred auto pinnable) {
         if (!visited.emplace(def).second) return;
         if (pinnable(def)) pin(def);
@@ -269,20 +239,6 @@ protected:
     void pin_imm(const Def* def, DefPred auto pinnable) {
         auto visited = DefSet();
         pin_imm(visited, def, pinnable);
-    }
-
-    /// If @p app applies an Axm, pin_imm%s the shapes its signature dictates: what the Axm consumes and produces.
-    /// Rebuilding such an App re-derives them from the Axm's generic type instead of rewriting them.
-    /// Subgraphs merely substituted in via (type) arguments impose no shape, though, and are exempt.
-    /// @returns whether @p app applies an Axm.
-    bool pin_axm(const App* app, DefPred auto pinnable) {
-        if (!app->uncurry_callee()->isa<Axm>()) return false;
-        auto visited = DefSet();
-        for (const Def* d = app; auto a = d->isa<App>(); d = a->callee())
-            pin_imm(visited, a->arg(), [](const Def*) { return false; });
-        pin_imm(visited, app->callee_type()->dom(), pinnable);
-        pin_imm(visited, app->type(), pinnable);
-        return true;
     }
 
     /// Additionally schedules @p mut for the next sparse round.
@@ -324,9 +280,15 @@ protected:
 
     /// Schedules @p mut for a breadth-first visit of its dependencies and records `mut -> mut`.
     /// Mutables are enqueued instead of recursed into; Analysis::drain then walks them in BFS order.
-    /// The `mut -> mut` entry doubles as the per-round "already scheduled" marker (Rewriter::old2news_ is
+    /// The `mut -> mut` entry doubles as the per-round "already scheduled" marker (Rewriter::scopes_ are
     /// cleared by reset()), so each mutable's deps are visited at most once per fixed-point round.
-    Def* rewrite_mut(Def*) override;
+    /// Then dispatches to the rewrite_mut_* hook, which merely observes @p mut.
+    const Def* rewrite_mut(Def*) final;
+
+#define CODE_MUT(N) \
+    const Def* rewrite_mut_##N(N* mut) override { return mut; }
+    MIM_MUT_NODE(CODE_MUT)
+#undef CODE_MUT
     virtual void leave() {} ///< Called after curr_mut() has been completely dealt with.
     ///@}
 
@@ -420,6 +382,25 @@ public:
 protected:
     void start() override;
 
+    /// @name Coercion
+    /// Every checking position - an App's argument, a Tuple's ops, a Lam's body - coerce()s its value.
+    /// This reconciles a representation the phase changed with one it did not, e.g. an Axm's signature.
+    ///@{
+    const Def* rewrite_imm_App(const App*) override;
+    const Def* rewrite_imm_Tuple(const Tuple*) override;
+    const Def* rewrite_stub(Def*, Def*) override;
+    using Rewriter::rewrite_stub;
+
+    /// Converts the *new* @p new_val into a value of the *new* @p new_type, where a checking position demands it.
+    /// Both are matched leaf by leaf: tuples are exploded and reassembled, Pi%s are η-wrapped, and
+    /// information-free components are dropped or filled in with their sole inhabitant.
+    const Def* coerce(const Def* new_type, const Def* new_val);
+    /// Does coerce() explode and reassemble values of @p type?
+    static bool splittable(const Def* type) {
+        return (type->isa<Sigma>() || type->isa_imm<Arr>()) && type->num_tprojs() != 1;
+    }
+    ///@}
+
     /// Run **after** all roots have been walked but still **before** the two worlds are swapped.
     /// This is where you drain a worklist of rewrites your hooks deferred (see e.g. clos::phase::ClosConv).
     virtual void finalize() {}
@@ -436,6 +417,15 @@ private:
         , analysis_(analysis)
         , new_world_(std::move(new_world)) {}
 
+    /// η-wraps @p val into a Lam of @p type, coerce()ing its Var to @p val%'s domain and its result to the codomain.
+    /// @returns `nullptr` unless both @p val%'s type and @p type are Pi%s.
+    const Def* eta_coerce(const Def* type, const Def* val);
+    /// Builds a value of @p type from the top of the stack @p todo.
+    /// Greedy matching is sound as assignable types share their leaves.
+    const Def* reshape(DefVec& todo, const Def* type);
+
+    DefMap<Def2Def> etas_; ///< type ↦ val ↦ eta_coerce(type, val)
+
     Analysis* analysis_;
     std::unique_ptr<World> new_world_; ///< Owns Rewriter::world.
 };
@@ -444,8 +434,7 @@ private:
 /// Implement the replace() hook - or use the MIM_REPL macro for an inline definition.
 class Repl : public RWPhase {
 public:
-    Repl(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
     /// replace() inspects and builds Def%s of the **old** world; the RWPhase machinery carries the result over.
     World& world() { return old_world(); }
@@ -455,10 +444,8 @@ public:
 
 private:
     const Def* rewrite(const Def* def) final {
-        for (bool todo = true; todo;) {
-            todo = false;
-            if (auto subst = replace(def)) todo = true, def = subst;
-        }
+        while (auto subst = replace(def))
+            def = subst;
 
         return Rewriter::rewrite(def);
     }
@@ -472,8 +459,7 @@ private:
 // clang-format off
 #define MIM_REPL_IMPL(__phases, __annex, __id, ...)                         \
     struct MIM_CONCAT(Repl_, __id) : ::mim::Repl {                          \
-        MIM_CONCAT(Repl_, __id)(::mim::World & world, ::mim::flags_t annex) \
-            : Repl(world, annex) {}                                         \
+        using Repl::Repl;                                                   \
                                                                             \
         const ::mim::Def* replace(const ::mim::Def* def) final __VA_ARGS__  \
     };                                                                      \
@@ -484,10 +470,7 @@ private:
 /// @see @ref phases_rwphase
 class Cleanup : public RWPhase {
 public:
-    Cleanup(World& world)
-        : RWPhase(world, "cleanup") {}
-    Cleanup(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 };
 
 /// Organizes several Phase%s into a pipeline.

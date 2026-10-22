@@ -7,21 +7,27 @@
 /// ## Dependencies
 ///
 import compile;
+plugin core;
 ///
 /// ## Types
 ///
 /// ### M {#memM}
 ///
-/// This type tracks all kinds of side effects in the given address space.
-axm M: Nat → *;
+/// The effect token core.M.
+anx M = core.M;
 ///
 /// ### Ptr
 ///
-/// Pointer type with *pointee* type `T` and *address space* `a`.
-/// At the moment, the *address space* is not really used and serves as a placeholder for future work.
-axm Ptr: [*, Nat] → *;
+/// The pointer type core.Ptr.
+anx Ptr = core.Ptr;
 
-anx lam Ptr0(T: *): * = Ptr (T, 0);
+anx lam Ptr0 (T: *): * = Ptr (T, 0);
+///
+/// ### Char & Str
+///
+/// A character and a pointer to a string of `n` of them.
+anx let Char = I8;
+anx lam Str (n: Nat): * = Ptr0 «n; Char»;
 ///
 /// ## Operations w/ Side Effects
 ///
@@ -84,6 +90,35 @@ axm mslot: [*, a: Nat] as Ta → Fn [M a, size: Nat] → [M a, Ptr Ta];
 /// Performs address computation by offsetting the passed pointer with index `i`.
 axm lea: {n: Nat, Ts: «n; *», a: Nat} → [Ptr («j: n; Ts#j», a), i: Idx n] → Ptr (Ts#i, a), normalize_lea;
 ///
+/// ### decay
+///
+/// Pointer to the first element of an array, akin to C's array-to-pointer decay.
+anx lam decay {n: Nat, T: *, a: Nat} (p: Ptr («n; T», a)): Ptr (T, a) = lea (p, 0:(Idx n));
+///
+/// ### assume
+///
+/// Views `p` as a pointer to an array of `n` elements.
+/// @warning This is *unchecked*: the caller vouches for the length, e.g. for memory a C function hands over.
+axm assume: {T: *, a: Nat} as Ta → [Ptr Ta, n: Nat] → Ptr («n; T», a);
+///
+/// ### cstr
+///
+/// Views a NUL-terminated C string `p` as an array of its `n` characters, excluding the NUL.
+/// @warning This is *unchecked*: `p` must actually point to a NUL-terminated string.
+///
+anx fun cstr (m: M 0, p: Ptr0 Char): [M 0, n: Nat, Str n] =
+    loop (m, 0)
+    where
+        con loop (m: M 0, i: Nat) =
+            let n      = core.nat.add (i, 1);
+            let (m, c) = load (m, lea (assume (p, n), core.idx 0 n i));
+            (next, done)#(core.icmp.e (c, 0I8)) m
+            where
+                con next (m: M 0) = loop (m, n);
+                con done (m: M 0) = return (m, i, assume (p, i));
+            end
+    end;
+///
 /// ## Phases
 ///
 /// ### add_mem
@@ -92,10 +127,22 @@ axm lea: {n: Nat, Ts: «n; *», a: Nat} → [Ptr («j: n; Ts#j», a), i: Idx n] 
 ///
 axm add_mem: compile.Phase;
 ///
+/// ### free_locals
+///
+/// Frees the memory a function allocates but does not let escape (see mim::plug::mem::EscapeAnalysis).
+///
+axm free_locals: compile.Phase;
+///
+/// ### heap2stack
+///
+/// Turns a small `mem.alloc` that does not escape its function into a `mem.slot` (see mim::plug::mem::phase::Heap2Stack).
+/// `-X mem:heap2stack=<n>` sets the maximum number of elements to stack-allocate; `0` disables it.
+///
+axm heap2stack: compile.Phase;
+///
 /// ### seo
 ///
-/// Symbolic Expression Optimization — SSA construction, expression propagation, and GVN in one fixed
-/// point (see mim::plug::mem::phase::SEO).
+/// Symbolic Expression Optimization — SSA construction, expression propagation, and GVN in one fixed point (see mim::plug::mem::phase::SEO).
 ///
 axm seo: compile.Phase;
 ///

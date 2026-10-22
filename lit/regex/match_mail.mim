@@ -22,8 +22,6 @@ plugin cps;
 
 use core.ops.u.w;
 
-let Top = ⊤:Nat;
-
 // [a-zA-Z0-9]
 // (?:[a-zA-Z0-9]*[._\-]+[a-zA-Z0-9])*
 // [a-zA-Z0-9]*
@@ -66,19 +64,15 @@ let re = regex.conj (letterOrDigit,
             letter,
             regex.quant.plus letter);
 
-extern con strlen[mem.M 0, mem.Ptr («⊤:Nat; I8», 0), Cn [mem.M 0, I32]];
-
-extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), exit: Cn [mem.M 0, I32]) =
+extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char», exit: Cn [mem.M 0, I32]) =
     (exit, match_argument) # (argc > 1I32) (m, 0I32)
     where
         con match_argument(m: mem.M 0, _: I32) =
-            let (m, to_match) = mem.load (m, mem.lea (argv, core.idx_unsafe 1));
-            let (m, matched, pos) = re (m, to_match, core.idx_unsafe 0);
-            strlen(m, to_match, exit_me)
-            where
-            con exit_me(m: mem.M 0, len: I32) =
-                exit (m, (core.idx 0 i32 255, core.wrap.sub i32 (len, core.conv.u i32 pos))#matched)
-            end
+            let (m, to_match)     = mem.load (m, mem.lea (argv, core.idx 0 (core.idx2nat argc) 1));
+            ret (m, n, to_match)  = mem.cstr $ (m, to_match);
+            let (m, matched, pos) = re (m, to_match, regex.pos n 0);
+            let rest              = core.wrap.sub i32 (core.bitcast I32 n, core.conv.u i32 pos);
+            exit (m, (core.idx 0 i32 255, rest)#matched);
     end;
 
 // CHECK-NOT: regex.

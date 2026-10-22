@@ -22,7 +22,6 @@ struct Flags {
     uint32_t pe_fuel             = 1024; // max nesting depth of partial evaluations before World::app errors out
 
     bool ascii               = false;
-    bool mim_local           = false;
     bool mim_typed_let       = false;
     bool bootstrap           = false;
     bool force_load          = false;

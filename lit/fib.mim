@@ -28,7 +28,7 @@ extern fun fib(n: Nat): Nat =
         con exit (a _: Nat) = return a;
     end
 
-extern fun main(argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): I32 =
+extern fun main(argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): I32 =
     seq 12 body exit (0, 1)
     where
         con body (yield: Cn [Nat, Nat]) (a b: Nat) = yield (b, a + b);

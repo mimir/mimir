@@ -9,8 +9,6 @@
 
 #include <mim/plug/core/core.h>
 
-#include "mim/plug/ll/ll.h"
-
 namespace mim::plug::ll {
 
 using namespace std::string_literals;
@@ -26,8 +24,7 @@ namespace vecp = mim::plug::vec;
 /// The runtime-wrapper linking mode is selected via `-X ll:rt=embed` (default) or `-X ll:rt=extern`.
 class Emit : public Phase {
 public:
-    Emit(World& world, flags_t annex)
-        : Phase(world, annex) {}
+    using Phase::Phase;
 
     void start() override {
         world().log().d("ll backend args: {}", fe::Join(args()));
@@ -35,7 +32,7 @@ public:
         auto name = world().name() ? world().name().str() : "a"s;
         auto path = name + ".ll"s;
         if (auto o = arg_value(args(), "o", "output")) path = *o;
-        auto rt = arg_value(args(), "rt") == "extern" ? Emitter::Rt::ext : Emitter::Rt::embed;
+        auto rt = arg_rt(args());
 
         auto out     = Out(path);
         auto emitter = Emitter(world(), "llvm_emitter", *out.os());
@@ -52,39 +49,112 @@ public:
  * `extern "C"` shims below, looked up with GET_FUN_PTR (see ll.h).
  */
 
+/// An `Idx n` whose `n` is only known at runtime is bounded by a `Nat`, hence an `i64`.
+static nat_t idx_bitwidth(const Def* type) { return Idx::size2bitwidth(Idx::isa(type)).value_or(64); }
+
+static std::string fmath_flags(math::Mode mode) {
+    if (mode == math::Mode::fast) return " fast";
+    std::string flags;
+    // clang-format off
+    if (fe::has_flag(mode, math::Mode::nnan    )) flags += " nnan";
+    if (fe::has_flag(mode, math::Mode::ninf    )) flags += " ninf";
+    if (fe::has_flag(mode, math::Mode::nsz     )) flags += " nsz";
+    if (fe::has_flag(mode, math::Mode::arcp    )) flags += " arcp";
+    if (fe::has_flag(mode, math::Mode::contract)) flags += " contract";
+    if (fe::has_flag(mode, math::Mode::afn     )) flags += " afn";
+    if (fe::has_flag(mode, math::Mode::reassoc )) flags += " reassoc";
+    // clang-format on
+    return flags;
+}
+
+static const char* ncmp_pred(core::ncmp id) {
+    switch (id) {
+            // clang-format off
+        case core::ncmp::e:  return "eq";
+        case core::ncmp::ne: return "ne";
+        case core::ncmp::g:  return "ugt";
+        case core::ncmp::ge: return "uge";
+        case core::ncmp::l:  return "ult";
+        case core::ncmp::le: return "ule";
+        // clang-format on
+        default: return nullptr;
+    }
+}
+
+static const char* icmp_pred(core::icmp id) {
+    switch (id) {
+            // clang-format off
+        case core::icmp::e:   return "eq";
+        case core::icmp::ne:  return "ne";
+        case core::icmp::sg:  return "sgt";
+        case core::icmp::sge: return "sge";
+        case core::icmp::sl:  return "slt";
+        case core::icmp::sle: return "sle";
+        case core::icmp::ug:  return "ugt";
+        case core::icmp::uge: return "uge";
+        case core::icmp::ul:  return "ult";
+        case core::icmp::ule: return "ule";
+        // clang-format on
+        default: return nullptr;
+    }
+}
+
+static const char* fcmp_pred(math::cmp id) {
+    switch (id) {
+            // clang-format off
+        case math::cmp::  e: return "oeq";
+        case math::cmp::  l: return "olt";
+        case math::cmp:: le: return "ole";
+        case math::cmp::  g: return "ogt";
+        case math::cmp:: ge: return "oge";
+        case math::cmp:: ne: return "one";
+        case math::cmp::  o: return "ord";
+        case math::cmp::  u: return "uno";
+        case math::cmp:: ue: return "ueq";
+        case math::cmp:: ul: return "ult";
+        case math::cmp::ule: return "ule";
+        case math::cmp:: ug: return "ugt";
+        case math::cmp::uge: return "uge";
+        case math::cmp::une: return "une";
+        // clang-format on
+        default: return nullptr;
+    }
+}
+
 std::string Emitter::convert_impl(const Def* type, bool simd) {
-    if (auto i = types_.find(type); i != types_.end()) return i->second;
+    if (auto s = fe::lookup(types_[simd], type)) return *s;
+    if (simd && !has_vec(type)) return types_[simd][type] = convert_impl(type, false);
 
     if (Axm::isa<mem::M>(type)) type->blame(MIM_LL_BE "cannot convert a `mem.M` type").bail();
     std::ostringstream s;
     std::string name;
 
     if (type->isa<Nat>()) {
-        return types_[type] = "i64";
+        return types_[simd][type] = "i64";
     } else if (Idx::isa(type)) {
         // `Idx 1` is zero bits wide information-theoretically, but LLVM has no i0: clamp to i1
         // (its only value is 0, so any i1 zext/trunc of it stays correct).
-        auto w              = Idx::expect_bitwidth(type, "a statically-sized index type");
-        return types_[type] = "i" + std::to_string(std::max<nat_t>(1, w));
+        auto w                    = idx_bitwidth(type);
+        return types_[simd][type] = "i" + std::to_string(std::max<nat_t>(1, w));
     } else if (auto w = math::isa_f(type)) {
         switch (*w) {
-            case 16: return types_[type] = "half";
-            case 32: return types_[type] = "float";
-            case 64: return types_[type] = "double";
+            case 16: return types_[simd][type] = "half";
+            case 32: return types_[simd][type] = "float";
+            case 64: return types_[simd][type] = "double";
             default: type->blame(MIM_LL_BE "unsupported floating-point width {}", *w).bail();
         }
     } else if (auto ptr = Axm::isa<mem::Ptr>(type)) {
         auto [pointee, addr_space] = ptr->args<2>();
         std::print(s, "{} addrspace({})*", convert(pointee, false), addr_space);
     } else if (auto arr = type->isa<Arr>()) {
-        if (auto se = is_simd(arr); se && simd) {
+        if (auto se = simd ? vectorize(arr) : std::nullopt) {
             auto [size, elem] = *se;
             std::print(s, "<{} x {}>", size, convert(elem));
         } else {
             u64 size = 0;
             if (auto arity = Lit::isa(arr->arity())) size = *arity;
             // One LLVM array level per axis, so a fused Arr nests: `«3, 4; i32»` is `[3 x [4 x i32]]`.
-            std::print(s, "[{} x {}]", size, convert(arr->elem(), false));
+            std::print(s, "[{} x {}]", size, convert(arr->elem(), simd));
         }
     } else if (auto pi = type->isa<Pi>()) {
         if (!Pi::isa_returning(pi)) pi->blame(MIM_LL_BE "cannot convert the type of a basic block").bail();
@@ -102,18 +172,18 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
         }
         std::print(s, ")*");
     } else if (auto t = detail::isa_mem_sigma_2(type)) {
-        return convert(t);
+        return convert(t, simd);
     } else if (auto sigma = type->isa<Sigma>()) {
         if (sigma->isa_mut()) {
-            name          = id(sigma);
-            types_[sigma] = name;
+            name                = simd ? id(sigma) + ".simd" : id(sigma);
+            types_[simd][sigma] = name;
             std::print(s, "{} = type", name);
         }
 
         std::print(s, "{{");
         for (auto sep = ""; auto t : sigma->ops()) {
             if (Axm::isa<mem::M>(t)) continue;
-            std::print(s, "{}{}", sep, convert(t));
+            std::print(s, "{}{}", sep, convert(t, simd));
             sep = ", ";
         }
         std::print(s, "}}");
@@ -121,11 +191,11 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
         type->blame(MIM_LL_BE "cannot convert this type to LLVM").bail();
     }
 
-    if (name.empty()) return types_[type] = s.str();
+    if (name.empty()) return types_[simd][type] = s.str();
 
     if (s.str().empty()) type->blame(MIM_LL_BE "empty type declaration").bail();
     std::println(type_decls_, "{}", s.str());
-    return types_[type] = name;
+    return types_[simd][type] = name;
 }
 
 void Emitter::finalize_impl() {
@@ -206,7 +276,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
                 std::string type;
                 std::string prev;
 
-                if (auto se = is_simd_aggregate(types)) {
+                if (auto se = vectorize(world().sigma(types))) {
                     auto [size, elem] = *se;
                     auto val_t        = convert(elem);
 
@@ -234,7 +304,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
                     prev = "undef";
                     type = convert(world().sigma(types));
                     for (size_t i = 0, n = values.size(); i != n; ++i) {
-                        if (auto mem = Axm::isa<mem::M>(types[i])) continue;
+                        if (Axm::isa<mem::M>(types[i])) continue;
                         auto v_elem = values[i];
                         auto t_elem = convert(types[i]);
                         auto namei  = id(lam, true) + ".ret_val." + std::to_string(i);
@@ -248,7 +318,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
 
     } else if (auto dispatch = Dispatch(app)) {
         for (auto callee : dispatch.tuple()->projs([](const Def* def) { return def->isa_mut<Lam>(); }))
-            if (size_t n = callee->num_tvars(); n == 1 && is_simd(callee->var(n, 0)->type()))
+            if (size_t n = callee->num_tvars(); n == 1 && vectorize(callee->var(n, 0)->type()))
                 emit_phi(callee, callee->var(n, 0), emit(app->arg(n, 0)), lam);
             else
                 emit_phi_args(callee, app, lam);
@@ -273,8 +343,7 @@ void Emitter::emit_epilogue_impl(Lam* lam) {
         if (auto common_src = find_common_simd_src(app)) {
             auto v_src      = emit(common_src);
             auto callee_var = callee->var();
-            if (simd_phi_.find(callee) == simd_phi_.end()) simd_phi_[callee] = callee_var;
-            auto key = simd_phi_[callee];
+            auto key        = simd_phi_.try_emplace(callee, callee_var).first->second;
             emit_phi(callee, key, v_src, lam);
             for (auto var : callee->vars())
                 locals_[var] = id(key);
@@ -360,11 +429,11 @@ std::string Emitter::emit_tuple(BB& bb, const std::string& name, const Def* tupl
         return emit(tuple->proj(2, 1));
     }
 
+    auto vec = vectorize(tuple->type()).has_value();
     if (tuple->is_closed()) {
-        bool is_array   = tuple->type()->isa<Arr>();
-        auto simd_array = convert(tuple->type()).front() == '<'; // needed to respect pointer context
+        bool is_array = tuple->type()->isa<Arr>();
         std::string s;
-        s += simd_array ? "<" : is_array ? "[" : "{";
+        s += vec ? "<" : is_array ? "[" : "{";
         auto sep = "";
         for (size_t i = 0, n = tuple->num_projs(); i != n; ++i) {
             auto e = tuple->proj(n, i);
@@ -375,7 +444,7 @@ std::string Emitter::emit_tuple(BB& bb, const std::string& name, const Def* tupl
             }
         }
 
-        return s += simd_array ? ">" : is_array ? "]" : "}";
+        return s += vec ? ">" : is_array ? "]" : "}";
     }
 
     std::string prev = "undef";
@@ -386,8 +455,8 @@ std::string Emitter::emit_tuple(BB& bb, const std::string& name, const Def* tupl
             auto elem_t = convert(e->type());
             // TODO: check dst vs src
             auto namei = name + "." + std::to_string(dst);
-            if (t.front() == '<') // not using is_simd to respect the pointer context (Pointer Pointee case)
-                prev = bb.assign(namei, "insertelement {} {}, {} {}, {} {}", t, prev, elem_t, elem, elem_t, dst);
+            if (vec)
+                prev = bb.assign(namei, "insertelement {} {}, {} {}, i32 {}", t, prev, elem_t, elem, dst);
             else
                 prev = bb.assign(namei, "insertvalue {} {}, {} {}, {}", t, prev, elem_t, elem, dst);
             dst++;
@@ -396,16 +465,40 @@ std::string Emitter::emit_tuple(BB& bb, const std::string& name, const Def* tupl
     return prev;
 }
 
+std::string Emitter::repack(BB& bb, const std::string& name, const Def* type, const std::string& v, bool simd) {
+    if (!has_vec(type)) return v;
+
+    auto t_src    = convert(type, !simd);
+    auto t_dst    = convert(type, simd);
+    auto vec      = vectorize(type).has_value();
+    auto src_vec  = vec && !simd;
+    auto dst_vec  = vec && simd;
+    auto n        = Lit::expect(type->arity(), "a statically-sized aggregate");
+    std::string r = "undef";
+    for (u64 i = 0, j = 0; i != n; ++i) {
+        auto t_i = type->proj(n, i);
+        if (Axm::isa<mem::M>(t_i)) continue;
+        auto name_i = name + ".r" + std::to_string(j);
+        auto v_i    = bb.assign(name_i, "{} {} {}, {}{}", src_vec ? "extractelement" : "extractvalue", t_src, v,
+                                src_vec ? "i32 " : "", j);
+        v_i         = repack(bb, name_i, t_i, v_i, simd);
+        r = bb.assign(name_i + ".r", "{} {} {}, {} {}, {}{}", dst_vec ? "insertelement" : "insertvalue", t_dst, r,
+                      convert(t_i, simd), v_i, dst_vec ? "i32 " : "", j);
+        ++j;
+    }
+    return r;
+}
+
 std::pair<std::string, std::string> Emitter::emit_gep_index(BB& bb, const std::string& name, const Def* index) {
     auto v_i = emit(index);
     auto t_i = convert(index->type());
 
-    if (auto size = Idx::isa(index->type())) {
-        if (auto w = Idx::size2bitwidth(size); w && *w < 64) {
+    if (Idx::isa(index->type())) {
+        if (auto w = idx_bitwidth(index->type()); w < 64) {
             v_i = bb.assign(name + ".zext",
                             "zext {} {} to i{} ; add one more bit for gep index as it is treated as signed value", t_i,
-                            v_i, *w + 1);
-            t_i = "i" + std::to_string(*w + 1);
+                            v_i, w + 1);
+            t_i = "i" + std::to_string(w + 1);
         }
     }
 
@@ -418,7 +511,7 @@ std::string Emitter::emit_simd_index(BB& bb, const std::string& name, const Def*
 
     auto t_i = convert(index->type());
     if (t_i == "i32") return v_i;
-    auto w = Idx::expect_bitwidth(index->type(), "a vector lane index of known width");
+    auto w = idx_bitwidth(index->type());
     return bb.assign(name + ".idx", "{} {} {} to i32", w < 32 ? "zext" : "trunc", t_i, v_i);
 }
 
@@ -445,9 +538,8 @@ std::string Emitter::emit_lit(const Def* def) {
 
 std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name, const Def* def) {
     if (def->isa<Var>()) {
-        if (is_simd(def->type())) return id(def);
-        auto ts = def->type()->projs();
-        if (std::ranges::any_of(ts, [](auto t) { return Axm::isa<mem::M>(t); })) return std::string();
+        if (vectorize(def->type())) return id(def);
+        if (mem::has_mem_ty(def->type())) return std::string();
         return emit_tuple(bb, name, def);
     }
 
@@ -480,7 +572,7 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         if (auto sigma = extract->type()->isa<Sigma>(); sigma && sigma->num_ops() == 0) return std::string();
 
         auto t_tup = convert(tuple->type());
-        if (is_simd(tuple->type()))
+        if (vectorize(tuple->type()))
             return bb.assign(name, "extractelement {} {}, i32 {}", t_tup, v_tup, emit_simd_index(bb, name, index));
 
         if (auto li = Lit::isa(index)) {
@@ -511,7 +603,7 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         auto t_val = convert(insert->value()->type());
         auto v_tup = emit(insert->tuple());
         auto v_val = emit(insert->value());
-        if (is_simd(insert->tuple()->type()))
+        if (vectorize(insert->tuple()->type()))
             return bb.assign(name, "insertelement {} {}, {} {}, i32 {}", t_tup, v_tup, t_val, v_val,
                              emit_simd_index(bb, name, insert->index()));
 
@@ -563,24 +655,14 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         }
     } else if (auto ncmp = Axm::isa<core::ncmp>(def)) {
         auto [a, b] = ncmp->args<2>([this](auto def) { return emit(def); });
-        op          = "icmp ";
-
-        switch (ncmp.id()) {
-                // clang-format off
-            case core::ncmp::e:  op += "eq" ; break;
-            case core::ncmp::ne: op += "ne" ; break;
-            case core::ncmp::g:  op += "ugt"; break;
-            case core::ncmp::ge: op += "uge"; break;
-            case core::ncmp::l:  op += "ult"; break;
-            case core::ncmp::le: op += "ule"; break;
-            // clang-format on
-            default: def->blame(MIM_LL_BE "unhandled `core.ncmp` id").bail();
-        }
+        auto pred   = ncmp_pred(ncmp.id());
+        if (!pred) def->blame(MIM_LL_BE "unhandled `core.ncmp` id").bail();
+        op = "icmp "s + pred;
 
         return bb.assign(name, "{} i64 {}, {}", op, a, b);
     } else if (auto idx = Axm::isa<core::idx>(def)) {
         auto x = emit(idx->arg());
-        auto s = Idx::expect_bitwidth(idx->type(), "a `core.idx` result of known width");
+        auto s = idx_bitwidth(idx->type());
         auto t = convert(idx->type());
         if (s < 64) return bb.assign(name, "trunc i64 {} to {}", x, t);
         return x;
@@ -603,8 +685,8 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
             case core::bit2::nand: return neg(bb.assign(name, "and {} {}, {}", t, a, b));
             case core::bit2:: nor: return neg(bb.assign(name, "or  {} {}, {}", t, a, b));
             case core::bit2::nxor: return neg(bb.assign(name, "xor {} {}, {}", t, a, b));
-            case core::bit2:: iff: return bb.assign(name, "and {} {}, {}", t, neg(a), b);
-            case core::bit2::niff: return bb.assign(name, "or  {} {}, {}", t, neg(a), b);
+            case core::bit2:: iff: return bb.assign(name, "or  {} {}, {}", t, neg(a), b);
+            case core::bit2::niff: return bb.assign(name, "and {} {}, {}", t, a, neg(b));
             // clang-format on
             default: def->blame(MIM_LL_BE "unhandled `core.bit2` id").bail();
         }
@@ -654,23 +736,9 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
     } else if (auto icmp = Axm::isa<core::icmp>(def)) {
         auto [a, b] = icmp->args<2>([this](auto def) { return emit(def); });
         auto t      = convert(icmp->arg(2, 0)->type());
-        op          = "icmp ";
-
-        switch (icmp.id()) {
-                // clang-format off
-            case core::icmp::e:   op += "eq" ; break;
-            case core::icmp::ne:  op += "ne" ; break;
-            case core::icmp::sg:  op += "sgt"; break;
-            case core::icmp::sge: op += "sge"; break;
-            case core::icmp::sl:  op += "slt"; break;
-            case core::icmp::sle: op += "sle"; break;
-            case core::icmp::ug:  op += "ugt"; break;
-            case core::icmp::uge: op += "uge"; break;
-            case core::icmp::ul:  op += "ult"; break;
-            case core::icmp::ule: op += "ule"; break;
-            // clang-format on
-            default: def->blame(MIM_LL_BE "unhandled `core.icmp` id").bail();
-        }
+        auto pred   = icmp_pred(icmp.id());
+        if (!pred) def->blame(MIM_LL_BE "unhandled `core.icmp` id").bail();
+        op = "icmp "s + pred;
 
         return bb.assign(name, "{} {} {}, {}", op, t, a, b);
     } else if (auto extr = Axm::isa<core::extrema>(def)) {
@@ -689,7 +757,8 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         declare("{} @{}({}, {})", t, f, t, t);
         return bb.assign(name, "tail call {} @{}({} {}, {} {})", t, f, t, a, t, b);
     } else if (auto abs = Axm::isa<core::abs>(def)) {
-        auto [m, x]   = abs->args<2>();
+        auto [m, x] = abs->args<2>();
+        emit_unsafe(m);
         auto t        = convert(x->type());
         auto a        = emit(x);
         std::string f = "llvm.abs." + t;
@@ -700,8 +769,8 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         auto t_src = convert(conv->arg()->type());
         auto t_dst = convert(conv->type());
 
-        nat_t w_src = Idx::expect_bitwidth(conv->arg()->type(), "a `core.conv` source of known width");
-        nat_t w_dst = Idx::expect_bitwidth(conv->type(), "a `core.conv` target of known width");
+        nat_t w_src = idx_bitwidth(conv->arg()->type());
+        nat_t w_dst = idx_bitwidth(conv->type());
 
         if (w_src == w_dst) return v_src;
 
@@ -711,6 +780,11 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         }
 
         return bb.assign(name, "{} {} {} to {}", op, t_src, v_src, t_dst);
+    } else if (auto i2n = Axm::isa<core::idx2nat>(def)) {
+        auto v_src = emit(i2n->arg());
+        auto w_src = idx_bitwidth(i2n->arg()->type());
+        if (w_src == 64) return v_src;
+        return bb.assign(name, "zext {} {} to {}", convert(i2n->arg()->type()), v_src, convert(i2n->type()));
     } else if (auto bitcast = Axm::isa<core::bitcast>(def)) {
         auto dst_type_ptr = Axm::isa<mem::Ptr>(bitcast->type());
         auto src_type_ptr = Axm::isa<mem::Ptr>(bitcast->arg()->type());
@@ -727,7 +801,7 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
 
         auto size2width = [&](const Def* type) {
             if (type->isa<Nat>()) return 64_n;
-            if (Idx::isa(type)) return Idx::expect_bitwidth(type, "a statically-sized index type");
+            if (Idx::isa(type)) return idx_bitwidth(type);
             return 0_n;
         };
 
@@ -749,7 +823,7 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
         auto [ptr, i]  = lea->args<2>();
         auto pointee   = Axm::expect<mem::Ptr>(ptr->type(), "a `mem.Ptr`")->arg(2, 0);
         auto v_ptr     = emit(ptr);
-        auto t_pointee = convert(pointee);
+        auto t_pointee = convert(pointee, false);
         auto t_ptr     = convert(ptr->type());
         if (pointee->isa<Sigma>())
             return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, i32 {}", t_pointee, t_ptr, v_ptr,
@@ -759,12 +833,16 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
         auto [v_i, t_i] = emit_gep_index(bb, name, i);
 
         return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, {} {}", t_pointee, t_ptr, v_ptr, t_i, v_i);
+    } else if (auto assume = Axm::isa<mem::assume>(def)) {
+        auto p = assume->arg(2, 0);
+        return bb.assign(name, "bitcast {} {} to {}", convert(p->type()), emit(p), convert(def->type()));
     } else if (auto malloc = Axm::isa<mem::malloc>(def)) {
         auto address_space = malloc->decurry()->arg(2, 1);
         declare("i8* @malloc(i64)");
 
-        emit_unsafe(malloc->arg(2, 0));
-        auto size           = emit(malloc->arg(2, 1));
+        auto [m, n] = malloc->args<2>();
+        emit_unsafe(m);
+        auto size           = emit(n);
         auto ptr_t          = convert(Axm::expect<mem::Ptr>(def->proj(2, 1)->type(), "a `mem.Ptr`"));
         auto i8ptr          = bb.assign(name + "i8", "call i8* @malloc(i64 {})", size);
         std::string i8ptr_t = "i8*";
@@ -776,9 +854,10 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
     } else if (auto free = Axm::isa<mem::free>(def)) {
         auto address_space = free->decurry()->arg(2, 1);
         declare("void @free(i8*)");
-        emit_unsafe(free->arg(2, 0));
-        auto ptr   = emit(free->arg(2, 1));
-        auto ptr_t = convert(Axm::expect<mem::Ptr>(free->arg(2, 1)->type(), "a `mem.Ptr`"));
+        auto [m, p] = free->args<2>();
+        emit_unsafe(m);
+        auto ptr   = emit(p);
+        auto ptr_t = convert(Axm::expect<mem::Ptr>(p->type(), "a `mem.Ptr`"));
 
         auto i8ptr = bb.assign(name + "i8", "bitcast {} {} to i8 addrspace({})*", ptr_t, ptr, address_space);
         if (Lit::expect(address_space, "an address space") != 0)
@@ -786,17 +865,20 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
         bb.tail("call void @free(i8* {})", i8ptr);
         return std::string();
     } else if (auto load = Axm::isa<mem::load>(def)) {
-        emit_unsafe(load->arg(2, 0));
-        auto v_ptr     = emit(load->arg(2, 1));
-        auto t_ptr     = convert(load->arg(2, 1)->type());
-        auto t_pointee = convert(Axm::expect<mem::Ptr>(load->arg(2, 1)->type(), "a `mem.Ptr`")->arg(2, 0), false);
-        return bb.assign(name, "load {}, {} {}", t_pointee, t_ptr, v_ptr);
+        auto [m, ptr] = load->args<2>();
+        emit_unsafe(m);
+        auto v_ptr     = emit(ptr);
+        auto t_ptr     = convert(ptr->type());
+        auto pointee   = Axm::expect<mem::Ptr>(ptr->type(), "a `mem.Ptr`")->arg(2, 0);
+        auto t_pointee = convert(pointee, false);
+        return repack(bb, name, pointee, bb.assign(name, "load {}, {} {}", t_pointee, t_ptr, v_ptr), true);
     } else if (auto store = Axm::isa<mem::store>(def)) {
-        emit_unsafe(store->arg(3, 0));
-        auto v_ptr = emit(store->arg(3, 1));
-        auto v_val = emit(store->arg(3, 2));
-        auto t_ptr = convert(store->arg(3, 1)->type());
-        auto t_val = convert(store->arg(3, 2)->type(), false);
+        auto [m, ptr, val] = store->args<3>();
+        emit_unsafe(m);
+        auto v_ptr = emit(ptr);
+        auto v_val = repack(bb, name, val->type(), emit(val), false);
+        auto t_ptr = convert(ptr->type());
+        auto t_val = convert(val->type(), false);
         std::print(bb.body().emplace_back(), "store {} {}, {} {}", t_val, v_val, t_ptr, v_ptr);
         return std::string();
     } else if (auto q = Axm::isa<clos::alloc_jmpbuf>(def)) {
@@ -835,19 +917,7 @@ std::optional<std::string> Emitter::emit_math(BB& bb, const std::string& name, c
             case math::arith::rem: op = "frem"; break;
         }
 
-        if (lmode == math::Mode::fast)
-            op += " fast";
-        else {
-            // clang-format off
-            if (fe::has_flag(lmode, math::Mode::nnan    )) op += " nnan";
-            if (fe::has_flag(lmode, math::Mode::ninf    )) op += " ninf";
-            if (fe::has_flag(lmode, math::Mode::nsz     )) op += " nsz";
-            if (fe::has_flag(lmode, math::Mode::arcp    )) op += " arcp";
-            if (fe::has_flag(lmode, math::Mode::contract)) op += " contract";
-            if (fe::has_flag(lmode, math::Mode::afn     )) op += " afn";
-            if (fe::has_flag(lmode, math::Mode::reassoc )) op += " reassoc";
-            // clang-format on
-        }
+        op += fmath_flags(lmode);
 
         return bb.assign(name, "{} {} {}, {}", op, t, a, b);
     } else if (auto tri = Axm::isa<math::tri>(def)) {
@@ -935,27 +1005,9 @@ std::optional<std::string> Emitter::emit_math(BB& bb, const std::string& name, c
     } else if (auto cmp = Axm::isa<math::cmp>(def)) {
         auto [a, b] = cmp->args<2>([this](auto def) { return emit(def); });
         auto t      = convert(cmp->arg(2, 0)->type());
-        op          = "fcmp ";
-
-        switch (cmp.id()) {
-                // clang-format off
-            case math::cmp::  e: op += "oeq"; break;
-            case math::cmp::  l: op += "olt"; break;
-            case math::cmp:: le: op += "ole"; break;
-            case math::cmp::  g: op += "ogt"; break;
-            case math::cmp:: ge: op += "oge"; break;
-            case math::cmp:: ne: op += "one"; break;
-            case math::cmp::  o: op += "ord"; break;
-            case math::cmp::  u: op += "uno"; break;
-            case math::cmp:: ue: op += "ueq"; break;
-            case math::cmp:: ul: op += "ult"; break;
-            case math::cmp::ule: op += "ule"; break;
-            case math::cmp:: ug: op += "ugt"; break;
-            case math::cmp::uge: op += "uge"; break;
-            case math::cmp::une: op += "une"; break;
-            // clang-format on
-            default: def->blame(MIM_LL_BE "unhandled `math.cmp` id").bail();
-        }
+        auto pred   = fcmp_pred(cmp.id());
+        if (!pred) def->blame(MIM_LL_BE "unhandled `math.cmp` id").bail();
+        op = "fcmp "s + pred;
 
         return bb.assign(name, "{} {} {}, {}", op, t, a, b);
     } else if (auto is_finite = Axm::isa<math::is_finite>(def)) {
@@ -1027,23 +1079,33 @@ std::optional<std::string> Emitter::emit_vec(BB& bb, const std::string& name, co
         auto t_out  = convert(def->type()); // <n x T>
 
         std::string op;
-        std::string prev;
 
         if (auto nat_op = Axm::isa<core::nat, 1>(f)) {
             switch (nat_op.id()) {
                 case core::nat::add: op = "add nuw nsw"; break;
                 case core::nat::sub: {
                     // nat subtraction saturates at 0: cap per-lane when v2 > v1
-                    auto v1     = emit(inputs->proj(nat_ni, 0));
-                    auto v2     = emit(inputs->proj(nat_ni, 1));
-                    auto ugt    = bb.assign(name + ".ugt", "icmp ugt {} {}, {}", t_in, v2, v1);
-                    auto raw    = bb.assign(name + ".raw", "sub {} {}, {}", t_in, v1, v2);
-                    return prev = bb.assign(name, "select <{} x i1> {}, {} zeroinitializer, {} {}", nat_n, ugt, t_out,
-                                            t_out, raw);
+                    auto v1  = emit(inputs->proj(nat_ni, 0));
+                    auto v2  = emit(inputs->proj(nat_ni, 1));
+                    auto ugt = bb.assign(name + ".ugt", "icmp ugt {} {}, {}", t_in, v2, v1);
+                    auto raw = bb.assign(name + ".raw", "sub {} {}, {}", t_in, v1, v2);
+                    return bb.assign(name, "select <{} x i1> {}, {} zeroinitializer, {} {}", nat_n, ugt, t_out, t_out,
+                                     raw);
                 }
                 case core::nat::mul: op = "mul nuw nsw"; break;
-                case core::nat::div: op = "udiv"; break;
-                case core::nat::rem: op = "urem"; break;
+                case core::nat::div:
+                case core::nat::rem: {
+                    // Same zero-divisor semantics as the scalar case: `a / 0 = 0` and `a % 0 = a`.
+                    auto v1   = emit(inputs->proj(nat_ni, 0));
+                    auto v2   = emit(inputs->proj(nat_ni, 1));
+                    auto bz   = bb.assign(name + ".bz", "icmp eq {} {}, zeroinitializer", t_in, v2);
+                    auto bz1  = bb.assign(name + ".bz1", "zext <{} x i1> {} to {}", nat_n, bz, t_in);
+                    auto bsaf = bb.assign(name + ".bsafe", "or {} {}, {}", t_in, v2, bz1);
+                    auto div  = nat_op.id() == core::nat::div;
+                    auto r    = bb.assign(name + ".r", "{} {} {}, {}", div ? "udiv" : "urem", t_in, v1, bsaf);
+                    return bb.assign(name, "select <{} x i1> {}, {} {}, {} {}", nat_n, bz, t_out,
+                                     div ? std::string("zeroinitializer") : v1, t_out, r);
+                }
             }
         } else if (auto arith_op = Axm::isa<math::arith, 1>(f)) {
             auto lmode = static_cast<math::Mode>(
@@ -1055,71 +1117,26 @@ std::optional<std::string> Emitter::emit_vec(BB& bb, const std::string& name, co
                 case math::arith::div: op = "fdiv"; break;
                 case math::arith::rem: op = "frem"; break;
             }
-
-            if (lmode == math::Mode::fast)
-                op += " fast";
-            else {
-                if (fe::has_flag(lmode, math::Mode::nnan)) op += " nnan";
-                if (fe::has_flag(lmode, math::Mode::ninf)) op += " ninf";
-                if (fe::has_flag(lmode, math::Mode::nsz)) op += " nsz";
-                if (fe::has_flag(lmode, math::Mode::arcp)) op += " arcp";
-                if (fe::has_flag(lmode, math::Mode::contract)) op += " contract";
-                if (fe::has_flag(lmode, math::Mode::afn)) op += " afn";
-                if (fe::has_flag(lmode, math::Mode::reassoc)) op += " reassoc";
-            }
+            op += fmath_flags(lmode);
         } else if (auto ncmp_op = Axm::isa<core::ncmp, 1>(f)) {
-            op = "icmp ";
-            switch (ncmp_op.id()) {
-                case core::ncmp::e: op += "eq"; break;
-                case core::ncmp::ne: op += "ne"; break;
-                case core::ncmp::g: op += "ugt"; break;
-                case core::ncmp::ge: op += "uge"; break;
-                case core::ncmp::l: op += "ult"; break;
-                case core::ncmp::le: op += "ule"; break;
-                default: def->blame(MIM_LL_BE "unhandled zipped `core.ncmp` id").bail();
-            }
+            auto pred = ncmp_pred(ncmp_op.id());
+            if (!pred) def->blame(MIM_LL_BE "unhandled zipped `core.ncmp` id").bail();
+            op = "icmp "s + pred;
         } else if (auto icmp_op = Axm::isa<core::icmp, 1>(f)) {
-            op = "icmp ";
-            switch (icmp_op.id()) {
-                case core::icmp::e: op += "eq"; break;
-                case core::icmp::ne: op += "ne"; break;
-                case core::icmp::sg: op += "sgt"; break;
-                case core::icmp::sge: op += "sge"; break;
-                case core::icmp::sl: op += "slt"; break;
-                case core::icmp::sle: op += "sle"; break;
-                case core::icmp::ug: op += "ugt"; break;
-                case core::icmp::uge: op += "uge"; break;
-                case core::icmp::ul: op += "ult"; break;
-                case core::icmp::ule: op += "ule"; break;
-                default: def->blame(MIM_LL_BE "unhandled zipped `core.icmp` id").bail();
-            }
+            auto pred = icmp_pred(icmp_op.id());
+            if (!pred) def->blame(MIM_LL_BE "unhandled zipped `core.icmp` id").bail();
+            op = "icmp "s + pred;
         } else if (auto mcmp_op = Axm::isa<math::cmp, 1>(f)) {
-            op = "fcmp ";
-            switch (mcmp_op.id()) {
-                case math::cmp::e: op += "oeq"; break;
-                case math::cmp::l: op += "olt"; break;
-                case math::cmp::le: op += "ole"; break;
-                case math::cmp::g: op += "ogt"; break;
-                case math::cmp::ge: op += "oge"; break;
-                case math::cmp::ne: op += "one"; break;
-                case math::cmp::o: op += "ord"; break;
-                case math::cmp::u: op += "uno"; break;
-                case math::cmp::ue: op += "ueq"; break;
-                case math::cmp::ul: op += "ult"; break;
-                case math::cmp::ule: op += "ule"; break;
-                case math::cmp::ug: op += "ugt"; break;
-                case math::cmp::uge: op += "uge"; break;
-                case math::cmp::une: op += "une"; break;
-                default: def->blame(MIM_LL_BE "unhandled zipped `math.cmp` id").bail();
-            }
+            auto pred = fcmp_pred(mcmp_op.id());
+            if (!pred) def->blame(MIM_LL_BE "unhandled zipped `math.cmp` id").bail();
+            op = "fcmp "s + pred;
         } else {
             f->blame(MIM_LL_BE "unhandled `vec.zip` operation").bail();
         }
 
         auto v1 = emit(inputs->proj(nat_ni, 0));
         auto v2 = emit(inputs->proj(nat_ni, 1));
-        prev    = bb.assign(name, "{} {} {}, {}", op, t_in, v1, v2);
-        return prev;
+        return bb.assign(name, "{} {} {}, {}", op, t_in, v1, v2);
     }
     return std::nullopt;
 }

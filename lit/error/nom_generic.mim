@@ -1,13 +1,14 @@
 // RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
 
-// An instance of a `nom` is as private as its declaration.
+// An instance of a `nom` is as private as its declaration, even through a `pub` alias of its type constructor.
 mod units
-    pub lam Box (T: *) =
+    lam Box (T: *) =
         nom B = T;
         B;
+    pub let Box = Box;
 end
 
 extern lam bad (b: units.Box I32): I32 = #b;
 
-// CHECK: {{.*}}nom_generic.mim:10:42-10:43: error: `inj` and `#` on nominal type `B` are only allowed within module `units`
+// CHECK: {{.*}}nom_generic.mim:11:42-11:43: error: the representation of private nominal type `B` is only accessible within module `units`
 // CHECK: {{.*}}nom_generic.mim:6:9-6:17: note: declared here

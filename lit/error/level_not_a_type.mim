@@ -1,0 +1,4 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+lam bad (A: Nat) (x: A): Nat = 0;
+
+// CHECK: {{.*}}level_not_a_type.mim:2:18-2:23: error: `A` is not a type

@@ -37,7 +37,7 @@ inline bool has_leading_mem(const Pi* pi) {
 /// Returns the (first) element of type `mem.M a` from the given tuple.
 inline const Def* mem_def(const Def* def) {
     if (isa_mem(def)) return def;
-    if (def->type()->isa<Arr>()) return {}; // don't look into possibly gigantic arrays
+    if (def->isa<Arr>() || def->type()->isa<Arr>()) return {}; // don't look into possibly gigantic arrays
 
     if (def->num_projs() > 1) {
         for (auto proj : def->projs())
@@ -49,6 +49,14 @@ inline const Def* mem_def(const Def* def) {
 
 /// Returns the memory argument of a function if it has one.
 inline const Def* mem_var(Lam* lam) { return mem_def(lam->var()); }
+
+/// Is @p type `mem.M` or a Sigma with a `mem.M` component?
+inline bool has_mem_ty(const Def* type) {
+    if (Axm::isa<mem::M>(type)) return true;
+    if (auto sigma = type->isa<Sigma>())
+        return std::ranges::any_of(sigma->ops(), [](const Def* op) { return Axm::isa<mem::M>(op); });
+    return false;
+}
 
 /// Removes recusively all occurences of mem from a type (sigma).
 inline const Def* strip_mem_ty(const Def* def) {
@@ -66,36 +74,9 @@ inline const Def* strip_mem_ty(const Def* def) {
 
     return def;
 }
-
-/// Recursively removes all occurrences of mem from a tuple.
-/// Returns an empty tuple if applied with mem alone.
-inline const Def* strip_mem(const Def* def) {
-    auto& world = def->world();
-
-    if (auto tuple = def->isa<Tuple>()) {
-        DefVec new_ops;
-        for (auto op : tuple->ops())
-            if (auto new_op = strip_mem(op); new_op != world.tuple()) new_ops.push_back(new_op);
-
-        return world.tuple(new_ops);
-    } else if (Axm::isa<mem::M>(def->type())) {
-        return world.tuple();
-    } else if (auto extract = def->isa<Extract>()) {
-        // The case that this one element is a mem and should return () is handled above.
-        if (extract->num_projs() == 1) return extract;
-
-        DefVec new_ops;
-        for (auto op : extract->projs())
-            if (auto new_op = strip_mem(op); new_op != world.tuple()) new_ops.push_back(new_op);
-
-        return world.tuple(new_ops);
-    }
-
-    return def;
-}
 ///@}
 
-/// @name mem.lea
+/// @name mem.Ptr
 ///@{
 inline const Def* pointee(const Def* ptr) {
     auto [pointee, _] = Axm::as<Ptr>(ptr->type())->args<2>();
@@ -112,12 +93,14 @@ inline const Def* op_lea(const Def* ptr, const Def* index) {
     return w.app(w.app(w.annex<lea>(), {pointee->arity(), Ts, addr_space}), {ptr, index});
 }
 
-inline const Def* op_lea_unsafe(const Def* ptr, const Def* i) {
-    World& w = ptr->world();
-    return op_lea(ptr, w.call(core::conv::u, Axm::as<Ptr>(ptr->type())->arg(2, 0)->arity(), i));
+/// Successively offsets @p ptr by each component of the index @p tuple, peeling one array dimension per `mem.lea`.
+inline const Def* op_lea_tuple(const Def* ptr, const Def* tuple) {
+    auto n       = tuple->num_projs();
+    auto element = ptr;
+    for (size_t i = 0; i != n; ++i)
+        element = op_lea(element, tuple->proj(n, i));
+    return element;
 }
-
-inline const Def* op_lea_unsafe(const Def* ptr, u64 i) { return op_lea_unsafe(ptr, ptr->world().lit_i64(i)); }
 ///@}
 
 /// @name mem.alloc
@@ -136,9 +119,6 @@ inline const Def* op_alloc(const Def* type, const Def* mem) { return op_alloc(ty
 inline const Def* op_slot(const Def* type, const Def* as, const Def* mem, const Def* ret) {
     World& w = type->world();
     return w.app(w.app(w.annex<slot>(), {type, as}), {mem, ret});
-}
-inline const Def* op_slot(const Def* type, const Def* mem, const Def* ret) {
-    return op_slot(type, type->world().lit_nat_0(), mem, ret);
 }
 /// Decomposes the continuation-based @p slot into `(mem, ret_lam, ret_mem, ptr)`,
 /// where `ret_mem` is the continuation's mem and `ptr` is the continuation's slot var;
@@ -159,7 +139,6 @@ inline const Def* op_malloc(const Def* type, const Def* as, const Def* mem) {
     auto size = w.call(core::trait::size, type);
     return w.app(w.app(w.annex<malloc>(), {type, as}), {mem, size});
 }
-inline const Def* op_malloc(const Def* type, const Def* mem) { return op_malloc(type, type->world().lit_nat_0(), mem); }
 ///@}
 
 /// @name mem.mslot
@@ -170,9 +149,6 @@ inline const Def* op_mslot(const Def* type, const Def* as, const Def* mem, const
     World& w  = type->world();
     auto size = w.call(core::trait::size, type);
     return w.app(w.app(w.annex<mslot>(), {type, as}), {w.tuple({mem, size}), ret});
-}
-inline const Def* op_mslot(const Def* type, const Def* mem, const Def* ret) {
-    return op_mslot(type, type->world().lit_nat_0(), mem, ret);
 }
 ///@}
 

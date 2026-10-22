@@ -14,69 +14,6 @@
 
 namespace mim::plug::btensor::phase {
 
-namespace {
-
-/// Builds a counting `affine.For` loop body carrying `acc` (a `{mem, …}` tuple).
-std::pair<Lam*, const Def*> counting_for(const Def* bound, const Def* acc, const Def* exit, Sym name) {
-    auto& w       = bound->world();
-    auto acc_ty   = acc->type();
-    auto body     = w.mut_con({/* iter */ w.type_i64(), /* acc */ acc_ty, /* return */ w.cn(acc_ty)})->set(name);
-    auto for_loop = w.call<affine::For>(body, exit, Defs{w.lit_i64(0), bound, w.lit_i64(1), acc});
-    return {body, for_loop};
-}
-
-/// Pointwise scaffold shared by `pad`/`concat`: a `[mem, ins] → [mem, Buf]` fun (spliced via
-/// `cps.cps2ds`) that allocates the output buffer, loops over `s_out` carrying `{mem, buf}`, and writes
-/// `compute`'s elem at the (identity) output coordinates.
-/// `compute(iters, ins, mem)` receives the raw i64 loop counters, the fun's inputs var, and the current
-/// mem; it returns `(mem', elem)`.
-const Def* build_pointwise(World& w,
-                           const Def* result_ty, // [mem.M 0, buffer.Buf (r, s_out, T)]
-                           const Def* op_mem,
-                           const Def* op_ins,
-                           const Def* s_out,
-                           u64 rn,
-                           const std::string& name,
-                           auto compute) {
-    auto mem_ty         = w.call<mem::M>(0);
-    auto fun            = w.mut_fun(w.sigma({mem_ty, op_ins->type()}), result_ty)->set(name);
-    auto call           = w.app(cps::op_cps2ds_dep(fun), w.tuple({op_mem, op_ins}));
-    auto [fun_mem, ins] = fun->var(2, 0)->projs<2>();
-    auto cont           = fun->var(2, 1);
-
-    auto [obr, obs, obT]  = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
-    auto [a_mem, out_buf] = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
-    const Def* acc        = w.tuple({a_mem, out_buf});
-    auto current_mut      = fun;
-
-    DefVec iters; // raw i64 loop counters
-    iters.reserve(rn);
-    for (u64 d = 0; d < rn; ++d) {
-        auto bound                  = w.call<core::bitcast>(w.type_i64(), s_out->proj(rn, d));
-        auto [body, for_call]       = counting_for(bound, acc, cont, w.sym(name + "_" + std::to_string(d)));
-        auto [iter, new_acc, yield] = body->vars<3>();
-        cont                        = yield;
-        iters.push_back(iter);
-        acc = new_acc;
-        current_mut->set(true, for_call);
-        current_mut = body;
-    }
-    auto [loop_mem, loop_buf] = acc->projs<2>();
-
-    std::pair<const Def*, const Def*> el = compute(iters, ins, loop_mem);
-    auto [el_mem, elem]                  = el;
-
-    DefVec wcoords(rn);
-    for (u64 d = 0; d < rn; ++d)
-        wcoords[d] = w.call(core::conv::u, s_out->proj(rn, d), iters[d]);
-    auto [wr_mem, wr_buf]
-        = buffer::op_write(obr, obs, obT, el_mem, loop_buf, *Shape(w, wcoords).fold(s_out), elem)->projs<2>();
-    current_mut->app(true, cont, w.tuple({wr_mem, loop_buf}));
-    return call;
-}
-
-} // namespace
-
 const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
     if (Axm::isa<btensor::map_reduce_post>(app)) return lower_map_reduce_post(app);
     if (Axm::isa<btensor::broadcast>(app)) return lower_broadcast(app);
@@ -97,232 +34,91 @@ const Def* LowerMapReduce::lower_buffer_lit(const App* app) {
     auto rn        = Lit::isa<u64>(rewrite(r));
     if (!rn) return RWPhase::rewrite_imm_App(app);
 
-    auto& w         = new_world();
-    auto [mem, val] = rewrite(app->arg())->projs<2>();
-    auto result_ty  = rewrite(app->type()); // [mem.M 0, buffer.Buf (r, s, T)]
+    auto [mem, val]      = rewrite(app->arg())->projs<2>();
+    auto result_ty       = rewrite(app->type()); // [mem.M 0, buffer.Buf (r, s, T)]
+    auto [obr, obs, obT] = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
+    auto [a_mem, buf]    = buffer::op_alloc(obr, obs, obT, mem)->projs<2>();
     // `compute` ignores the loop counters and writes the (loop-invariant) scalar `ins` everywhere.
     return build_pointwise(
-        w, result_ty, mem, val, s_out, *rn, "constant_fill",
+        result_ty, a_mem, buf, val, s_out, *rn, "constant_fill",
         [](const DefVec&, const Def* ins, const Def* m) -> std::pair<const Def*, const Def*> { return {m, ins}; });
 }
 
 const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
-    auto& w = new_world();
-    auto c  = rewrite(app->callee())->as<App>();
-
-    auto [nis_nps, meta, shapes, in_tys, comb_init, acc_out, accs_all] = c->uncurry_args<7>();
-    auto [nis, nps]                                                    = nis_nps->projs<2>();
-    auto [To, Tp, Ro, Rn, TSched]                                      = meta->projs<5>();
-    auto [So, Sr, sched]                                               = shapes->projs<3>();
-    auto [Tis, Ris, Sis, Tps, Rps, Sps]                                = in_tys->projs<6>();
-    auto [comb, init, post]                                            = comb_init->projs<3>();
-    auto [accs, post_accs]                                             = accs_all->projs<2>();
-
-    // The final argument is `[mem, is, post_is]`; the result is `[mem, Buf]`.
-    auto [op_mem, op_is, op_post_is] = rewrite(app->arg())->projs<3>();
-    auto result_ty                   = rewrite(app->type()); // [mem.M 0, buffer.Buf (Ro, So, Tp)]
-
-    auto nis_l = Lit::isa<u64>(nis);
-    auto nps_l = Lit::isa<u64>(nps);
-    auto ro_l = Lit::isa<u64>(Ro), rn_l = Lit::isa<u64>(Rn);
-    if (!nis_l || !nps_l || !ro_l || !rn_l || *rn_l < *ro_l) {
+    auto& w    = new_world();
+    auto mr    = MapRedPost::of(rewrite(app->callee())->as<App>());
+    auto ranks = mr.ranks();
+    if (!ranks) {
         log().w("rank counts (nis/nps/Ro/Rn) of {} are not known at lowering time", app);
         return RWPhase::rewrite_imm_App(app);
     }
-    auto nis_nat = *nis_l;
-    auto nps_nat = *nps_l;
-    auto ro = *ro_l, rr = *rn_l - *ro_l;
-    auto nloops = *rn_l;
-    auto n      = w.lit_nat(nloops);
 
-    // Builds `affine.map @(m, n) @(sin, sout) f idxs mem`. The map is mem-threaded (its divisions consume mem),
-    // and this phase threads real memory, so the caller passes the current mem and receives `(mem', coords)`.
-    auto affine_map = [&](const Def* f, const Def* m, const Def* nn, const Def* sin, const Def* sout, const Def* idxs,
-                          const Def* mem) {
-        auto a = w.app(w.annex<affine::map>(), w.tuple({m, nn}));
-        a      = w.app(a, w.tuple({sin, sout}));
-        a      = w.app(a, f);
-        a      = w.app(a, idxs);
-        a      = w.app(a, w.lit_nat_0());
-        return w.app(a, mem)->projs<2>();
-    };
+    auto impl = rewrite(old_world().annex<btensor::map_reduce_post_impl>());
+    impl      = w.app(impl, mr.nis_nps);
+    impl      = w.app(impl, {mr.To, mr.Tp, mr.Ro, w.lit_nat(ranks->rr)});
+    impl      = w.app(impl, mr.shapes);
+    impl      = w.app(impl, {mr.Tis, mr.Tps});
+    impl      = w.app(impl, {mr.comb, mr.init, mr.post});
+    impl      = w.app(impl, mr.map_out);
 
-    auto mem_ty = w.call<mem::M>(0);
+    auto [mem, dst, inputs, post_inputs]                 = rewrite(app->arg())->projs<4>();
+    auto [read_inputs_ty, read_post_ty, write_output_ty] = impl->type()->as<Pi>()->dom()->projs<3>();
 
-    // `[mem, is, post_is] → [mem, Buf]`, spliced via cps.cps2ds and applied to the op's (mem, is, post_is).
-    auto fun  = w.mut_fun(w.sigma({mem_ty, op_is->type(), op_post_is->type()}), result_ty)->set("mapRedAff");
-    auto call = w.app(cps::op_cps2ds_dep(fun), w.tuple({op_mem, op_is, op_post_is}));
-    auto [fun_mem, new_inputs, new_post_is] = fun->var(2, 0)->projs<3>();
-    auto cont                               = fun->var(2, 1);
-
-    // The op's SCHEDULE `sched` is a target-agnostic chooser over a loop-nest builder (canonically
-    // a `tensor.mk_sched` value, selected in the frontend). This is the tensor→btensor boundary,
-    // so bind it HERE to this target's algebra — `btensor.mr_nest` over the output buffer — then
-    // build only the decision-free pieces: the fold step `cell` (read one element per input, call
-    // the combiner) and the write-back `wb` (read the epilogue inputs, run `post`, store) — and
-    // APPLY the nest to them. Unrolling, interchange and the row accumulator are inside the
-    // builder: plain IR, not lowering behavior.
-    auto i32 = w.type_i32();
-
-    // Allocate the output buffer.
-    auto [obr, obs, obT]  = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
-    auto [a_mem, out_buf] = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
-
-    auto nest_args = w.tuple({Ro, w.lit_nat(rr), Sr, To, result_ty->proj(2, 1)});
-    auto nest      = w.app(w.app(sched, w.app(w.annex<btensor::NestT>(), nest_args)),
-                           w.app(w.annex<btensor::mr_nest>(), nest_args));
-
-    // The bound nest dictates the exact `cell`/`wb` signatures (its [init, cell, wb] domain) —
-    // building them from the VALUE's own type sidesteps any Arr/Sigma normalization asymmetry.
-    auto sched_dom = nest->type()->as<Pi>()->dom();
-
-    // A combiner/epilogue operand canonically has the axm's `Fn` shape `Cn [[args], Cn ret]`, but an earlier
-    // Scalarize may have flattened an escaped lam to `Cn [args…, Cn ret]` — build the argument to match the
-    // callee's actual domain either way.
-    auto apply_cps = [&](Lam* mut, const Def* f, DefVec parts, const Def* k) {
-        auto dom = f->type()->as<Pi>()->dom();
-        if (dom->num_projs() == parts.size() + 1) {
-            parts.emplace_back(k);
-            mut->app(true, f, w.tuple(parts));
-        } else {
-            mut->app(true, f, w.tuple({w.tuple(parts), k}));
+    // A `buffer.Buf` has its literal size-1 axes folded away, so the indices fold alike.
+    auto reader = [&](const Def* type, const char* name, u64 num, const Def* rank, const Def* bounds, const Def* rs,
+                      const Def* ss, const Def* maps, const Def* buffers) {
+        auto fun          = w.mut_lam(type->as<Pi>())->set(name);
+        auto [args, ret]  = fun->vars<2>();
+        auto [m, indices] = args->projs<2>();
+        auto values       = DefVec(num);
+        for (u64 i = 0; i != num; ++i) {
+            auto si = ss->proj(num, i);
+            auto [mapped, coords]
+                = op_affine_map(maps->proj(num, i), rs->proj(num, i), rank, bounds, si, indices, m)->projs<2>();
+            auto [read, value] = buffer::op_read(mapped, buffers->proj(num, i), *Shape(coords).fold(si))->projs<2>();
+            m                  = read;
+            values[i]          = value;
         }
+        fun->app(true, ret, {m, w.tuple(values)});
+        return fun;
     };
+    auto read_inputs = reader(read_inputs_ty, "readInputs", ranks->nis, mr.Rn, mr.Sr, mr.Ris, mr.Sis, mr.maps, inputs);
+    auto read_post
+        = reader(read_post_ty, "readPost", ranks->nps, mr.Ro, mr.So, mr.Rps, mr.Sps, mr.post_maps, post_inputs);
 
-    // The nest value's loop-vector components may appear as one «r; I32» value or flattened into r
-    // separate I32 components (normalization decides) — index the domains verbatim either way.
-    auto load_ivs = [&](Lam* l, u64 ndom, u64 pos, u64 cnt) {
-        DefVec out(cnt);
-        if (ndom == pos + cnt + 1) // flattened: cnt I32 scalars, then the continuation
-            for (u64 d = 0; d < cnt; ++d)
-                out[d] = l->var(ndom, pos + d);
-        else
-            for (u64 d = 0; d < cnt; ++d)
-                out[d] = l->var(ndom, pos)->proj(cnt, d);
-        return out;
-    };
-
-    // cell: Cn [mem, To, «ro+rr; I32», Cn [mem, To]] — fold the elements at one loop vector.
-    auto cdom = sched_dom->proj(3, 1)->as<Pi>()->dom();
-    auto cn   = cdom->num_projs();
-    auto cell = w.mut_con(cdom)->set("cell");
+    auto write_output = w.mut_lam(write_output_ty->as<Pi>())->set("writeOutput");
     {
-        auto cm   = cell->var(cn, 0);
-        auto cacc = cell->var(cn, 1);
-        auto ck   = cell->var(cn, cn - 1);
-        auto civs = load_ivs(cell, cn, 2, nloops);
-        DefVec iters_v(nloops);
-        for (u64 d = 0; d < nloops; ++d)
-            iters_v[d] = w.call(core::conv::u, Sr->proj(nloops, d), civs[d]);
-        auto iters = w.tuple(iters_v);
-        auto cur   = cm;
-        DefVec input_elems(nis_nat);
-        for (u64 i = 0; i < nis_nat; ++i) {
-            auto in_buf = new_inputs->proj(nis_nat, i);
-            auto [mc_mem, coords]
-                = affine_map(accs->proj(nis_nat, i), Ris->proj(nis_nat, i), n, Sr, Sis->proj(nis_nat, i), iters, cur);
-            cur                   = mc_mem;
-            auto nis_folded       = *Shape(coords).fold(Sis->proj(nis_nat, i));
-            auto [ir, is_, iT]    = Axm::isa<buffer::Buf>(in_buf->type())->args<3>();
-            auto [rd_mem, rd_val] = buffer::op_read(ir, is_, iT, cur, in_buf, nis_folded)->projs<2>();
-            cur                   = rd_mem;
-            input_elems[i]        = rd_val;
-        }
-        apply_cps(cell, comb, {cur, cacc, w.tuple(input_elems)}, ck);
+        auto [args, ret]                = write_output->vars<2>();
+        auto [m, output, coords, value] = args->projs<4>();
+        auto stored                     = buffer::op_write(m, output, *Shape(coords).fold(mr.So), value);
+        write_output->app(true, ret, stored->proj(2, 0));
     }
 
-    // wb: Cn [mem, Buf, To, «ro+rr; I32», Cn [mem, Buf]] — epilogue + store for one folded cell,
-    // threading the output buffer as the nest's write-back target. It receives the full loop
-    // vector; only the leading `ro` output coordinates are read (the trailing reduction slots are
-    // exhausted loop values and are replaced by zeros for `acc_out`).
-    auto wdom = sched_dom->proj(3, 2)->as<Pi>()->dom();
-    auto wn   = wdom->num_projs();
-    auto wb   = w.mut_con(wdom)->set("wb");
-    {
-        auto wm   = wb->var(wn, 0);
-        auto wu   = wb->var(wn, 1);
-        auto wv   = wb->var(wn, 2);
-        auto wk   = wb->var(wn, wn - 1);
-        auto wovs = load_ivs(wb, wn, 3, nloops);
-        DefVec wb_iters(nloops);
-        for (u64 i = 0; i < ro; ++i)
-            wb_iters[i] = w.call(core::conv::u, Sr->proj(nloops, i), wovs[i]);
-        for (u64 j = 0; j < rr; ++j)
-            wb_iters[ro + j] = w.call(core::conv::u, Sr->proj(nloops, ro + j), w.lit(i32, 0));
-        auto [wc_mem, write_coords] = affine_map(acc_out, Ro, n, Sr, So, w.tuple(wb_iters), wm);
-
-        auto pcur = wc_mem;
-        DefVec post_elems(nps_nat);
-        for (u64 j = 0; j < nps_nat; ++j) {
-            auto sps_j = Sps->proj(nps_nat, j);
-            auto [pc_mem, pcoords]
-                = affine_map(post_accs->proj(nps_nat, j), Rps->proj(nps_nat, j), Ro, So, sps_j, write_coords, pcur);
-            pcur                  = pc_mem;
-            auto p_buf            = new_post_is->proj(nps_nat, j);
-            auto [pr, ps_, pT]    = Axm::isa<buffer::Buf>(p_buf->type())->args<3>();
-            auto [prd_mem, p_val] = buffer::op_read(pr, ps_, pT, pcur, p_buf, *Shape(pcoords).fold(sps_j))->projs<2>();
-            pcur                  = prd_mem;
-            post_elems[j]         = p_val;
-        }
-        auto after_post            = mem::mut_con(Tp)->set("afterPost");
-        auto [post_mem, elem_post] = after_post->vars<2>();
-        auto stored = buffer::op_write(obr, obs, obT, post_mem, wu, *Shape(write_coords).fold(So), elem_post);
-        after_post->app(true, wk, w.tuple({stored->proj(2, 0), stored->proj(2, 1)}));
-        apply_cps(wb, post, {pcur, wv, w.tuple(post_elems)}, after_post);
-    }
-
-    // Apply the nest; the output buffer is threaded through as the nest's write-back target and
-    // yielded straight to the op's continuation.
-    fun->app(true, w.app(nest, w.tuple({init, cell, wb})), w.tuple({a_mem, out_buf, cont}));
-
-    return call;
+    impl = w.app(impl, {read_inputs, read_post, write_output});
+    return w.app(impl, {mem, dst});
 }
 
 const Def* LowerMapReduce::lower_broadcast(const App* app) {
-    auto& w              = new_world();
-    auto callee          = app->callee()->as<App>(); // (broadcast {impl}) (s_in, s_out)
-    auto [s_in, s_out]   = rewrite(callee->arg())->projs<2>();
-    auto [op_mem, input] = rewrite(app->arg())->projs<2>();
-    auto result_ty       = rewrite(app->type()); // [mem.M 0, buffer.Buf (ro, so, T)]
+    auto& w                   = new_world();
+    auto callee               = app->callee()->as<App>(); // (broadcast {impl}) (s_in, s_out)
+    auto [s_in, s_out]        = rewrite(callee->arg())->projs<2>();
+    auto [op_mem, dst, input] = rewrite(app->arg())->projs<3>();
+    auto result_ty            = rewrite(app->type()); // [mem.M 0, buffer.Buf (ro, so, T)]
 
-    auto r_nat = s_out->num_projs();
-
-    auto mem_ty            = w.call<mem::M>(0);
-    auto fun               = w.mut_fun(w.sigma({mem_ty, input->type()}), result_ty)->set("broadcast");
-    auto call              = w.app(cps::op_cps2ds_dep(fun), w.tuple({op_mem, input}));
-    auto [fun_mem, in_buf] = fun->var(2, 0)->projs<2>();
-    auto cont              = fun->var(2, 1);
-
-    auto [in_r, in_s, in_T]    = Axm::isa<buffer::Buf>(in_buf->type())->args<3>();
-    auto [out_r, out_s, out_T] = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
-
-    auto [a_mem, out_buf] = buffer::op_alloc(out_r, out_s, out_T, fun_mem)->projs<2>();
-    const Def* acc        = w.tuple({a_mem, out_buf});
-    auto current_mut      = fun;
-    DefVec out_iters;
-    out_iters.reserve(r_nat);
-    for (size_t i = 0; i < r_nat; ++i) {
-        auto dim                    = s_out->proj(r_nat, i);
-        auto bound                  = w.call<core::bitcast>(w.type_i64(), dim);
-        auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("bcast_" + std::to_string(i)));
-        auto [iter, new_acc, yield] = body->vars<3>();
-        cont                        = yield;
-        out_iters.push_back(w.call(core::conv::u, dim, iter));
-        acc = new_acc;
-        current_mut->set(true, for_call);
-        current_mut = body;
+    auto r_l = Lit::isa(s_out->arity());
+    if (!r_l) {
+        log().w("rank of {} is not known at lowering time", app);
+        return RWPhase::rewrite_imm_App(app);
     }
-    auto [loop_mem, loop_buf] = acc->projs<2>();
 
     // Non-size-1 input dims mirror the matching output index; size-1 dims are dropped from each buffer index.
-    auto iters            = w.tuple(out_iters);
-    auto iter_fold_out    = *Shape(iters).fold(s_out);
-    auto iter_fold_in     = *Shape(iters).fold(s_in);
-    auto [rd_mem, rd_val] = buffer::op_read(in_r, in_s, in_T, loop_mem, in_buf, iter_fold_in)->projs<2>();
-    auto [wr_mem, wr_buf] = buffer::op_write(out_r, out_s, out_T, rd_mem, loop_buf, iter_fold_out, rd_val)->projs<2>();
-    current_mut->app(true, cont, w.tuple({wr_mem, loop_buf}));
+    auto compute = [&](const DefVec& iters, const Def* in_buf, const Def* mem) -> std::pair<const Def*, const Def*> {
+        auto idxs             = w.tuple(to_idxs(w, s_out->projs(*r_l), iters));
+        auto [rd_mem, rd_val] = buffer::op_read(mem, in_buf, *Shape(idxs).fold(s_in))->projs<2>();
+        return {rd_mem, rd_val};
+    };
 
-    return call;
+    return build_pointwise(result_ty, op_mem, dst, input, s_out, *r_l, "broadcast", compute);
 }
 
 const Def* LowerMapReduce::lower_pad(const App* app) {
@@ -333,7 +129,7 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
     // writes fold size-1 axes (the `Buf` handles are normalized), while the loops cover all logical dims.
     auto [Tr, s_in, params, s_out] = c->uncurry_args<4>();
     auto [mode, lo, hi]            = params->projs<3>();
-    auto [op_mem, input, val]      = rewrite(app->arg())->projs<3>();
+    auto [op_mem, dst, input, val] = rewrite(app->arg())->projs<4>();
     auto result_ty                 = rewrite(app->type()); // [mem.M 0, buffer.Buf (r, s_out, T)]
 
     auto r_l    = Lit::isa<u64>(Tr->proj(2, 1));
@@ -342,54 +138,25 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
         log().w("rank/mode of {} is not known at lowering time", app);
         return RWPhase::rewrite_imm_App(app);
     }
-    auto rn       = *r_l;
-    auto mode_nat = *mode_l;
-    auto i64      = w.type_i64();
-
-    // select(cond, t, f) == `(f, t)#cond` (cf. core.select); cond : Bool.
-    auto sel = [&](const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); };
 
     auto compute = [&](const DefVec& iters, const Def* ins, const Def* mem) -> std::pair<const Def*, const Def*> {
         auto [in_buf, fill]  = ins->projs<2>();
-        auto [ibr, ibs, ibT] = Axm::isa<buffer::Buf>(in_buf->type())->args<3>();
-        DefVec clamped(rn); // per-axis read index, kept in range, as `Idx (s_in#d)`
-        DefVec valid;       // per-axis in-bounds flag (constant mode only)
-        for (u64 d = 0; d < rn; ++d) {
-            auto lo_d  = w.call<core::bitcast>(i64, lo->proj(rn, d));
-            auto sin_d = w.call<core::bitcast>(i64, s_in->proj(rn, d));
-            auto in_d  = w.call(core::wrap::sub, core::Mode::none, Defs{iters[d], lo_d}); // o#d − lo#d
-            const Def* idx_i64;
-            if (mode_nat == 0) { // constant: a single unsigned `<` covers both bounds (underflow wraps high)
-                auto v_d = w.call(core::icmp::ul, w.tuple({in_d, sin_d}));
-                valid.push_back(v_d);
-                idx_i64 = sel(v_d, in_d, w.lit_i64(0));
-            } else { // replicate: clamp the read to the nearest edge [0, s_in#d − 1]
-                auto sin_m1 = w.call(core::wrap::sub, core::Mode::none, Defs{sin_d, w.lit_i64(1)});
-                idx_i64     = w.call(core::extrema::smax,
-                                     w.tuple({w.lit_i64(0), w.call(core::extrema::smin, w.tuple({in_d, sin_m1}))}));
-            }
-            clamped[d] = w.call(core::conv::u, s_in->proj(rn, d), idx_i64);
-        }
-        auto [rd_mem, elem] = buffer::op_read(ibr, ibs, ibT, mem, in_buf, *Shape(w, clamped).fold(s_in))->projs<2>();
-        if (mode_nat != 0) return {rd_mem, elem}; // replicate: always a (clamped) read
-        auto all_valid = valid.empty() ? w.lit_tt() : valid[0];
-        for (u64 d = 1; d < valid.size(); ++d)
-            all_valid = w.call(core::bit2::and_, w.lit_nat(2), w.tuple({all_valid, valid[d]}));
-        return {rd_mem, sel(all_valid, elem, fill)}; // constant: fill out-of-region cells with `val`
+        auto [coords, valid] = pad_coords(iters, lo, s_in, *mode_l != 0);
+        auto [rd_mem, elem]  = buffer::op_read(mem, in_buf, *Shape(w, coords).fold(s_in))->projs<2>();
+        return {rd_mem, valid ? w.select(valid, elem, fill) : elem}; // constant: fill out-of-region cells with `val`
     };
 
-    return build_pointwise(w, result_ty, op_mem, w.tuple({input, val}), s_out, rn, "pad", compute);
+    return build_pointwise(result_ty, op_mem, dst, w.tuple({input, val}), s_out, *r_l, "pad", compute);
 }
 
 const Def* LowerMapReduce::lower_concat(const App* app) {
-    auto& w = new_world();
-    auto c  = rewrite(app->callee())->as<App>();
+    auto c = rewrite(app->callee())->as<App>();
 
     // callee: concat {T, nis, r} [ax] {Sis} [s_out]. The shapes are the logical ones; buffer reads and
     // writes fold size-1 axes (the `Buf` handles are normalized), while the loops cover all logical dims.
     auto [TnisR, ax, Sis, s_out] = c->uncurry_args<4>();
     auto [T, nis, r]             = TnisR->projs<3>();
-    auto [op_mem, op_is]         = rewrite(app->arg())->projs<2>();
+    auto [op_mem, dst, op_is]    = rewrite(app->arg())->projs<3>();
     auto result_ty               = rewrite(app->type()); // [mem.M 0, buffer.Buf (r, s_out, T)]
 
     auto nis_l = Lit::isa<u64>(nis);
@@ -401,66 +168,38 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
     }
     auto nisn = *nis_l, rn = *r_l, axn = *ax_l;
 
-    // Prefix offsets along `ax`: off#i = Σ_{j<i} Sis#i#ax (literal extents required).
-    DefVec off(nisn);
-    fe::Vector<u64> ext(nisn);
-    u64 acc_off = 0;
-    for (u64 i = 0; i < nisn; ++i) {
-        off[i]  = w.lit_i64(acc_off);
-        auto ei = Lit::isa<u64>(Sis->proj(nisn, i)->proj(rn, axn));
-        if (!ei) {
-            log().w("extent of input {} of {} along the concat axis is not known at lowering time", i, app);
-            return RWPhase::rewrite_imm_App(app);
-        }
-        ext[i] = *ei;
-        acc_off += *ei;
+    auto exts = concat_extents(Sis, nisn, rn, axn);
+    if (!exts) {
+        log().w("an extent of {} along the concat axis is not known at lowering time", app);
+        return RWPhase::rewrite_imm_App(app);
     }
 
-    auto sel = [&](const Def* cond, const Def* t, const Def* f) { return w.extract(w.tuple({f, t}), cond); };
-
     auto compute = [&](const DefVec& iters, const Def* ins, const Def* mem) -> std::pair<const Def*, const Def*> {
-        auto o_ax      = iters[axn];
         const Def* cur = mem;
-        // Read input `i` at `iters`, but with the `ax` coordinate shifted by off#i and clamped into input `i`.
-        auto read_i = [&](u64 i) -> const Def* {
-            auto in_buf          = ins->proj(nisn, i);
-            auto [ibr, ibs, ibT] = Axm::isa<buffer::Buf>(in_buf->type())->args<3>();
-            auto Sis_i           = Sis->proj(nisn, i);
-            auto e_i_m1          = w.lit_i64(ext[i] - 1);
-            auto loc             = w.call(core::wrap::sub, core::Mode::none, Defs{o_ax, off[i]});
-            auto clamp           = w.call(core::extrema::smax,
-                                          w.tuple({w.lit_i64(0), w.call(core::extrema::smin, w.tuple({loc, e_i_m1}))}));
-            DefVec coords(rn);
-            for (u64 d = 0; d < rn; ++d) {
-                auto idx_i64 = (d == axn) ? clamp : iters[d];
-                coords[d]    = w.call(core::conv::u, Sis_i->proj(rn, d), idx_i64);
-            }
-            auto coords_folded    = *Shape(w, coords).fold(Sis_i);
-            auto [rd_mem, rd_val] = buffer::op_read(ibr, ibs, ibT, cur, in_buf, coords_folded)->projs<2>();
-            cur                   = rd_mem;
+        auto read      = [&](u64 i, const Def* ax_idx) {
+            auto coords = iters;
+            coords[axn] = ax_idx;
+            auto [rd_mem, rd_val]
+                = buffer::op_read(cur, ins->proj(nisn, i), folded_idx(Sis->proj(nisn, i), coords))->projs<2>();
+            cur = rd_mem;
             return rd_val;
         };
-        // Select chain: the highest `i` with off#i ≤ o_ax owns the cell (offsets increase, later wins).
-        auto result = read_i(0);
-        for (u64 i = 1; i < nisn; ++i) {
-            auto cond = w.call(core::icmp::uge, w.tuple({o_ax, off[i]}));
-            result    = sel(cond, read_i(i), result);
-        }
+        auto result = concat_select(iters[axn], *exts, read);
         return {cur, result};
     };
 
-    return build_pointwise(w, result_ty, op_mem, op_is, s_out, rn, "concat", compute);
+    return build_pointwise(result_ty, op_mem, dst, op_is, s_out, rn, "concat", compute);
 }
 
 const Def* LowerMapReduce::lower_gather(const App* app) {
     auto& w = new_world();
     auto c  = rewrite(app->callee())->as<App>();
 
-    auto [Tr, shapes, dim]    = c->uncurry_args<3>();
-    auto [T, r]               = Tr->projs<2>();
-    auto [s_src, s_idx]       = shapes->projs<2>();
-    auto [op_mem, input, idx] = rewrite(app->arg())->projs<3>();
-    auto result_ty            = rewrite(app->type());
+    auto [Tr, shapes, dim]         = c->uncurry_args<3>();
+    auto [T, r]                    = Tr->projs<2>();
+    auto [s_src, s_idx]            = shapes->projs<2>();
+    auto [op_mem, dst, input, idx] = rewrite(app->arg())->projs<4>();
+    auto result_ty                 = rewrite(app->type());
 
     auto r_l   = Lit::isa<u64>(r);
     auto dim_l = Lit::isa<u64>(dim);
@@ -468,43 +207,27 @@ const Def* LowerMapReduce::lower_gather(const App* app) {
         log().w("{} doesn't have lowering-time known rank/axis", app);
         return RWPhase::rewrite_imm_App(app);
     }
-    auto rn = *r_l, axis = *dim_l;
 
-    auto compute = [&](Defs iters, const Def* ins, const Def* mem) -> std::pair<const Def*, const Def*> {
-        auto [in_buf, idx_buf] = ins->projs<2>();
-        auto [ibr, ibs, ibT]   = Axm::isa<buffer::Buf>(in_buf->type())->args<3>();
-        auto [xbr, xbs, xbT]   = Axm::isa<buffer::Buf>(idx_buf->type())->args<3>();
-
-        DefVec idx_coords(rn);
-        for (u64 d = 0; d < rn; ++d)
-            idx_coords[d] = w.call(core::conv::u, s_idx->proj(rn, d), iters[d]);
-        auto idx_folded          = *Shape(w, idx_coords).fold(s_idx);
-        auto [idx_mem, selected] = buffer::op_read(xbr, xbs, xbT, mem, idx_buf, idx_folded)->projs<2>();
-        auto selected_i64        = w.call<core::bitcast>(w.type_i64(), selected);
-
-        DefVec src_coords(rn);
-        for (u64 d = 0; d < rn; ++d) {
-            auto coordinate = d == axis ? selected_i64 : iters[d];
-            src_coords[d]   = w.call(core::conv::u, s_src->proj(rn, d), coordinate);
-        }
-
-        auto folded          = *Shape(w, src_coords).fold(s_src);
-        auto [read_mem, val] = buffer::op_read(ibr, ibs, ibT, idx_mem, in_buf, folded)->projs<2>();
-
+    auto compute = [&](const DefVec& iters, const Def* ins, const Def* mem) -> std::pair<const Def*, const Def*> {
+        auto [in_buf, idx_buf]   = ins->projs<2>();
+        auto [idx_mem, selected] = buffer::op_read(mem, idx_buf, folded_idx(s_idx, iters))->projs<2>();
+        auto src                 = iters;
+        src[*dim_l]              = w.call<core::bitcast>(w.type_i64(), selected);
+        auto [read_mem, val]     = buffer::op_read(idx_mem, in_buf, folded_idx(s_src, src))->projs<2>();
         return {read_mem, val};
     };
-    return build_pointwise(w, result_ty, op_mem, w.tuple({input, idx}), s_idx, rn, "gather", compute);
+    return build_pointwise(result_ty, op_mem, dst, w.tuple({input, idx}), s_idx, *r_l, "gather", compute);
 }
 
 const Def* LowerMapReduce::lower_scatter(const App* app) {
     auto& w = new_world();
     auto c  = rewrite(app->callee())->as<App>();
 
-    auto [Tr, shapes, dim]             = c->uncurry_args<3>();
-    auto [T, r]                        = Tr->projs<2>();
-    auto [s_src, s_idx, s_updates]     = shapes->projs<3>();
-    auto [op_mem, input, idx, updates] = rewrite(app->arg())->projs<4>();
-    auto result_ty                     = rewrite(app->type());
+    auto [Tr, shapes, dim]                     = c->uncurry_args<3>();
+    auto [T, r]                                = Tr->projs<2>();
+    auto [s_src, s_idx, s_updates]             = shapes->projs<3>();
+    auto [op_mem, op_dst, input, idx, updates] = rewrite(app->arg())->projs<5>();
+    auto result_ty                             = rewrite(app->type());
 
     auto r_l   = Lit::isa<u64>(r);
     auto dim_l = Lit::isa<u64>(dim);
@@ -512,54 +235,21 @@ const Def* LowerMapReduce::lower_scatter(const App* app) {
         log().w("{} doesn't have lowering-time known rank/axis", app);
         return RWPhase::rewrite_imm_App(app);
     }
-    auto rn = *r_l, axis = *dim_l;
 
-    auto mem_ty = w.call<mem::M>(0);
-    auto fun    = w.mut_fun(w.sigma({mem_ty, input->type(), idx->type(), updates->type()}), result_ty)->set("scatter");
-    auto call   = w.app(cps::op_cps2ds_dep(fun), w.tuple({op_mem, input, idx, updates}));
-    auto [fun_mem, in_buf, idx_buf, update_buf] = fun->var(2, 0)->projs<4>();
-    auto cont                                   = fun->var(2, 1);
+    auto [fun, call] = ds_splice(w.tuple({op_mem, op_dst, input, idx, updates}), result_ty, "scatter");
+    auto [fun_mem, out_buf, in_buf, idx_buf, update_buf] = fun->var(2, 0)->projs<5>();
+    const Def* cont                                      = fun->var(2, 1);
 
-    auto [obr, obs, obT]  = Axm::isa<buffer::Buf>(result_ty->proj(2, 1))->args<3>();
-    auto [a_mem, out_buf] = buffer::op_alloc(obr, obs, obT, fun_mem)->projs<2>();
-    auto copy_mem         = buffer::op_copy(obr, obs, obT, a_mem, out_buf, in_buf);
-    const Def* acc        = w.tuple({copy_mem, out_buf});
-    auto current          = fun;
-    DefVec iters;
-    iters.reserve(rn);
-    for (u64 d = 0; d < rn; ++d) {
-        auto bound                  = w.call<core::bitcast>(w.type_i64(), s_idx->proj(rn, d));
-        auto [body, for_call]       = counting_for(bound, acc, cont, w.sym("scatter_" + std::to_string(d)));
-        auto [iter, new_acc, yield] = body->vars<3>();
-        cont                        = yield;
-        acc                         = new_acc;
-        iters.push_back(iter);
-        current->set(true, for_call);
-        current = body;
-    }
+    const Def* acc            = w.tuple({buffer::op_copy(fun_mem, out_buf, in_buf), out_buf});
+    auto current              = fun;
+    auto iters                = affine::counting_nest(current, cont, acc, s_idx->projs(*r_l), "scatter");
     auto [loop_mem, loop_buf] = acc->projs<2>();
-    auto [xbr, xbs, xbT]      = Axm::isa<buffer::Buf>(idx_buf->type())->args<3>();
-    auto [ubr, ubs, ubT]      = Axm::isa<buffer::Buf>(update_buf->type())->args<3>();
 
-    DefVec idx_coords(rn);
-    for (u64 d = 0; d < rn; ++d)
-        idx_coords[d] = w.call(core::conv::u, s_idx->proj(rn, d), iters[d]);
-    auto folded_idx = *Shape(w, idx_coords).fold(s_idx);
-    DefVec update_coords(rn);
-    for (u64 d = 0; d < rn; ++d)
-        update_coords[d] = w.call(core::conv::u, s_updates->proj(rn, d), iters[d]);
-    auto update_folded        = *Shape(w, update_coords).fold(s_updates);
-    auto [idx_mem, selected]  = buffer::op_read(xbr, xbs, xbT, loop_mem, idx_buf, folded_idx)->projs<2>();
-    auto [update_mem, update] = buffer::op_read(ubr, ubs, ubT, idx_mem, update_buf, update_folded)->projs<2>();
-    auto selected_i64         = w.call<core::bitcast>(w.type_i64(), selected);
-
-    DefVec dst_coords(rn);
-    for (u64 d = 0; d < rn; ++d) {
-        auto coordinate = d == axis ? selected_i64 : iters[d];
-        dst_coords[d]   = w.call(core::conv::u, s_src->proj(rn, d), coordinate);
-    }
-    auto dst_folded           = *Shape(w, dst_coords).fold(s_src);
-    auto [write_mem, written] = buffer::op_write(obr, obs, obT, update_mem, loop_buf, dst_folded, update)->projs<2>();
+    auto [idx_mem, selected]  = buffer::op_read(loop_mem, idx_buf, folded_idx(s_idx, iters))->projs<2>();
+    auto [update_mem, update] = buffer::op_read(idx_mem, update_buf, folded_idx(s_updates, iters))->projs<2>();
+    auto dst                  = iters;
+    dst[*dim_l]               = w.call<core::bitcast>(w.type_i64(), selected);
+    auto write_mem            = buffer::op_write(update_mem, loop_buf, folded_idx(s_src, dst), update)->proj(2, 0);
     current->app(true, cont, w.tuple({write_mem, loop_buf}));
     return call;
 }

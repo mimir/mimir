@@ -21,7 +21,8 @@ bool AddMem::analyze() {
 
         // `mem.fresh`'s return continuation is *not* pinned: it receives the current memory (see
         // rewrite_imm_App below), so its body must be mem-threaded like any other continuation.
-        if (auto app = def->isa<App>(); app && app->axm() && !Axm::isa<mem::fresh>(app))
+        if (auto app = def->isa<App>();
+            app && app->axm() && !Axm::isa<mem::fresh>(app) && !Axm::isa<mem::slot>(app) && !Axm::isa<mem::mslot>(app))
             for (auto arg : app->arg()->projs())
                 if (auto lam = arg->isa_mut<Lam>()) pinned.push(lam);
 
@@ -93,11 +94,7 @@ const Def* AddMem::rewrite_imm_Pi(const Pi* pi) {
             return w.cn(new_sigma);
         }
 
-        auto new_dom = DefVec();
-        new_dom.emplace_back(mem);
-        for (size_t i = 0, e = new_pi->num_doms(); i != e; ++i)
-            new_dom.emplace_back(new_pi->dom(e, i));
-        return w.cn(new_dom);
+        return w.cn(Def::cat(mem, new_pi->doms()));
     }
     return new_pi;
 }
@@ -157,12 +154,7 @@ const Def* AddMem::rewrite_imm_App(const App* app) {
     auto new_pi = new_callee->type()->isa<Pi>();
     if (old_pi && new_pi && new_pi->num_doms() == old_pi->num_doms() + 1) {
         // The callee gained a leading mem parameter: splice the current memory in front of the arguments.
-        auto n    = old_pi->num_doms();
-        auto args = DefVec(n + 1);
-        args[0]   = mem;
-        for (size_t i = 0; i != n; ++i)
-            args[i + 1] = new_arg->proj(n, i);
-        new_arg = w.tuple(args);
+        new_arg = w.tuple(Def::cat(mem, new_arg->projs(old_pi->num_doms())));
     }
 
     auto new_app = w.app(new_callee, new_arg);
@@ -182,7 +174,7 @@ const Def* AddMem::rewrite_imm_Tuple(const Tuple* tuple) {
     //   3. continuation values last - their bodies run later, so a shared memory operation they capture must
     //      already have been anchored (threaded) in this scope by the memory operands above.
     auto rank = [](const Def* op) {
-        if (!op->type()) return 0; // Univ has no type and is neither memory nor a continuation
+        if (!op->type()) return 0; // Level has no type and is neither memory nor a continuation
         return isa_mem(op) ? 1 : (Pi::isa_cn(op->type()) ? 2 : 0);
     };
 

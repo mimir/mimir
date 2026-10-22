@@ -22,8 +22,27 @@ Rewriter::~Rewriter() = default;
 
 void Rewriter::reset() {
     pop();
-    assert(old2news_.empty());
+    assert(scopes_.empty());
     push();
+}
+
+const Def* Rewriter::map(const Def* old_def, const Def* new_def) {
+    for (size_t i = scopes_.size(); i-- != 1;)
+        if (auto& scope = scopes_[i];
+            old_def->has_free_vars_in(scope.old_vars) || new_def->has_free_vars_in(scope.new_vars)) {
+            // A binder rebuilt in here takes its Var - and what depends on it - along.
+            if (auto var = old_def->has_var()) scope.old_vars = old_def->world().vars().insert(scope.old_vars, var);
+            return scope.old2new[old_def] = new_def;
+        }
+    return scopes_.front().old2new[old_def] = new_def;
+}
+
+void Rewriter::bind_old(const Var* var) {
+    if (var) scopes_.back().old_vars = var->world().vars().insert(scopes_.back().old_vars, var);
+}
+
+void Rewriter::bind_new(const Var* var) {
+    if (var) scopes_.back().new_vars = var->world().vars().insert(scopes_.back().new_vars, var);
 }
 
 const Def* Rewriter::map(const Def* old_def, Defs new_defs) {
@@ -84,14 +103,14 @@ DefVec Rewriter::rewrite(Defs ops) {
 // clang-format off
 const Def* Rewriter::rewrite_imm_Idx    (const Idx*      ) { return world().type_idx();                                   }
 const Def* Rewriter::rewrite_imm_Nat    (const Nat*      ) { return world().type_nat();                                   }
-const Def* Rewriter::rewrite_imm_Univ   (const Univ*     ) { return world().univ();                                       }
+const Def* Rewriter::rewrite_imm_Level  (const Level*    ) { return world().type_level();                                 }
 const Def* Rewriter::rewrite_imm_Lit    (const Lit*     d) { return world().lit    (rewrite(d->type()),   d->get());      }
 const Def* Rewriter::rewrite_imm_Match  (const Match*   d) { return world().match  (rewrite(d->ops()));                   }
 const Def* Rewriter::rewrite_imm_Reform (const Reform*  d) { return world().reform (rewrite(d->dom()));                   }
 const Def* Rewriter::rewrite_imm_Sigma  (const Sigma*   d) { return world().sigma  (rewrite(d->ops()));                   }
 const Def* Rewriter::rewrite_imm_Type   (const Type*    d) { return world().type   (rewrite(d->level()));                 }
-const Def* Rewriter::rewrite_imm_UInc   (const UInc*    d) { return world().uinc   (rewrite(d->op()),     d->offset());   }
-const Def* Rewriter::rewrite_imm_UMax   (const UMax*    d) { return world().umax   (rewrite(d->ops()));                   }
+const Def* Rewriter::rewrite_imm_LSucc  (const LSucc*   d) { return world().lsucc  (rewrite(d->op()),     d->offset());   }
+const Def* Rewriter::rewrite_imm_LMax   (const LMax*    d) { return world().lmax   (rewrite(d->ops()));                   }
 const Def* Rewriter::rewrite_imm_Single (const Single*  d) { return world().single (rewrite(d->op()));                    }
 const Def* Rewriter::rewrite_imm_Wrap   (const Wrap*    d) { return world().wrap   (rewrite(d->op()));                    }
 const Def* Rewriter::rewrite_imm_Nom    (const Nom*     d) { return world().nom    (d->key(),             rewrite(d->op())); }
@@ -193,9 +212,8 @@ const Def* Rewriter::rewrite_imm_Axm(const Axm* a) {
 const Def* Rewriter::rewrite_imm_Extract(const Extract* ex) {
     auto new_index = rewrite(ex->index());
     if (auto index = Lit::isa(new_index)) {
-        if (auto tuple = ex->tuple()->isa<Tuple>()) return map(ex, rewrite(tuple->op(*index)));
-        if (auto pack = ex->tuple()->isa_imm<Pack>(); pack && pack->arity()->is_closed())
-            return map(ex, rewrite(pack->body()));
+        if (auto tuple = ex->tuple()->isa<Tuple>()) return rewrite(tuple->op(*index));
+        if (auto pack = ex->tuple()->isa_imm<Pack>(); pack && pack->arity()->is_closed()) return rewrite(pack->body());
     }
 
     auto new_tuple = rewrite(ex->tuple());
@@ -225,7 +243,7 @@ const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
     if (auto var = seq->has_var(); var && l && *l < world().flags().scalarize_threshold) {
         auto new_ops = fe::Vector<const Def*, 32>(*l);
         for (size_t i = 0, e = *l; i != e; ++i) {
-            push();
+            push(Vars(var));
             map(var, world().lit_idx(e, i));
             new_ops[i] = rewrite(seq->body());
             pop();
@@ -271,22 +289,18 @@ const Def* Rewriter::seal(Def* old_mut, Def* new_mut) {
  */
 
 const Def* VarRewriter::rewrite(const Def* old_def) {
+    // Only Vars, mutables and non-ground immutables are ever mapped, so a ground immutable needs no lookup.
+    if (!old_def->isa_mut() && old_def->local_vars().empty() && old_def->local_muts().empty()) return old_def;
     if (auto new_def = lookup(old_def)) return new_def;
 
     if (auto old_mut = old_def->isa_mut())
         return has_intersection(old_mut) ? rewrite_mut(old_mut)->set(old_mut->dbg_key()) : old_mut;
 
-    if (old_def->local_vars().empty() && old_def->local_muts().empty()) return old_def; // safe to skip
-
     return has_intersection(old_def) ? rewrite_imm(old_def)->set(old_def->dbg_key()) : old_def;
 }
 
 const Def* VarRewriter::rewrite_mut(Def* mut) {
-    if (auto var = mut->has_var()) {
-        auto& vars = vars_.back();
-        vars       = world().vars().insert(vars, var);
-    }
-
+    bind_old(mut->has_var());
     return Rewriter::rewrite_mut(mut);
 }
 
@@ -294,36 +308,12 @@ const Def* VarRewriter::rewrite_mut(Def* mut) {
  * Zonker
  */
 
-const Def* Zonker::map(const Def* old_def, const Def* new_def) {
-    auto repr = lookup(new_def); // always normalize new_def to its representative
-    if (!repr) repr = new_def;
-    return old2news_.back()[old_def] = repr;
-}
-
 const Def* Zonker::lookup(const Def* old_def) {
-    for (auto& old2new : old2news_ | std::views::reverse) {
-        const Def* repr;
-        auto path = DefVec();
-        while (true) {
-            repr = get(old_def);
-
-            if (repr == nullptr) break;
-
-            path.emplace_back(repr);
-            if (repr == old_def) break; // explicit self-map
-
-            old_def = repr;
-        }
-
-        if (path.empty()) continue;
-
-        // path compression: flatten all visited nodes
-        for (auto def : path)
-            old2new[def] = repr;
-
-        return repr;
-    }
-
+    // Holes only ever get set, so a cached result goes stale once a Hole within it got set since.
+    // A self-map is a fixpoint, though: e.g. `binder#i` keeps a set Hole in its type until the binder is rewired.
+    if (auto new_def = fe::lookup(old2new(), old_def);
+        new_def && (new_def == old_def || new_def->isa_mut() || !new_def->needs_zonk()))
+        return new_def;
     return nullptr;
 }
 

@@ -8,12 +8,12 @@
 ///
 /// ## Dependencies
 ///
-/// `opt` only depends on `compile`.
-/// Every other plugin is referenced *by name* through `compile.named` (which resolves to the plugin's
-/// annex iff it is loaded) and `compile.cond` (which gates a whole sub-pipeline on a plugin being loaded).
+/// `opt` depends on `compile` and on `mem`, whose SEO is the general-purpose optimizer, so it references their phases directly.
+/// Every other plugin is referenced *by name* through `compile.named` (which resolves to the plugin's annex iff it is loaded) and `compile.cond` (which gates a whole sub-pipeline on a plugin being loaded).
 /// This way the default pipeline does not have to import any of the optional plugins.
 ///
 plugin compile;
+plugin mem;
 ///
 /// ## The default pipeline
 ///
@@ -26,7 +26,8 @@ extern lam _default_compile (): compile.Phase =
                 compile.beta_red,
                 compile.eta_conv,
             ),
-            compile.named "mem.seo",
+            mem.heap2stack,
+            mem.seo,
             compile.adce,
             compile.static_arg_opt,
         );
@@ -41,8 +42,8 @@ extern lam _default_compile (): compile.Phase =
         compile.named "tensor.lower_tensor",
         compile.named "tensor.fuse_tensor",
         compile.named "tensor.lower_to_mem",
-        // Only run add_mem if the tensor plugin is loaded: tensor bufferization emits mem.M placeholders that must be stitched into a global mem chain.
-        compile.cond "tensor" (compile.named "mem.add_mem"),
+        // tensor bufferization emits mem.M placeholders that need a mem chain.
+        compile.cond "tensor" mem.add_mem,
 
         // btensor
         compile.named "gpu.lower_btensor_map_reduce",
@@ -68,7 +69,7 @@ extern lam _default_compile (): compile.Phase =
             compile.phases ff (
                 compile.scalarize,
                 compile.named "clos.branch_clos",
-                compile.named "mem.seo",
+                mem.seo,
             );
         compile.cond "clos" (
             compile.phases ff (
@@ -89,11 +90,12 @@ extern lam _default_compile (): compile.Phase =
         compile.nom_erasure,
         compile.single_erasure,
 
-        //  prepare codegen
+        // prepare codegen
         optimize,
         compile.dispatch_normalize,
         compile.ret_wrap,
-        compile.named "mem.alloc2malloc_repl",
+        mem.free_locals,
+        mem.alloc2malloc_repl,
         compile.named "refly.remove_dbg_repl",
         compile.named "gpu.check_addr_spaces_repl",
         compile.named "ll.emit",

@@ -1,0 +1,62 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// Fig. 1 of Lemerre, "SSA Translation Is an Abstract Interpretation" (POPL 2023) plus a loop exit.
+// `i` and `time` are congruent and share one loop param; `inc` folds and `hours` needs no header φ.
+
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun dont_know[m: mem.M 0]: [mem.M 0, Bool];
+
+extern fun test(m: mem.M 0): [mem.M 0, Nat] =
+    ret (m, pinc  ) = mem.slot (Nat, 0) $ m;
+    ret (m, ptime ) = mem.slot (Nat, 0) $ m;
+    ret (m, pi    ) = mem.slot (Nat, 0) $ m;
+    ret (m, phours) = mem.slot (Nat, 0) $ m;
+    let m           = mem.store (m, pinc,  1);
+    let m           = mem.store (m, ptime, 0);
+    let m           = mem.store (m, pi,    0);
+    head m where
+        con head(m: mem.M 0) =
+            let (m, inc  ) = mem.load  (m, pinc );
+            let (m, time ) = mem.load  (m, ptime);
+            let m          = mem.store (m, phours, time / (3600 * inc));
+            let (m, hours) = mem.load  (m, phours);
+            (f, t)#(hours >= 24) m where
+                con t(m: mem.M 0) =
+                    let m = mem.store (m, ptime,  0);
+                    let m = mem.store (m, pi,     0);
+                    let m = mem.store (m, phours, 0);
+                    n m;
+                con f(m: mem.M 0) =
+                    n m;
+                con n(m: mem.M 0) =
+                    let (m, i   ) = mem.load  (m, pi   );
+                    let (m, inc ) = mem.load  (m, pinc );
+                    let (m, time) = mem.load  (m, ptime);
+                    let m         = mem.store (m, pi,    i + 1);
+                    let m         = mem.store (m, ptime, time + inc);
+                    ret (m, cond) = dont_know $ m;
+                    (exit, cont)#cond m where
+                        con cont(m: mem.M 0) =
+                            head m;
+                        con exit(m: mem.M 0) =
+                            let (m, i    ) = mem.load (m, pi    );
+                            let (m, time ) = mem.load (m, ptime );
+                            let (m, hours) = mem.load (m, phours);
+                            return (m, time + hours + i);
+                    end
+            end
+    end;
+
+// CHECK-NOT: mem.slot
+// CHECK-NOT: mem.load
+// CHECK-NOT: mem.store
+// CHECK-DAG: con head ({{[_a-z0-9]+}}: core.M 0, [[T:[_a-z0-9]+]]: Nat)
+// CHECK-DAG: core.nat.div ([[T]], 3600)
+// CHECK-DAG: con [[N:n[_0-9]*]] ({{[_a-z0-9]+}}: core.M 0, {{[_a-z0-9]+}}: Nat, {{[_a-z0-9]+}}: Nat)
+// CHECK-DAG: [[N]] ({{[_a-z0-9]+}}, 0, 0);
+// CHECK-DAG: core.nat.add (2,
+// CHECK-DAG: head (m, 0);

@@ -1,0 +1,6 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+lam kinds (A) (B: □): □ = [A, B];
+let l: kinds (*) (*) = (Nat, Bool);
+
+// CHECK: {{.*}}level_default.mim:3:8-3:16: error: argument is not assignable to callee's domain
+// CHECK: expected `Type 0:Level`, got `□`

@@ -31,7 +31,7 @@
     X(Var,    Judge::Intro)                                                                                        \
     X(Proxy,  Judge::Intro)                                                                                        \
     X(Hole,   Judge::Hole )                                                                                        \
-    X(Type,   Judge::Meta ) X(Univ,  Judge::Meta ) X(UMax,    Judge::Meta) X(UInc,   (Judge::Meta               )) \
+    X(Type,   Judge::Meta ) X(Level, Judge::Meta ) X(LMax,    Judge::Meta) X(LSucc,  (Judge::Meta               )) \
     X(Pi,     Judge::Form ) X(Lam,   Judge::Intro) X(App,     Judge::Elim)                                         \
     X(Sigma,  Judge::Form ) X(Tuple, Judge::Intro) X(Extract, Judge::Elim) X(Insert, (Judge::Intro | Judge::Elim)) \
     X(Arr,    Judge::Form ) X(Pack,  Judge::Intro)                                                                 \
@@ -49,7 +49,7 @@
     X(Axm)                                                                                                         \
     X(Var)                                                                                                         \
     X(Proxy)                                                                                                       \
-    X(Type)   X(Univ)  X(UMax)    X(UInc)                                                                          \
+    X(Type)   X(Level) X(LMax)    X(LSucc)                                                                         \
     X(Pi)     X(Lam)   X(App)                                                                                      \
     X(Sigma)  X(Tuple) X(Extract) X(Insert)                                                                        \
     X(Arr)    X(Pack)                                                                                              \
@@ -102,19 +102,17 @@ using DefVec = fe::Vector<const Def*>;
 /// GIDSet / GIDMap keyed by Def::gid of `Def*`.
 ///@{
 template<class To>
-using MutMap  = GIDMap<Def*, To>;
-using MutSet  = GIDSet<Def*>;
-using Mut2Mut = MutMap<Def*>;
-using Muts    = fe::Patricia<Def, DefKey>::Set;
+using MutMap = GIDMap<Def*, To>;
+using MutSet = GIDSet<Def*>;
+using Muts   = fe::Patricia<Def, DefKey>::Set;
 ///@}
 
 /// @name Var
 /// GIDSet / GIDMap keyed by Var::gid of `const Var*`.
 ///@{
 template<class To>
-using VarMap  = GIDMap<const Var*, To>;
-using Var2Var = VarMap<const Var*>;
-using Vars    = fe::Patricia<const Var, DefKey>::Set;
+using VarMap = GIDMap<const Var*, To>;
+using Vars   = fe::Patricia<const Var, DefKey>::Set;
 ///@}
 
 using NormalizeFn = const Def* (*)(const Def*, const Def*, const Def*);
@@ -161,34 +159,14 @@ static_assert(
     }(),
     "every Node must be in MIM_IMM_NODE, MIM_MUT_NODE, or both");
 
-/// Tracks whether a Def transitively depends - through its Def::deps() but only up to (and excluding) the next
-/// *mutable* - on certain kinds of Def%s.
-/// @see Def::has_dep
-enum class Dep : unsigned {
-    None  = 0,      ///< Depends on nothing of interest.
-    Mut   = 1 << 0, ///< Depends on a *mutable*.
-    Var   = 1 << 1, ///< Depends on a Var.
-    Hole  = 1 << 2, ///< Depends on a Hole.
-    Proxy = 1 << 3, ///< Depends on a Proxy.
-};
-
 /// [Judgement](https://ncatlab.org/nlab/show/judgment).
 enum class Judge : u32 {
     // clang-format off
     Form  = 1 << 0, ///< [Type Formation](https://ncatlab.org/nlab/show/type+formation) like `T -> T`.
     Intro = 1 << 1, ///< [Term Introduction](https://ncatlab.org/nlab/show/natural+deduction) like `λ(x: Nat): Nat = x`.
     Elim  = 1 << 2, ///< [Term Elimination](https://ncatlab.org/nlab/show/term+elimination) like `f a`.
-    Meta  = 1 << 3, ///< Meta rules for Univ%erse and Type levels.
+    Meta  = 1 << 3, ///< Meta rules for universe and Type levels.
     Hole  = 1 << 4, ///< Special rule for Hole.
-    // clang-format on
-};
-
-/// Classifies whether a [`Node`](@ref mim::Node) may occur as a *mutable*, an *immutable*, or both.
-/// @see @ref mut
-enum class Mut {
-    // clang-format off
-    Mut = 1 << 0, ///< Node may be mutable.
-    Imm = 1 << 1, ///< Node may be immutable.
     // clang-format on
 };
 ///@}
@@ -197,9 +175,7 @@ enum class Mut {
 
 #ifndef DOXYGEN
 // clang-format off
-template<> struct fe::is_bit_enum<mim::Dep>   : std::true_type {};
 template<> struct fe::is_bit_enum<mim::Judge> : std::true_type {};
-template<> struct fe::is_bit_enum<mim::Mut>   : std::true_type {};
 // clang-format on
 #endif
 
@@ -292,11 +268,11 @@ struct DotConfig {
 /// | Idx               | Lit               |                   |
 /// In addition there is:
 /// * Var: A variable. Currently the following Def%s may be binders:
-///     * Pi, Lam, Sigma, Arr, Pack
+///     * Pi, Lam, Sigma, Arr, Pack, Rule
 /// * Axm: To introduce new entities.
 /// * Proxy: Used for intermediate values during optimizations.
 /// * Hole: A metavariable filled in by the type inference (always mutable as holes are filled in later).
-/// * Type, Univ, UMax, UInc: To keep track of type levels.
+/// * Type, Level, LMax, LSucc: To keep track of type levels.
 ///
 /// The data layout (see World::alloc and Def::deps) looks like this:
 /// ```
@@ -324,6 +300,8 @@ protected:
     Def(Node, const Def* type, size_t num_ops, flags_t flags);   ///< Constructor for a *mutable* Def.
     Def(Node, Def* binder);                                      ///< Constructor for a Var; stores its @p binder.
     ///@}
+
+    void collect_locals(); ///< Fills in an immutable's local Vars and Muts once it is in the sea.
 
 public:
     /// @name Getters
@@ -378,9 +356,9 @@ public:
     /// Yields the "raw" type of this Def (maybe `nullptr`).
     /// @see Def::unfold_type.
     const Def* type() const noexcept;
-    /// Yields the type of this Def and builds a new `Type (UInc n)` if necessary.
+    /// Yields the type of this Def and builds a new `Type (LSucc n)` if necessary.
     const Def* unfold_type() const;
-    /// Is Def::unfold_type a @p T? Yields `nullptr` for Univ, which has no type at all.
+    /// Is Def::unfold_type a @p T? Yields `nullptr` for Level, which has no type at all.
     template<class T>
     const T* isa_type() const {
         auto t = unfold_type();
@@ -442,20 +420,9 @@ public:
     size_t num_deps() const noexcept { return deps().size(); }
     ///@}
 
-    /// @name has_dep
-    /// Checks whether one Def::deps() contains specific elements defined in Dep.
-    /// This works up to the next *mutable*.
-    /// For example, consider the Tuple `tup`: `(?, lam (x: Nat) = y)`:
-    /// ```
-    /// bool has_hole = tup->has_dep(Dep::Hole); // true
-    /// bool has_mut  = tup->has_dep(Dep::Mut);  // true
-    /// bool has_var  = tup->has_dep(Dep::Var);  // false - y is contained in another mutable
-    /// ```
-    ///@{
-    Dep dep() const noexcept { return Dep(dep_); }
-    bool has_dep() const noexcept { return dep_ != 0; }
-    bool has_dep(Dep d) const noexcept { return fe::has_flag(dep(), d); }
-    ///@}
+    /// Is this a Hole or does it reach one through Def::deps() up to (and excluding) the next *mutable*?
+    /// E.g., `(?, lam (x: Nat) = ?)` has a Hole, while `(0, lam (x: Nat) = ?)` doesn't.
+    bool has_hole() const noexcept { return has_hole_; }
 
     /// @name proj
     /// @anchor proj
@@ -604,14 +571,6 @@ public:
     void internalize();
     void transfer_external(Def* to);
     bool is_annex() const noexcept { return annex_; }
-    ///@}
-
-    /// @name dirty
-    /// Scratch bit for Phase%s to mark muts that need re-examination.
-    /// @see Phase::taint
-    ///@{
-    bool is_dirty() const noexcept { return dirty_; }
-    void dirty(bool dirty = true) noexcept { dirty_ = dirty; }
     ///@}
 
     /// @name Casts
@@ -768,12 +727,10 @@ public:
     /// The output uses Mim syntax and - decls aside - reads back again.
     ///@{
     /// How much of a Def's context a dump reproduces.
-    /// Def::dump is what you reach for in a debugger, so the cheap modes come first: Dump::Expr and Dump::Local
-    /// only walk Def::deps, while the others ask for free Var%s to find out where a Def belongs.
+    /// Only Dump::Expr asks no analysis, so that is the one to reach for while a Nest would choke.
     enum class Dump {
         Expr,  ///< Only this Def; whatever does not inline is referenced by its name.
-        Local, ///< Its operands as `let`s as well - but stops at every other mutable.
-        Scope, ///< Plus the mutables that live in this Def's scope.
+        Scope, ///< Plus its operands as `let`s and the mutables that live in its scope.
         All,   ///< Plus everything else that is reachable.
     };
 
@@ -848,12 +805,12 @@ protected:
     u8 trip_  = 0;
 
 private:
-    Node node_; // node_t is u8; the four flags + dep_ below fill the remaining byte of this word
+    Node node_; // node_t is u8; the flags below fill the remaining byte of this word
     bool mut_           : 1;
     bool external_      : 1;
     mutable bool annex_ : 1;
-    bool dirty_         : 1;
-    unsigned dep_       : 4;
+    bool has_hole_      : 1;
+    bool                : 4; // free for future flags
     u32 mark_ = 0;
     u32 gid_;
     u32 num_ops_;
@@ -910,6 +867,11 @@ public:
     Def* binder() const { return binder_; }
     const Def* type() const { return binder()->var_type(); }
 
+    /// Matches a Var `v` itself or an Extract `v#j` of it.
+    /// @returns `{v, i}` if @p def is `v->tproj(i)`, `{v, std::nullopt}` for any other match,
+    /// and `{nullptr, std::nullopt}` otherwise.
+    static std::pair<const Var*, std::optional<nat_t>> isa_tproj(const Def* def);
+
     static constexpr auto Node      = mim::Node::Var;
     static constexpr size_t Num_Ops = 0;
 
@@ -917,40 +879,38 @@ private:
     friend class World;
 };
 
-class Univ : public Def, public Setters<Univ> {
+class Level : public Def, public Setters<Level> {
 public:
-    using Setters<Univ>::set;
-    static constexpr auto Node      = mim::Node::Univ;
+    using Setters<Level>::set;
+    static constexpr auto Node      = mim::Node::Level;
     static constexpr size_t Num_Ops = 0;
 
 private:
-    Univ(World& world)
+    Level(World& world)
         : Def(&world, Node, nullptr, Defs{}, 0) {}
 
     friend class World;
 };
 
-class UMax : public Def, public Setters<UMax> {
+class LMax : public Def, public Setters<LMax> {
 public:
-    using Setters<UMax>::set;
-    static constexpr auto Node      = mim::Node::UMax;
+    using Setters<LMax>::set;
+    static constexpr auto Node      = mim::Node::LMax;
     static constexpr size_t Num_Ops = std::dynamic_extent;
 
-    enum Sort { Univ, Kind, Type, Term };
-
 private:
-    UMax(World&, Defs ops);
+    LMax(World&, Defs ops);
 
     friend class World;
 };
 
-class UInc : public Def, public Setters<UInc> {
+class LSucc : public Def, public Setters<LSucc> {
 private:
-    UInc(const Def* op, level_t offset)
-        : Def(Node, op->type()->as<Univ>(), {op}, offset) {}
+    LSucc(const Def* op, level_t offset)
+        : Def(Node, op->type()->as<Level>(), {op}, offset) {}
 
 public:
-    using Setters<UInc>::set;
+    using Setters<LSucc>::set;
 
     /// @name ops
     ///@{
@@ -958,7 +918,7 @@ public:
     level_t offset() const { return flags(); }
     ///@}
 
-    static constexpr auto Node      = mim::Node::UInc;
+    static constexpr auto Node      = mim::Node::LSucc;
     static constexpr size_t Num_Ops = 1;
 
 private:
@@ -1071,11 +1031,6 @@ public:
         return res;
     }
     static std::optional<nat_t> isa_lit(const Def* def);
-    static nat_t as_lit(const Def* def) {
-        auto res = isa_lit(def);
-        assert(res.has_value());
-        return *res;
-    }
     ///@}
 
     /// @name Convert between Idx::isa and bitwidth and vice versa
@@ -1144,16 +1099,16 @@ private:
 };
 
 // Def - hot inline definitions
-// These need Univ, Type, Var, and Lit to be complete, so they live here rather than in the class body.
+// These need Level, Type, Var, and Lit to be complete, so they live here rather than in the class body.
 // They are tiny and called millions of times, and `libmim` is a shared object - out of line they would be
 // opaque PLT calls in every other TU.
 inline World& Def::world() const noexcept {
-    // Walks up the type chain till it bottoms out in Univ - the only node that actually stores its World.
+    // Walks up the type chain till it bottoms out in Level - the only node that actually stores its World.
     // clang-format off
     for (auto def = this;;) {
         switch (def->node_) {
-            case Node::Univ: return *def->world_;
-            case Node::Type: return *def->op(0)->type()->as<Univ>()->world_; // op(0) is Type::level
+            case Node::Level: return *def->world_;
+            case Node::Type: return *def->op(0)->type()->as<Level>()->world_; // op(0) is Type::level
             case Node::Var:  def = def->binder_; break;                      // a Var has no type_ of its own
             default:         def = def->type_;   break;
         }
@@ -1167,8 +1122,8 @@ inline const Def* Def::type() const noexcept {
 }
 
 inline bool Def::equal(const Def* other) const {
-    // Univ is a singleton and mutables are never hash-consed, so for those identity *is* equality.
-    if (mut_ || other->mut_ || node_ == Node::Univ) return this == other;
+    // Level is a singleton and mutables are never hash-consed, so for those identity *is* equality.
+    if (mut_ || other->mut_ || node_ == Node::Level) return this == other;
 
     // A Var carries no ops and flags == 0, so it is identified solely by its binder
     if (auto var = isa<Var>()) return other->isa<Var>() && var->binder() == other->as<Var>()->binder();
@@ -1184,7 +1139,7 @@ inline bool Def::equal(const Def* other) const {
 
 inline nat_t Def::num_projs() const { return Lit::isa(arity()).value_or(1); }
 
-/// Def::unfold_type of @p def for a diagnostic - Univ is the one Def that has no type at all.
+/// Def::unfold_type of @p def for a diagnostic - Level is the one Def that has no type at all.
 /// Streams lazily so that it still renders under the PlainNames guard Error::msg formats within.
 inline auto type_of(const Def* def) {
     return fe::StreamFn{[def](std::ostream& os) -> std::ostream& {

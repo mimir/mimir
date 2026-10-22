@@ -7,10 +7,7 @@ namespace mim {
 /// Inlines in post-order all Lam%s that occur exactly *once* in the program or are trivial forwarders.
 class BetaRed : public RWPhase {
 public:
-    BetaRed(World& world)
-        : RWPhase(world, "BetaRed") {}
-    BetaRed(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     bool analyze() final;

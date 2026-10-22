@@ -85,12 +85,12 @@ void ADCE::Analysis::analyze(const Def* def) {
  */
 
 Sieve ADCE::sieve(Lam* lam) {
-    if (auto i = lam2sieve_.find(lam); i != lam2sieve_.end()) return i->second;
+    if (auto s = fe::lookup(lam2sieve_, lam)) return *s;
 
-    auto n = lam->num_tvars();
-    if (!lam->is_rewritable() || !lam->has_var()) return lam2sieve_.emplace(lam, Sieve(n)).first->second;
-
-    auto keep = Sieve(lam->tvars(), [this](const Def* var) { return !analysis_.is_dead(var); });
+    auto n    = lam->num_tvars();
+    auto keep = !lam->is_rewritable() || !lam->has_var()
+                  ? Sieve(n)
+                  : Sieve(lam->tvars(), [this](const Def* var) { return !analysis_.is_dead(var); });
     return lam2sieve_.emplace(lam, std::move(keep)).first->second;
 }
 
@@ -128,7 +128,7 @@ const Def* ADCE::rewrite_imm_App(const App* old_app) {
     if (old_lam)
         if (auto keep = sieve(old_lam); !keep.all()) {
             auto new_lam = build_lam(old_lam);
-            return map(old_app, new_world().app(new_lam, rewrite(keep.gather(old_app->targs()))));
+            return new_world().app(new_lam, rewrite(keep.gather(old_app->targs())));
         }
 
     return Super::rewrite_imm_App(old_app);

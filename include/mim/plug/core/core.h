@@ -19,7 +19,7 @@ enum class Mode : nat_t {
     nsuw = nsw | nuw,
 };
 
-/// Give Mode as mim::plug::math::Mode, mim::nat_t or const Def*.
+/// Give Mode as mim::plug::core::Mode, mim::nat_t or const Def*.
 using VMode = std::variant<Mode, nat_t, const Def*>;
 
 /// mim::plug::core::VMode -> const Def*.
@@ -51,33 +51,9 @@ inline const Def* op(pe o, const Def* def) {
 /// Use like this: `a op b = tab[a][b]`
 constexpr std::array<std::array<u64, 2>, 2> make_truth_table(bit2 id) {
     return {
-        {{sub_t(id) & sub_t(0b0001) ? u64(-1) : 0, sub_t(id) & sub_t(0b0100) ? u64(-1) : 0},
-         {sub_t(id) & sub_t(0b0010) ? u64(-1) : 0, sub_t(id) & sub_t(0b1000) ? u64(-1) : 0}}
+        {{sub_t(id) & sub_t(0b0001) ? u64(-1) : 0, sub_t(id) & sub_t(0b0010) ? u64(-1) : 0},
+         {sub_t(id) & sub_t(0b0100) ? u64(-1) : 0, sub_t(id) & sub_t(0b1000) ? u64(-1) : 0}}
     };
-}
-///@}
-
-/// @name extract_unsafe
-///@{
-inline const Def* extract_unsafe(const Def* d, const Def* i) {
-    World& w = d->world();
-    return w.extract(d, w.call(conv::u, d->unfold_type()->arity(), i));
-}
-inline const Def* extract_unsafe(const Def* d, u64 i) {
-    World& w = d->world();
-    return extract_unsafe(d, w.lit_idx(0_u64, i));
-}
-///@}
-
-/// @name insert_unsafe
-///@{
-inline const Def* insert_unsafe(const Def* d, const Def* i, const Def* val) {
-    World& w = d->world();
-    return w.insert(d, w.call(conv::u, d->unfold_type()->arity(), i), val);
-}
-inline const Def* insert_unsafe(const Def* d, u64 i, const Def* val) {
-    World& w = d->world();
-    return insert_unsafe(d, w.lit_idx(0_u64, i), val);
 }
 ///@}
 
@@ -92,7 +68,7 @@ constexpr bool is_commutative(plug::core::nat  id) { return id == plug::core::na
 constexpr bool is_commutative(plug::core::ncmp id) { return id == plug::core::ncmp::  e || id == plug::core::ncmp:: ne; }
 constexpr bool is_commutative(plug::core::wrap id) { return id == plug::core::wrap::add || id == plug::core::wrap::mul; }
 constexpr bool is_commutative(plug::core::icmp id) { return id == plug::core::icmp::  e || id == plug::core::icmp:: ne; }
-// clang-format off
+// clang-format on
 
 constexpr bool is_commutative(plug::core::bit2 id) {
     auto tab = make_truth_table(id);

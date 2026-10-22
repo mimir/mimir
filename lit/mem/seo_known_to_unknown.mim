@@ -1,0 +1,24 @@
+// RUN: rm -f %{s:stem}.ll ; \
+// RUN: %mim -p opt %s -o - -p ll | %FileCheck %s
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t; test $? -eq 5
+
+// `head → body` is known while `i` is still `0`, but unknown once `i` reaches ⊤.
+// A stale `j = 0` would fold `body → step` to a known edge and pin `k` to `1`, looping forever.
+
+plugin core;
+plugin mem;
+
+use core.ops.u.w;
+
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char», exit: Cn [mem.M 0, I32]) =
+    head (m, 0I32)
+    where
+        mutual
+            con head (m: mem.M 0, i: I32) = (body, exit)#(i == 5I32) (m, i);
+            con body (m: mem.M 0, j: I32) = (step, exit)#(j == 7I32) (m, j + 1I32);
+            con step (m: mem.M 0, k: I32) = head (m, k);
+        end
+    end
+
+// CHECK: extern con main

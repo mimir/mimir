@@ -1,0 +1,19 @@
+// RUN: %mim %s -o - | %FileCheck %s
+plugin mem;
+plugin compile;
+
+// η-reducing `body` to `(exit, body)#cond` would unfold the recursion forever.
+extern lam _compile (): compile.Phase =
+    compile.phases ff (compile.phases tt (compile.beta_red, compile.eta_conv));
+
+extern con foo (m: mem.M 0, cond: Bool, return: Cn [mem.M 0, Nat]) =
+    con exit (m: mem.M 0) = return (m, 1);
+    mutual
+        con body (m: mem.M 0) = n1 m;
+        con n1 (m: mem.M 0) = (exit, body)#cond m;
+    end
+    con k (m: mem.M 0) = (exit, body)#cond m;
+    k m;
+
+// CHECK: con body ([[M:[[:alnum:]_]+]]: core.M 0) =
+// CHECK-NEXT: (exit, body)#cond [[M]];

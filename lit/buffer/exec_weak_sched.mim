@@ -25,7 +25,7 @@ lam mo (i j k a: affine.Index): «3; affine.Index» = (i, j, k);
 lam mi (i j k a: affine.Index): «4; affine.Index» = (i, j, k, a);
 
 // out[i,j,k] = sum_a input[i,j,k,a], scheduled with `sched`.
-lam sum_last (sched: [N: *] → ([vdim unroll: Nat] → N) → N)
+lam sum_last (sched: tensor.SchedT)
              (input: «2, 3, 4, 5; I32»): «2, 3, 4; I32» =
     tensor.map_reduce_post
         ((2, 3, 4), (2, 3, 4, 5), sched)
@@ -39,7 +39,7 @@ extern fun sum_weak_vdim (input: «2, 3, 4, 5; I32»): «2, 3, 4; I32» =
 extern fun sum_over_unroll (input: «2, 3, 4, 5; I32»): «2, 3, 4; I32» =
     return (sum_last (tensor.mk_sched (4, 2)) input);
 
-extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (mem.Char, 0)», 0), return: Cn [mem.M 0, I32]) =
     let t = ‹2; ‹3; ‹4; ‹5; 1I32››››;
     con done1 (o: «2, 3, 4; I32») =
         let v1 = o#(1₂, 2₃, 3₄);

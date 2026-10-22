@@ -1,13 +1,15 @@
 // RUN: (! %mim %s 2>&1) | %FileCheck %s
 
-// A constructor of a `nom` is as private as its `inj`.
+// A local `nom` within a private declaration keeps its constructors private.
 mod m
-    pub lam Opt (T: *) =
+    lam Opt (T: *): * =
         nom O = | None | Some: T;
         O;
+
+    pub lam some (x: Nat): Opt Nat = (Opt Nat)#Some x;
 end
 
-extern lam f () = (m.Opt Nat)#None;
+lam get (x: Nat): Nat = match m.some x with | None => 0 | Some y => y;
 
-// CHECK: {{.*}}nom_ctor_scope.mim:10:19-10:34: error: `inj` and `#` on nominal type `O` are only allowed within module `m`
+// CHECK: {{.*}}nom_ctor_scope.mim:12:25-12:69: error: the representation of private nominal type `O` is only accessible within module `m`
 // CHECK: {{.*}}nom_ctor_scope.mim:6:9-6:32: note: declared here

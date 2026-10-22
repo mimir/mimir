@@ -4,13 +4,21 @@
 
 #include <fe/worklist.h>
 
+#include <mim/driver.h>
 #include <mim/lam.h>
+#include <mim/plugin.h>
 #include <mim/tuple.h>
 #include <mim/world.h>
 
 #include "mim/plug/tensor/autogen.h"
 
 namespace mim::plug::tensor {
+
+/// Is @p map the identity access map `λ x. x`?
+inline bool is_identity_map(const Def* map) {
+    auto lam = map->isa_mut<Lam>();
+    return lam && lam->is_set() && lam->body() == lam->var();
+}
 
 /// Recognizes the (rebuilt) `tensor_copy` combiner `(acc, ys) ↦ ys#0`: the result is exactly the
 /// single input element, so a map_reduce built on it is a pure re-indexed read of that input.
@@ -50,8 +58,7 @@ inline std::optional<PureRead> is_pure_read(const Def* value) {
     if (Lit::isa(nis) != 1 || Lit::isa(nps) != 0 || meta->proj(5, 2) != meta->proj(5, 3)) return {};
     auto [So, Sr, sched] = shapes->projs<3>();
     if (Sr != So) return {};
-    auto id_lam = map_out->isa_mut<Lam>();
-    if (!id_lam || !id_lam->is_set() || id_lam->body() != id_lam->var()) return {};
+    if (!is_identity_map(map_out)) return {};
     auto [comb, init, post] = comb_init->projs<3>();
     if (!is_copy_comb(comb) || !is_identity_post(post)) return {};
 

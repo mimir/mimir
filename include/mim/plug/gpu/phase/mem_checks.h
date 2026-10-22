@@ -10,8 +10,7 @@ class MemChecks : public Analysis {
 public:
     using Super = Analysis;
 
-    MemChecks(World& world, flags_t annex)
-        : Analysis(world, annex) {}
+    using Analysis::Analysis;
 
 private:
     const Def* rewrite_imm_App(const App*) final;

@@ -1,0 +1,8 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+// `Level` has no type at all, so it is no shape; asking must report, not crash.
+let x = «Level; I32»;
+
+// CHECK:      {{.*}}level_shape.mim:4:9-4:20: error: expected a shape but got a value of type `<no type>`
+// CHECK-NEXT: 4 | let x = «Level; I32»;
+// CHECK-NEXT:   |         ^^^^^^^^^^^^

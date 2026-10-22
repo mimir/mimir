@@ -34,8 +34,7 @@ namespace mim::plug::cps {
 /// re-derived - and thus re-lifted - in sibling scopes.
 class Conv : public RWPhase {
 public:
-    Conv(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     /// A lifted call `callee (arg, cont)` waiting to be wired into the body of the enclosing Lam.
@@ -53,7 +52,7 @@ private:
             : conv_(conv)
             , base_(conv.pending_.size())
             , old_liftable_(conv.liftable_) {
-            conv_.push();
+            conv_.push(Vars());
             conv_.liftable_ = liftable;
         }
         ~Scope() {
@@ -73,11 +72,6 @@ private:
     const Def* rewrite_mut_Lam(Lam*) final;
     const Def* rewrite_imm_App(const App*) final;
 
-    /// Routes rewrites that mention scoped (continuation/binder) variables into the current Lam's map scope;
-    /// everything else goes into the root map and is shared globally.
-    using Rewriter::map;
-    const Def* map(const Def*, const Def*) final;
-
     /// Converts direct-style `f: [a: A] → B` to `f_cps: Cn [a: A, Cn B]` and returns the `cps2ds_dep`-wrapped f_cps.
     const Def* convert(Lam*);
     /// Turns the call `k (arg, cont)` into a Pending entry and returns `cont`'s variable as call result.
@@ -86,7 +80,6 @@ private:
     const Def* wire(size_t base, const Def* body);
 
     fe::Vector<Pending> pending_;
-    Vars scoped_;
     bool liftable_ = false;
 };
 

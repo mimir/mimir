@@ -30,7 +30,7 @@ fun ack (m n: Nat): Nat =
             end;
     end;
 
-extern fun main(argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): I32 =
+extern fun main(argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): I32 =
     ret res = ack $ (2, 3);
     return (core.bitcast I32 res);
 

@@ -32,7 +32,7 @@ public:
     bool operator()(const Def* def) {
         note_    = std::format("{}", def);
         auto got = parse(std::format("{}let _rt = {};", prelude_, note_));
-        if (!got || !Checker::alpha<Checker::Test>(def, got)) {
+        if (!got || !Check::test_alpha(def, got)) {
             note_ += std::format("   -->   {}", got);
             return false;
         }
@@ -71,10 +71,10 @@ TEST_CASE("dump: types") {
     auto& w = rt.world();
     CHECK_RT(w.type_nat());
     CHECK_RT(w.type_idx());
-    CHECK_RT(w.univ());
+    CHECK_RT(w.type_level());
     CHECK_RT(w.type<0>());
     CHECK_RT(w.type<1>());
-    CHECK_RT(w.type(w.lit_univ(2)));
+    CHECK_RT(w.type(w.lit_level(2)));
     CHECK_RT(w.type_bool());
     CHECK_RT(w.type_i8());
     CHECK_RT(w.type_i16());
@@ -305,5 +305,54 @@ TEST_CASE("dump: precedence") {
         CHECK_RT(w.call(plug::core::wrap::add, plug::core::Mode::none, Defs{w.lit_i8(255), w.top(w.type_i8())}));
         CHECK_RT(w.type_idx(w.call(plug::core::nat::add, Defs{w.lit_nat(2), w.lit_nat(3)})));
         CHECK_RT(w.arr(w.call(plug::core::nat::add, Defs{w.lit_nat(2), w.lit_nat(3)}), nat));
+    }
+}
+
+TEST_CASE("dump: scope") {
+    auto driver = Driver();
+    auto ast    = ast::AST(driver.world());
+    auto parser = ast::Parser(ast);
+    auto n      = 0;
+    auto parse  = [&](std::string code) {
+        auto is   = std::istringstream(std::move(code));
+        auto file = parser.import(is, std::format("scope{}.mim", n++));
+        file->compile(ast);
+        auto res = std::map<std::string, const Def*>();
+        for (auto decl : file->decls())
+            res[decl->def()->sym().str()] = decl->def();
+        return res;
+    };
+    auto dump = [](const Def* def, Def::Dump mode) {
+        auto os = std::ostringstream();
+        def->stream(os, mode);
+        return os.str();
+    };
+
+    auto defs = parse(R"(
+        lam g (n: Nat): Nat = n;
+        rec T = [Nat, [n: Nat] → «n; T»];
+        con f (x: T, n: Nat, c: Bool, k: Cn Nat) =
+            con loop (m: Nat) = loop (g m);
+            con done (m: Nat) = k (g (x#0_2));
+            (loop, done)#c n;
+    )");
+
+    // The recursion runs through an inline Pi that is no decl of its own.
+    auto t = dump(defs["T"], Def::Dump::Scope);
+    CHECK_MESSAGE(t.starts_with("rec "), t);
+
+    // A closed mutable lives outside f's scope, whereas a nested one does not.
+    auto scope = dump(defs["f"], Def::Dump::Scope);
+    auto all   = dump(defs["f"], Def::Dump::All);
+    CHECK_MESSAGE(scope.find("con done") != std::string::npos, scope);
+    CHECK_MESSAGE(scope.find("con loop") == std::string::npos, scope);
+    CHECK_MESSAGE(all.find("con loop") != std::string::npos, all);
+
+    for (auto name : {"g", "T"}) {
+        auto def = defs[name];
+        auto got = parse(dump(def, Def::Dump::Scope));
+        REQUIRE(got.size() == 1);
+        // Check::Mode::T tells even two parses of the same `rec` apart.
+        CHECK_MESSAGE(Check::alpha(def, got.begin()->second), std::string(name));
     }
 }

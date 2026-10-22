@@ -9,10 +9,7 @@ namespace mim {
 /// so `nom N = T` erases to `T` while both `v inj N` and `#v` erase to `v`.
 class NomErasure : public RWPhase {
 public:
-    NomErasure(World& world, std::string name)
-        : RWPhase(world, std::move(name)) {}
-    NomErasure(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     const Def* rewrite_imm_Nom(const Nom*) final;

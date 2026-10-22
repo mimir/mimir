@@ -66,7 +66,6 @@ constexpr Assoc prec_assoc(Prec p) {
 }
 
 constexpr bool is_rassoc(Prec p) { return prec_assoc(p) == Assoc::R; }
-constexpr bool is_lassoc(Prec p) { return prec_assoc(p) == Assoc::L; }
 
 /// Should a Pratt parser reduce when the current binding power is @p curr
 /// and the infix operator has precedence @p op?
@@ -85,7 +84,7 @@ constexpr bool should_reduce(Prec curr, Prec op) { return is_rassoc(op) ? curr >
     m(K_Idx,    "Idx"   )             \
     m(K_Nat,    "Nat"   )             \
     m(K_Type,   "Type"  )             \
-    m(K_Univ,   "Univ"  )             \
+    m(K_Level,  "Level" )             \
     m(K_anx,    "anx"   )             \
     m(K_as,     "as"    )             \
     m(K_axm,    "axm"   )             \

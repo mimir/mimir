@@ -12,8 +12,7 @@ namespace mim::plug::clos::phase {
 /// to setjmp/longjmp: the caller setjmps and dispatches on the tag, the closures become longjmps.
 class Clos2SJLJ : public RWPhase {
 public:
-    Clos2SJLJ(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     const Def* rewrite(const Def*) final;

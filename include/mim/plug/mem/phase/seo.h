@@ -1,7 +1,5 @@
 #pragma once
 
-#include <set>
-
 #include <fe/worklist.h>
 
 #include <mim/def.h>
@@ -85,9 +83,13 @@ private:
         using VarWorklist = fe::DFSWorklist<GIDSet<const Var*>>;
         /// The slot Var%s reachable from @p todo through the lattice and slot2stored_.
         Vars reachable_slots(VarWorklist& todo);
-        /// A direct-style call may access every slot reachable from its abstract callee and non-mem args.
+        /// Like free_vars() but skips mem-typed parts, which cannot carry a slot's ptr.
+        Vars non_mem_free_vars(const Def* def);
+        /// A direct-style call may access every slot reachable from the non-mem parts of its abstract callee and arg.
         void pin_reachable_slots(const Def* abstr_callee, const Def* abstr_arg);
         void pin_slot(const App* slot);
+        /// Writes `concr ↦ abstr` resolved against @p sloxy, which pin_slot erases again.
+        void resolve(const Def* sloxy, const Def* concr, const Def* abstr);
         void propagate_phis(Lam*, DefVec& vars, DefVec& abstr_args);
         const Def* sloxy2val(const Def* sloxy) { return lam2sloxy2val(curr_mut<Lam>(), sloxy); }
         const Def* sloxy2val(const Def* sloxy, const Def* val) { return lam2sloxy2val_[curr_mut<Lam>()][sloxy] = val; }
@@ -102,14 +104,16 @@ private:
         LamMap<Def2Def> lam2sloxy2val_;
         DefSet visited_;
         DefSet first_;
+        DefMap<Vars> non_mem_fvs_;
 
         // global (kept between iterations)
-        DefSet slots_; // actually slot ptrs
-        VarMap<const App*> var2slot_;                   // slot continuation Var ↦ its slot
-        VarMap<Vars> slot2stored_;                      // free Var%s of the values stored behind a slot
-        LamMap<Vars> lam2live_;                         // slot Var%s a Lam may access; only grows
-        LamSet unknowns_;            // Lam%s reached as a *value*; their signature must stay untouched
-        LamMap<MutSet> lam2callers_; // all muts that apply a Lam; tainted when the Lam's abstract vars change
+        DefSet slots_;                 // actually slot ptrs
+        VarMap<const App*> var2slot_;  // slot continuation Var ↦ its slot
+        VarMap<Vars> slot2stored_;     // free Var%s of the values stored behind a slot
+        VarMap<DefSet> slot2resolved_; // promoted leas and loaded values whose lattice entry depends on the slot
+        LamMap<Vars> lam2live_;        // slot Var%s a Lam may access; only grows
+        LamSet unknowns_;              // Lam%s reached as a *value*; their signature must stay untouched
+        LamMap<MutSet> lam2callers_;   // all muts that apply a Lam; tainted when the Lam's abstract vars change
     };
 
 public:
@@ -131,7 +135,7 @@ private:
 
     /// The new signature of an old Lam: the old Lam's tvars sieved, with Sig::phis appended as further candidates.
     /// So Sieve::num_new is the new Lam's arity, Sieve::operator[] the new index of an old tvar,
-    /// and Sieve::app the new index of a phi.
+    /// and Sieve::cat the new index of a phi.
     struct Sig {
         fe::Vector<Phi> phis; ///< Its live phis.
         Sieve sieve{0};       ///< @see Sig

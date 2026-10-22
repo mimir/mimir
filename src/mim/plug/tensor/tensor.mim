@@ -106,8 +106,8 @@ axm shape: {A: *} → [r: Nat] → [arr: A] → «r; Nat», normalize_shape;
 /// ## Map-Reduce
 ///
 /// The loop-nest core every other operation is lowered onto: `lower_tensor` re-applies the matching
-/// annex from Implementations, while `broadcast`, `concat`, `gather`, `pad` and `scatter` are expanded
-/// by `lower_map_reduce` directly.
+/// annex from Implementations, while `broadcast`, `concat`, `gather`, `generate`, `pad` and `scatter` are
+/// expanded by `lower_map_reduce` directly.
 ///
 /// ### id
 ///
@@ -160,23 +160,13 @@ axm map_reduce_post: {nis nps: Nat}
                    → [is: «i: nis; «Sis#i; Tis#i»», post_is: «j: nps; «Sps#j; Tps#j»»]
                    → «So; Tp»;
 ///
-/// ### SchedT
+/// ### Sched, SchedT, mk_sched
 ///
-/// The type of a **schedule** value: a chooser over the target's loop-nest builder — for whatever nest
-/// type `N` the lowering instantiates, it is handed the target's builder `mk` and returns the nest
-/// to run.
-let SchedT = [N: *] → ([vdim unroll: Nat] → N) → N;
-///
-/// ### mk_sched
-///
-/// The canonical schedule, picking
-///
-/// - `vdim`, the dim to run innermost as the unit-stride vector loop — a parallel dim runs over a row
-///   of accumulators, the innermost **reduction** dim selects the reduction-vectorized nest (see
-///   `btensor.mr_nest`), and `vdim ≥ Rn` means "none";
-/// - `unroll`, the number of trailing reduction dims to unroll into straight-line code.
-///
-/// An alias for `btensor.mk_sched`, which `btensor` owns for the same reason it owns `btensor.Ring`.
+/// The schedule record (`vdim`, `unroll`), the type of a schedule **chooser** over the target's loop-nest
+/// builder, and the canonical chooser.
+/// Aliases for the `btensor` definitions, which `btensor` owns for the same reason it owns `btensor.Ring`.
+anx Sched    = btensor.Sched;
+anx SchedT   = btensor.SchedT;
 anx mk_sched = btensor.mk_sched;
 ///
 /// ### map_reduce
@@ -189,8 +179,8 @@ anx lam map_reduce {nis: Nat} {To: *, Ro Rn: Nat}
                    (So: «Ro; Nat», Sr: «Rn; Nat»)
                    {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
                    (f: Fn [To, «i: nis; Tis#i»] → To, init: To)
-                   (map_out: [«Rn; affine.Index»] → «Ro; affine.Index»)
-                   (maps: «i: nis; ([«Rn; affine.Index»] → «Ris#i; affine.Index»)»)
+                   (map_out: «Rn; affine.Index» → «Ro; affine.Index»)
+                   (maps: «i: nis; («Rn; affine.Index» → «Ris#i; affine.Index»)»)
                    (is: «i: nis; «Sis#i; Tis#i»»): «So; To» =
     map_reduce_post
         (So, Sr, mk_sched (Rn, 0))
@@ -214,7 +204,7 @@ anx proj_map = btensor.proj_map;
 /// for all `i`, either `s_in#i = s_out#i` or `s_in#i = 1`, and the size-1 dimensions are expanded to fit `s_out`.
 ///
 /// Lowered directly to packs by the `LowerMapReduce` phase (`lower_broadcast`): a size-1 axis broadcast to `n`
-/// becomes a `‹n; …›` pack rather than a materialized/looped copy, which `map_reduce` cannot express.
+/// becomes a `‹n; …›` pack instead of a copy loop.
 axm broadcast: {T: *, r: Nat}
              → [s_in s_out: «r; Nat», input: «s_in; T»]
              → «s_out; T», normalize_broadcast;
@@ -253,7 +243,7 @@ lam concat_shape {nis r: Nat} (ax: Idx r, Sis: «nis; «r; Nat»»): «r; Nat» 
 ///
 /// The output shape is deduced from `ax` and the per-input shapes `Sis` (see `concat_shape`), so it is
 /// not passed explicitly.
-
+///
 axm concat: {T: *, nis r: Nat}
           → [ax: Idx r]
           → {Sis: «i: nis; «r; Nat»»}
@@ -277,7 +267,7 @@ lam pad_shape {r: Nat} (lo s_in hi: «r; Nat»): «r; Nat» =
 /// ### pad
 ///
 /// Pads each axis: `s_out#d = lo#d + s_in#d + hi#d`, rank preserved.
-/// `out[…d…] = input[… o#d − lo#d …]` whenever every axis lands inside the input region;
+/// `out[…o…] = input[… o#d − lo#d …]` whenever every axis lands inside the input region;
 /// otherwise the value depends on `mode`:
 ///
 /// - `mode = 0` (constant): out-of-region cells take the scalar `value`.
@@ -285,9 +275,6 @@ lam pad_shape {r: Nat} (lo s_in hi: «r; Nat»): «r; Nat» =
 ///   clamped to `[0, s_in#d − 1]` per axis); `value` is ignored.
 ///
 /// The output shape is deduced from `lo`, `s_in` and `hi` (see `pad_shape`), so it is not passed explicitly.
-
-// `(lo, s_in, hi) ↦ ‹d; lo#d + s_in#d + hi#d›`: the padded shape.
-
 axm pad: {T: *, r: Nat}
        → [s_in: «r; Nat»]
        → [mode: Nat, lo hi: «r; Nat»]
@@ -332,12 +319,13 @@ axm slice: {T: *, r: Nat}
 ///
 /// `(s, permutation) ↦ ‹i; s#(permutation⁻¹#i)›`: the permuted shape.
 lam transpose_shape {r: Nat} (s: «r; Nat», permutation: «r; Idx r»): «r; Nat» =
-  let shape_permutation = ‹i: r; option.unwrap_unsafe (vec.first core.icmp.e (permutation, i))›;
-  ‹i: r; s#(shape_permutation#i)›;
+    let shape_permutation = ‹i: r; option.unwrap_unsafe (vec.first core.icmp.e (permutation, i))›;
+    ‹i: r; s#(shape_permutation#i)›;
 ///
 /// ### transpose
 ///
 /// Permutes the dimensions of `input` according to `permutation`.
+/// Input axis `j` becomes output axis `permutation#j`, so `out#i = s#(permutation⁻¹#i)` — the inverse of the StableHLO/NumPy convention.
 ///
 /// `permutation` precedes `input`, and `{s}` is a *separate* implicit group introduced after it, so that `{T, r, s}`
 /// can be inferred: `permutation: «r; Idx r»` pins the rank `r`, and only then is the `{s}` Hole created — with the
@@ -435,7 +423,7 @@ pub lam conv_shape (n cout: Nat, s k stride dilation padding: «2; Nat»): «4; 
 ///   map.
 /// - The output shape follows from the extents and window parameters (see `conv_shape`) and is not
 ///   passed explicitly.
-
+///
 axm conv: [R: Ring]
         → {n cin cout h w kh kw: Nat}
         → [stride dilation padding: «2; Nat»]
@@ -458,20 +446,17 @@ axm conv_grouped: [R: Ring]
 /// ### dot_general_shape
 ///
 /// The result shape: the batching extents, then the left operand's free extents, then the right
-/// operand's; the batching and contracting extents are checked to agree.
+/// operand's; the batching extents are checked to agree (the contracting ones in `dot_product_impl`).
 lam dot_general_shape {r1 r2: Nat} {nc nb: Nat}
-  (c1: «nc; Idx r1», c2: «nc; Idx r2», b1: «nb; Idx r1», b2: «nb; Idx r2»)
-  (s1: «r1; Nat», s2: «r2; Nat») =
-      let bs_check = ‹i: nb; refly.check (s1#(b1#i) == s2#(b2#i), s1#(b1#i), "batching dims don't match")›;
-      let cs_check = ‹i: nc; refly.check (s1#(c1#i) == s2#(c2#i), s1#(c1#i), "contracting dims don't match")›;
-      let bs       = ‹i: nb; s1#(b1#i)›;
-      let bc_1     = vec.cat (b1, c1);
-      let s1_res   = vec.diff (s1, bc_1);
-      let bc_2     = vec.cat (b2, c2);
-      let s2_res   = vec.diff (s2, bc_2);
-      let s12_res  = vec.cat (s1_res, s2_res);
-      let s_out    = vec.cat (bs, s12_res);
-      s_out;
+    (c1: «nc; Idx r1», c2: «nc; Idx r2», b1: «nb; Idx r1», b2: «nb; Idx r2»)
+    (s1: «r1; Nat», s2: «r2; Nat») =
+    let bs      = ‹i: nb; refly.check (s1#(b1#i) == s2#(b2#i), s1#(b1#i), "batching dims don't match")›;
+    let bc_1    = vec.cat (b1, c1);
+    let s1_res  = vec.diff (s1, bc_1);
+    let bc_2    = vec.cat (b2, c2);
+    let s2_res  = vec.diff (s2, bc_2);
+    let s12_res = vec.cat (s1_res, s2_res);
+    vec.cat (bs, s12_res);
 ///
 /// ### dot_product
 ///
@@ -502,8 +487,8 @@ axm dot_product: [R: Ring]
 /// - Max-pooling is `g = max, init = −∞`; sum-/average-pooling is `g = +, init = 0` — divide by the
 ///   window size afterwards for the average.
 /// - Unlike `conv` there is no weight, so the window size `kernel` is an explicit operand, and the
-///   output spatial size `s_out = (OH, OW)` is passed explicitly (no `Nat` division to compute it).
-
+///   output spatial size `s_out = (OH, OW)` is passed explicitly.
+///
 axm pool: {T: *}
         → [g: [T, T] → T, init: T]
         → {n c h w: Nat}
@@ -632,7 +617,7 @@ axm vec_width: [d: Nat] → Nat, normalize_vec_width;
 ///   result shape `So` — MLIR's getIterationDomain + getLoopIteratorTypes.
 /// - `oax`: which output axis each parallel dim writes — the piece of the write map the domain
 ///   transforms need (`strip_mine_par` splits the output along `oax#d`).
-/// - the schedule `vdim`/`unroll` (see `mk_sched`): the chooser `retile` packs into the op.
+/// - the schedule `sched` (see `Sched`): the record `retile` packs into the op's chooser.
 /// - `retile`: rebuild the computation over a *reindexed* domain, given the new domain and
 ///   schedule, `iota` (maps new loop vectors to old loop vectors) and `omega` (maps (old output
 ///   coordinates, new loop vector) to new output coordinates).
@@ -644,9 +629,9 @@ let Tileable = [
     So: «Ro; Nat»,
     oax: «Ro; Nat»,
     Sr: «Ro + Rr; Nat»,
-    vdim: Nat, unroll: Nat,
+    sched: Sched,
     retile: [Ro_n Rr_n: Nat]
-          → [So_n: «Ro_n; Nat», Sr_n: «Ro_n + Rr_n; Nat», vdim_n unroll_n: Nat]
+          → [So_n: «Ro_n; Nat», Sr_n: «Ro_n + Rr_n; Nat», sched_n: Sched]
           → [iota:  «Ro_n + Rr_n; affine.Index» → «Ro + Rr; affine.Index»,
              omega: [«Ro; affine.Index», «Ro_n + Rr_n; affine.Index»] → «Ro_n; affine.Index»]
           → Out (Ro_n, So_n),
@@ -666,27 +651,27 @@ lam comp_map {A B C: *} (m: B → C, g: A → B) (o: A): C = m (g o);
 /// its new position.
 anx lam interchange (t: Tileable, perm: «t#Ro + t#Rr; Nat»): Tileable =
     let r = t#Ro + t#Rr;
-    let perm_ok = ‹j: r; let jj = core.bitcast Nat j;
+    let perm_ok = ‹j: r; let jj = core.idx2nat j;
                          refly.check (core.icmp.e @2 (jj < t#Ro, perm#j < t#Ro),
                                        perm#j,
                                        "interchange: permutation must not mix parallel and reduction dims")›;
     let sr_n   = ‹i: r; t#Sr#(core.idx 0 r (perm_ok#i))›;
-    let vdim_n = match vec.first `== (perm_ok, t#vdim) with
-                     | j: Idx r => core.bitcast Nat j
-                     | _: []    => t#vdim;
+    let vdim_n = match vec.first `== (perm_ok, t#sched#vdim) with
+                     | Some j => core.idx2nat j
+                     | None   => t#sched#vdim;
     // The parallel dims permute among themselves (checked above), so the new dim j writes the
     // output axis its old dim perm#j wrote.
-    let oax_n = ‹j: t#Ro; t#oax#(core.idx 0 (t#Ro) (perm_ok#(core.idx 0 r (core.bitcast Nat j))))›;
+    let oax_n = ‹j: t#Ro; t#oax#(core.idx 0 (t#Ro) (perm_ok#(core.idx 0 r (core.idx2nat j))))›;
     // iota: old dim i is found at the new position j with perm#j = i.
     lam iota_p (o: «r; affine.Index»): «r; affine.Index» =
-        ‹i: r; o#(option.unwrap_unsafe (vec.first `== (perm_ok, core.bitcast Nat i)))›;
+        ‹i: r; o#(option.unwrap_unsafe (vec.first `== (perm_ok, core.idx2nat i)))›;
     lam retile_n (ro_m rr_m: Nat)
-                 (so_m: «ro_m; Nat», sr_m: «ro_m + rr_m; Nat», vdim_m unroll_m: Nat)
+                 (so_m: «ro_m; Nat», sr_m: «ro_m + rr_m; Nat», sched_m: Sched)
                  (iota:  «ro_m + rr_m; affine.Index» → «r; affine.Index»,
                   omega: [«t#Ro; affine.Index», «ro_m + rr_m; affine.Index»] → «ro_m; affine.Index»)
                : t#Out (ro_m, so_m) =
-        t#retile (ro_m, rr_m) (so_m, sr_m, vdim_m, unroll_m) (comp_map (iota_p, iota), omega);
-    (t#Out, t#Ro, t#Rr, t#So, oax_n, sr_n, vdim_n, t#unroll, retile_n);
+        t#retile (ro_m, rr_m) (so_m, sr_m, sched_m) (comp_map (iota_p, iota), omega);
+    (t#Out, t#Ro, t#Rr, t#So, oax_n, sr_n, (t#sched)#vdim ← vdim_n, retile_n);
 ///
 /// #### materialize
 ///
@@ -694,7 +679,7 @@ anx lam interchange (t: Tileable, perm: «t#Ro + t#Rr; Nat»): Tileable =
 anx lam materialize (t: Tileable): t#Out (t#Ro, t#So) =
     lam id_i (o: «t#Ro + t#Rr; affine.Index»): «t#Ro + t#Rr; affine.Index» = o;
     lam id_o (oo: «t#Ro; affine.Index», o: «t#Ro + t#Rr; affine.Index»): «t#Ro; affine.Index» = oo;
-    t#retile (t#Ro, t#Rr) (t#So, t#Sr, t#vdim, t#unroll) (id_i, id_o);
+    t#retile (t#Ro, t#Rr) (t#So, t#Sr, t#sched) (id_i, id_o);
 ///
 /// #### mr_tileable
 ///
@@ -716,40 +701,38 @@ anx lam mr_tileable
                 (So: «Ro; Nat», oax: «Ro; Nat», Sr: «Ro + Rr; Nat»)
                 {Tis: «nis; *», Ris: «i: nis; Nat», Sis: «i: nis; «Ris#i; Nat»»}
                 (f: Fn [To, «i: nis; Tis#i»] → To, init: To, post: Fn [To, []] → Tp)
-                (map_out: [«Ro + Rr; affine.Index»] → «Ro; affine.Index»)
-                (maps: «i: nis; ([«Ro + Rr; affine.Index»] → «Ris#i; affine.Index»)»)
+                (map_out: «Ro + Rr; affine.Index» → «Ro; affine.Index»)
+                (maps: «i: nis; («Ro + Rr; affine.Index» → «Ris#i; affine.Index»)»)
                 (is: «i: nis; «Sis#i; Tis#i»»)
               : Tileable =
     lam out_t (ro: Nat, so: «ro; Nat»): * = «so; Tp»;
     lam retile (Ro_n Rr_n: Nat)
-               (So_n: «Ro_n; Nat», Sr_n: «Ro_n + Rr_n; Nat», vdim_n unroll_n: Nat)
+               (So_n: «Ro_n; Nat», Sr_n: «Ro_n + Rr_n; Nat», sched_n: Sched)
                (iota:  «Ro_n + Rr_n; affine.Index» → «Ro + Rr; affine.Index»,
                 omega: [«Ro; affine.Index», «Ro_n + Rr_n; affine.Index»] → «Ro_n; affine.Index»)
              : «So_n; Tp» =
         lam map_out_n (o: «Ro_n + Rr_n; affine.Index»): «Ro_n; affine.Index» =
             omega (map_out (iota o), o);
         map_reduce_post @(nis, 0) @(To, Tp, Ro_n, Ro_n + Rr_n, SchedT)
-            (So_n, Sr_n, mk_sched (vdim_n, unroll_n))
+            (So_n, Sr_n, mk_sched sched_n)
             @(Tis, Ris, Sis, (), (), ()) (f, init, post)
             map_out_n
             (‹i: nis; comp_map (maps#i, iota)›, ())
             (is, ());
-    (out_t, Ro, Rr, So, oax, Sr, Ro + Rr, 0, retile);
+    (out_t, Ro, Rr, So, oax, Sr, (Ro + Rr, 0), retile);
 ///
 /// #### unroll_trailing
 ///
 /// Fully unroll the trailing `d` reduction dims into the loop body — e.g. a
 /// convolution's kh·kw window (`d = 2`). Their trip counts must be literals at lowering time.
-lam unroll_trailing (t: Tileable, d: Nat): Tileable =
-    (t#Out, t#Ro, t#Rr, t#So, t#oax, t#Sr, t#vdim, d, t#retile);
+lam unroll_trailing (t: Tileable, d: Nat): Tileable = t#sched#unroll ← d;
 ///
 /// #### vectorize
 ///
 /// Run dim `d` as the innermost, unit-stride vector loop (per-cell fold order is
 /// unchanged). A parallel `d` runs inside the reduction loops over a row of accumulators; the
 /// innermost reduction dim as `d` selects `btensor.mr_nest`'s reduction-vectorized nest instead.
-lam vectorize (t: Tileable, d: Nat): Tileable =
-    (t#Out, t#Ro, t#Rr, t#So, t#oax, t#Sr, d, t#unroll, t#retile);
+lam vectorize (t: Tileable, d: Nat): Tileable = t#sched#vdim ← d;
 ///
 /// ### Strip-Mining
 ///
@@ -777,7 +760,7 @@ lam shift_ax (a x: Nat): Nat = core.select (x < a, x, x + 1);
 /// passed explicitly, in the syntactic form the call site's types require (the checker does not
 /// re-associate `core.nat.add` symbolically).
 lam split_bounds (m n: Nat, v: «n; Nat», d ts nt: Nat): «m; Nat» =
-    ‹i: m; let ii = core.bitcast Nat i;
+    ‹i: m; let ii = core.idx2nat i;
            core.select (ii < d, v#(core.idx 0 n ii),
            core.select (ii == d, nt,
            core.select (ii == d + 1, ts,
@@ -787,7 +770,7 @@ lam split_bounds (m n: Nat, v: «n; Nat», d ts nt: Nat): «m; Nat» =
 ///
 /// Recombine a split loop vector (`m = n+1`): `old#d = new#d · ts + new#(d+1)`.
 lam split_iota (m n d ts: Nat) (o: «m; affine.Index»): «n; affine.Index» =
-    ‹j: n; let jj = core.bitcast Nat j;
+    ‹j: n; let jj = core.idx2nat j;
            core.select (jj < d, o#(core.idx 0 m jj),
            core.select (jj == d,
                          affine.op.add (affine.semiop.mul (o#(core.idx 0 m d), ts),
@@ -798,7 +781,7 @@ lam split_iota (m n d ts: Nat) (o: «m; affine.Index»): «n; affine.Index» =
 ///
 /// Split an output coordinate vector (`m = n+1`): `new#a = old#a ⌊/⌋ ts`, `new#(a+1) = old#a mod ts`.
 lam split_omega (m n a ts: Nat) (oc: «n; affine.Index»): «m; affine.Index» =
-    ‹j: m; let jj = core.bitcast Nat j;
+    ‹j: m; let jj = core.idx2nat j;
            core.select (jj < a, oc#(core.idx 0 n jj),
            core.select (jj == a, affine.semiop.floordiv (oc#(core.idx 0 n a), ts),
            core.select (jj == a + 1, affine.semiop.rem (oc#(core.idx 0 n a), ts),
@@ -822,14 +805,16 @@ anx lam strip_mine_par (t: Tileable, d ts: Nat): Tileable =
     // The split dim writes the split axis pair; all other dims write their old axis, renumbered
     // around the insertion at `a`. The unit-stride half is the inner one: a vdim at `d` moves to
     // `d + 1`.
-    let oax_n = ‹j: ro_n; let jj = core.bitcast Nat j;
+    let oax_n = ‹j: ro_n; let jj = core.idx2nat j;
                           core.select (jj < d, shift_ax (a, t#oax#(core.idx 0 (t#Ro) jj)),
                           core.select (jj == d, a,
                           core.select (jj == d + 1, a + 1,
                           shift_ax (a, t#oax#(core.idx 0 (t#Ro) (jj - 1))))))›;
-    let vdim_n = core.select (t#vdim < t#Ro, core.select (t#vdim < d, t#vdim, t#vdim + 1), r_n);
+    // FIXME: a reduction vdim is reset to none here instead of moving to `vdim + 1`.
+    let vd     = t#sched#vdim;
+    let vdim_n = core.select (vd < t#Ro, core.select (vd < d, vd, vd + 1), r_n);
     lam retile_n (ro_m rr_m: Nat)
-                 (so_m: «ro_m; Nat», sr_m: «ro_m + rr_m; Nat», vdim_m unroll_m: Nat)
+                 (so_m: «ro_m; Nat», sr_m: «ro_m + rr_m; Nat», sched_m: Sched)
                  (iota:  «ro_m + rr_m; affine.Index» → «r_n; affine.Index»,
                   omega: [«ro_n; affine.Index», «ro_m + rr_m; affine.Index»] → «ro_m; affine.Index»)
                : t#Out (ro_m, so_m) =
@@ -837,10 +822,10 @@ anx lam strip_mine_par (t: Tileable, d ts: Nat): Tileable =
             split_iota (r_n, r, d, ts) (iota o);
         lam omega_c (oo: «t#Ro; affine.Index», ov: «ro_m + rr_m; affine.Index»): «ro_m; affine.Index» =
             omega (split_omega (ro_n, t#Ro, a, ts) oo, ov);
-        t#retile (ro_m, rr_m) (so_m, sr_m, vdim_m, unroll_m) (iota_c, omega_c);
+        t#retile (ro_m, rr_m) (so_m, sr_m, sched_m) (iota_c, omega_c);
     (t#Out, ro_n, t#Rr,
      split_bounds (ro_n, t#Ro, t#So, a, ts, nt), oax_n,
-     split_bounds (r_n, r, t#Sr, d, ts, nt), vdim_n, t#unroll, retile_n);
+     split_bounds (r_n, r, t#Sr, d, ts, nt), (t#sched)#vdim ← vdim_n, retile_n);
 ///
 /// #### strip_mine_red
 ///
@@ -851,17 +836,19 @@ anx lam strip_mine_red (t: Tileable, d ts: Nat): Tileable =
     let r   = t#Ro + t#Rr;
     let r_n = t#Ro + (t#Rr + 1);
     let nt  = check_div (t#Sr#(core.idx 0 r d), ts) / ts;
-    let vdim_n   = core.select (t#vdim < t#Ro, t#vdim, r_n);
-    let unroll_n = core.select (d < r - t#unroll, t#unroll, t#unroll + 1);
+    let vd       = t#sched#vdim;
+    let un       = t#sched#unroll;
+    let vdim_n   = core.select (vd < t#Ro, vd, r_n);
+    let unroll_n = core.select (d < r - un, un, un + 1);
     lam retile_n (ro_m rr_m: Nat)
-                 (so_m: «ro_m; Nat», sr_m: «ro_m + rr_m; Nat», vdim_m unroll_m: Nat)
+                 (so_m: «ro_m; Nat», sr_m: «ro_m + rr_m; Nat», sched_m: Sched)
                  (iota:  «ro_m + rr_m; affine.Index» → «r_n; affine.Index»,
                   omega: [«t#Ro; affine.Index», «ro_m + rr_m; affine.Index»] → «ro_m; affine.Index»)
                : t#Out (ro_m, so_m) =
-        t#retile (ro_m, rr_m) (so_m, sr_m, vdim_m, unroll_m)
+        t#retile (ro_m, rr_m) (so_m, sr_m, sched_m)
                  (comp_map (split_iota (r_n, r, d, ts), iota), omega);
     (t#Out, t#Ro, t#Rr + 1, t#So, t#oax,
-     split_bounds (r_n, r, t#Sr, d, ts, nt), vdim_n, unroll_n, retile_n);
+     split_bounds (r_n, r, t#Sr, d, ts, nt), ((t#sched)#vdim ← vdim_n)#unroll ← unroll_n, retile_n);
 
 /// ### Schedules
 ///
@@ -888,11 +875,11 @@ lam sched_id (t: Tileable): Tileable = t;
 /// time stops the scan (`if_static` residualizes its step to "over budget").
 lam unroll_budget (t: Tileable, budget: Nat): Nat =
     let r = t#Ro + t#Rr;
-    lam step (d: Nat, st: «3; Nat»): «3; Nat» =
-        let taps  = st#1_3 * t#Sr#(core.idx 0 r d);
-        let alive = st#2_3 * if_static (taps, (0, 1)#(taps <= budget), 0);
-        (st#0_3 + alive, core.select (alive == 1, taps, st#1_3), alive);
-    (vec.fold.r @(«3; Nat», Nat) @(t#Rr) step (‹i: t#Rr; t#Ro + core.bitcast Nat i›, (0, 1, 1)))#0_3;
+    lam step (d: Nat, (cnt taps alive: Nat)): «3; Nat» =
+        let taps_n  = taps * t#Sr#(core.idx 0 r d);
+        let alive_n = alive * if_static (taps_n, (0, 1)#(taps_n <= budget), 0);
+        (cnt + alive_n, core.select (alive_n == 1, taps_n, taps), alive_n);
+    (vec.fold.r @(«3; Nat», Nat) @(t#Rr) step (‹i: t#Rr; t#Ro + core.idx2nat i›, (0, 1, 1)))#0_3;
 ///
 /// #### vectorize_if
 ///
@@ -922,11 +909,12 @@ lam vectorize_if (t: Tileable, cond: Bool, d: Nat): Tileable =
 lam conv_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
     let u     = unroll_budget (t, 32);
     let s_ow  = (0, 1)#(stride#1_2 == 1) + 1;
+    // FIXME: with the whole reduction unrolled the doc says `ow` has nothing to beat, but `s_red = s_ow` keeps it scalar.
     let s_red = core.select (u == 0, (0, 1)#(dilation#1_2 == 1) + 1, core.select (u < t#Rr, 0, s_ow));
     let r     = t#Ro + t#Rr;
     let ow    = t#Sr#(core.idx 0 r 3);
     let vec   = if_static (stride#1_2 * dilation#1_2 * ow, s_red < s_ow, ff);
-    lam fits (k b: Nat): Bool = core.bit2.and_ 2 (k / b * b == k, b < k);
+    lam fits (k b: Nat): Bool = core.bit2.and 2 (k / b * b == k, b < k);
     // Rows too short for the vectorizer (ow < 16) are processed in BLOCKS: strip-mine oh by the
     // largest block size ≤ 4 that divides it and sink both halves (vdim = ro − 2 selects mr_nest's
     // blocked branch, which jams the block dim into the vector body — one reduction pass folds the
@@ -936,7 +924,7 @@ lam conv_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
     let oh    = t#Sr#(core.idx 0 r 2);
     lam divides (d: Nat): Bool = oh / d * d == oh;
     let bs    = ((1, 2)#(divides 2), 4)#(divides 4);
-    let short = if_static (oh * ow, core.bit2.and_ 2 (vec, ow < 16), ff);
+    let short = if_static (oh * ow, core.bit2.and 2 (vec, ow < 16), ff);
     // There is one jam slot, so a `co` block is worth taking only where the row block cannot fire:
     // a POINTWISE window (which has no taps to amortize the accumulator round trip at all), or a
     // short row whose oh does not split. Measured over the level3 3x3 layers, taking it against a
@@ -944,37 +932,37 @@ lam conv_schedule (stride dilation: «2; Nat») (t: Tileable): Tileable =
     let co    = t#Sr#(core.idx 0 r 1);
     let ci    = t#Sr#(core.idx 0 r 4);
     let win   = t#Sr#(core.idx 0 r 5) * t#Sr#(core.idx 0 r 6);
-    let pw    = if_static (win, core.bit2.and_ 2 (vec, win == 1), ff);
+    let pw    = if_static (win, core.bit2.and 2 (vec, win == 1), ff);
     // A pointwise window keeps a working 2-row block at unit stride (1.3-1.6x faster over the level3
     // pointwise layers); 4-row blocks and strided rows still lose to the `co` block.
-    let pw_rows = core.bit2.and_ 2 (core.bit2.and_ 2 (short, bs == 2),
-                                    core.bit2.and_ 2 (stride#0_2 == 1, stride#1_2 == 1));
-    let cob   = core.bit2.or_ 2 (core.bit2.and_ 2 (pw, (tt, ff)#pw_rows), core.bit2.and_ 2 (short, bs == 1));
+    let pw_rows = core.bit2.and 2 (core.bit2.and 2 (short, bs == 2),
+                                    core.bit2.and 2 (stride#0_2 == 1, stride#1_2 == 1));
+    let cob   = core.bit2.or 2 (core.bit2.and 2 (pw, (tt, ff)#pw_rows), core.bit2.and 2 (short, bs == 1));
     // One accumulator register per jammed cell, so a block wider than the target's lanes spills;
     // every jammed cell also replays the window, so the block shares the 32-tap register budget.
     let vw    = vec_width 8;
-    lam cb_ok (b: Nat): Bool = core.bit2.and_ 2 (core.bit2.and_ 2 (fits (co, b), b <= vw), b * win <= 32);
+    lam cb_ok (b: Nat): Bool = core.bit2.and 2 (core.bit2.and 2 (fits (co, b), b <= vw), b * win <= 32);
     let cb    = if_static (co, (1, (((1, 2)#(cb_ok 2), 4)#(cb_ok 4), 8)#(cb_ok 8))#cob, 1);
     let cblk  = cb != 1;
-    lam ct_ok (b: Nat): Bool = core.bit2.and_ 2 (fits (ci, b), cb * b * win <= 32);
+    lam ct_ok (b: Nat): Bool = core.bit2.and 2 (fits (ci, b), cb * b * win <= 32);
     let cts   = if_static (ci, (1, (((1, 2)#(ct_ok 2), 4)#(ct_ok 4), 8)#(ct_ok 8))#cob, 1);
-    let block = core.bit2.and_ 2 ((tt, ff)#cblk, core.bit2.and_ 2 (short, bs != 1));
+    let block = core.bit2.and 2 ((tt, ff)#cblk, core.bit2.and 2 (short, bs != 1));
     let t_ci  = strip_mine_red (t, 4, cts);
     let t_co  = strip_mine_par (t_ci, 1, cb);
     let t_oh  = strip_mine_par (t_co, 3, (1, bs)#block);
     // Spelled from t_oh's positional fields so the pack's length is definitionally the
     // «t#Ro + t#Rr» the dependent `interchange` domain expects.
-    let r_n   = t_oh#1_9 + t_oh#2_9;
+    let r_n   = t_oh#1_8 + t_oh#2_8;
     // Dims are (n, co/cb, cb, oh/bs, bs, ow | …); rotate `cb` down next to `ow` so the jam dim and
     // the vector dim are the trailing parallel pair. Identity when the block is not taken.
-    let perm  = ‹j: r_n; let jj = core.bitcast Nat j;
-                         core.select (core.bit2.and_ 2 (cblk, jj == 2), 3,
-                         core.select (core.bit2.and_ 2 (cblk, jj == 3), 4,
-                         core.select (core.bit2.and_ 2 (cblk, jj == 4), 2, jj)))›;
-    let vd    = core.select (core.bit2.or_ 2 (cblk, block), 4, (r_n, 5)#vec);
+    let perm  = ‹j: r_n; let jj = core.idx2nat j;
+                         core.select (core.bit2.and 2 (cblk, jj == 2), 3,
+                         core.select (core.bit2.and 2 (cblk, jj == 3), 4,
+                         core.select (core.bit2.and 2 (cblk, jj == 4), 2, jj)))›;
+    let vd    = core.select (core.bit2.or 2 (cblk, block), 4, (r_n, 5)#vec);
     // The window grows only when the `ci` split is REAL; keying it off the pointwise flag would
     // over-unroll a big window past the tap budget (a 7x7 stem goes 7 -> 49 taps, and 2x slower).
-    let un    = core.select (core.bit2.or_ 2 (cts != 1, 3 <= u), u + 1, u);
+    let un    = core.select (core.bit2.or 2 (cts != 1, 3 <= u), u + 1, u);
     unroll_trailing (vectorize (interchange (t_oh, perm), vd), un);
 ///
 /// #### dot_schedule
@@ -1020,10 +1008,10 @@ lam dot_schedule (r_out: Nat) (t: Tileable): Tileable =
 lam dot_schedule_kvec (r_out: Nat) (t: Tileable): Tileable =
     // A block counts only when it divides AND leaves a non-trivial outer dim (`b < k`): an exact
     // split's leading size-1 axis would type-collapse the packed output («1; T» ≡ T).
-    lam blk_by (k b: Nat): Bool = core.bit2.and_ 2 (k / b * b == k, b < k);
+    lam blk_by (k b: Nat): Bool = core.bit2.and 2 (k / b * b == k, b < k);
     // One accumulator register per jammed cell, so a block wider than the target's lanes spills.
     let vw  = vec_width 8;
-    lam blk_ok (k b: Nat): Bool = core.bit2.and_ 2 (blk_by (k, b), b <= vw);
+    lam blk_ok (k b: Nat): Bool = core.bit2.and 2 (blk_by (k, b), b <= vw);
     let d   = r_out - 1;
     let n   = t#So#(core.idx 0 (t#Ro) d);
     let bs  = if_static (n, ((((1, 2)#(blk_ok (n, 2)), 4)#(blk_ok (n, 4)), 8)#(blk_ok (n, 8)), 16)#(blk_ok (n, 16)), 1);
@@ -1037,13 +1025,13 @@ lam dot_schedule_kvec (r_out: Nat) (t: Tileable): Tileable =
     // `bs` ((n/bs, 1, bs | red)). `r3` is spelled from t3's own (positional) fields so the pack's
     // length is definitionally the «t#Ro + t#Rr» the dependent `interchange` domain expects —
     // `core.nat.add` does not reassociate an equivalent spelling.
-    let r3   = t3#1_9 + t3#2_9;
+    let r3   = t3#1_8 + t3#2_8;
     let swap = 2 <= r_out;
     let pa   = r_out - 1;
     let pb   = r_out;
-    let perm = ‹j: r3; let jj = core.bitcast Nat j;
-                       core.select (core.bit2.and_ 2 (swap, jj == pa), pb,
-                       core.select (core.bit2.and_ 2 (swap, jj == pb), pa, jj))›;
+    let perm = ‹j: r3; let jj = core.idx2nat j;
+                       core.select (core.bit2.and 2 (swap, jj == pa), pb,
+                       core.select (core.bit2.and 2 (swap, jj == pb), pa, jj))›;
     unroll_trailing (vectorize (interchange (t3, perm), r3 - 1), 2);
 ///
 /// #### pool_schedule
@@ -1087,10 +1075,10 @@ lam bid_map {r_in r_out: Nat} (s_in: «r_in; Nat», index: «r_in; Idx r_out»)
     ‹i: r_in; affine.semiop.mul (o#(index#i), core.select (s_in#i == 1, 0, 1))›;
 ///
 /// ### broadcast_in_dim_impl
-
+///
 priv anx lam broadcast_in_dim_impl {T: *, r_in r_out: Nat}
     (s_in: «r_in; Nat», s_out: «r_out; Nat», input: «s_in; T», index: «r_in; Idx r_out»): «s_out; T» =
-    map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
+    map_reduce (s_out, s_out) (tensor_copy, ⊥:T)
         affine.id (bid_map (s_in, index),) input;
 ///
 /// ### flip_map
@@ -1100,9 +1088,9 @@ lam flip_map {r: Nat} (s_in: «r; Nat») (o: «r; affine.Index»): «r; affine.I
     ‹d: r; affine.op.sub (affine.lit (s_in#d - 1), o#d)›;
 ///
 /// ### flip_impl
-
+///
 priv anx lam flip_impl {T: *, r: Nat} (s_in: «r; Nat») (input: «s_in; T»): «s_in; T» =
-    map_reduce (s_in, s_in) (tensor_copy, ⊥: T)
+    map_reduce (s_in, s_in) (tensor_copy, ⊥:T)
         affine.id (flip_map s_in,) input;
 ///
 /// ### gather_pointwise_elem_impl
@@ -1127,16 +1115,16 @@ priv anx lam gather_pointwise_elem_impl {T: *, r: Nat}
 priv anx lam map_impl {T: *, ni: Nat, Is: «ni; *»}
                      (app: «i: ni; Is#i» → T)
                      {r: Nat, s: «r; Nat»}
-                     (is: «i: ni; «s; Is#i» »)
+                     (is: «i: ni; «s; Is#i»»)
                      : «s; T» =
-  fun app_mr (x: T, y: «i: ni; Is#i»)@tt = return (app y);
-  // The `{Tis, Ris, Sis}` group stays explicit: with a *symbolic* `ni`, solving `Sis#i ≡ s` for all `i`
-  // (i.e. `Sis := ‹ni; s›`) is Miller pattern unification. Adding that rule to `Checker::alpha_impl_` was tried
-  // and reverted — even with an occurs check it fires inside `tuple`'s machinery and commits a wrong solution.
-  map_reduce (s, s) @(Is, ‹ni; r›, ‹ni; s›) (app_mr, ⊥: T)
-      // `‹ni; …›` builds the pack bottom-up, so there is no expected type to drive implicit insertion for the
-      // element; `affine.id` needs its rank here.
-      affine.id ‹ni; affine.id @r› is;
+    fun app_mr (x: T, y: «i: ni; Is#i»)@tt = return (app y);
+    // The `{Tis, Ris, Sis}` group stays explicit: with a *symbolic* `ni`, solving `Sis#i ≡ s` for all `i`
+    // (i.e. `Sis := ‹ni; s›`) is Miller pattern unification. Adding that rule to `Checker::alpha_impl_` was tried
+    // and reverted — even with an occurs check it fires inside `tuple`'s machinery and commits a wrong solution.
+    map_reduce (s, s) @(Is, ‹ni; r›, ‹ni; s›) (app_mr, ⊥:T)
+        // `‹ni; …›` builds the pack bottom-up, so there is no expected type to drive implicit insertion for the
+        // element; `affine.id` needs its rank here.
+        affine.id ‹ni; affine.id @r› is;
 ///
 /// ### pool_fun
 ///
@@ -1147,18 +1135,18 @@ pub fun pool_fun {T: *} (g: [T, T] → T) (acc y: T)@tt: T = return (g (acc, y))
 ///
 /// `s` without axis `ax`.
 pub lam reduce_shape {r: Nat} (ax: Idx r, s: «r; Nat»): «r - 1; Nat» =
-    ‹i: r - 1; s#(core.idx 0 r (shift_ax (core.bitcast Nat ax, core.bitcast Nat i)))›;
+    ‹i: r - 1; s#(core.idx 0 r (shift_ax (core.idx2nat ax, core.idx2nat i)))›;
 ///
 /// ### reduce
 ///
 /// Folds `input` along axis `ax` with `g`, seeded with `init`; the result drops that axis.
 /// The output axes run as the leading loops, `ax` as the trailing reduction loop.
 pub lam reduce {T: *} (g: [T, T] → T, init: T) {r: Nat} (ax: Idx r) {s: «r; Nat»} (input: «s; T»): «reduce_shape (ax, s); T» =
-    let a = core.bitcast Nat ax;
-    map_reduce (reduce_shape (ax, s), ‹i: r; let ii = core.bitcast Nat i; s#(core.idx 0 r (core.select (ii < r - 1, shift_ax (a, ii), a)))›)
+    let a = core.idx2nat ax;
+    map_reduce (reduce_shape (ax, s), ‹i: r; let ii = core.idx2nat i; s#(core.idx 0 r (core.select (ii < r - 1, shift_ax (a, ii), a)))›)
         (pool_fun g, init)
-        (proj_map ‹i: r - 1; core.bitcast Nat i›)
-        (proj_map ‹j: r; let jj = core.bitcast Nat j; core.select (jj < a, jj, core.select (jj == a, r - 1, jj - 1))›)
+        (proj_map ‹i: r - 1; core.idx2nat i›)
+        (proj_map ‹j: r; let jj = core.idx2nat j; core.select (jj < a, jj, core.select (jj == a, r - 1, jj - 1))›)
         input;
 ///
 /// ### binary_ax
@@ -1167,9 +1155,9 @@ pub lam reduce {T: *} (g: [T, T] → T, init: T) {r: Nat} (ax: Idx r) {s: «r; N
 pub lam binary_ax {Ti1 Ti2 To: *} (app: [Ti1, Ti2] → To) {r: Nat} (ax: Idx r) {s: «r; Nat»}
                   (x: «s; Ti1», y: «reduce_shape (ax, s); Ti2»): «s; To» =
     fun app_mr (_: To, (u: Ti1, v: Ti2))@tt: To = return (app (u, v));
-    let a = core.bitcast Nat ax;
-    map_reduce (s, s) @((Ti1, Ti2), (r, r - 1), (s, reduce_shape (ax, s))) (app_mr, ⊥: To)
-        affine.id (affine.id @r, proj_map ‹i: r - 1; shift_ax (a, core.bitcast Nat i)›) (x, y);
+    let a = core.idx2nat ax;
+    map_reduce (s, s) @((Ti1, Ti2), (r, r - 1), (s, reduce_shape (ax, s))) (app_mr, ⊥:To)
+        affine.id (affine.id @r, proj_map ‹i: r - 1; shift_ax (a, core.idx2nat i)›) (x, y);
 ///
 /// ### softmax
 ///
@@ -1185,12 +1173,13 @@ pub lam softmax (m: Nat) {pe: «2; Nat»} {r: Nat} (ax: Idx r) {s: «r; Nat»} (
 /// Windowed input read over the loop vector `(n, c, oh, ow, kh, kw)`:
 /// `(n, c, stride#0·oh + dilation#0·kh, stride#1·ow + dilation#1·kw)`.
 lam pool2d_in_map (stride dilation: «2; Nat») (o: «6; affine.Index»): «4; affine.Index» =
-    (o#0_6, o#1_6,
-     affine.op.add (affine.semiop.mul (o#2_6, stride#0_2), affine.semiop.mul (o#4_6, dilation#0_2)),
-     affine.op.add (affine.semiop.mul (o#3_6, stride#1_2), affine.semiop.mul (o#5_6, dilation#1_2)));
+    let (n, c, oh, ow, kh, kw) = o;
+    (n, c,
+     affine.op.add (affine.semiop.mul (oh, stride#0_2), affine.semiop.mul (kh, dilation#0_2)),
+     affine.op.add (affine.semiop.mul (ow, stride#1_2), affine.semiop.mul (kw, dilation#1_2)));
 ///
 /// ### pool_impl
-
+///
 priv anx lam pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
                       (kernel stride dilation padding s_out: «2; Nat»)
                       (input: «n, c, h, w; T»)
@@ -1217,9 +1206,9 @@ lam repeat_map {r: Nat} (s_in: «r; Nat») (o: «r; affine.Index»): «r; affine
     ‹d: r; affine.semiop.rem (o#d, s_in#d)›;
 ///
 /// ### repeat_impl
-
+///
 priv anx lam repeat_impl {T: *, r: Nat} (s_in: «r; Nat») (s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
-    map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
+    map_reduce (s_out, s_out) (tensor_copy, ⊥:T)
         affine.id (repeat_map s_in,) input;
 ///
 /// ### reshape_map
@@ -1230,16 +1219,16 @@ anx lam reshape_map {r_in r_out: Nat} (s_in: «r_in; Nat», s_out: «r_out; Nat�
     affine.delinearize (affine.linearize (o, s_out), s_in);
 ///
 /// ### reshape_impl
-
+///
 priv anx lam reshape_impl {T: *, r_in r_out: Nat}
                          (s_in: «r_in; Nat») (s_out: «r_out; Nat») (input: «s_in; T»): «s_out; T» =
-    map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
+    map_reduce (s_out, s_out) (tensor_copy, ⊥:T)
         affine.id (reshape_map (s_in, s_out),) input;
 ///
 /// ### conv_fun
 ///
-/// Fused multiply-add over the ring `R`; `ab#0` is the padded-input element, `ab#1` the weight.
-fun conv_fun (R: Ring) (acc: R#T, ab: «2; R#T»)@tt: R#T = return (R#add (acc, R#mul (ab#0_2, ab#1_2)));
+/// Fused multiply-add over the ring `R`; `x` is the padded-input element, `w` the weight.
+fun conv_fun (R: Ring) (acc: R#T, (x w: R#T))@tt: R#T = return (R#add (acc, R#mul (x, w)));
 ///
 /// ### conv2d_in_map
 ///
@@ -1248,12 +1237,13 @@ fun conv_fun (R: Ring) (acc: R#T, ab: «2; R#T»)@tt: R#T = return (R#add (acc, 
 /// only this padded-input read needs arithmetic:
 /// `(n, ci, stride#0·oh + dilation#0·kh, stride#1·ow + dilation#1·kw)`.
 lam conv2d_in_map (stride dilation: «2; Nat») (o: «7; affine.Index»): «4; affine.Index» =
-    (o#0_7, o#4_7,
-     affine.op.add (affine.semiop.mul (o#2_7, stride#0_2), affine.semiop.mul (o#5_7, dilation#0_2)),
-     affine.op.add (affine.semiop.mul (o#3_7, stride#1_2), affine.semiop.mul (o#6_7, dilation#1_2)));
+    let (n, _, oh, ow, ci, kh, kw) = o;
+    (n, ci,
+     affine.op.add (affine.semiop.mul (oh, stride#0_2), affine.semiop.mul (kh, dilation#0_2)),
+     affine.op.add (affine.semiop.mul (ow, stride#1_2), affine.semiop.mul (kw, dilation#1_2)));
 ///
 /// ### conv_impl
-
+///
 priv anx lam conv_impl (R: Ring) {n cin cout h w kh kw: Nat}
                       (stride dilation padding: «2; Nat»)
                       (input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»)
@@ -1264,8 +1254,7 @@ priv anx lam conv_impl (R: Ring) {n cin cout h w kh kw: Nat}
     let padded   = pad s_in (0, pad_lohi, pad_lohi) (input, R#_0);
     let s_padded = shape 4 padded;
     let s_out    = conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding);
-    let oh       = s_out#2_4;
-    let ow       = s_out#3_4;
+    let (_, _, oh, ow) = s_out;
 
     // The SCHEDULE, selected in the frontend from the parameters (see `conv_schedule`): unroll the
     // kh·kw window into the loop body (constant tap offsets) when it fits the budget, and run `ow`
@@ -1282,8 +1271,8 @@ priv anx lam conv_impl (R: Ring) {n cin cout h w kh kw: Nat}
             (proj_map @(7, 4) (0, 1, 2, 3))
             (conv2d_in_map (stride, dilation), proj_map @(7, 4) (1, 4, 5, 6))
             (padded, weight));
-    // `sched#3_9` is the scheduled Tileable's (possibly packed) output shape `So`.
-    reshape (sched#3_9) s_out (materialize sched);
+    // `sched#3_8` is the scheduled Tileable's (possibly packed) output shape `So`.
+    reshape (sched#3_8) s_out (materialize sched);
 ///
 /// ### conv_grouped_in_map
 ///
@@ -1328,7 +1317,7 @@ priv anx lam conv_grouped_impl (R: Ring) {n cin cout h w ci kh kw: Nat}
             (proj_map @(7, 4) (0, 1, 2, 3))
             (conv_grouped_in_map (groups, ci_g, stride, dilation), conv_grouped_w_map (groups, co))
             (padded, weight));
-    reshape (sched#3_9) s_out (materialize sched);
+    reshape (sched#3_8) s_out (materialize sched);
 ///
 /// ### dot_general_fun
 ///
@@ -1340,18 +1329,18 @@ pub fun dot_general_fun (R: Ring) (x: R#T, (y z: R#T))@tt: R#T = return (R#add (
 /// Sends input axis `i` to the loop id it reads — batching dims first, then the contractions, then
 /// the remaining free axes.
 pub lam dot_general_pick {n: Nat} {na nb nc: Nat} (a: «na; Idx n», b: «nb; Idx n», c: «nc; Idx n») (off_1 off_2: Nat) (i: Idx n): Nat =
-  match vec.first core.icmp.e (b, i) with
-      | bi: Idx nb => core.bitcast Nat bi
-      | _:  []     => match vec.first core.icmp.e (c, i) with
-          | ci: Idx nc => off_2 + core.bitcast Nat ci
-          | _:  []     => match vec.first core.icmp.e (a, i) with
-              | ai: Idx na => off_1 + core.bitcast Nat ai
-              | _:  []     => 0;
+    match vec.first core.icmp.e (b, i) with
+        | Some bi => core.idx2nat bi
+        | None    => match vec.first core.icmp.e (c, i) with
+            | Some ci => off_2 + core.idx2nat ci
+            | None    => match vec.first core.icmp.e (a, i) with
+                | Some ai => off_1 + core.idx2nat ai
+                | None    => 0;
 ///
 /// ### dot_product_impl
 ///
 /// `r1`/`r2` are an *explicit* group here, unlike in the `dot_product` axiom: they must be literals
-/// already when this `lam` is β-reduced, since the subscript rows are built with `vec.diff`/`vec.fold.l`,
+/// already when this `lam` is β-reduced, since the subscript rows are built with `vec.diff`/`vec.first`,
 /// whose normalizers decline to fold over a non-literal rank, and nothing re-normalizes the body once a
 /// Hole is resolved later.
 /// `{s1 s2}` has no such problem and stays implicit.
@@ -1367,12 +1356,12 @@ pub lam dot_general_pick {n: Nat} {na nb nc: Nat} (a: «na; Idx n», b: «nb; Id
 ///   materialized tensor along that axis, whereupon the row-major `reshape` restores `s_out` — the
 ///   identity for the neutral split, and absorbed into the consumers' access maps by `fuse_tensor`'s
 ///   read-through in a fused graph.
-
+///
 priv anx lam dot_product_impl
-  (fastest_2: Nat)
-  (R: Ring) (r1 r2: Nat) {nc nb: Nat}
-  (c1: «nc; Idx r1», c2: «nc; Idx r2», b1: «nb; Idx r1», b2: «nb; Idx r2»)
-  {s1: «r1; Nat», s2: «r2; Nat»} (a: «s1; R#T», b: «s2; R#T»)
+    (fastest_2: Nat)
+    (R: Ring) (r1 r2: Nat) {nc nb: Nat}
+    (c1: «nc; Idx r1», c2: «nc; Idx r2», b1: «nb; Idx r1», b2: «nb; Idx r2»)
+    {s1: «r1; Nat», s2: «r2; Nat»} (a: «s1; R#T», b: «s2; R#T»)
     : let s_out = dot_general_shape (c1, c2, b1, b2) (s1, s2);
       «s_out; R#T»
     = let s_out    = dot_general_shape (c1, c2, b1, b2) (s1, s2);
@@ -1388,14 +1377,14 @@ priv anx lam dot_product_impl
       let subs_2   = ‹i: r2; dot_general_pick (a2, b2, c2) (nb + n_s1_res, r_out) i›;
       // The subscript rows use consecutive loop ids: 0 … r_out−1 are the output loops
       // and r_out … r_out+nc−1 the contractions, whose bounds are the contracting extents of `a`.
-      let s_red    = ‹i: nc; s1#(c1#i)›;
+      let s_red    = ‹i: nc; refly.check (s1#(c1#i) == s2#(c2#i), s1#(c1#i), "contracting dims don't match")›;
       let s_full   = vec.cat (s_out, s_red);
       let n_loops  = r_out + nc;
       let t        = mr_tileable @2 @(r_out, nc)
-                         (s_out, ‹i: r_out; core.bitcast Nat i›, s_full)
+                         (s_out, ‹i: r_out; core.idx2nat i›, s_full)
                          @((R#T, R#T), (r1, r2), (s1, s2))
                          (f, R#_0, id @(R#T))
-                         (proj_map @(n_loops, r_out) ‹i: r_out; core.bitcast Nat i›)
+                         (proj_map @(n_loops, r_out) ‹i: r_out; core.idx2nat i›)
                          (proj_map @(n_loops, r1) subs_1, proj_map @(n_loops, r2) subs_2)
                          (a, b);
       // Schedule (frontend, selected from the parameters — see `dot_schedule`/`dot_schedule_kvec`):
@@ -1403,33 +1392,26 @@ priv anx lam dot_product_impl
       // otherwise the last output dim is unit-stride in that operand (A·B) and runs as the vector
       // loop. Dispatched as an extract over thunks, each materializing its own concretely-scheduled
       // Tileable: behind a stuck extract the record's `Out` field would not reduce, so the
-      // reshape's input could not be checked. `sched#3_9` is the scheduled Tileable's (possibly
+      // reshape's input could not be checked. `sched#3_8` is the scheduled Tileable's (possibly
       // packed) output shape `So`.
-      let kvec = option.is_some (vec.first `== (‹i: nc; core.bitcast Nat (c2#i)›, fastest_2));
+      let kvec = option.is_some (vec.first `== (‹i: nc; core.idx2nat (c2#i)›, fastest_2));
       lam go_n    (u: []): «s_out; R#T» =
           let sched = dot_schedule r_out t;
-          reshape (sched#3_9) s_out (materialize sched);
+          reshape (sched#3_8) s_out (materialize sched);
       lam go_kvec (u: []): «s_out; R#T» =
           let sched = dot_schedule_kvec r_out t;
-          reshape (sched#3_9) s_out (materialize sched);
+          reshape (sched#3_8) s_out (materialize sched);
       (go_n, go_kvec)#kvec ();
 ///
 /// ### bmm_impl
 ///
-/// The `{r1 r2}`/`{s1 s2}` groups are explicit for the same reason as in `product_2d_impl`.
+/// `dot_product_impl` with literal ranks `(3, 3)`, batching axis 0 and contraction `k`.
 priv anx lam bmm_impl (fastest_2: Nat) (R: Ring) {B M K N: Nat} (t1: «B, M, K; R#T», t2: «B, K, N; R#T»): «B, M, N; R#T»
         = dot_product_impl fastest_2 R (3, 3) (2_3, 1_3, 0_3, 0_3) (t1, t2);
 ///
 /// ### product_2d_impl
 ///
-/// The `{r1 r2}` and `{s1 s2}` groups are passed explicitly — not because inference fails, but because
-/// of *when* it succeeds: `dot_product_impl` is a curried `lam`, so applying it to a group β-reduces
-/// the body right away.
-/// With the ranks still unsolved Holes the `vec.diff`/`vec.fold.l` subscript machinery is built over
-/// non-literals, its normalizers decline to fold, and nothing re-normalizes the body once the Hole%s
-/// are resolved: the result type-checks but carries the whole `vec.*` scaffolding inside its access
-/// maps (`lit/tensor/dot_product.mim` pins this down).
-/// Passing literals up front folds it away.
+/// `dot_product_impl` with literal ranks `(2, 2)` and the contraction `k`; see there for why the ranks are an explicit group.
 priv anx lam product_2d_impl (fastest_2: Nat) (R: Ring) {m k l: Nat} (t1: «m, k; R#T», t2: «k, l; R#T»): «m, l; R#T»
         = dot_product_impl fastest_2 R (2, 2) (1_2, 0_2, (), ()) (t1, t2);
 ///
@@ -1458,10 +1440,10 @@ lam slice_map {r: Nat} (start step: «r; Nat») (o: «r; affine.Index»): «r; a
     ‹d: r; affine.op.add (affine.semiop.mul (o#d, step#d), affine.lit (start#d))›;
 ///
 /// ### slice_impl
-
+///
 priv anx lam slice_impl {T: *, r: Nat} (s_in: «r; Nat»)
                        (start step s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
-    map_reduce (s_out, s_out) (tensor_copy, ⊥: T)
+    map_reduce (s_out, s_out) (tensor_copy, ⊥:T)
         affine.id (slice_map (start, step),) input;
 ///
 /// ### transpose_map
@@ -1470,31 +1452,31 @@ priv anx lam slice_impl {T: *, r: Nat} (s_in: «r; Nat»)
 lam transpose_map {r: Nat} (perm: «r; Idx r») (o: «r; affine.Index»): «r; affine.Index» = ‹j: r; o#(perm#j)›;
 ///
 /// ### transpose_impl
-
+///
 priv anx lam transpose_impl {T: *, r: Nat}
                            (permutation: «r; Idx r») {s: «r; Nat»} (input: «s; T»)
                          : «transpose_shape (s, permutation); T»
                          = let out_s = transpose_shape (s, permutation);
-                           map_reduce (out_s, out_s) (tensor_copy, ⊥: T)
+                           map_reduce (out_s, out_s) (tensor_copy, ⊥:T)
                                affine.id (transpose_map permutation,) input;
 ///
 /// ### binary_impl
 ///
 /// `map_impl` over two tensors.
 priv anx lam binary_impl {Ti1 Ti2 To: *} (app: [Ti1, Ti2] → To) {r: Nat, s: «r; Nat»} (is: [«s; Ti1», «s; Ti2»]): «s; To» =
-  map_impl app is;
+    map_impl app is;
 ///
 /// ### select_impl
 ///
 /// `map_impl` of `core.select` over three tensors.
 priv anx lam select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T», «s; T»]): «s; T» =
-  map_impl core.select is;
+    map_impl core.select is;
 ///
 /// ### unary_impl
 ///
 /// `map_impl` over one tensor.
-priv anx lam unary_impl {Ti To : *} (app: Ti → To) {r: Nat, s: «r; Nat»} (i: «s; Ti»): «s; To» =
-  map_impl app i;
+priv anx lam unary_impl {Ti To: *} (app: Ti → To) {r: Nat, s: «r; Nat»} (i: «s; Ti»): «s; To» =
+    map_impl app i;
 ///
 /// ## Phases
 ///

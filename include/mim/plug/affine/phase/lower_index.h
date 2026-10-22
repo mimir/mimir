@@ -22,13 +22,12 @@ namespace mim::plug::affine::phase {
 /// `core.conv.u`, apply the (now core-arithmetic) function `f`, and
 /// narrow each result back to its target `Idx (sout#j)` via `core.conv.u`.
 ///
-/// The division-based semiops (`ceildiv`, `floordiv`, `mod`) lower to `core.div`, which threads a `mem.M`. The mem is
+/// The division-based semiops (`ceildiv`, `floordiv`, `rem`) lower to `core.div`, which threads a `mem.M`. The mem is
 /// taken from the enclosing `affine.map`'s mem operand (tracked in #mem_), advanced through the div chain, and
 /// returned alongside the result.
 class LowerIndex : public RWPhase {
 public:
-    LowerIndex(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
     const Def* rewrite(const Def*) final;
     const Def* rewrite_imm_App(const App*) final;
@@ -51,10 +50,19 @@ private:
         bool carries;
     };
 
+    /// `x = q·k + r` with `0 ≤ r < k` for a proper divisor `k` of the divisor at hand.
+    struct Peel {
+        const Def *q, *r;
+        int64_t k;
+    };
+
     std::optional<Range> range_of(const Def*) const;
     Split split(const Def*, int64_t);
+    std::optional<Peel> peel(const Def*, int64_t);
     const Def* fold_udiv(const Def*, int64_t);
     const Def* fold_urem(const Def*, int64_t);
+    const Def* udiv(const Def*, const Def*);
+    const Def* urem(const Def*, const Def*);
 
     const Def* mem_ = nullptr;
     Domain dom_;

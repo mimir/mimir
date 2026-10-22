@@ -1,0 +1,23 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+plugin core;
+plugin mem;
+
+/// An interface keeps the `Cn` behind a type coerce() cannot take apart: a `mem.Ptr` or an Arr above the threshold.
+let K = Cn [mem.M 0, [I32, I32]];
+
+extern con call_it (m: mem.M 0, p: mem.Ptr0 K) =
+    let (m, k) = mem.load (m, p);
+    k (m, (1I32, 2I32));
+
+extern con store_it (m: mem.M 0, p: mem.Ptr0 K, return: Cn [mem.M 0]) =
+    con k (m: mem.M 0, q: [I32, I32]) = return m;
+    let m = mem.store (m, p, k);
+    return m;
+
+extern con call_one (m: mem.M 0, ks: «64; K», i: Idx 64) =
+    ks#i (m, (1I32, 2I32));
+
+// CHECK-DAG: con call_one ({{.*}}«64; Cn [core.M 0, «2; I32»]»{{.*}})
+// CHECK-DAG: con call_it ({{.*}}core.Ptr (Cn [core.M 0, «2; I32»], 0))
+// CHECK-DAG: con store_it ({{.*}}core.Ptr (Cn [core.M 0, «2; I32»], 0){{.*}})
+// CHECK-DAG: con k ({{[_a-z0-9]+}}: core.M 0, {{[_a-z0-9]+}}: «2; I32»)

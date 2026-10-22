@@ -1,3 +1,5 @@
+#include <fe/restore.h>
+
 #include "mim/ast/ast.h"
 
 #include "family.h"
@@ -56,6 +58,10 @@ public:
     /// @name Annex nesting
     /// Tracked by ModDecl::bind so AST::name2annex can derive `tag`/`sub` from lexical nesting.
     ///@{
+    /// The top-level declaration being bound, if any; see NomDecl::rep_vis.
+    const Decl* top_decl() const { return top_decl_; }
+    auto enter_top_decl(const Decl* decl) { return fe::Restore(top_decl_, decl); }
+
     void push_mod(Sym name) { mod_stack_.emplace_back(name); }
     void pop_mod() { mod_stack_.pop_back(); }
     size_t mod_depth() const { return mod_stack_.size() - mod_barrier_; }
@@ -133,8 +139,9 @@ private:
     Ptr<DummyDecl> dummy_;
     fe::Vector<Frame> scopes_;
     fe::Vector<Sym> mod_stack_;
-    size_t barrier_     = 0;
-    size_t mod_barrier_ = 0;
+    const Decl* top_decl_ = nullptr;
+    size_t barrier_       = 0;
+    size_t mod_barrier_   = 0;
 };
 
 /*
@@ -169,6 +176,8 @@ void IdPtrn::bind(Scopes& s, bool rebind, bool quiet) const {
     s.bind(dbg(), this, rebind, quiet);
 }
 
+void IdDecl::bind(Scopes& s, bool quiet) const { s.bind(dbg(), this, false, quiet); }
+
 void AliasPtrn::bind(Scopes& s, bool rebind, bool quiet) const {
     ptrn()->bind(s, rebind, quiet);
     s.bind(dbg(), this, rebind, quiet);
@@ -192,7 +201,7 @@ void Path::bind(Scopes& s, bool quiet) const {
         auto scope  = decl_->scope();
         auto member = scope ? fe::lookup(*scope, dbg.sym()) : nullptr;
         if (!member) {
-            if (!quiet) {
+            if (!quiet && !decl_->isa<DummyDecl>()) {
                 if (scope) {
                     s.error().e(dbg.loc(), "`{}` has no member `{}`", prev.sym(), dbg.sym());
                 } else {
@@ -230,8 +239,8 @@ void LitExpr::bind(Scopes& s) const {
     if (type()) {
         type()->bind(s);
         if (ISA(tag(), C_LIT_TYPED)) s.error().e(type()->loc(), "a `{}` must not have a type annotation", tag());
-    } else {
-        if (tag() == Tag::L_f) s.error().e(loc(), "floating-point literal requires a type annotation");
+    } else if (tag() == Tag::L_f) {
+        s.error().e(loc(), "floating-point literal requires a type annotation");
     }
 }
 
@@ -259,8 +268,7 @@ void InfixExpr::bind(Scopes& s) const {
 
 void MatchExpr::Arm::bind(Scopes& s) const {
     s.push();
-    // The constructor of `Cons (h, t)` is resolved against the scrutinee's type, not bound.
-    (payload() ? payload() : ptrn())->bind(s, false, false);
+    if (ptrn()) ptrn()->bind(s, false, false);
     body()->bind(s);
     s.pop();
 }
@@ -278,16 +286,13 @@ void MatchExpr::bind(Scopes& s) const {
 
 void PiExpr::Dom::bind(Scopes& s, bool quiet) const {
     ptrn()->bind(s, false, quiet);
-    if (ret()) ret()->bind(s, false, quiet);
+    if (ret_type() && !quiet) ret_type()->bind(s);
 }
 
 void PiExpr::bind(Scopes& s) const {
     s.push();
     dom()->bind(s);
-    if (codom()) {
-        if (ISA(tag(), C_CN)) s.error().e(codom()->loc(), "a continuation must not have a codomain");
-        codom()->bind(s);
-    }
+    if (codom()) codom()->bind(s);
     s.pop();
 }
 
@@ -304,8 +309,10 @@ void AppExpr::bind(Scopes& s) const {
 void RetExpr::bind(Scopes& s) const {
     callee()->bind(s);
     arg()->bind(s);
+    s.push();
     ptrn()->bind(s, true, false);
     body()->bind(s);
+    s.pop();
 }
 
 void SigmaExpr::bind(Scopes& s) const {
@@ -321,7 +328,8 @@ void TupleExpr::bind(Scopes& s) const {
 
 void SeqExpr::bind(Scopes& s) const {
     s.push();
-    arity()->bind(s, false, false);
+    shape()->bind(s);
+    index()->bind(s);
     body()->bind(s);
     s.pop();
 }
@@ -332,7 +340,23 @@ void SingleExpr::bind(Scopes& s) const { body()->bind(s); }
  * Decl
  */
 
-AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id) {
+static Sym loc2plugin(AST& ast, Loc loc) {
+    return loc.src ? ast.sym(fs::path(loc.src->path()).stem().string()) : ast.sym_error();
+}
+
+/// Records the constructor or field names that @p type - the body of an annex declaration - spells out.
+static void add_names(AnnexInfo& annex, const Expr* type) {
+    if (auto variant = type->isa<VariantExpr>()) {
+        annex.names  = fe::Vector<Sym>(variant->ctors(), [](const auto& ctor) { return ctor->dbg().sym(); });
+        annex.fields = false;
+    } else if (auto sigma = type->isa<SigmaExpr>()) {
+        auto tuple   = sigma->ptrn();
+        annex.names  = fe::Vector<Sym>(tuple->num_ptrns(), [tuple](size_t i) { return tuple->field(i); });
+        annex.fields = true;
+    }
+}
+
+AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id, const Expr* type) {
     if (!dbg) return nullptr;
 
     auto depth = s.mod_depth();
@@ -341,7 +365,7 @@ AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id) {
         return nullptr;
     }
 
-    auto plugin_s = dbg.loc().src ? sym(fs::path(dbg.loc().src->path()).stem().string()) : sym_error();
+    auto plugin_s = loc2plugin(*this, dbg.loc());
     auto tag_s    = depth == 0 ? dbg.sym() : s.enclosing_mod();
     Sym sub_s     = depth == 0 ? Sym() : dbg.sym();
 
@@ -371,6 +395,7 @@ AnnexInfo* AST::name2annex(Scopes& s, Dbg dbg, sub_t* sub_id) {
     }
 
     if (!fresh) annex->fresh = false;
+    if (type) add_names(*annex, type);
     return annex;
 }
 
@@ -402,7 +427,7 @@ void AxmDecl::bind(Scopes& s) const {
             annex->normalizer = normalizer();
             annex->pi         = pi;
         } else if (annex) {
-            if (pi ^ *annex->pi)
+            if (annex->pi != pi)
                 s.error().e(dbg.loc(),
                             "all declarations of annex `{}` must be function types if one of them is (they share one "
                             "annex tag - via mod-nesting or a `tag.(...)` family - and must agree in shape)",
@@ -452,6 +477,14 @@ void AliasDecl::bind(Scopes& s) const {
         return;
     }
 
+    auto& ast = s.ast();
+    if (auto plugin = loc2plugin(ast, dbg().loc());
+        plugin != ast.sym_error() && plugin != annex_->sym.plugin && s.mod_depth() == 0) {
+        foreign_ = ast.sym(plugin.str() + "." + dbg().sym().str());
+        ast.add_foreign_alias(plugin, {dbg().sym(), annex_, sub_});
+        return;
+    }
+
     add_alias(annex_, sub_, target->dbg().sym(), dbg().sym());
 }
 
@@ -467,7 +500,7 @@ void LetDecl::bind(Scopes& s) const {
         id->anx_ = is_anx();
     }
     ptrn()->bind(s, true, false);
-    if (id && is_anx()) id->annex_ = s.ast().name2annex(s, id->dbg(), &id->sub_);
+    if (id && is_anx()) id->annex_ = s.ast().name2annex(s, id->dbg(), &id->sub_, value());
 }
 
 void RecDecl::bind(Scopes& s) const {
@@ -476,10 +509,16 @@ void RecDecl::bind(Scopes& s) const {
 }
 
 void MutualDecl::bind(Scopes& s) const {
-    for (auto decl : decls())
+    // Only a top-level `mutual` makes its members top-level.
+    auto is_top = s.top_decl() == this;
+    for (auto decl : decls()) {
+        auto _ = s.enter_top_decl(is_top ? decl.get() : s.top_decl());
         decl->bind_decl(s);
-    for (auto decl : decls())
+    }
+    for (auto decl : decls()) {
+        auto _ = s.enter_top_decl(is_top ? decl.get() : s.top_decl());
         decl->bind_body(s);
+    }
 }
 
 bool RecDecl::has_mut_body() const {
@@ -495,20 +534,26 @@ void RecDecl::bind_decl(Scopes& s) const {
             .n("must be a sigma, a variant, or a function type; use `lam`/`con`/`fun` to declare a recursive function");
 
     s.bind(dbg(), this);
-    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_);
+    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_, body());
 }
 
 void RecDecl::bind_body(Scopes& s) const { body()->bind(s); }
 
+void NomDecl::bind_body(Scopes& s) const {
+    rep_vis_ = s.top_decl() ? s.top_decl()->vis() : Vis::Pub;
+    RecDecl::bind_body(s);
+}
+
 void LamDecl::Dom::bind(Scopes& s, bool quiet) const {
     PiExpr::Dom::bind(s, quiet);
+    if (ret()) ret()->bind(s, quiet);
     if (filter() && !quiet) filter()->bind(s);
 }
 
 void LamDecl::bind_decl(Scopes& s) const {
     s.push();
-    for (size_t i = 0, e = num_doms(); i != e; ++i)
-        dom(i)->bind(s);
+    for (auto&& dom : doms())
+        dom->bind(s);
 
     if (auto filter = doms().back()->filter()) {
         if (auto pe = filter->isa<PrimaryExpr>()) {
@@ -532,20 +577,25 @@ void LamDecl::bind_decl(Scopes& s) const {
 
     s.pop();
     s.bind(dbg(), this);
-    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_);
+    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_, nom_sugar() ? nom_sugar()->body() : nullptr);
 }
 
 void LamDecl::bind_body(Scopes& s) const {
     s.push();
     for (auto dom : doms())
         dom->bind(s, true);
-    if (body()) body()->bind(s);
+    if (auto nom = nom_sugar())
+        nom->bind_body(s);
+    else if (body())
+        body()->bind(s);
     s.pop();
 }
 
 void ModDecl::bind_decls(Scopes& s) const {
-    for (auto decl : decls())
+    for (auto decl : decls()) {
+        auto _ = s.enter_top_decl(decl.get());
         decl->bind(s);
+    }
 }
 
 void ModDecl::bind(Scopes& s) const {

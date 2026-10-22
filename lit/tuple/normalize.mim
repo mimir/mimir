@@ -34,3 +34,13 @@ lam foo (x: Nat): [] =
 
 let _ = tuple.cat ((1, 2, ff), ());
 let _ = tuple.cat ((), (1, 2, ff));
+
+let _ = refly.struc.e (tuple.head tup, 1);
+let _ = refly.struc.e (tuple.tail tup, (tt, ff, 23, 42));
+let _ = refly.struc.e (tuple.head ‹3; 7›, 7);
+let _ = refly.struc.e (tuple.tail ‹3; 7›, ‹2; 7›);
+
+lam head     (a: [Nat, Bool, Nat]): [Nat]       = tuple.head a;
+lam tail     (a: [Nat, Bool, Nat]): [Bool, Nat] = tuple.tail a;
+lam head_arr (a: «3; Nat»): [Nat]               = tuple.head a;
+lam tail_arr (a: «3; Nat»): «2; Nat»            = tuple.tail a;

@@ -14,7 +14,7 @@ fun f(a: I32): I32 =
         con thrice () = return (3I32 * a);
     end;
 
-extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (mem.Char, 0)», 0), return: Cn [mem.M 0, I32]) =
     (autodiff.ad f) (7I32, ret_cont)
     where
         con ret_cont (r: I32, pb: Fn I32 → I32) =
@@ -25,4 +25,4 @@ extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), retu
             end;
     end;
 
-// CHECK-DAG: return{{.*}}1402
+// CHECK-DAG: return_{{[0-9]+}} ({{.*}}, 1402I32)

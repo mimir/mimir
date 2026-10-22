@@ -68,7 +68,9 @@ public:
     using Super = ll::Emitter;
 
     DeviceEmitter(World& world, std::ostream& ostream)
-        : Super(world, "llvm_nvptx_device_emitter", ostream) {}
+        : Super(world, "llvm_nvptx_device_emitter", ostream) {
+        simd_ = false;
+    }
 
     void start() final;
 
@@ -80,15 +82,11 @@ public:
     const std::string& get_extra_flags() const { return extra_flags; }
 
 private:
-    std::string convert(const Def* def, bool simd = false) override {
-        if (simd) log().w("ignoring simd=true for type conversion in device code");
-        return Super::convert(def, false);
-    }
-
     /// Device slots live in a module-scope global in their requested address space, not on the stack.
     std::string emit_slot(ll::BB&, const App* app, const Def* pointee, const Def* addr_space) override {
         auto v_ptr = "@" + app->unique_name() + ".slot";
-        std::println(vars_decls_, "{} = internal addrspace({}) global {} undef", v_ptr, addr_space, convert(pointee));
+        std::println(vars_decls_, "{} = internal addrspace({}) global {} undef", v_ptr, addr_space,
+                     convert(pointee, false));
         return v_ptr;
     }
 
@@ -220,12 +218,10 @@ void HostEmitter::emit_gpu_setup(ll::BB& bb, const std::string& name) {
             std::print(vars_decls_, "{} = private constant [{} x i8] c\"", fatbin_name_, fatbin_bytes.size());
             for (auto byte : fatbin_bytes) {
                 bool invalid_cstr_char = byte == '"' || byte == '\\';
-                if (std::isprint(byte) && !invalid_cstr_char) {
+                if (std::isprint(byte) && !invalid_cstr_char)
                     std::print(vars_decls_, "{:c}", byte);
-                } else {
-                    auto byte_val = static_cast<int>(byte);
-                    std::print(vars_decls_, "\\{:x}{:x}", byte_val / 16, byte_val % 16);
-                }
+                else
+                    std::print(vars_decls_, "\\{:02x}", byte);
             }
             std::println(vars_decls_, "\"");
         } else {
@@ -391,7 +387,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         auto n = is_async ? 3_n : 2_n;
 
         if (is_async)
-            declare("i32 @{}(i64)", Cu_Mem_Free_Async);
+            declare("i32 @{}(i64, ptr)", Cu_Mem_Free_Async);
         else
             declare("i32 @{}(i64)", Cu_Mem_Free);
 
@@ -459,7 +455,7 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         else
             declare("i32 @{}(ptr, i64, i64)", Cu_Memcpy_Dtoh);
 
-        auto [type]    = copy_to_host->decurry()->args<1>();
+        auto type      = copy_to_host->decurry()->arg();
         World& w       = type->world();
         auto type_size = w.call(core::trait::size, type);
 
@@ -537,7 +533,6 @@ void DeviceEmitter::start() {
         kernels_.emplace(kernel_lam);
     }
     Super::start();
-    return;
 }
 
 std::string DeviceEmitter::prepare() {
@@ -591,7 +586,7 @@ std::string DeviceEmitter::prepare() {
                        smem->type());
         auto name     = "@" + smem->unique_name();
         locals_[smem] = name;
-        std::println(vars_decls_, "{} = internal addrspace({}) global {} undef", name, a, convert(T));
+        std::println(vars_decls_, "{} = internal addrspace({}) global {} undef", name, a, convert(T, false));
     }
 
     return kernel->unique_name();

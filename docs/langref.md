@@ -36,7 +36,7 @@ The rules below don't spell this out.
 Mim source files are [UTF-8](https://en.wikipedia.org/wiki/UTF-8) encoded and are [lexed](https://en.wikipedia.org/wiki/Lexical_analysis) from left to right.
 The lexer uses [maximal munch](https://en.wikipedia.org/wiki/Maximal_munch), so ambiguities are resolved by taking the longest matching token.
 For example, `>>=` is tokenized as `>>` followed by `=`.
-@note `<-` is therefore a single token: `x <- 1` is an insert, and a comparison against a negative literal has to be written `x < (-1)`.
+@note `<-` is therefore a single token: `x <- 1` is an insert, and a comparison against a negative literal needs a space, as in `x < -1`.
 
 ### Terminals {#terminals}
 
@@ -78,7 +78,7 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 <div class="terminals-code">
 
 ```text
-Bool Cn Fn I1 I8 I16 I32 I64 Idx Nat Rule Type Univ
+Bool Cn Fn I1 I8 I16 I32 I64 Idx Level Nat Rule Type
 anx as axm cn con end extern ff fn fun
 i1 i8 i16 i32 i64 import inj lam let match mod mutual
 nom norm plugin priv pub rec ret rule tt use when where with
@@ -125,13 +125,13 @@ L      ::= dec+
         |  "0" ("x" | "X") hex* "." hex+ pP sign? dec+
 X_n    ::= dec+ sub+
         |  dec+ "_" dec+
-        |  dec+ ("i" | "I") dec+
+        |  (dec+ | "0" ("b" | "B") bin+ | "0" ("o" | "O") oct+ | "0" ("x" | "X") hex+) ("i" | "I") dec+
 C      ::= "'" (ascii_char | esc) "'"
 S      ::= "\"" (ascii_string_char | esc)* "\""
 ```
 
 Here `I` is an identifier, `L` is a numeric literal, `X_n` is an index literal of type `Idx n`, `C` is a character literal, and `S` is a string literal.
-The third form of `X_n` spells a bit width instead of `n` itself, so `23I32` is `23:I32`.
+The third form of `X_n` spells a bit width from 1 to 64 instead of `n` itself, so `23I32` is `23:I32` and `0xFFI8` is `255:I8`.
 A literal never carries a sign; `-23` is the [signed literal](@ref lit) expression instead.
 `` ` `` escapes an [infix operator](@ref infix) into an ordinary identifier, e.g. `` `+ ``.
 
@@ -154,7 +154,7 @@ esc    ::= "\'" | "\\" | "\"" | "\0" | "\a" | "\b"
         |  "\f" | "\n" | "\r" | "\t" | "\v"
 ```
 
-`ascii_char` is any ASCII character except `\`, `ascii_string_char` is any ASCII character except `\` and `"`, and a non-ASCII payload character is an error.
+`ascii_char` is any ASCII character except `\` and `'`, `ascii_string_char` is any ASCII character except `\` and `"`, and a non-ASCII payload character is an error.
 
 ### Comments
 
@@ -168,8 +168,8 @@ Supported comments:
 
 - `/* ... */` comments do not nest.
 - doc-comments are forwarded to generated [Markdown](https://www.doxygen.nl/manual/markdown.html) output.
-  A line of the form `/// text` contributes `text` directly to the Markdown output.
-  Other `///` forms are emitted verbatim inside a [fenced code block](https://www.doxygen.nl/manual/markdown.html#md_fenced).
+  Each line starting with `///` contributes its remainder, minus one leading space, directly to the Markdown output.
+  All other source lines are emitted verbatim inside a [fenced code block](https://www.doxygen.nl/manual/markdown.html#md_fenced).
 
 ## Grammar {#grammar}
 
@@ -241,7 +241,7 @@ d      ::= vis? import (I | S) ("as" (I | "*"))? ";"
         |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e
         |  vis?  "extern"          lam I fwd+ (":" e)? ";"
         |  vis? "anx"? "rec" I "=" e
-        |  vis? "anx"? "nom" I "=" e
+        |  vis? "anx"? "nom" I ndom* "=" e
         |  vis? ("extern" | "anx")? "mutual" d* "end"
         |  vis? "axm" axm
         |  vis? ("rule" | "norm") I p ":" e ("when" e)? "=>" e
@@ -249,8 +249,9 @@ d      ::= vis? import (I | S) ("as" (I | "*"))? ";"
 import ::= "import" | "plugin"
 vis    ::= "priv" | "pub"
 lam    ::= "lam" | "con" | "fun"
-dom    ::= p ("@" e)?
-fwd    ::= (p | t) ("@" e)?
+dom    ::= (p | "{" plist? "}") ("@" e)?
+ndom   ::= p | "{" plist? "}"
+fwd    ::= (p | t | "{" tlist? "}") ("@" e)?
 axm    ::= I ":" e tail
         |  (I ".")? "(" (tag ("," tag)*)? ")" ":" e tail
 tag    ::= I ("=" I)*
@@ -360,7 +361,7 @@ This binds `a`, `b`, and `c` to the tuple elements and `abc` to the whole tuple.
 
 ```mim
 let (m, ptr) = mem.alloc (I32, 0) m;
-let m        = mem.store (m, ptr, 23:I32);
+let m        = mem.store (m, ptr, 23I32);
 let (m, val) = mem.load (m, ptr);
 ```
 
@@ -369,7 +370,7 @@ let (m, val) = mem.load (m, ptr);
 #### Kinds and Builtin Types
 
 ```ebnf
-e     ::= "Univ"
+e     ::= "Level"
        |  "Type" e
        |  "*"
        |  "□"
@@ -383,10 +384,10 @@ alias ::= "Bool"
        |  "i1" | "i8" | "i16" | "i32" | "i64"
 ```
 
-- `Univ` is the universe of type levels.
+- `Level` is the type of universe levels.
 - `Type e` is the type at level `e`.
-- `*` abbreviates `Type (0:Univ)`.
-- `□` abbreviates `Type (1:Univ)`.
+- `*` abbreviates `Type (0:Level)`.
+- `□` abbreviates `Type (1:Level)`.
 - `Nat` is the natural number type.
 - `Idx` is the builtin of type `Nat → *`.
 - `Rule e` is the type of rewrite rules over the meta type `e`.
@@ -420,6 +421,7 @@ e   ::= sign? L (":" e)?
 ```ebnf
 e   ::= e "→" e
      |  t "→" e
+     |  "{" tlist? "}" "→" e
      |  "Cn" t
      |  "Fn" t "→" e
      |  "λ" p+ (":" e)? "=" e
@@ -435,6 +437,7 @@ e   ::= e "→" e
 - `λ`, `cn`, and `fn` are the expression forms corresponding to `lam`, `con`, and `fun`.
   They are anonymous, so they cannot call themselves; use a `lam`/`con`/`fun` [declaration](@ref decl) to recurse.
 - Application is written by juxtaposition.
+- `{...}` declares implicit domains: an application inserts a `Hole` for each, and `e @ e` passes one explicitly.
 - `e @ e` passes an explicit implicit argument.
 - `ret p = callee $ arg; body` binds the result of a continuation-style call and continues with `body`.
 
@@ -514,7 +517,9 @@ lam g (t: «2; One»): One = t#(1₂, 0₁); // the `0₁` axis folds away, so t
 ```ebnf
 e   ::= e "∪" e
      |  e "inj" e
-     |  "match" e "with" "|"? p "=>" e ("|" p "=>" e)*
+     |  "match" e "with" "|"? arm ("|" arm)*
+arm ::= p "=>" e
+     |  (I | L) p? "=>" e
 ```
 
 - `e ∪ e` forms a union type.
@@ -525,7 +530,6 @@ e   ::= e "∪" e
 
 ```ebnf
 e   ::= "|" (I (":" e)? ("|" I (":" e)?)*)?
-arm ::= (I | L) p? "=>" e
 ```
 
 - `| I₀: e₀ | ... | Iₙ₋₁: eₙ₋₁` forms a variant type: a sum whose cases are _positional_.
@@ -535,6 +539,7 @@ arm ::= (I | L) p? "=>" e
 - Its last payload extends as far right as it can, and `|` never starts an application argument: write `f (| A | B)`, and parenthesize a variant inside a `match` arm.
 - `T#I` or `T#n` on a variant type `T` selects a case by constructor name or by index, counting from `0`.
   That is a value for a `[]` payload, and a function from the payload into `T` otherwise.
+- Like an application, `#` first fills the implicit domains of its left-hand side with holes, so for `nom Opt {T: *} = | None | Some: T`, `Opt#Some 23` infers `T`.
 - In a `match` on a variant, each arm names a constructor or gives its index, optionally followed by a pattern for its payload.
   `| 1 (h, t) => e` selects the same case as `| Cons (h, t) => e`, just as `T#1` and `T#Cons` do.
   Every constructor needs an arm; a second arm for the same one is unreachable and warned about.
@@ -563,7 +568,7 @@ e   ::= "«" e "»"
 ```
 
 - `« e »` is the singleton type whose sole inhabitant is `e`.
-  It sits one level above `e`, so `«23»` is a type and `«Nat»` a kind; `«Univ»` does not exist.
+  It sits one level above `e`, so `«23»` is a type and `«Nat»` a kind; `«Level»` does not exist.
 - `‹ e ›` introduces a value of that type and the prefix `#` eliminates it again, so `#‹e›` is `e`.
 - `#` recovers the inhabitant from the type alone: `#x` is `e` for every `x: «e»`.
 - The `;` is what tells an [array or pack](@ref prod) from a singleton - `«n; T»` is an array, `«T»` a singleton.
@@ -577,8 +582,14 @@ A `nom` declaration is the one place where Mim is not structurally typed: two `n
 - `nom I = e` declares `I` as a fresh type that wraps `e`; it is the declaration - not the shape of `e` - that tells two `nom`s apart.
 - If `e` is a sigma, a [variant](@ref variant), or a function type, `I` is already in scope inside `e`, so such a `nom` may be recursive, and a `mutual` block makes a group of them mutually recursive.
 - `anx nom` additionally makes `I` an [annex](@ref annex).
+- `nom I ndom+ = e` declares a type constructor; it is sugar for `lam I ndom+ = nom I = e; I`.
+  Each instance is a `nom` of its own, and within `e`, `I` names the type constructor, so a recursive instance refers to itself as `I ndom+`.
 - `e inj I` wraps a value of the underlying type into `I`, and the prefix `#` unwraps it again, so `#(e inj I)` is `e`.
-- `inj` and `#` on a `nom` are private to the `mod` that declares the `nom` - or its file, outside of any `mod` -, whatever its visibility; the _type_ crosses a module boundary like any other, so an importer sees it as abstract and has to go through whatever the declaring module exports.
+  Like `I#C`, `e inj I` fills the implicit domains of a type constructor `I` with holes.
+- The named constructors of a `nom` over a [variant](@ref variant) - `I#C` and a `match` arm `| C x` - and the [field names](@ref field) of a `nom` over a sigma - `x#f` and `x#f ← v` - unwrap and, for an update, rewrap the `nom` by themselves; access by index still needs `#`.
+- `inj`, `#`, and the named constructors and fields are as visible as the `nom` itself: a `pub` or `anx` `nom` is transparent, while a `priv` one confines them to the `mod` that declares it - or its file, outside of any `mod`.
+  A `nom` declared within a body takes the visibility of the enclosing top-level declaration.
+- The _type_ crosses a module boundary like any other value, so `pub let I = I;` exports a `priv` `nom` as an _abstract_ type: an importer may name it but has to go through whatever the declaring module exports to build or inspect a value of it.
 
 ```mim
 nom Meter = I32;
@@ -586,7 +597,15 @@ nom Foot  = I32;
 
 lam to_foot (m: Meter): Foot = #m inj Foot; // Meter and Foot do not unify
 
+mod units
+    nom Kelvin = Nat;
+    pub let Kelvin = Kelvin;                   // abstract outside of `units`
+    pub lam kelvin (n: Nat): Kelvin = n inj Kelvin;
+end
+
 nom List = | Nil | Cons: [I32, List];
+
+nom Tree (T: *) = | Leaf | Node: [Tree T, T, Tree T]; // `Tree Nat` and `Tree Bool` are distinct `nom`s
 ```
 
 @note A `--output-mim` dump flattens a program into one file, so a wrapping that an inliner carried across a module boundary lands in a dump that no longer re-parses.
@@ -619,7 +638,7 @@ e   ::= e "==" e
   let x = 2 + 3;
   ```
 
-- `*` doubles as the multiplication operator, so `f *` is a multiplication and not an application of `f` to `Type (0:Univ)`; write `f (*)` for the latter.
+- `*` doubles as the multiplication operator, so `f *` is a multiplication and not an application of `f` to `Type (0:Level)`; write `f (*)` for the latter.
 
 #### Local Declaration Blocks
 
@@ -711,9 +730,9 @@ fun test2 (): Nat =
 The following types are equivalent and describe the type of `f` above:
 
 ```mim
-let _ = [T: *] →    [[T, T], T → ⊥] → ⊥
-let _ = [T: *] → Cn [[T, T], Cn T]
-let _ = [T: *] → Fn  [T, T] → T
+let _ = [T: *] →    [[T, T], T → ⊥] → ⊥;
+let _ = [T: *] → Cn [[T, T], Cn T];
+let _ = [T: *] → Fn  [T, T] → T;
 ```
 
 ## Scoping
@@ -770,6 +789,7 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 - `(e, e, e)` -> `‹3; e›`, `[T, T, T]` -> `«3; T»` - uniform elements compress into a pack/array
 - `(t#0, t#1, t#2)` -> `t` - η for tuples, provided `t` has the ascribed type
 - `⊥:[T, U]` -> `(⊥:T, ⊥:U)`, `⊥:«n; T»` -> `‹n; ⊥:T›` - `⊥`/`⊤` are pushed into aggregates
+- `‹i: 3; e›` -> `(e[i ↦ 0₃], e[i ↦ 1₃], e[i ↦ 2₃])` - only for a literal arity below `--scalarize-threshold` and a body that depends on `i`
 
 ### Shapes
 
@@ -782,7 +802,7 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 - `d#(i, 0₁, k)` -> `d#(i, k)` - a literal size-1 axis folds out of an index, mirroring the shape rule
 - `d#i` -> `d` if `i: Idx 1` and `d`'s type is not a mutable sigma of one component
 - `d#()` -> `d` - an index that folded away entirely
-- `‹i: n; e›#j` -> `[i ↦ j]e`, `(a, b, c)#1` -> `b`
+- `‹i: n; e›#j` -> `[i ↦ j]e` for a pack that is not expanded into a tuple (see Aggregates), `(a, b, c)#1` -> `b`
 - `t#i#j` -> `t#(i, j)` - the maximal-rank fused Extract is the normal form, as far as `t`'s own shape reaches
 - `t#(i, j)` -> `t#i#j` - conversely, for an index reaching past `t`'s own shape into its element type
 - `(d#i ← v)#i` -> `v`
@@ -804,7 +824,7 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 - `f x` -> body of `f` if `x` is `f`'s own var - substituting a var by itself is the identity
 - `f x` -> `[var ↦ x]`body of `f` if `f`'s [filter](@ref decl) evaluates to `tt` for `x`; nothing is reduced if the filter is `ff`
 - an application of an [axiom](@ref decl) runs its normalizer once the curry counter hits `0`
-- an application of a `[T: *] → e` with implicit domains inserts a `Hole` per implicit argument
+- an application of a `{T: *} → e` inserts a `Hole` per implicit argument
 
 ### Unions
 
@@ -835,7 +855,10 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 
 ### Universes
 
-- `Type` levels: `l + 1` folds for a literal `l`, and a `UMax` flattens nested maxima, folds their literals into one, and sorts and deduplicates the rest
+- `Type` levels: `l + 1` folds for a literal `l`, nested successors add up, and a successor distributes over an `LMax`
+- an `LMax` flattens nested maxima, folds their literals into one (dropping `0`), sorts and deduplicates the rest, and collapses to its sole operand
+- inference: `x + k = l` solves `x = l - k`, and `max(xs, c) = l` solves the `xs` right away if `l = 0` or a single `x` must reach `l`; any other such constraint is postponed to the end of the enclosing declaration, where its still unknown levels default to `0`
+- an untyped binder used as a type, as `A` in `lam f (A) (B: *): * = [A, B]`, gets the sort `Type l` for a fresh level `l`
 - the var of a mutable whose var type is `Idx 1` -> `0₁`, and one whose var type is `[]` -> `()`
 
 <div class="section_buttons">

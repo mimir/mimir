@@ -22,7 +22,7 @@ extern fun dyn (a: «2; I32», i: I32): I32 = return a#(core.conv.u 2 i);
 // CHECK-DAG: extractelement <2 x i32> %{{.*}}, i32 0
 // CHECK-DAG: extractelement <2 x i32> %{{.*}}, i32 1
 
-extern fun main(argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): I32 =
+extern fun main(argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): I32 =
     ret r = lane $ (1, 2, 20, 4);
     ret s = dyn $ ((7I32, 2I32), argc);
     use core.ops.u.w;

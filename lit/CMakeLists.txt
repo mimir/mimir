@@ -1,4 +1,4 @@
-find_package(Python3 COMPONENTS Interpreter)
+find_package(Python REQUIRED COMPONENTS Interpreter)
 
 set(MIM_FILECHECK_NAMES "")
 foreach(VER RANGE 14 24)
@@ -26,13 +26,21 @@ endif()
 
 set(MIM_LIT_STAGE_FILES "")
 set(MIM_LIT_STAGE_DEPENDS "")
-set(MIM_LIT_NON_TESTS CMakeLists.txt lit.cfg.py lit.site.cfg.py lit.site.cfg.py.in)
+set(MIM_LIT_NON_TESTS
+    CMakeLists.txt
+    lit
+    lit.cfg.py
+    lit.site.cfg.py
+    lit.site.cfg.py.in
+    mim_sh_test.py
+    mim_roundtrip_test.py
+)
 
 function(mim_stage_lit_tree source_root dest_root)
     file(GLOB_RECURSE lit_files CONFIGURE_DEPENDS RELATIVE "${source_root}" "${source_root}/*")
     foreach(rel_path IN LISTS lit_files)
         cmake_path(GET rel_path FILENAME file_name)
-        if(file_name IN_LIST MIM_LIT_NON_TESTS)
+        if(file_name IN_LIST MIM_LIT_NON_TESTS OR rel_path MATCHES "(^|/)__pycache__/")
             continue()
         endif()
 
@@ -100,11 +108,12 @@ add_custom_command(
         ${MIM_LIT_STAGE_DEPENDS}
         "${CMAKE_CURRENT_BINARY_DIR}/stage-lit-tests.cmake"
     COMMENT "Staging MimIR lit tests"
+    VERBATIM
 )
 add_custom_target(mim_lit_tests DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/tests/.stamp")
 
 set(MIM_LIT_COMMAND
-    ${Python3_EXECUTABLE}
+    ${Python_EXECUTABLE}
     "${CMAKE_CURRENT_SOURCE_DIR}/lit"
     "${CMAKE_CURRENT_BINARY_DIR}"
     -v

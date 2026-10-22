@@ -4,11 +4,10 @@
 ///
 /// [TOC]
 ///
-/// This plugin has three jobs:
+/// This plugin has two jobs:
 ///
 /// 1. Convert direct-style calls (and the functions they call) to CPS.
-/// 2. Wrap direct-style functions as CPS functions using an axiom.
-/// 3. Call CPS functions in direct style using an axiom.
+/// 2. Call CPS functions in direct style using an axiom.
 ///
 /// ## Dependencies
 ///
@@ -23,7 +22,7 @@ import compile;
 /// `cps.cps2ds_dep` is the dependently-typed general form; `cps.cps2ds` is the non-dependent shorthand.
 ///
 axm cps2ds_dep: {T: *} → [U: T → *] → [Fn [t: T] → U t] → [[t: T] → U t], 3;
-anx lam cps2ds       {T U: *}           (f: Fn     T  → U  ):  [    T  → U  ] = cps2ds_dep (λ (_: T): * = U) f;
+anx lam cps2ds {T U: *} (f: Fn T → U): T → U = cps2ds_dep (λ (_: T): * = U) f;
 ///
 /// ## Phases
 ///

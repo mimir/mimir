@@ -1,0 +1,33 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim %s -p opt -p ll -o %t.mim
+// RUN: %FileCheck %s < %t.mim
+// RUN: %FileCheck %s --check-prefix=PLANE < %t.mim
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 4
+// RUN: %t a a a a a a ; test $? -eq 18
+
+// A channel shuffle's read of an NCHW tensor reinterpreted as «n, c / g, g, h, w»: the divisions by a whole number of
+// planes peel the carry-free in-plane offset `h·56 + w` off, so only the channel `n·120 + c` is divided, by the group.
+
+plugin core;
+plugin affine;
+plugin mem;
+
+use core.ops.u.w;
+
+let s_out = (2, 120, 56, 56);
+let s_in  = (2, 40, 3, 56, 56);
+
+lam shuffle (o: «4; affine.Index»): «5; affine.Index» =
+    affine.delinearize (affine.linearize (o, s_out), s_in);
+
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (mem.Char, 0)», 0), return: Cn [mem.M 0, I32]) =
+    let idxs = (core.conv.u 2 argc, core.conv.u 120 argc, core.conv.u 56 argc, core.conv.u 56 argc);
+    let (m, (n, q, g, h, w)) = affine.map @(5, 4) @(s_out, s_in) shuffle idxs m;
+    let w32 = 4294967296;
+    return (m, core.conv.u w32 n + core.conv.u w32 q + core.conv.u w32 g + core.conv.u w32 h + core.conv.u w32 w);
+
+// PLANE-NOT: {{(3136|9408)}}I64
+// CHECK-DAG: core.div.udiv {{.*}}3I64
+// CHECK-DAG: core.div.urem {{.*}}40I64
+// CHECK-DAG: core.div.urem {{.*}}3I64

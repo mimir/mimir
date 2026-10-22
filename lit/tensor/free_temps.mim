@@ -1,0 +1,21 @@
+// REQUIRES: system-linux
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: clang++ -std=c++23 %S/free_temps_aux.cpp %{s:stem}.ll -o %t -Wno-override-module -Wl,--wrap=malloc,--wrap=free
+// RUN: %t
+
+// A bufferized function frees every buffer it allocates and does not hand out before it returns.
+// `lin` allocates the packed right operand, a row of accumulators and its result; only the result leaves.
+plugin tensor;
+plugin core;
+plugin math;
+
+let F32 = math.F32;
+let R: tensor.Ring = (F32, 0:F32, math.arith.add 0, math.arith.mul 0);
+let `+ = tensor.binary (math.arith.add 0);
+
+lam relu (x: F32): F32 = math.extrema.fmax 0 (0:F32, x);
+
+extern fun lin (x: «64, 256; F32», w: «128, 256; F32», b: «128; F32»): «64, 128; F32» =
+    let y = tensor.product_2d R (x, tensor.transpose_2d w) + tensor.broadcast ((1, 128), (64, 128), b);
+    return (tensor.unary relu y);

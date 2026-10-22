@@ -1,0 +1,4 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+extern lam h (b: Bool): Nat ∪ I32 = b inj (Nat ∪ I32);
+// CHECK: {{.*}}inj_union.mim:3:37-3:53: error: value of type `Bool` is not a case of union type `Nat ∪ I32`

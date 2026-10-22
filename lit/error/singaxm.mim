@@ -1,0 +1,5 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+axm s: Idx 1;
+
+// CHECK: {{.*}}singaxm.mim:3:8-3:12: error: axiom of singleton type `Idx 1` carries no information

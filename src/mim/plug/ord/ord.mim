@@ -35,6 +35,7 @@ axm Map: Key → * → *;
 /// ### init
 ///
 /// Creates a set / map from a list of values / key-value pairs.
+/// Duplicate keys are merged; for maps the last binding wins.
 ///
 pub mod init
     axm set: [K: Key] →          {n: Nat} → «n;  K#T    » → Set K  , normalize_init;
@@ -71,9 +72,9 @@ anx lam is_empty_map {K: Key} {V: *} (map: Map K V): Bool = core.ncmp.e (size.ma
 /// ### get
 ///
 /// Looks up the given key in the map.
-/// Returns an optional value (`option.Opt V`).
+/// Returns an optional value (`option.Opt@V`).
 ///
-axm get: {K: Key} → {V: *} → [Map K V, K#T] → option.Opt V, normalize_get;
+axm get: {K: Key} → {V: *} → [Map K V, K#T] → option.Opt@V, normalize_get;
 ///
 /// ### contains
 ///

@@ -233,6 +233,25 @@ A phase that drops or reorders the components of a mutable [`Sigma`](@ref mim::S
 
 [`Sieve`](@ref mim::Sieve) is useful on its own, though: dropping the parameters of a [`Lam`](@ref mim::Lam) changes its *type* rather than its ops, so the SCCP transformation below only uses [`gather`](@ref mim::Sieve::gather) and [`operator[]`](@ref mim::Sieve::operator[]).
 
+### Coercion {#phases_coercion}
+
+An [`RWPhase`](@ref mim::RWPhase) may change how values are *represented* - [`Scalarize`](@ref mim::Scalarize) flattens tuple parameters, [`SingleErasure`](@ref mim::SingleErasure) drops information-free components.
+Such a phase cannot reshape everything: an [`Axm`](@ref mim::Axm)'s signature is fixed, since normalizers and backends match on it, and an interface `Lam` (an external, an annex, or a foreign declaration) has callers outside the phase's reach.
+
+So wherever a type is *checked*, every [`RWPhase`](@ref mim::RWPhase) [`coerce()`s](@ref mim::RWPhase::coerce) the rewritten value to the rewritten expected type:
+
+- an [`App`](@ref mim::App)'s argument to the callee's domain, and its result to the `App`'s type,
+- a [`Tuple`](@ref mim::Tuple)'s ops to the components of its annotated type - an inferred one just follows the rewritten ops,
+- a [`Lam`](@ref mim::Lam)'s body to its codomain.
+
+Coercion matches value and type leaf by leaf: it explodes and reassembles tuples, η-wraps a function whose `Pi` differs, and drops or fills in components that have a sole [`inhabitant`](@ref mim::World::inhabitant).
+Where nothing was reshaped, value and type are already [assignable](@ref mim::Check::coerce) and coercion is the identity.
+
+This lets the phase decide its representation *per type* instead of first pinning every shape that could meet a fixed one in an [`Analysis`](@ref mim::Analysis).
+To keep a shape fixed by its *position*, rewrite it with a [nested Rewriter](@ref rewriter_nested):
+[`Scalarize`](@ref mim::Scalarize) rewrites everything an interface `Lam`'s signature mentions with its `Keep` rewriter, where no `Pi` gets flattened.
+The very same `Pi` elsewhere is flattened in context `0`, and coercion bridges both wherever they meet.
+
 ### Typical Shape
 
 ```cpp
@@ -373,6 +392,13 @@ This is a textbook use of [`Analysis`](@ref mim::Analysis):
 - store them in [`Analysis::lattice()`](@ref mim::Analysis::lattice),
 - iterate to a fixed point.
 
+The _conditional_ part of SCCP needs no code of its own.
+Wegman and Zadeck track which CFG edges are executable, so that an unreachable predecessor does not spoil a join.
+Here, the analysis rewrites each body into the abstract domain, and building that abstract body normalizes it.
+Once the condition of a branch `(f, t)#c` is abstracted to a literal, the extract folds to the taken target, and [`rewrite_imm_Extract`](@ref mim::Rewriter::rewrite_imm_Extract) only rewrites that op.
+The untaken target is never scheduled, so its call sites never contribute to a join.
+This works for any condition that normalizes to a literal - including one computed from a propagated expression rather than a plain constant.
+
 ### Transformation
 
 \include "mim/phase/sccp_transform.cpp"
@@ -389,6 +415,9 @@ When it sees an application of a lambda whose parameters have propagated values,
 
 Which parameters survive is stated once as a [`Sieve`](@ref mim::Sieve) over the old [`Var`s](@ref mim::Var), and all three rebuilds read it back:
 [`gather`](@ref mim::Sieve::gather) picks the surviving domains and arguments, while [`operator[]`](@ref mim::Sieve::operator[]) maps each old parameter either to its new [`Var`](@ref mim::Var) or - on [`Gone`](@ref mim::Sieve::Gone) - to its propagated value.
+
+The [`invalidate()`](@ref mim::Phase::invalidate) in the transformation is unrelated to the analysis' fixed point.
+It tells an enclosing fixed-point [`PhaseMan`](@ref phases_phase_man) that this phase changed the program, so the other phases get another round.
 
 So SCCP follows the standard [`RWPhase`](@ref mim::RWPhase) pattern:
 
@@ -408,7 +437,7 @@ Separating SCCP into analysis and rewrite keeps both parts simple:
 This separation is the main design pattern to follow for nontrivial optimizations.
 
 @note
-The complete SCCP example is roughly 130 lines of C++ source code.
+The complete SCCP example is less than 100 lines of C++ source code.
 Most of the usual compiler boilerplate is absorbed by the existing [`Analysis`](@ref mim::Analysis), [`RWPhase`](@ref mim::RWPhase), and [`Rewriter`](@ref mim::Rewriter) infrastructure, so the implementation can focus on the optimization itself.
 
 ### SSA without Dominance {#ssa-without-dominance}
@@ -416,7 +445,7 @@ Most of the usual compiler boilerplate is absorbed by the existing [`Analysis`](
 The very first line of `propagate()` is a guard that has no counterpart in the lattice algebra; a [second one](#sccp-bot-site) guards the ⊥ case of the join:
 
 ```cpp
-if (lam_of(var)->nests(def)) return pin(var), var;
+if (lam->nests(def)) return pin(var), var;
 ```
 
 It is the MimIR analogue of the _dominance_ side condition that a classical SSA-based SCCP has to enforce, so it is worth spelling out what it replaces.
@@ -457,7 +486,7 @@ Its role — deciding whether a candidate value is _available_ at the point wher
 
 Now the guard reads directly:
 
-- `var` is a parameter of `L = lam_of(var)`, and the joined value replaces `var` throughout `L`'s body.
+- `L` is the `lam` passed to `propagate()`, `var` is one of its parameters, and the joined value replaces `var` throughout `L`'s body.
 - If `L->nests(def)`, the joined value refers to binders that only come into existence _within_ `L`'s own body, so only a call site inside `L` — a recursive jump — can pass it.
   Substituting it for `var` would use those binders before they exist: on entry to `L`, nothing below `L` has been bound yet.
   This is the exact situation dominance forbids, so the analysis pins `var` to ⊤ ([`pin`](@ref mim::Analysis::pin)) instead.
@@ -634,6 +663,7 @@ Phases are MimIR's main unit of compiler work.
 - [`Phase`](@ref mim::Phase) is the minimal base abstraction.
 - [`Analysis`](@ref mim::Analysis) is for graph-aware fact collection on the current world and provides a reusable [`lattice()`](@ref mim::Analysis::lattice) for abstract values.
 - [`RWPhase`](@ref mim::RWPhase) is for rewriting the current world into a transformed new one and can read analysis results through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
+  It [coerces](@ref phases_coercion) reshaped values wherever they meet a fixed shape.
 - [`PhaseMan`](@ref mim::PhaseMan) sequences phases, optionally to a fixed point.
 - [`ClosedMutPhase`](@ref mim::ClosedMutPhase) and [`NestPhase`](@ref mim::NestPhase) are traversal helpers for common whole-world inspections.
 

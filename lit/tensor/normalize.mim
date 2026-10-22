@@ -96,9 +96,9 @@ let subs_2    = ‹i: r; dot_general_pick (a2, b, c2) (1, r_out) i›;
 let a_opt = vec.first core.icmp.e (a2, 1₂);
 let b_opt = vec.first core.icmp.e (b,  1₂);
 let c_opt = vec.first core.icmp.e (c2, 1₂);
-let _ = refly.struc.e (a_opt, option.some 0₁);
-let _ = refly.struc.e (b_opt, option.none (Idx 0));
-let _ = refly.struc.e (c_opt, option.none (Idx 1));
+let _ = refly.struc.e (a_opt, option.Opt#Some 0₁);
+let _ = refly.struc.e (b_opt, option.Opt#None);
+let _ = refly.struc.e (c_opt, option.Opt#None);
 
 let _ = refly.struc.e (subs_2, (2, 1));
 
@@ -106,7 +106,7 @@ let _ = refly.struc.e (subs_2, (2, 1));
 let s_red   = ‹i: nc; s1#(c1#i)›;
 let s_full  = vec.cat (s_out, s_red);
 let dot = map_reduce (s_out, s_full) (f, 0)
-    (proj_map ‹i: r_out; core.bitcast Nat i›)
+    (proj_map ‹i: r_out; core.idx2nat i›)
     (proj_map subs_1, proj_map subs_2)
     (t1, t2);
 
@@ -128,6 +128,10 @@ let _ = refly.struc.e (transpose (tt, ff) (transpose_2d m1), m1);
 let _ = refly.struc.e (transpose (0₃, 1₃, 2₃) m2#0₂, m2#0₂);
 let _ = refly.struc.e (transpose (2₃, 0₃, 1₃) (transpose (1₃, 2₃, 0₃) m2#0₂), m2#0₂);
 let _ = refly.struc.e (transpose (1₃, 2₃, 0₃) (transpose (1₃, 2₃, 0₃) m2#0₂), transpose (2₃, 0₃, 1₃) m2#0₂);
+
+let _ = refly.struc.e (tensor.shape 1 (10, 20, 30, 40), 4);
+let _ = refly.struc.e (tensor.shape 2 m1, (2, 3));
+let _ = refly.struc.e (tensor.shape 3 (((1, 2), (3, 4)), ((5, 6), (7, 8))), (2, 2, 2));
 
 // Reading *through* a broadcast / repeat is `tensor.lower_tensor`'s job; see read_through.mim.
 

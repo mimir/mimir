@@ -2,15 +2,9 @@
 
 namespace mim {
 
-/// The Lam the abstract @p var belongs to; @p var is a Var or a Var projection.
-static Lam* lam_of(const Def* var) {
-    if (auto ex = var->isa<Extract>()) return ex->tuple()->as<Var>()->binder()->as_mut<Lam>();
-    return var->as<Var>()->binder()->as_mut<Lam>();
-}
-
-const Def* SCCP::Analysis::propagate(const Def* var, const Def* def) {
+const Def* SCCP::Analysis::propagate(Lam* lam, const Def* var, const Def* def) {
     // `⊥ ⊔ x` is `x`, but unusable if lam nests it.
-    if (lam_of(var)->nests(def)) return pin(var), var;
+    if (lam->nests(def)) return pin(var), var;
 
     auto cur = lattice(var);
     if (!cur) { // ⊥ ⊔ def = def; lattice(var, def) invalidates, as it inserts a fresh non-⊤ fact
@@ -46,12 +40,12 @@ const Def* SCCP::Analysis::rewrite_imm_App(const App* app) {
         // propagate
         for (size_t i = 0; i != n; ++i) {
             auto abstr    = rewrite(app->targ(i));
-            abstr_vars[i] = propagate(lam->tvar(i), abstr);
+            abstr_vars[i] = propagate(lam, lam->tvar(i), abstr);
             abstr_args[i] = abstr;
         }
 
         lattice(lam->var(), world().tuple(abstr_vars)); // set new abstract var
-        return world().app(rewrite(lam), abstr_args);
+        return world().raw_app(rewrite(app->type()), rewrite(lam), world().tuple(abstr_args));
     }
 
     return mim::Analysis::rewrite_imm_App(app);

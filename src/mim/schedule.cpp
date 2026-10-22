@@ -37,7 +37,7 @@ Scheduler::Scheduler(const Nest& nest)
 }
 
 const Nest::Node* Scheduler::early(const Def* def) {
-    if (auto i = early_.find(def); i != early_.end()) return i->second;
+    if (auto n = fe::lookup(early_, def)) return n;
     if (def->is_closed() || !nest().contains(def)) return early_[def] = nest().root();
     if (auto var = def->isa<Var>()) return early_[def] = nest()[var->binder()];
 
@@ -53,7 +53,7 @@ const Nest::Node* Scheduler::early(const Def* def) {
 }
 
 const Nest::Node* Scheduler::late(Def* curr_mut, const Def* def) {
-    if (auto i = late_.find(def); i != late_.end()) return i->second;
+    if (auto n = fe::lookup(late_, def)) return n;
     if (def->is_closed() || !nest().contains(def)) return late_[def] = nest().root();
 
     const Nest::Node* result = nullptr;
@@ -74,7 +74,7 @@ const Nest::Node* Scheduler::late(Def* curr_mut, const Def* def) {
 }
 
 const Nest::Node* Scheduler::smart(Def* curr_mut, const Def* def) {
-    if (auto i = smart_.find(def); i != smart_.end()) return i->second;
+    if (auto n = fe::lookup(smart_, def)) return n;
 
     auto e = early(def);
     auto l = late(curr_mut, def);

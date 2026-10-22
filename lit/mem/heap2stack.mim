@@ -1,0 +1,108 @@
+// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim %s -X mem:heap2stack=3 -o - | %FileCheck %s --check-prefix=SMALL
+
+// `mem.heap2stack` turns a small `mem.alloc` that does not escape its function into a `mem.slot`.
+
+plugin core;
+plugin mem;
+plugin compile;
+
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.named "mem.heap2stack",
+    );
+
+let P = mem.Ptr (I32, 0);
+
+extern fun read[]: I32;
+
+// Visible to a continuation the function's chain jumps to.
+// CHECK-LABEL: extern con branch
+// CHECK-NOT: mem.alloc
+// CHECK: mem.slot (I32, 0)
+extern con branch (m: mem.M 0, c: Bool, return: Cn [mem.M 0, I32]) =
+    let (m, p) = mem.alloc (I32, 0) m;
+    let m      = mem.store (m, p, 42I32);
+    con yes (m: mem.M 0) = return (mem.load (m, p));
+    con no (m: mem.M 0) = return (m, 0I32);
+    (no, yes)#c m;
+
+// The memory chain continues in the continuation of a direct-style call.
+// CHECK-LABEL: extern fun direct
+// CHECK-NOT: mem.alloc
+// CHECK: mem.slot (I32, 0)
+extern con direct (m: mem.M 0, return: Cn [mem.M 0, I32]) =
+    let (m, p) = mem.alloc (I32, 0) m;
+    ret x = read $ ();
+    let m      = mem.store (m, p, x);
+    return (mem.load (m, p));
+
+// Returned, the pointer outlives its function.
+// CHECK-LABEL: extern fun escape
+// CHECK: mem.alloc (I32, 0)
+// CHECK-NOT: mem.slot
+extern con escape (m: mem.M 0, return: Cn [mem.M 0, P]) =
+    let (m, p) = mem.alloc (I32, 0) m;
+    return (m, p);
+
+// An explicit `mem.free` neither lets the pointer escape nor survives the conversion.
+// CHECK-LABEL: extern fun freed
+// CHECK-NOT: mem.alloc
+// CHECK-NOT: mem.free
+// CHECK: mem.slot (I32, 0)
+// CHECK-NOT: mem.free
+extern con freed (m: mem.M 0, return: Cn [mem.M 0, I32]) =
+    let (m, p) = mem.alloc (I32, 0) m;
+    let m      = mem.store (m, p, 42I32);
+    let (m, x) = mem.load (m, p);
+    let m      = mem.free (m, p);
+    return (m, x);
+
+// CHECK-LABEL: extern fun local
+// CHECK-NOT: mem.alloc
+// CHECK: mem.slot (I32, 0)
+// SMALL-LABEL: extern fun local
+// SMALL: mem.slot (I32, 0)
+extern con local (m: mem.M 0, return: Cn [mem.M 0, I32]) =
+    let (m, p) = mem.alloc (I32, 0) m;
+    let m      = mem.store (m, p, 42I32);
+    return (mem.load (m, p));
+
+// Each iteration would grow the stack.
+// CHECK-LABEL: extern con loop
+// CHECK: mem.alloc (I32, 0)
+// CHECK-NOT: mem.slot
+extern con loop (m: mem.M 0, n: I32, return: Cn mem.M 0) =
+    con head (m: mem.M 0, i: I32) =
+        con body (m: mem.M 0) =
+            let (m, p) = mem.alloc (I32, 0) m;
+            let m      = mem.store (m, p, i);
+            head (m, core.wrap.add 0 (i, 1I32));
+        (return, body)#(core.icmp.ul (i, n)) m;
+    head (m, 0I32);
+
+// Other address spaces may not have a stack.
+// CHECK-LABEL: extern fun shared
+// CHECK: mem.alloc (I32, 1)
+// CHECK-NOT: mem.slot
+extern con shared (m: mem.M 1, return: Cn [mem.M 1, I32]) =
+    let (m, p) = mem.alloc (I32, 1) m;
+    let m      = mem.store (m, p, 42I32);
+    return (mem.load (m, p));
+
+// Both allocations become nested slots, the second within the first's continuation.
+// CHECK-LABEL: extern fun two
+// CHECK-NOT: mem.alloc
+// CHECK: mem.slot («4; I32», 0)
+// CHECK: mem.slot (I32, 0)
+// SMALL-LABEL: extern fun two
+// SMALL: mem.alloc («4; I32», 0)
+// SMALL: mem.slot (I32, 0)
+extern con two (m: mem.M 0, return: Cn [mem.M 0, I32]) =
+    let (m, p) = mem.alloc (I32, 0) m;
+    let (m, q) = mem.alloc («4; I32», 0) m;
+    let m      = mem.store (m, p, 23I32);
+    let m      = mem.store (m, mem.lea (q, 0_4), 42I32);
+    let (m, x) = mem.load (m, p);
+    let (m, y) = mem.load (m, mem.lea (q, 0_4));
+    return (m, core.wrap.add 0 (x, y));

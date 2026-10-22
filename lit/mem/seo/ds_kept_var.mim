@@ -1,0 +1,27 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// `k`'s `r` is `p` or `p2`, so it stays a parameter and the direct-style `h` writes through it.
+// Both slots survive via `k`'s call sites, and the load after `h` is not folded.
+
+plugin core;
+plugin mem;
+
+lam h (m: mem.M 0, q: mem.Ptr0 Nat)@ff: mem.M 0 = mem.store (m, q, 5);
+
+extern fun test(m: mem.M 0, c: Bool): [mem.M 0, Nat] =
+    ret (m, p)  = mem.slot (Nat, 0) $ m;
+    ret (m, p2) = mem.slot (Nat, 0) $ m;
+    let m = mem.store (m, p, 1);
+    let m = mem.store (m, p2, 2);
+    con k (m: mem.M 0, r: mem.Ptr0 Nat) =
+        let m      = h (m, r);
+        let (m, x) = mem.load (m, r);
+        return (m, x);
+    con a (m: mem.M 0) = k (m, p);
+    con b (m: mem.M 0) = k (m, p2);
+    (a, b)#c m;
+
+// CHECK: mem.store @ (Nat, 0) ({{.*}}, [[Q:[[:alnum:]_]+]], 5)
+// CHECK-NEXT: mem.load @ (Nat, 0) ({{.*}}, [[Q]])
+// CHECK-DAG: mem.mslot (Nat, 0)
+// CHECK-DAG: mem.mslot (Nat, 0)

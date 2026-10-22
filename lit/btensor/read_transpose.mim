@@ -1,22 +1,26 @@
-// RUN: rm -f %t.ll
 // RUN: %mim -p opt -o - %s | %FileCheck %s
 
 plugin core;
 plugin btensor;
+plugin affine;
 plugin buffer;
 plugin mem;
 
 let MT = (2, (2, 4), I32);
 let MT2 = (2, (4, 2), I32);
 
+fun copy (m: mem.M 0, _: I32, x: I32)@tt: [mem.M 0, I32] = return (m, x);
+
+// Transposes by reading the input at the swapped loop variables; there is no reduction loop.
 extern con cont (mm: mem.M 0, m: (buffer.Buf MT), return: Cn [mem.M 0, I32]) =
-    let (mm, m) = btensor.transpose_2d (mm, m);
+    let (mm, dst) = buffer.alloc MT2 mm;
+    let (mm, m)   = btensor.map_reduce ((4, 2), (4, 2)) (copy, ⊥:I32) affine.id (btensor.proj_map (1, 0)) (mm, dst, m);
     let idx2 = (3₄, 1₂);
     let (mm, d) = buffer.read MT2 (mm, m, idx2);
 
     return (mm, d);
 
-extern con main (mm: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
+extern con main (mm: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (mem.Char, 0)», 0), return: Cn [mem.M 0, I32]) =
     let c = 5I32;
     let (mm, m) = buffer.lit MT (mm, c);
     cont (mm, m, return);

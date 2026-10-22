@@ -5,7 +5,6 @@ set(MIM_VER_SUFFIX "-dev" CACHE STRING "Suffix for version string (e.g., '-dev',
 
 include(CMakeDependentOption)
 include(CMakePackageConfigHelpers)
-include(CMakePrintHelpers)
 include(GNUInstallDirs)
 
 execute_process(

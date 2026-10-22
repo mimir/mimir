@@ -8,7 +8,7 @@ plugin mem;
 
 use core.ops.u.w;
 
-extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): [mem.M 0, I32] =
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
     loop (m, 0I32, 0I32)
     where
         con loop(m: mem.M 0, i acc: I32) =

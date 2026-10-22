@@ -1,0 +1,49 @@
+// RUN: %mim %s
+
+// `nom I (dom)+ = e` declares a type constructor whose instances are distinct `nom`s; within `e`, `I` is the type constructor.
+plugin core;
+plugin refly;
+
+nom Opt (T: *) =
+    | None
+    | Some: T;
+nom Pt (T: *) = [x: T, y: T];
+nom List (T: *) = | Nil | Cons: [T, List T];
+nom Box (T: *) = T;
+nom Fun (A: *) (B: *) = A → B;
+nom Pair {T: *} (n: Nat) = «n; T»;
+nom Rose (T: *) = | Node: [T, List (Rose T)];
+
+lam get (o: Opt Nat): Nat = match o with | None => 0 | Some x => x;
+let _ = refly.struc.e (get ((Opt Nat)#Some 23), 23);
+let _ = refly.struc.e ((((5, 6) inj Pt Nat))#y, 6);
+
+lam len (l: List Nat): Nat =
+    match l with
+        | Nil         => 0
+        | Cons (_, t) => core.nat.add (1, len t);
+let L = List Nat;
+let _ = refly.struc.e (len (L#Cons (1, L#Cons (2, L#Nil))), 2);
+let _ = refly.struc.e (#(3 inj Box Nat), 3);
+let _ = refly.struc.e ((#((λ (x: Nat): Bool = tt) inj Fun Nat Bool)) 3, tt);
+let _ = refly.struc.e ((#(‹2; 7› inj Pair @Nat 2))#1₂, 7);
+
+let R = Rose Nat;
+let RL = List R;
+let _ = refly.struc.e (match R#Node (1, RL#Cons (R#Node (2, RL#Nil), RL#Nil)) with | Node (x, _) => x, 1);
+
+mod m
+    pub nom Opt2 (T: *) = | None | Some: T;
+    nom Hidden (T: *) = | A | B: T;
+    pub lam mk (x: Nat): Hidden Nat = (Hidden Nat)#B x;
+end
+let _ = refly.struc.e (match (m.Opt2 Nat)#Some 4 with | None => 0 | Some x => x, 4);
+
+// `#` and `inj` fill implicit domains with holes, like an application.
+nom Wrap {T: *} = T;
+nom Maybe {T: *} = | Nothing | Just: T;
+lam unwrap (w: Wrap@Nat): Nat = #w;
+lam from (m: Maybe@Nat): Nat = match m with | Nothing => 0 | Just x => x;
+let _ = refly.struc.e (unwrap (23 inj Wrap), 23);
+let _ = refly.struc.e (from Maybe#Nothing, 0);
+let _ = refly.struc.e (from (Maybe#Just 5), 5);

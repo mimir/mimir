@@ -1,0 +1,41 @@
+// RUN: %mim -p opt %s
+plugin option as o;
+plugin refly;
+
+let _ = refly.struc.e (o.some_if (tt, 23), o.Opt#Some 23);
+let _ = refly.struc.e (o.some_if (ff, 23), o.Opt#None);
+let _ = refly.struc.e (o.unwrap_or (o.some_if (tt, 23)) 7, 23);
+let _ = refly.struc.e (o.unwrap_or (o.some_if (ff, 23)) 7, 7);
+let _ = refly.struc.e (o.is_some (o.some_if (ff, 23)), ff);
+
+// `Opt@[]` keeps both cases.
+let _ = refly.struc.e (o.is_some (o.Opt#Some ()), tt);
+let _ = refly.struc.e (o.is_some ((o.Opt@[])#None), ff);
+let _ = refly.struc.e (o.is_some (o.some_if (tt, ())), tt);
+let _ = refly.struc.e (o.is_some (o.some_if (ff, ())), ff);
+
+// `Opt@(Opt@T)` does not flatten to `Opt@T`.
+let _ = refly.struc.e (o.is_some (o.Opt#Some ((o.Opt@Nat)#None)), tt);
+let _ = refly.struc.e (o.unwrap_or (o.Opt#Some ((o.Opt@Nat)#None)) (o.Opt#Some 7), (o.Opt@Nat)#None);
+let _ = refly.struc.e (o.unwrap_or ((o.Opt@(o.Opt@Nat))#None) (o.Opt#Some 7), o.Opt#Some 7);
+
+extern lam f (b: Bool): Bool = o.is_some (o.some_if (b, ()));
+
+let _ = refly.struc.e
+    (match ((o.Opt@Nat)#None) with
+        | Some value => value
+        | None       => 7,
+     7);
+
+// The option library is a client of the same generic reduction: its lambda
+// unfolds to a Match, which then dispatches on the known injection.
+let _ = refly.struc.e (o.unwrap_or o.Opt#None 7, 7);
+
+lam unwrap_or_some (x: Nat): Nat = refly.struc.e (o.unwrap_or (o.Opt#Some x) 7, x);
+
+lam unwrap_some (x: Nat): Nat =
+    refly.struc.e
+        (match (o.Opt#Some x) with
+            | Some value => value
+            | None       => 7,
+         x);

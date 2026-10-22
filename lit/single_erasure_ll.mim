@@ -12,5 +12,5 @@ use core.ops.u.w;
 extern fun pick ((_: I32, _: «23», _: [], _: Idx 1, c: I32, _: I8)): I32 = return c;
 // CHECK: define i32 @pick(i32 %{{.*}}, i32 %{{.*}}, i8 %{{.*}})
 
-extern fun main(argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8)): I32 =
+extern fun main(argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): I32 =
     pick ((13I32, ‹23›, (), 0₁, argc + 41I32, 0I8), return);

@@ -32,6 +32,7 @@ public:
     void set_start(const NodeType* start) { start_ = start; }
 
     const NodeType* get_start() const { return start_; }
+    size_t num_states() const { return nodes_.size(); }
 
     /// Ordered by NodeType::Lt (i.e. by id) so that iteration is deterministic.
     std::set<const NodeType*, typename NodeType::Lt> get_reachable_states() const {
@@ -80,14 +81,7 @@ void print_node(std::ostream& os, const NodeType& node, std::invocable<std::uint
     if (node.is_erroring()) std::println(os, "  \"{}\" [shape=square];", node.id());
 
     std::map<const NodeType*, std::vector<Range>, typename NodeType::Lt> node2transitions;
-    node.for_transitions([&](auto c, auto to) {
-        if (!node2transitions.contains(to))
-            node2transitions.try_emplace(to, std::vector<Range>{
-                                                 Range{c, c}
-            });
-        else
-            node2transitions[to].push_back({c, c});
-    });
+    node.for_transitions([&](auto c, auto to) { node2transitions[to].push_back({c, c}); });
 
     for (auto& [to, ranges] : node2transitions) {
         std::sort(ranges.begin(), ranges.end(), RangeCompare{});

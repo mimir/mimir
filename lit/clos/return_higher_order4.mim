@@ -12,7 +12,7 @@ plugin mem;
 
 let pb_type = Cn [mem.M 0, Cn [mem.M 0, I32]];
 
-extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («⊤:Nat; mem.Ptr («⊤:Nat; I8», 0)», 0), return: Cn [mem.M 0, I32]) =
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char», return: Cn [mem.M 0, I32]) =
     con callback (m: mem.M 0, return: Cn [mem.M 0, I32]) = return (m, 1I32);
 
     let (alloc_pb_mem, pb_ptr) = mem.malloc (pb_type, 0) (m, 1);

@@ -33,21 +33,27 @@ public:
     World& world() { return *world_; }
     ///@}
 
-    /// @name Push / Pop
+    /// @name Scope
     ///@{
-    virtual void push() { old2news_.emplace_back(Def2Def{}); }
-    virtual void pop() { old2news_.pop_back(); }
+    /// Opens a scope for the mappings whose old Def depends on @p old_vars or whose new Def depends on @p new_vars.
+    /// The root scope takes all others.
+    void push(Vars old_vars = {}, Vars new_vars = {}) { scopes_.emplace_back(old_vars, new_vars); }
+    void pop() { scopes_.pop_back(); }
+    /// Adds the old @p var - if any - to the innermost scope.
+    void bind_old(const Var* var);
+    /// Adds the new @p var - if any - to the innermost scope.
+    void bind_new(const Var* var);
+    void bind(const Var* old_var, const Var* new_var) {
+        bind_old(old_var);
+        bind_new(new_var);
+    }
     ///@}
 
     /// @name Map / Lookup
     /// Map @p old_def to @p new_def and returns @p new_def.
     ///@{
-    virtual const Def* map(const Def* old_def, const Def* new_def) { return old2news_.back()[old_def] = new_def; }
-
-    /// Like map() but records into the *root* map, so the entry outlives the current push()/pop() scope.
-    /// Use this for a context-free mapping - e.g. a Var of a rebuilt binder - that must stay valid after a
-    /// scope opened by rewrite_mut_Seq's scalarization is popped again.
-    const Def* map_root(const Def* old_def, const Def* new_def) { return old2news_.front()[old_def] = new_def; }
+    /// Records the mapping in the innermost push() scope it depends on.
+    const Def* map(const Def* old_def, const Def* new_def);
 
     // clang-format off
     const Def* map(const Def* old_def ,       Defs new_defs);
@@ -58,8 +64,8 @@ public:
     /// Lookup `old_def` by searching in reverse through the stack of maps.
     /// @returns `nullptr` if nothing was found.
     virtual const Def* lookup(const Def* old_def) {
-        for (const auto& old2new : old2news_ | std::views::reverse)
-            if (auto i = old2new.find(old_def); i != old2new.end()) return i->second;
+        for (const auto& scope : scopes_ | std::views::reverse)
+            if (auto new_def = fe::lookup(scope.old2new, old_def)) return new_def;
         return nullptr;
     }
     ///@}
@@ -88,23 +94,22 @@ public:
     virtual const Def* rewrite_mut_Seq(Seq* seq);
     ///@}
 
-    friend void swap(Rewriter& rw1, Rewriter& rw2) noexcept {
-        using std::swap;
-        swap(rw1.old2news_, rw2.old2news_);
-        // Do NOT swap world_: it is a back pointer!
-    }
-
     template<class D = Def>
     D* curr_mut() const {
         return curr_mut_ ? curr_mut_->template isa<D>() : nullptr;
     }
 
-private:
-    World* world_;
-    Def* curr_mut_ = nullptr;
-
 protected:
-    fe::Vector<Def2Def> old2news_;
+    /// The map of the innermost push() scope.
+    Def2Def& old2new() { return scopes_.back().old2new; }
+
+    /// Does @p old_def depend on the old Vars of any scope?
+    bool has_intersection(const Def* old_def) {
+        // Def::has_free_vars_in avoids materializing old_def's merged free_vars() - once per level, at that.
+        for (const auto& scope : scopes_ | std::views::reverse)
+            if (old_def->has_free_vars_in(scope.old_vars)) return true;
+        return false;
+    }
 
     /// Updates curr_mut() to @p new_mut and restores it at the end of the scope.
     [[nodiscard]] auto enter(Def* new_mut) { return fe::Restore(curr_mut_, new_mut); }
@@ -113,6 +118,23 @@ protected:
     /// A stub that already has users stays mutable, as the users captured it during its own rewrite.
     /// Only needed if you fill a stub yourself instead of going through rewrite_stub.
     const Def* seal(Def* old_mut, Def* new_mut);
+
+    struct Scope {
+        Vars old_vars; ///< Only mappings depending on these go here; the root's are VarRewriter's substitutions.
+        Vars new_vars;
+        Def2Def old2new;
+    };
+    fe::Vector<Scope> scopes_;
+
+private:
+    World* world_;
+    Def* curr_mut_ = nullptr;
+
+    friend void swap(Rewriter& rw1, Rewriter& rw2) noexcept {
+        using std::swap;
+        swap(rw1.scopes_, rw2.scopes_);
+        // Do NOT swap world_: it is a back pointer!
+    }
 };
 
 /// Extends Rewriter for variable substitution.
@@ -128,18 +150,12 @@ public:
         add(var, arg);
     }
 
-    // Add initial mapping from @pvar -> @p arg.
+    /// Substitutes @p arg for @p var.
     VarRewriter& add(const Var* var, const Def* arg) {
         map(var, arg);
-        vars_.emplace_back(Vars(var));
+        bind_old(var);
         return *this;
     }
-    ///@}
-
-    /// @name push / pop
-    ///@{
-    void push() final { Rewriter::push(), vars_.emplace_back(Vars()); }
-    void pop() final { vars_.pop_back(), Rewriter::pop(); }
     ///@}
 
     /// @name rewrite
@@ -151,18 +167,7 @@ public:
     friend void swap(VarRewriter& vrw1, VarRewriter& vrw2) noexcept {
         using std::swap;
         swap(static_cast<Rewriter&>(vrw1), static_cast<Rewriter&>(vrw2));
-        swap(vrw1.vars_, vrw2.vars_);
     }
-
-private:
-    bool has_intersection(const Def* old_def) {
-        // Def::has_free_vars_in avoids materializing old_def's merged free_vars() - once per level, at that.
-        for (const auto& vars : vars_ | std::views::reverse)
-            if (old_def->has_free_vars_in(vars)) return true;
-        return false;
-    }
-
-    fe::Vector<Vars> vars_;
 };
 
 class Zonker : public Rewriter {
@@ -173,11 +178,7 @@ public:
         : Rewriter(world) {}
     ///@}
 
-    /// @name Stack of Maps
-    ///@{
-    const Def* map(const Def* old_def, const Def* new_def) final;
     const Def* lookup(const Def* old_def) final;
-    ///@}
 
     /// @name rewrite
     ///@{
@@ -189,13 +190,6 @@ public:
     friend void swap(Zonker& z1, Zonker& z2) noexcept {
         using std::swap;
         swap(static_cast<Rewriter&>(z1), static_cast<Rewriter&>(z2));
-    }
-
-private:
-    const Def* get(const Def* old_def) {
-        auto& old2new = old2news_.back();
-        if (auto i = old2new.find(old_def); i != old2new.end()) return i->second;
-        return nullptr;
     }
 };
 

@@ -79,7 +79,7 @@ void File::stream(fe::Tab& tab, std::ostream& os) const { stream_decls(tab, os, 
 
 void ErrorPtrn::stream(fe::Tab&, std::ostream& os) const { os << "<error pattern>"; }
 void AliasPtrn::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "{} as {}", S(tab, ptrn()), dbg()); }
-void GrpPtrn::stream(fe::Tab&, std::ostream& os) const { os << dbg(); }
+void GrpPtrn::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "{}: {}", dbg(), S(tab, id()->type())); }
 
 void IdPtrn::stream(fe::Tab& tab, std::ostream& os) const {
     // clang-format off
@@ -90,12 +90,15 @@ void IdPtrn::stream(fe::Tab& tab, std::ostream& os) const {
     os << "<invalid identifier pattern>";
 }
 
+void IdDecl::stream(fe::Tab&, std::ostream& os) const { os << dbg(); }
+
 void TuplePtrn::stream(fe::Tab& tab, std::ostream& os) const {
     os << delim_l();
-    for (std::string_view sep{}; auto ptrn : ptrns()) {
-        std::print(os, "{}{}", sep, S(tab, ptrn.get()));
-        sep = ptrn->isa<GrpPtrn>() ? " " : ", ";
-    }
+    for (size_t i = 0, n = num_ptrns(); i != n; ++i)
+        if (i + 1 != n && ptrn(i + 1)->isa<GrpPtrn>())
+            std::print(os, "{} ", ptrn(i)->dbg());
+        else
+            std::print(os, "{}{}", S(tab, ptrn(i)), i + 1 != n ? ", " : "");
     os << delim_r();
 }
 
@@ -168,9 +171,10 @@ void InfixExpr::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 void MatchExpr::Arm::stream(fe::Tab& tab, std::ostream& os) const {
-    auto sel = index() ? std::format("{}", *index()) : std::format("{}", S(tab, ptrn()));
-    if (payload()) return std::print(os, "{} {} => {}", sel, S(tab, payload()), S(tab, body()));
-    std::print(os, "{} => {}", sel, S(tab, body()));
+    if (index()) std::print(os, "{} ", *index());
+    if (ctor_) std::print(os, "{} ", ctor_);
+    if (ptrn()) std::print(os, "{} ", S(tab, ptrn()));
+    std::print(os, "=> {}", S(tab, body()));
 }
 
 void VariantExpr::Ctor::stream(fe::Tab& tab, std::ostream& os) const {
@@ -196,7 +200,7 @@ void MatchExpr::stream(fe::Tab& tab, std::ostream& os) const {
 
 void PiExpr::Dom::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}", S(tab, ptrn()));
-    if (ret()) std::print(os, " {} {}", Tag::T_arrow_r, S(tab, ret()->type()));
+    if (ret_type()) std::print(os, " {} {}", Tag::T_arrow_r, S(tab, ret_type()));
 }
 
 void PiExpr::stream(fe::Tab& tab, std::ostream& os) const {
@@ -218,7 +222,9 @@ void SigmaExpr::stream(fe::Tab& tab, std::ostream& os) const { ptrn()->stream(ta
 void TupleExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "({})", R(tab, elems())); }
 
 void SeqExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{}{}; {}{}", is_pack() ? "‹" : "«", S(tab, arity()), S(tab, body()), is_pack() ? "›" : "»");
+    os << (is_pack() ? "‹" : "«");
+    if (index()->dbg()) std::print(os, "{}: ", S(tab, index()));
+    std::print(os, "{}; {}{}", S(tab, shape()), S(tab, body()), is_pack() ? "›" : "»");
 }
 
 void SingleExpr::stream(fe::Tab& tab, std::ostream& os) const {
@@ -334,7 +340,7 @@ void LamDecl::Dom::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}", S(tab, ptrn()));
     if (filter()) std::print(os, "@{}", S(tab, filter()));
     // Parser::parse_lam_decl fills in an omitted codomain of a `fun`/`fn` as a hole.
-    if (ret() && !ret()->type()->isa<HoleExpr>()) std::print(os, ": {}", S(tab, ret()->type()));
+    if (ret_type() && !ret_type()->isa<HoleExpr>()) std::print(os, ": {}", S(tab, ret_type()));
 }
 
 /// Does @p expr span several statements and hence deserve an indented block of its own?
@@ -344,6 +350,13 @@ static bool is_block(const Expr* expr) {
 }
 
 void LamDecl::stream_(fe::Tab& tab, std::ostream& os) const {
+    if (auto nom = nom_sugar()) {
+        std::print(os, "nom {}", dbg());
+        for (auto dom : doms())
+            std::print(os, " {}", S(tab, dom.get()));
+        std::print(os, " = {}", S(tab, nom->body()));
+        return;
+    }
     std::print(os, "{}", tag());
     if (dbg()) std::print(os, " {}", dbg());
     for (auto dom : doms())

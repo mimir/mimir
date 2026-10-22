@@ -1,6 +1,0 @@
-// RUN: %mim %s
-
-plugin core;
-plugin refly;
-
-lam and_ff (i: Bool): Bool = refly.struc.e (core.bit2.and_ 0 (i, ff), ff);

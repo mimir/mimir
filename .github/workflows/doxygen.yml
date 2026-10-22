@@ -72,6 +72,7 @@ jobs:
                 -G Ninja                                          \
                 -DCMAKE_BUILD_TYPE=Debug                          \
                 -DMIM_BUILD_DOCS=ON                               \
+                -DMIM_BUILD_PYTHON=OFF                            \
                 -DDOXYGEN_EXECUTABLE=${{env.DOXYGEN_DIR}}/bin/doxygen
 
       - name: Build

@@ -9,7 +9,7 @@ namespace mim::plug::tensor::phase {
 /// Bufferizes the low-level tensor axioms onto the shared `buffer` layer.
 /// `Extract` / `Insert` become `buffer.read` / `buffer.write`, `generate` becomes an allocating fill loop,
 /// `map_reduce` / `broadcast` / `pad` / `concat` /
-/// `gather` / `scatter` become their buffer-world `btensor.*` counterparts,
+/// `gather` / `scatter` become their buffer-world `btensor.*` counterparts writing into a `buffer.alloc`ed destination,
 /// and tensor array values `«s; T»` become `buffer.Buf (r, s, T)` handles.
 /// Afterwards `buffer.lower_ptr` lowers the buffer layer to `mem.Ptr` + `mem.lea` / `mem.load` / `mem.store`.
 ///
@@ -28,8 +28,7 @@ namespace mim::plug::tensor::phase {
 /// function boundaries, never as a global type rewrite.
 class LowerToMem : public RWPhase {
 public:
-    LowerToMem(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     void start() override;
@@ -68,6 +67,10 @@ private:
     /// The result is *not* a buffer if @p old's type was not recorded as a tensor type.
     const Def* to_buffer(const Def* val, const Def* old);
 
+    /// LowerToMem::materialize of @p old_arg as a buffer.
+    /// A non-buffer value is wrapped in a `buffer.lit` of rank @p r and shape @p shape.
+    const Def* make_buffer(const Def* old_arg, const Def* r, const Def* shape);
+
     /// LowerToMem::to_buffer on each element of an `«n; …»` operand list, re-tupled so the tuple type is
     /// re-inferred from the converted elements; `nullptr` if one element is not a recorded tensor type.
     const Def* buffer_list(const Def* list, const Def* old_list, const Def* n);
@@ -77,10 +80,6 @@ private:
     /// monolithic `mem.store` of a giant literal array (which the LLVM backend cannot digest).
     /// Used for constant splats `‹s; c›` and scalar `tensor.broadcast`s.
     const Def* splat_buffer(const Def* arr_ty, const Def* scalar);
-
-    /// Buffer-reuse policy. `false` (the initial *always-allocate-and-copy* policy) is always sound.
-    /// A future liveness-based policy may return `true` to write into the source buffer in place.
-    bool reuse_in_place(const Def*) const { return false; }
 
     /// Pre-pass: records every array type used as a tensor operand/result and the set of bufferized
     /// functions; hard-errors on program shapes the conversion cannot handle (there is no value-semantics

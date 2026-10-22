@@ -1,0 +1,18 @@
+// RUN: %mim -p opt %s -o -
+
+plugin refly;
+
+// An untyped binder used as a type gets the sort `Type ?l`.
+lam pair (A) (B: *): * = [A, B];
+lam both (A) (B): * = [A, B];
+lam id (A) (x: A): A = x;
+// `max(?a, 1) = 1` leaves `?a` open, so it defaults to 0 at the end of the declaration.
+lam kinds (A) (B: □): □ = [A, B];
+
+let p: pair Nat Bool = (23, tt);
+let q: both Nat Bool = (23, tt);
+let k: kinds Nat (*) = (23, Bool);
+
+let _ = refly.struc.e (id Nat 23, 23);
+let _ = refly.struc.e (p#0_2, 23);
+let _ = refly.struc.e (k#0_2, 23);

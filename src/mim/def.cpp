@@ -26,20 +26,6 @@ std::ostream& DefKey::stream(std::ostream& os, const Def* d) { return os << d->s
  * constructors
  */
 
-// The Deps a node contributes to *itself*; Def::dep_ then accumulates the ones of its deps() on top.
-static constexpr unsigned node2dep(Node node, bool mut) {
-    auto dep = mut ? Dep::Mut : Dep::None;
-    // clang-format off
-    switch (node) {
-        case Node::Hole:  dep |= Dep::Hole;           break;
-        case Node::Proxy: dep |= Dep::Proxy;          break;
-        case Node::Var:   dep |= Dep::Var | Dep::Mut; break;
-        default:                                      break;
-    }
-    // clang-format on
-    return fe::to_underlying(dep);
-}
-
 Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     : world_(world)
     , flags_(flags)
@@ -47,45 +33,19 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
     , mut_(false)
     , external_(false)
     , annex_(false)
-    , dirty_(false)
+    , has_hole_(false)
     , num_ops_(ops.size())
     , type_(type) {
-    auto dep = node2dep(node, false);
-
-    if (node == Node::Univ) {
-        dep_  = dep;
-        hash_ = fe::hash_combine(0, node_t(Node::Univ));
+    if (node == Node::Level) {
+        hash_ = fe::hash_combine(0, node_t(Node::Level));
         return;
     }
 
     // A gid is a u32, so two of them - or a Node and one - share a single hash step.
-    auto h    = fe::hash_combine(0, u64(node) << 32 | (type ? type->gid() : 0));
-    h         = fe::hash_combine(h, flags_);
-    auto vars = Vars();
-    auto muts = Muts();
-    World* w  = nullptr;
+    auto h = fe::hash_combine(0, u64(node) << 32 | (type ? type->gid() : 0));
+    h      = fe::hash_combine(h, flags_);
 
-    auto collect = [&](const Def* d, bool with_vars = true, bool with_muts = true) {
-        if (!with_vars && !with_muts) return;
-        auto mask = ~0u;
-        if (!with_vars) mask &= ~fe::to_underlying(Dep::Var);
-        if (!with_muts) mask &= ~fe::to_underlying(Dep::Mut);
-        dep |= d->dep_ & mask;
-        // A Def without Dep::Var and Dep::Mut has neither local Vars nor local Muts.
-        if (!(d->dep_ & (fe::to_underlying(Dep::Var) | fe::to_underlying(Dep::Mut)))) return;
-        auto dvars = with_vars ? d->local_vars() : Vars();
-        auto dmuts = with_muts ? d->local_muts() : Muts();
-        if ((vars && dvars) || (muts && dmuts)) {
-            if (!w) w = &d->world();
-            vars = w->vars().merge(vars, dvars);
-            muts = w->muts().merge(muts, dmuts);
-        } else {
-            if (dvars) vars = dvars;
-            if (dmuts) muts = dmuts;
-        }
-    };
-
-    if (type) collect(type);
+    auto has_hole = type && type->has_hole_;
 
     auto ptr  = ops_ptr();
     auto gids = u64(0);
@@ -94,15 +54,36 @@ Def::Def(World* world, Node node, const Def* type, Defs ops, flags_t flags)
         ptr[i]  = op;
         gids    = gids << 32 | op->gid();
         if (i & 1) h = fe::hash_combine(h, gids), gids = 0;
-        if (node == Node::Proxy)
-            collect(op, flags & Proxy::Vars_Bit, flags & Proxy::Muts_Bit);
-        else
-            collect(op);
+        if (node != Node::Proxy || flags & (Proxy::Vars_Bit | Proxy::Muts_Bit)) has_hole |= op->has_hole_;
     }
     if (gids) h = fe::hash_combine(h, gids); // gid 0 is never handed out, so this odd tail cannot alias a pair
 
-    dep_  = dep;
-    hash_ = h;
+    has_hole_ = has_hole;
+    hash_     = h;
+}
+
+void Def::collect_locals() {
+    auto vars    = Vars();
+    auto muts    = Muts();
+    auto collect = [&](const Def* d, bool with_vars = true, bool with_muts = true) {
+        auto dvars = with_vars ? d->local_vars() : Vars();
+        auto dmuts = with_muts ? d->local_muts() : Muts();
+        if ((vars && dvars) || (muts && dmuts)) {
+            vars = world().vars().merge(vars, dvars);
+            muts = world().muts().merge(muts, dmuts);
+        } else {
+            if (dvars) vars = dvars;
+            if (dmuts) muts = dmuts;
+        }
+    };
+
+    if (type()) collect(type());
+    for (auto op : ops())
+        if (node() == Node::Proxy)
+            collect(op, flags_ & Proxy::Vars_Bit, flags_ & Proxy::Muts_Bit);
+        else
+            collect(op);
+
     vars_ = vars;
     muts_ = muts;
 }
@@ -116,8 +97,7 @@ Def::Def(Node node, const Def* type, size_t num_ops, flags_t flags)
     , mut_(true)
     , external_(false)
     , annex_(false)
-    , dirty_(false)
-    , dep_(node2dep(node, true))
+    , has_hole_(node == Node::Hole)
     , num_ops_(num_ops)
     , type_(type) {
     var_ = nullptr;
@@ -131,8 +111,7 @@ Def::Def(Node node, Def* binder)
     , mut_(false)
     , external_(false)
     , annex_(false)
-    , dirty_(false)
-    , dep_(node2dep(node, false))
+    , has_hole_(false)
     , num_ops_(0)
     , type_(nullptr) {
     vars_ = Vars(as<Var>());
@@ -142,8 +121,8 @@ Def::Def(Node node, Def* binder)
 Nat::Nat(World& world)
     : Def(Node, world.type(), Defs{}, 0) {}
 
-UMax::UMax(World& world, Defs ops)
-    : Def(Node, world.univ(), ops, 0) {}
+LMax::LMax(World& world, Defs ops)
+    : Def(Node, world.type_level(), ops, 0) {}
 
 /*
  * immutabilize
@@ -155,8 +134,7 @@ bool Def::is_immutabilizable() {
     auto v = has_var();
     for (auto op : deps()) {
         if (v && op->has_free_var(v)) return false;
-        for (auto mut : op->local_muts())
-            if (mut == this) return false; // recursion
+        if (op->local_muts().contains(this)) return false; // recursion
     }
     return true;
 }
@@ -242,6 +220,21 @@ const Def* Def::var() {
     return world().var(this);
 }
 
+std::pair<const Var*, std::optional<nat_t>> Var::isa_tproj(const Def* def) {
+    if (auto var = def->isa<Var>()) {
+        if (var->num_tprojs() == 1 && var->proj(1, 0) == var) return {var, 0};
+        return {var, std::nullopt};
+    }
+    if (auto ex = def->isa<Extract>()) {
+        if (auto var = ex->tuple()->isa<Var>()) {
+            // A thresholded Var's only tproj is the Var itself.
+            if (auto i = Lit::isa(ex->index()); i && var->num_tprojs() == var->num_projs()) return {var, i};
+            return {var, std::nullopt};
+        }
+    }
+    return {};
+}
+
 // clang-format off
 const Def* Def::var_type() {
     switch (mut_node()) {
@@ -290,7 +283,7 @@ bool Def::has_free_vars() const {
 }
 
 bool Def::has_free_vars_in(Vars vars) const {
-    return any_free_vars(this, [vars](Vars fvs) { return vars.has_intersection(fvs); });
+    return vars && any_free_vars(this, [vars](Vars fvs) { return vars.has_intersection(fvs); });
 }
 
 Vars Def::free_vars() {
@@ -476,8 +469,8 @@ void Def::set_dbg_key_(DbgKey key, bool ow) const {
 const Def* Def::unfold_type() const {
     if (auto t = type()) return t;
     auto& w = world();
-    if (auto t = isa<Type>()) return w.type(w.uinc(t->level()));
-    assert(isa<Univ>());
+    if (auto t = isa<Type>()) return w.type(w.lsucc(t->level()));
+    assert(isa<Level>());
     return nullptr;
 }
 
@@ -491,9 +484,9 @@ std::string_view Def::node_name() const {
 }
 
 Defs Def::deps() const noexcept {
-    // Univ, Type, and Var are the only nodes built without a type - and none of them has deps.
+    // Level, Type, and Var are the only nodes built without a type - and none of them has deps.
     if (!type_) {
-        assert(isa<Univ>() || isa<Type>() || isa<Var>());
+        assert(isa<Level>() || isa<Type>() || isa<Var>());
         return Defs();
     }
 
@@ -574,8 +567,10 @@ bool Def::greater(const Def* a, const Def* b) { return cmp_<Cmp::G>(a, b); }
 const Def* Def::immutabilize() {
     auto& w = world();
     switch (mut_node()) {
-        case MutNode::Pi:
-            return is_immutabilizable() ? w.pi(as<Pi>()->dom(), as<Pi>()->codom(), as<Pi>()->is_implicit()) : nullptr;
+        case MutNode::Pi: {
+            auto pi = as<Pi>();
+            return is_immutabilizable() ? w.pi(pi->dom(), pi->codom(), pi->is_implicit()) : nullptr;
+        }
         case MutNode::Sigma:   return is_immutabilizable() ? w.sigma(ops()) : nullptr;
         case MutNode::Variant: return is_immutabilizable() ? w.variant(ops()) : nullptr;
         case MutNode::Rule:    return nullptr; // TODO should we ever immutabilize Rules?
@@ -660,8 +655,7 @@ const Def* Def::proj(nat_t a, nat_t i) const {
     if (auto seq = isa<Seq>()) {
         auto& w = world();
         if (seq->shape().is_fused()) return w.peel(seq, w.lit_idx(a, i)); // one axis off a fused shape yields a sub-Seq
-        if (seq->has_var()) return seq->reduce(w.lit_idx(a, i));
-        return seq->body();
+        return seq->reduce(w.lit_idx(a, i));
     }
 
     if (isa<Prod>()) return op(i);
@@ -681,13 +675,11 @@ const Def* Idx::isa(const Def* def) {
 }
 
 std::optional<nat_t> Idx::isa_lit(const Def* def) {
-    if (auto size = Idx::isa(def))
-        if (auto l = Lit::isa(size)) return l;
+    if (auto size = Idx::isa(def)) return Lit::isa(size);
     return {};
 }
 
 std::optional<nat_t> Idx::size2bitwidth(const Def* size) {
-    if (size->isa<Top>()) return 64;
     if (auto s = Lit::isa(size)) return size2bitwidth(*s);
     return {};
 }

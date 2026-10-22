@@ -61,7 +61,8 @@ public:
             u32 curr_sub     = 0;
             CurrLoc curr_loc = {};
             Sym name;
-            mutable bool frozen = false;
+            mutable bool frozen  = false;
+            mutable bool lenient = false;
         } pod;
 
 #ifdef MIM_ENABLE_CHECKS
@@ -159,6 +160,14 @@ public:
     [[nodiscard]] auto freeze() const { return fe::Restore(state_.pod.frozen, true); }
     ///@}
 
+    /// @name Lenient
+    /// A lenient World builds ill-typed App%s and Tuple%s instead of reporting them.
+    /// An Analysis rewrites under partial substitutions, which may disagree with dependent types until its fixed point.
+    ///@{
+    bool is_lenient() const { return state_.pod.lenient; }
+    [[nodiscard]] auto lenient() const { return fe::Restore(state_.pod.lenient, true); }
+    ///@}
+
     /// @name Debugging Features
     ///@{
 #ifdef MIM_ENABLE_CHECKS
@@ -177,10 +186,8 @@ public:
 
     class Externals {
     public:
-        ///@name Get syms/muts
+        ///@name Get muts
         ///@{
-        const auto& sym2mut() const { return sym2mut_; }
-        auto syms() const { return sym2mut_ | std::views::keys; }
         auto muts() const { return sym2mut_ | std::views::values; }
         /// Returns a copy of @p muts() in a fe::Vector; this allows you to modify the Externals while iterating.
         /// @note The iteration will see all old externals, of course.
@@ -305,16 +312,22 @@ public:
 
     /// Imports @p def of Driver::library into this World.
     const Def* import(const Def* def) { return importer_.import(def); }
-    //@}
+    ///@}
 
-    /// @name Univ, Type, Var, Proxy, Hole
+    /// @name Level, Type, Var, Proxy, Hole
     ///@{
-    const Univ* univ() { return data_.univ; }
-    const Def* uinc(const Def* op, level_t offset = 1);
-    template<int sort = UMax::Univ>
-    const Def* umax(Defs);
+    const Level* type_level() { return data_.type_level; }
+    const Def* lsucc(const Def* op, level_t offset = 1);
+    const Def* lmax(Defs levels);
+    const Def* level(Defs types); ///< The lmax of the levels of all @p types, each of which must be a `Type level`.
     const Type* type(const Def* level);
-    const Type* type_infer_univ() { return type(mut_hole_univ()); }
+    /// Placeholder type of a mutable whose sort Def::finalize infers from its ops.
+    const Level* type_pending() { return type_level(); }
+    const Type* type_infer_level() { return type(mut_hole_level()); }
+    /// Postpones `lmax = level` as it does not determine the level Hole%s of @p lmax yet.
+    void postpone(const LMax* lmax, const Def* level) { move_.levels.push_back({lmax, level, get_loc()}); }
+    /// Defaults the level Hole%s of all postponed constraints that are still unknown to `0` and checks them.
+    void solve_levels();
     template<level_t level = 0>
     const Type* type() {
         if constexpr (level == 0)
@@ -322,27 +335,32 @@ public:
         else if constexpr (level == 1)
             return data_.type_1;
         else
-            return type(lit_univ(level));
+            return type(lit_level(level));
     }
     const Def* var(Def* mut);
-    const Def*
-    inhabitant(const Def* type); ///< The sole inhabitant of @p type, if it is a singleton, `nullptr` otherwise.
+    /// The sole inhabitant of @p type, if it has exactly one, `nullptr` otherwise.
+    const Def* inhabitant(const Def* type) {
+        // Every elimination asks, so the common case is decided inline.
+        switch (type->node()) {
+            case Node::App: {
+                auto app = type->as<App>();
+                return app->callee()->isa<Idx>() && Lit::isa(app->arg()) == 1 ? lit_idx_1_0() : nullptr;
+            }
+            case Node::Single:
+            case Node::Sigma:
+            case Node::Arr:
+            case Node::Variant: return inhabitant_(type);
+            default: return nullptr;
+        }
+    }
     /// @see Proxy::tracks_vars, Proxy::tracks_muts
     const Proxy* proxy(const Def* type, Defs ops, u32 tag, bool vars = false, bool muts = false) {
         return unify<Proxy>(type, Proxy::mk_flags(tag, vars, muts), ops);
     }
 
     Hole* mut_hole(const Def* type) { return insert<Hole>(type); }
-    Hole* mut_hole_univ() { return mut_hole(univ()); }
-    Hole* mut_hole_type() { return mut_hole(type_infer_univ()); }
-
-    /// Either a value `?:?:Type ?` or a type `?:Type ?:Type ?`.
-    Hole* mut_hole_infer_entity() {
-        auto t   = type_infer_univ();
-        auto res = mut_hole(mut_hole(t));
-        assert(this == &res->world());
-        return res;
-    }
+    Hole* mut_hole_level() { return mut_hole(type_level()); }
+    Hole* mut_hole_type() { return mut_hole(type_infer_level()); }
     ///@}
 
     /// @name Axm
@@ -470,15 +488,12 @@ public:
     const Def* pack(fe::View<u64> shape, const Def* body) { return seq(true , shape, body); }
     const Def* arr (u64               n, const Def* body) { return seq(false,     n, body); }
     const Def* pack(u64               n, const Def* body) { return seq(true ,     n, body); }
-    const Def*  arr_unsafe(              const Def* body) { return seq_unsafe(false, body); }
-    const Def* pack_unsafe(              const Def* body) { return seq_unsafe(true , body); }
     // clang-format on
     ///@}
 
     /// @name prod
     /// Generic constructor for tuple or sigma.
     ///@{
-    // clang-format off
     const Def* prod(bool term, Defs ops) { return term ? tuple(ops) : sigma(ops); }
     const Def* prod(bool term) { return term ? (const Def*)tuple() : (const Def*)sigma(); } ///< `()` or `[]`.
     ///@}
@@ -487,7 +502,6 @@ public:
     /// These either build a Pack or an Arr depending on the first argument.
     /// Oftentimes, the logic for Pack%s and Arr%ays can be quite similar; these methods help factoring such code.
     ///@{
-    const Def* unit(bool is_pack) { return is_pack ? (const Def*)tuple() : sigma(); }
     Seq* mut_seq(bool is_pack, const Def* type) { return is_pack ? (Seq*)insert<Pack>(type) : insert<Arr>(type); }
     const Def* seq(bool is_pack, Shape shape, const Def* body);
     const Def* seq(bool is_pack, Defs shape, const Def* body);
@@ -495,7 +509,6 @@ public:
     const Def* seq(bool is_pack, fe::View<u64> shape, const Def* body) {
         return seq(is_pack, DefVec(shape, [this](u64 n) { return lit_nat(n); }), body);
     }
-    const Def* seq_unsafe(bool is_pack, const Def* body) { return seq(is_pack, top_nat(), body); }
 
     /// @p s without its leading @p k axes - its body once @p k covers all of them; `nullptr` if that isn't a type.
     const Def* drop(const Seq* s, nat_t k);
@@ -519,7 +532,6 @@ public:
     ///@}
 
     /// @name Extract
-    /// @see core::extract_unsafe
     ///@{
     const Def* extract(const Def* d, const Def* i);
     const Def* extract(const Def* d, u64 a, u64 i) { return extract(d, lit_idx(a, i)); }
@@ -530,7 +542,6 @@ public:
     ///@}
 
     /// @name Insert
-    /// @see core::insert_unsafe
     ///@{
     const Def* insert(const Def* d, const Def* i, const Def* val);
     const Def* insert(const Def* d, u64 a, u64 i, const Def* val) { return insert(d, lit_idx(a, i), val); }
@@ -540,9 +551,11 @@ public:
     /// @name Lit
     ///@{
     const Lit* lit(const Def* type, u64 val);
-    const Lit* lit_univ(u64 level) { return lit(univ(), level); }
-    const Lit* lit_univ_0() { return data_.lit_univ_0; }
-    const Lit* lit_univ_1() { return data_.lit_univ_1; }
+    const Lit* lit_level(u64 level) {
+        return level == 0 ? lit_level_0() : level == 1 ? lit_level_1() : lit(type_level(), level);
+    }
+    const Lit* lit_level_0() { return data_.lit_level_0; }
+    const Lit* lit_level_1() { return data_.lit_level_1; }
     /// Def::arity of a Sigma is `lit_nat(num_ops())` and Def::num_projs reads it straight back out, so a plain
     /// World::lit would hash-cons a Lit just to launder an integer. Worth ~4% of an `-Og` Debug compile.
     static constexpr nat_t Num_Lit_Nats = 64;
@@ -561,7 +574,6 @@ public:
     /// Constructs a Lit of type Idx of size @p size.
     /// @note `size = 0` means `2^64`.
     const Lit* lit_idx(nat_t size, u64 val) { return lit(type_idx(size), val); }
-    const Lit* lit_idx_unsafe(u64 val) { return lit(type_idx(top(type_nat())), val); }
 
     const Lit* lit_idx(std::integral auto val) { return lit_idx(Idx::bitwidth2size(sizeof(val) * 8), val); }
 
@@ -569,8 +581,6 @@ public:
     /// `val = 64` will be automatically converted to size `0` - the encoding for 2^64.
     const Lit* lit_int(nat_t width, u64 val) { return lit_idx(Idx::bitwidth2size(width), val); }
     const Lit* lit_i1 (bool val) { return lit_int( 1, u64(val)); }
-    const Lit* lit_i2 (u8   val) { return lit_int( 2, u64(val)); }
-    const Lit* lit_i4 (u8   val) { return lit_int( 4, u64(val)); }
     const Lit* lit_i8 (u8   val) { return lit_int( 8, u64(val)); }
     const Lit* lit_i16(u16  val) { return lit_int(16, u64(val)); }
     const Lit* lit_i32(u32  val) { return lit_int(32, u64(val)); }
@@ -595,7 +605,6 @@ public:
     const Def* top(const Def* type) { return ext<true>(type); }
     const Def* type_bot() { return data_.type_bot; }
     const Def* type_top() { return data_.type_top; }
-    const Def* top_nat() { return data_.top_nat; }
     ///@}
 
     /// @name Join & Variant
@@ -623,8 +632,6 @@ public:
     // clang-format off
     const Def* type_bool() { return data_.type_bool; }
     const Def* type_i1()   { return data_.type_bool; }
-    const Def* type_i2()   { return type_int( 2);    }
-    const Def* type_i4()   { return type_int( 4);    }
     const Def* type_i8()   { return type_int( 8);    }
     const Def* type_i16()  { return type_int(16);    }
     const Def* type_i32()  { return type_int(32);    }
@@ -642,6 +649,7 @@ public:
     /// @name implicit_app - Cope with implicit Arguments
     /// Places Hole%s as demanded by Pi::is_implicit() and then apps @p arg.
     ///@{
+    const Def* implicit_holes(const Def* callee); ///< Only places the Hole%s.
     template<bool Normalize = true>
     const Def* implicit_app(const Def* callee, const Def* arg);
     template<bool Normalize = true>
@@ -717,6 +725,9 @@ public:
     /// A dependent Sigma is projected while it is still being built - its later ops do not exist yet - so reducing
     /// all of them is not an option there.
     const Def* reduce(const Var* var, const Def* arg, size_t i);
+
+    /// The type of component @p i of the @p n-ary @p type, given its leading components @p parts.
+    const Def* component(const Def* type, Defs parts, size_t n, size_t i);
     ///@}
 
     /// @name for_each
@@ -757,12 +768,15 @@ public:
 
 private:
     const Def* annex_miss(flags_t);
+    const Def* tuple(const Def* type, Defs ops, bool may_be_uniform);
+    void check_tuple(const Tuple*);
 
     Shape check_index(const Def* index); ///< Validates @p index and folds its size-1 axes away.
     /// Type-checks a *scalar* @p index of `Idx size`; `true` if the axis has folded out of @p type.
     bool is_folded_axis(const Def* type, const Def* index, const Def* size);
     const Def* extract1(const Def* d, const Def* i); ///< World::extract for a *scalar* @p i.
     const Def* extract_fused(const Def* d, Shape i); ///< World::extract for an @p i that no longer folds.
+    const Def* inhabitant_(const Def* type);         ///< World::inhabitant for an aggregate or Single @p type.
 
     /// @name Put into Sea of Nodes
     ///@{
@@ -805,11 +819,21 @@ private:
             deallocate<T>(state, def);
             return static_cast<const T*>(*i);
         }
+        // Most constructions are hash-cons hits, so only a fresh node pays for its local Vars and Muts.
+        if constexpr (!std::is_same_v<T, Var>) def->collect_locals();
 
 #ifdef MIM_ENABLE_CHECKS
         if (!flags().reeval_breakpoints && breakpoints().contains(def->gid())) fe::breakpoint();
 #endif
         return def;
+    }
+
+    /// Like World::unify but yields the sole inhabitant of a singleton @p type instead, as World::var does.
+    template<class T, class... Args>
+    const Def* unify_elim(const Def* type, Args&&... args) {
+        if (type) // nullptr in a frozen World
+            if (auto inhabitant = this->inhabitant(type)) return inhabitant;
+        return unify<T>(type, std::forward<Args>(args)...);
     }
 
     template<class T>
@@ -835,14 +859,16 @@ private:
         if (breakpoints().contains(def->gid())) fe::breakpoint();
 #endif
         fe::assert_emplace(move_.sea, def);
+        if constexpr (!std::is_same_v<T, Var>)
+            if (!def->mut_) def->collect_locals();
         return def;
     }
 
-#if (!defined(_MSC_VER) && defined(NDEBUG))
+#if !defined(_MSC_VER) && !defined(NDEBUG)
     struct Lock {
         Lock() { assert((guard_ = !guard_) && "you are not allowed to recursively invoke allocate"); }
         ~Lock() { guard_ = !guard_; }
-        static bool guard_;
+        static inline bool guard_ = false;
     };
 #else
     struct Lock {
@@ -905,6 +931,12 @@ private:
     /// Unlike reduct() this never allocates and hence works on a frozen World.
     const Def* cached_reduct(const Var* var, const Def* arg, size_t i);
 
+    struct LevelEq {
+        const LMax* lmax;
+        const Def* level;
+        Loc loc;
+    };
+
     struct Move {
         Move(Driver* driver)
             : annexes(driver) {}
@@ -919,6 +951,7 @@ private:
         fe::Patricia<Def, DefKey> muts;
         fe::Patricia<const Var, DefKey> vars;
         ankerl::unordered_dense::map<std::pair<const Var*, const Def*>, Reduct*> substs;
+        fe::Vector<LevelEq> levels;
 
         friend void swap(Move& m1, Move& m2) noexcept {
             using std::swap;
@@ -931,24 +964,24 @@ private:
             swap(m1.muts,         m2.muts);
             swap(m1.externals,    m2.externals);
             swap(m1.annexes,      m2.annexes);
+            swap(m1.levels,       m2.levels);
             // clang-format on
         }
     } move_;
 
     struct {
-        const Univ* univ;
+        const Level* type_level;
         const Type* type_0;
         const Type* type_1;
         const Bot* type_bot;
         const Top* type_top;
         const Def* type_bool;
-        const Top* top_nat;
         const Sigma* sigma;
         const Tuple* tuple;
         const Nat* type_nat;
         const Idx* type_idx;
-        const Lit* lit_univ_0;
-        const Lit* lit_univ_1;
+        const Lit* lit_level_0;
+        const Lit* lit_level_1;
         const Lit* lit_nat_max;
         const Lit* lit_idx_1_0;
         std::array<const Lit*, 2> lit_bool;
@@ -968,9 +1001,9 @@ private:
         swap(w1.move_,     w2.move_    );
         // clang-format on
 
-        swap(w1.data_.univ->world_, w2.data_.univ->world_);
-        assert(&w1.univ()->world() == &w1);
-        assert(&w2.univ()->world() == &w2);
+        swap(w1.data_.type_level->world_, w2.data_.type_level->world_);
+        assert(&w1.type_level()->world() == &w1);
+        assert(&w2.type_level()->world() == &w2);
     }
 };
 

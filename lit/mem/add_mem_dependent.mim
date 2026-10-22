@@ -14,7 +14,7 @@ extern fun poly {s: Nat} (a b: Idx s) as ab: [Idx s, Cn [Idx s, Cn«2; Idx s»]]
 
 // Value-dependent domain: the type of `a` depends on the earlier parameter `n`.
 extern con dep (n: Nat, a: «n; I32», return: Cn [mem.M 0, I32]) =
-    return (⊤:(mem.M 0), a#(0:(Idx n)));
+    return (⊤:(mem.M 0), a#(core.idx 0 n 0));
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (
@@ -23,6 +23,6 @@ extern lam _compile (): compile.Phase =
     );
 
 // A leading mem.M is prepended while the value-dependent `«n; I32»` domain stays well-typed.
-// CHECK-DAG: extern con dep (_{{[0-9]+}}: mem.M 0, n: Nat, a: «n; I32»
+// CHECK-DAG: extern con dep (_{{[0-9]+}}: core.M 0, n: Nat, a: «n; I32»
 // The free `s` is preserved and every nested continuation gets its own leading mem.M.
-// CHECK-DAG: extern con poly {s: Nat} (_{{[0-9]+}}: mem.M 0,{{.*}}Cn [mem.M 0, Idx s, Idx s]]]
+// CHECK-DAG: extern con poly {s: Nat} (_{{[0-9]+}}: core.M 0,{{.*}}Cn [core.M 0, Idx s, Idx s]]]

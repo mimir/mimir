@@ -6,8 +6,7 @@ namespace mim::plug::tensor::phase {
 
 class Fuse : public RWPhase {
 public:
-    Fuse(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     void start() override;

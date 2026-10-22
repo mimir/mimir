@@ -22,4 +22,4 @@ extern lam _compile(): compile.Phase =
         mem.seo,
     );
 
-// CHECK-DAG: con work ({{[_a-z0-9]+}}: [mem.M 0, n: Nat, «n; Nat», Nat, Cn [mem.M 0, Nat]])
+// CHECK-DAG: con work ({{[_a-z0-9]+}}: core.M 0, n: Nat, {{[_a-z0-9]+}}: «n; Nat», {{[_a-z0-9]+}}: Nat, {{[_a-z0-9]+}}: Cn [core.M 0, Nat])

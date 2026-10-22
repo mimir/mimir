@@ -23,9 +23,9 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m venv .venv
-          .venv/bin/pip install lit psutil
-          brew install llvm
-          LLVM_PREFIX=$(brew --prefix llvm)
+          .venv/bin/pip install "lit<24" psutil
+          brew install llvm@22
+          LLVM_PREFIX=$(brew --prefix llvm@22)
           echo "LLVM_PREFIX=${LLVM_PREFIX}" >> $GITHUB_ENV
           echo "${LLVM_PREFIX}/bin" >> $GITHUB_PATH
 
@@ -52,7 +52,7 @@ jobs:
                 -DMIM_TEST_ROUNDTRIP=${{matrix.build-type == 'Release' && 'ON' || 'OFF'}} \
                 -DMIM_FILECHECK=${LLVM_PREFIX}/bin/FileCheck                \
                 -DMIM_LIT_TIMEOUT=300                                       \
-                -DPython3_EXECUTABLE=${{github.workspace}}/.venv/bin/python3
+                -DPython_EXECUTABLE=${{github.workspace}}/.venv/bin/python3
 
       - name: Build
         run: cmake --build build -v

@@ -10,6 +10,8 @@ plugin core;
 plugin mem;
 plugin buffer;
 import compile;
+
+use core.ops.n;
 ///
 /// ## Types
 ///
@@ -35,10 +37,10 @@ anx let LocalM  = mem.M addr_space_local;
 ///
 /// ### Pointer Types
 ///
-anx lam GlobalPtr(T: *): * = mem.Ptr (T, addr_space_global);
-anx lam SharedPtr(T: *): * = mem.Ptr (T, addr_space_shared);
-anx lam ConstPtr(T: *): *  = mem.Ptr (T, addr_space_const);
-anx lam LocalPtr(T: *): *  = mem.Ptr (T, addr_space_local);
+anx lam GlobalPtr (T: *): * = mem.Ptr (T, addr_space_global);
+anx lam SharedPtr (T: *): * = mem.Ptr (T, addr_space_shared);
+anx lam ConstPtr (T: *): *  = mem.Ptr (T, addr_space_const);
+anx lam LocalPtr (T: *): *  = mem.Ptr (T, addr_space_local);
 ///
 /// ### Stream Types
 ///
@@ -86,12 +88,13 @@ axm stream_deinit: [mem.M 0, GlobalM, Stream] → [mem.M 0, GlobalM];
 /// Waits for a stream to finish all its work.
 axm stream_sync: [mem.M 0, GlobalM, Stream] → [mem.M 0, GlobalM];
 ///
-/// ### with_streams
+/// #### with_streams
 ///
 /// Provides `n` streams to `func` for executing asynchronous GPU operations, managing their initialization and teardown.
 anx fun with_streams (n: Nat, func: Fn [mem.M 0, GlobalM, «n; Stream»] → [mem.M 0, GlobalM])
                      (m0: mem.M 0, m1: GlobalM)
                    : [mem.M 0, GlobalM] =
+    // FIXME: `streams_ptr` is never freed.
     let (m0, streams_ptr) = mem.alloc («n; Stream», 0) m0;
     init (m0, m1)
     where
@@ -104,8 +107,7 @@ anx fun with_streams (n: Nat, func: Fn [mem.M 0, GlobalM, «n; Stream»] → [me
                         con body (m0: mem.M 0, m1: GlobalM) =
                             let lea = mem.lea (streams_ptr, core.bitcast (Idx n) i);
                             let (m0, m1) = stream_init (m0, m1, lea);
-                            let inc = core.nat.add (i, 1);
-                            loop (m0, m1, inc);
+                            loop (m0, m1, i + 1);
                     end;
             end;
         con run (m0: mem.M 0, m1: GlobalM) =
@@ -122,8 +124,7 @@ anx fun with_streams (n: Nat, func: Fn [mem.M 0, GlobalM, «n; Stream»] → [me
                         con body (m0: mem.M 0, m1: GlobalM) =
                             let idx = core.bitcast (Idx n) i;
                             let (m0, m1) = stream_deinit (m0, m1, streams#idx);
-                            let inc = core.nat.add (i, 1);
-                            loop (m0, m1, inc);
+                            loop (m0, m1, i + 1);
                     end;
             end;
     end;
@@ -171,16 +172,13 @@ end
 /// Allocates memory on the device (in global address space) for the provided host data and copies the
 /// host data to that memory, synchronously (`block`) or asynchronously against a stream (`asyn`).
 pub mod alloc_copy
-    anx let block = lm {T: *}
-                       (m0: mem.M 0, m1: GlobalM, ptr: mem.Ptr0 T)
-                     : [mem.M 0, GlobalM, GlobalPtr T] =
+    anx lam block {T: *} (m0: mem.M 0, m1: GlobalM, ptr: mem.Ptr0 T): [mem.M 0, GlobalM, GlobalPtr T] =
         let (m1, d_ptr) = alloc.block T m1;
         let (m0, m1) = copy_to_device.block (m0, m1, ptr, d_ptr);
         (m0, m1, d_ptr);
 
-    anx let asyn = lm {T: *}
-                       (m0: mem.M 0, m1: GlobalM, ptr: mem.Ptr0 T, stream: Stream)
-                     : [mem.M 0, GlobalM, GlobalPtr T] =
+    anx lam asyn {T: *} (m0: mem.M 0, m1: GlobalM, ptr: mem.Ptr0 T, stream: Stream)
+                      : [mem.M 0, GlobalM, GlobalPtr T] =
         let (m1, d_ptr) = alloc.asyn T (m1, stream);
         let (m0, m1) = copy_to_device.asyn (m0, m1, ptr, d_ptr, stream);
         (m0, m1, d_ptr);
@@ -191,7 +189,7 @@ end
 /// #### buf_alloc_copy
 ///
 /// Placeholder for copying a host-side `buffer.Buf` to the device.
-/// Unlike `gpu.alloc_copy(block)`, this operates directly on the still-abstract `buffer.Buf`
+/// Unlike `gpu.alloc_copy(block)`, this operates directly on the still-abstract `buffer.Buf`.
 axm buf_alloc_copy: {r: Nat, s: «r; Nat», T: *}
                   → [mem.M 0, GlobalM, buffer.Buf (r, s, T)]
                   → [mem.M 0, GlobalM, GlobalPtr «s; T»];
@@ -199,7 +197,7 @@ axm buf_alloc_copy: {r: Nat, s: «r; Nat», T: *}
 /// #### buf_copy_to_host
 ///
 /// Placeholder for copying device data to a host-side `buffer.Buf`.
-/// Unlike `gpu.copy_to_host(block)`, this operates directly on the still-abstract `buffer.Buf`
+/// Unlike `gpu.copy_to_host(block)`, this operates directly on the still-abstract `buffer.Buf`.
 axm buf_copy_to_host: {r: Nat, s: «r; Nat», T: *}
                   → [mem.M 0, GlobalM, GlobalPtr «s; T», buffer.Buf (r, s, T)]
                   → [mem.M 0, GlobalM];
@@ -211,9 +209,9 @@ axm buf_copy_to_host: {r: Nat, s: «r; Nat», T: *}
 /// Launches a kernel function on the device with dynamic shared memory and module symbols.
 // TODO: refactor to {n m: N, Ts: «n; *»} as soon as type inference bug is fixed
 axm launch: {n: Nat, Ts: «n; *»}
-          → [n_groups n_items: Nat, Stream, m: Bool, MT: «core.bitcast Nat m; *»]
+          → [n_groups n_items: Nat, Stream, m: Bool, MT: «core.idx2nat m; *»]
           → Cn [GlobalM, SharedM, ConstM, LocalM, Idx n_groups, Idx n_items,
-                «i: core.bitcast Nat m; SharedPtr MT#i», «i: n; Ts#i»,
+                «i: core.idx2nat m; SharedPtr MT#i», «i: n; Ts#i»,
                 Cn [GlobalM, SharedM, ConstM, LocalM]]
           → «i: n; Ts#i»
           → Fn [mem.M 0, GlobalM, ConstM]
@@ -242,7 +240,7 @@ anx lam synced_scope (m1: GlobalM, m3: SharedM,
 ///
 /// ### check_addr_spaces_repl
 ///
-/// Rejects address-space misuse: `mem.malloc` / `mem.free` outside the global address space,
+/// Rejects address-space misuse: `mem.malloc` / `mem.free` in the shared, const or local address space,
 /// `mem.mslot` in the global or const one, and `mem.store` into the const one.
 ///
 axm check_addr_spaces_repl: compile.Phase;

@@ -1,0 +1,25 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// The direct-style `bump` loads `p` out of `pp` and increments it.
+// The result must see the increment.
+
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun test(m: mem.M 0): [mem.M 0, Nat] =
+    ret (m, p)  = mem.slot (Nat, 0) $ m;
+    ret (m, pp) = mem.slot (mem.Ptr0 Nat, 0) $ m;
+    let m = mem.store (m, p, 1);
+    let m = mem.store (m, pp, p);
+    lam bump (m: mem.M 0)@ff: mem.M 0 =
+        let (m, q) = mem.load (m, pp);
+        let (m, x) = mem.load (m, q);
+        mem.store (m, q, x + 1);
+    let m      = bump m;
+    let (m, x) = mem.load (m, p);
+    return (m, x);
+
+// CHECK-NOT: mem.slot
+// CHECK: return (m, 2);

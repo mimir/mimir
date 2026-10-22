@@ -19,7 +19,7 @@ let shape = (10, 64, 224, 224);
 lam round_trip (o: «4; affine.Index»): «4; affine.Index» =
     affine.delinearize (affine.linearize (o, shape), shape);
 
-extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I32, 0), 0), return: Cn [mem.M 0, I32]) =
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (mem.Char, 0)», 0), return: Cn [mem.M 0, I32]) =
     // Derived from `argc` so nothing constant-folds; the `core.conv.u` targets are what bound each index.
     let idxs = (core.conv.u 10 argc, core.conv.u 64 argc, core.conv.u 224 argc, core.conv.u 224 argc);
     let (m, (n, c, h, w)) = affine.map @(4, 4) @(shape, shape) round_trip idxs m;

@@ -5,7 +5,7 @@ plugin refly;
 
 use core.ops.n;
 
-let _ = refly.struc.e (‹i: 3; 1 + core.bitcast Nat i›, (1, 2, 3));
+let _ = refly.struc.e (‹i: 3; 1 + core.idx2nat i›, (1, 2, 3));
 let _ = refly.struc.e (‹i: 2; i›, (0₂, 1₂));
 let _ = refly.struc.e (‹i: 1; i›, 0₁);
 let _ = refly.struc.e (‹i: 0; i›, ());

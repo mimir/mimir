@@ -9,8 +9,7 @@ namespace mim {
 /// jump table is a Lam, as later phases and the backends expect.
 class DispatchNormalize : public RWPhase {
 public:
-    DispatchNormalize(World& world, flags_t annex)
-        : RWPhase(world, annex) {}
+    using RWPhase::RWPhase;
 
 private:
     const Def* rewrite_mut_Lam(Lam*) final;
