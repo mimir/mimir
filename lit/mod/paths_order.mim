@@ -1,0 +1,6 @@
+// RUN: rm -rf %t && mkdir -p %t/a %t/b
+// RUN: env -u MIM_PLUGIN_PATH -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH %mim --no-config -P %t/a -P %t/b -l > %t/ab.txt
+// RUN: %FileCheck %s --input-file %t/ab.txt
+
+// CHECK: {{^    .*}}/a"{{$}}
+// CHECK-NEXT: {{^    .*}}/b"{{$}}

@@ -1,0 +1,45 @@
+// RUN: rm -rf %t && mkdir -p %t/p-ini %t/p-env %t/p-cli %t/i-ini %t/i-env %t/r-ini %t/r-env %t/p2-env && printf '%%s\n' 'plugin-path = %t/p-ini' 'import-path = %t/i-ini' 'prefix-path = %t/r-ini' > %t/mim.ini
+//
+// Search-path sources add up, highest priority first: CLI, then env, then mim.ini.
+//
+// mim.ini alone:
+// RUN: env -u MIM_PLUGIN_PATH -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH %mim -l --config %t/mim.ini > %t/ini.txt
+// RUN: %FileCheck %s --check-prefix=INI --input-file %t/ini.txt
+//
+// env adds to mim.ini, and is searched first:
+// RUN: env -u MIM_PREFIX_PATH MIM_PLUGIN_PATH="%t/p-env" MIM_IMPORT_PATH="%t/i-env" %mim -l --config %t/mim.ini > %t/env.txt
+// RUN: %FileCheck %s --check-prefix=ENV --input-file %t/env.txt
+//
+// CLI adds to env and mim.ini, and is searched first:
+// RUN: env -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH MIM_PLUGIN_PATH="%t/p-env" %mim -l --config %t/mim.ini -P %t/p-cli > %t/cli.txt
+// RUN: %FileCheck %s --check-prefix=CLI --input-file %t/cli.txt
+
+// INI: {{^    .*}}/p-ini"{{$}}
+// INI: {{^    .*}}/i-ini"{{$}}
+
+// ENV: {{^    .*}}/p-env"{{$}}
+// ENV-NEXT: {{^    .*}}/p-ini"{{$}}
+// ENV: {{^    .*}}/i-env"{{$}}
+// ENV-NEXT: {{^    .*}}/i-ini"{{$}}
+
+// CLI: {{^    .*}}/p-cli"{{$}}
+// CLI-NEXT: {{^    .*}}/p-env"{{$}}
+// CLI-NEXT: {{^    .*}}/p-ini"{{$}}
+
+// Prefix follows the same rule:
+// RUN: env -u MIM_PLUGIN_PATH -u MIM_IMPORT_PATH MIM_PREFIX_PATH="%t/r-env" %mim -l --config %t/mim.ini > %t/prefix.txt
+// RUN: %FileCheck %s --check-prefix=PREFIX --input-file %t/prefix.txt
+//
+// List values split on the path separator; Paths::add drops nonexistent directories:
+// RUN: env -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH MIM_PLUGIN_PATH="%t/from-missing%pathsep%t/p-env%pathsep%t/p2-env" %mim -l --config %t/mim.ini > %t/split.txt
+// RUN: %FileCheck %s --check-prefix=SPLIT --input-file %t/split.txt
+
+// PREFIX-DAG: {{^    .*}}/r-env/lib/mim"{{$}}
+// PREFIX-DAG: {{^    .*}}/r-env/share/mim"{{$}}
+// PREFIX-DAG: {{^    .*}}/r-ini/lib/mim"{{$}}
+// PREFIX-DAG: {{^    .*}}/r-ini/share/mim"{{$}}
+
+// SPLIT: {{^    .*}}/p-env"{{$}}
+// SPLIT-NEXT: {{^    .*}}/p2-env"{{$}}
+// SPLIT-NEXT: {{^    .*}}/p-ini"{{$}}
+// SPLIT-NOT: {{^    .*}}/from-missing"{{$}}

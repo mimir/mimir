@@ -1,0 +1,14 @@
+// RUN: rm -rf %t && mkdir -p %t && printf '%%s\n' 'bogus = 1' > %t/mim.ini
+// RUN: env -u MIM_PLUGIN_PATH -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH %mim --help --config %t/mim.ini > /dev/null
+// RUN: env -u MIM_PLUGIN_PATH -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH %mim --help-md --config %t/mim.ini > /dev/null
+
+// A missing plugin must not make help unusable.
+// RUN: printf '%%s\n' 'plugin = does-not-exist' > %t/missing-plugin.ini
+// RUN: env -u MIM_PLUGIN_PATH -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH %mim --help --config %t/missing-plugin.ini > /dev/null 2> %t/warn.txt
+// RUN: %FileCheck %s --check-prefix=WARN --input-file %t/warn.txt
+// RUN: env -u MIM_PLUGIN_PATH -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH %mim --help-md --config %t/missing-plugin.ini > /dev/null
+
+// A broken manifest must not block version output.
+// RUN: env -u MIM_PLUGIN_PATH -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH %mim --version --config %t/mim.ini > /dev/null
+
+// WARN: {{^}}warning: cannot open plugin `does-not-exist`{{$}}

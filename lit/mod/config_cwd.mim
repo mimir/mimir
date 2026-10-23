@@ -1,0 +1,10 @@
+// RUN: rm -rf %t && mkdir -p %t/p-ini %t/i-ini && printf '%%s\n' 'plugin-path = %t/p-ini' 'import-path = %t/i-ini' > %t/mim.ini
+// RUN: cd %t && env -u MIM_PLUGIN_PATH -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH %mim -l > %t/out.txt
+// RUN: %FileCheck %s --input-file %t/out.txt
+//
+// RUN: cd %t && env -u MIM_PLUGIN_PATH -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH %mim missing.mim -l > %t/missing-input.txt
+// RUN: %FileCheck %s --check-prefix=MISSING-INPUT --input-file %t/missing-input.txt
+
+// CHECK: {{^    .*}}/p-ini"{{$}}
+// CHECK: {{^    .*}}/i-ini"{{$}}
+// MISSING-INPUT: {{^    .*}}/p-ini"{{$}}
