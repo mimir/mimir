@@ -45,7 +45,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang-22 llvm-22-tools ninja-build ${{matrix.packages}}
           echo /usr/lib/llvm-22/bin >> $GITHUB_PATH
-          sudo pip install "lit<24" psutil
+          sudo pip install "lit<24" psutil "pytest<10" libclang
 
       # ccache hooks the compiler through its /usr/lib/ccache/<name> symlinks, which the action
       # prepends to PATH -- so CC/CXX below must stay *bare names*; an absolute path would bypass

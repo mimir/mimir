@@ -7,13 +7,16 @@ include(CMakeDependentOption)
 include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
 
-execute_process(
-    COMMAND git rev-parse --short HEAD
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE MIM_GIT_HASH
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    ERROR_QUIET
-)
+# Without the check, a tarball unpacked inside another repository (e.g. an AUR package) would report that one's HEAD.
+if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND git rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE MIM_GIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+endif()
 
 if(NOT MIM_GIT_HASH)
     set(MIM_GIT_HASH "unknown")
@@ -54,7 +57,7 @@ option(BUILD_SHARED_LIBS    "Build shared libraries." ON)
 option(MIM_DEBUG_OPTIMIZE   "If ON, compile Debug builds with -Og instead of -O0." ON)
 option(MIM_BUILD_DOCS       "If ON, build the documentation (requires Doxygen)." OFF)
 option(MIM_BUILD_EXAMPLES   "If ON, build examples." OFF)
-option(MIM_BUILD_PYTHON     "If ON, build the mim Python package from py/ into ${CMAKE_BINARY_DIR}/.venv." ON)
+option(MIM_BUILD_PYTHON     "If ON, build the mim Python package from py/ into ${CMAKE_BINARY_DIR}/python." ON)
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}; shared libs: ${BUILD_SHARED_LIBS}")
 

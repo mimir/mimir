@@ -11,16 +11,3 @@ target_include_directories(automaton
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
 )
 target_compile_features(automaton PUBLIC cxx_std_23)
-
-install(
-    TARGETS automaton
-    EXPORT mim-targets
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-install(
-    DIRECTORY ${PROJECT_SOURCE_DIR}/include/automaton
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)

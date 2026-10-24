@@ -1,59 +1,22 @@
 find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
 
-set(MIM_PY_VENV "${CMAKE_BINARY_DIR}/.venv")
-if(WIN32)
-    set(MIM_PY_PYTHON "${MIM_PY_VENV}/Scripts/python.exe")
-else()
-    set(MIM_PY_PYTHON "${MIM_PY_VENV}/bin/python")
-endif()
-set(MIM_PY_STAGE "${CMAKE_BINARY_DIR}/mim_py_stage/main")
-set(_mim_py_python_command "${CMAKE_COMMAND}" -E env "${MIM_PY_PYTHON}")
-
 execute_process(
-    COMMAND "${Python_EXECUTABLE}" -c
-            "import os, sys; print(os.path.realpath(getattr(sys, '_base_executable', sys.executable) or sys.executable))"
-    OUTPUT_VARIABLE MIM_PY_BOOTSTRAP_PYTHON
-    OUTPUT_STRIP_TRAILING_WHITESPACE
+    COMMAND "${Python_EXECUTABLE}" -c "import clang.cindex"
+    RESULT_VARIABLE _mim_py_no_cindex
+    OUTPUT_QUIET
+    ERROR_QUIET
 )
-if(NOT EXISTS "${MIM_PY_BOOTSTRAP_PYTHON}")
+if(_mim_py_no_cindex)
     message(FATAL_ERROR
-        "Could not determine a bootstrap Python interpreter from ${Python_EXECUTABLE}"
+        "MIM_BUILD_PYTHON needs the clang Python bindings (clang.cindex) for ${Python_EXECUTABLE}.\n"
+        "Install them via your distribution (Arch: clang, Debian/Ubuntu: python3-clang-<N>) or `pip install libclang`, "
+        "or configure with -DMIM_BUILD_PYTHON=OFF."
     )
 endif()
 
-# venv: created once, kept between builds. Stamp gates downstream targets.
-set(MIM_PY_VENV_STAMP "${MIM_PY_VENV}/.mim-stamp")
-set(_venv_commands COMMAND "${CMAKE_COMMAND}" -E rm -rf "${MIM_PY_VENV}")
-
-if(WIN32)
-    list(APPEND _venv_commands
-        COMMAND "${MIM_PY_BOOTSTRAP_PYTHON}" -m ensurepip --upgrade
-    )
-endif()
-
-list(APPEND _venv_commands
-    COMMAND "${MIM_PY_BOOTSTRAP_PYTHON}" -m venv "${MIM_PY_VENV}"
-    COMMAND ${_mim_py_python_command} -m pip install --upgrade pip setuptools wheel
-    COMMAND ${_mim_py_python_command} -m pip install "pytest<10" libclang==18.1.1
-    COMMAND "${CMAKE_COMMAND}" -E touch "${MIM_PY_VENV_STAMP}"
-)
-
-# Only creating the venv above needs the network.
-# The editable installs below run on every build and must stay offline:
-# --no-build-isolation reuses the venv's setuptools/wheel instead of letting pip
-# fetch a fresh build environment from PyPI each time.
-set(_mim_py_pip_install
-    -m pip install --quiet --disable-pip-version-check --no-deps --no-build-isolation
-)
-
-add_custom_command(
-    OUTPUT "${MIM_PY_VENV_STAMP}"
-    ${_venv_commands}
-    COMMENT "mim_py: creating venv at ${MIM_PY_VENV}"
-    VERBATIM
-)
-
-add_custom_target(mim_py_venv DEPENDS "${MIM_PY_VENV_STAMP}")
+# Importable in place via PYTHONPATH; `cmake --install` copies this tree into site-packages.
+set(MIM_PY_STAGE "${CMAKE_BINARY_DIR}/python")
+set(_mim_py_pkg "${MIM_PY_STAGE}/mim")
 
 set(_auto_bindings_dir "${CMAKE_CURRENT_BINARY_DIR}/auto_bindings")
 set(_binding_script    "${CMAKE_SOURCE_DIR}/scripts/gen_nanobind_bindings.py")
@@ -120,7 +83,7 @@ foreach(header IN LISTS _gen_headers)
     add_custom_command(
         OUTPUT "${output}"
         COMMAND ${_run_logged} "${_log_dir}/${stem}.log"
-                "${MIM_PY_PYTHON}" "${_binding_script}"
+                "${Python_EXECUTABLE}" "${_binding_script}"
                 "${header}"
                 --namespace "${ns}"
                 --build-dir "${CMAKE_BINARY_DIR}"
@@ -128,8 +91,6 @@ foreach(header IN LISTS _gen_headers)
                 ${_extra_args}
                 -o "${output}"
         DEPENDS
-            # Depend on the venv *target*, not on ${MIM_PY_VENV_STAMP}: see mim_py_stubs below.
-            mim_py_venv
             ${_gen_headers}
             "${_binding_script}"
             "${CMAKE_BINARY_DIR}/compile_commands.json"
@@ -184,12 +145,11 @@ set(_module_source "${_auto_bindings_dir}/py.cpp")
 add_custom_command(
     OUTPUT "${_module_source}"
     COMMAND ${_run_logged} "${_log_dir}/py.log"
-            "${MIM_PY_PYTHON}" "${_binding_script}"
+            "${Python_EXECUTABLE}" "${_binding_script}"
             --emit-module _mim
             ${_module_unit_args}
             -o "${_module_source}"
     DEPENDS
-        mim_py_venv
         "${_binding_script}"
     COMMENT "Generating nanobind module entry point py.cpp"
     VERBATIM
@@ -228,78 +188,80 @@ add_custom_command(
     ${_mim_py_stub_runtime_commands}
     COMMAND "${CMAKE_COMMAND}" -E env
             "PYTHONPATH=${MIM_PY_STUBS_DIR}"
-            "${MIM_PY_PYTHON}" "${MIM_PY_NANOBIND_STUBGEN}"
+            "${Python_EXECUTABLE}" "${MIM_PY_NANOBIND_STUBGEN}"
                 -q
                 -m _mim
                 -o "${MIM_PY_STUB_FILE}"
-    # Depend on the venv *target*, not on ${MIM_PY_VENV_STAMP}: the Makefile generator
-    # duplicates a custom command into every target that consumes its output file, so a
-    # file-level dependency would let "make -j" run two venv creations at the same time.
-    DEPENDS pymim mim_py_venv "${MIM_PY_NANOBIND_STUBGEN}"
+    DEPENDS pymim "${MIM_PY_NANOBIND_STUBGEN}"
     COMMENT "mim_py: generating _mim.pyi via nanobind stubgen"
     COMMAND_EXPAND_LISTS
     VERBATIM
 )
 add_custom_target(mim_py_stubs DEPENDS "${MIM_PY_STUB_FILE}")
 
-# Stage the package (sources + generated artifacts) and install it editable.
-# Editable install lets later builds refresh staged files without re-running pip.
-set(_mim_py_plugin_stage "${MIM_PY_STAGE}/src/mim/_plugins")
-set(_mim_py_main_runtime_commands)
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/py/mim/_plugins")
+file(TOUCH "${CMAKE_BINARY_DIR}/py/mim/_plugins/__init__.py")
+
+set(_mim_py_runtime_commands)
 if(WIN32)
-    set(_mim_py_main_runtime_commands
+    set(_mim_py_runtime_commands
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 $<TARGET_RUNTIME_DLLS:pymim>
-                "${MIM_PY_STAGE}/src/mim"
+                "${_mim_py_pkg}"
     )
 endif()
-set(_mim_py_stage_plugin_commands
-    COMMAND "${CMAKE_COMMAND}" -E copy_directory
-            "${CMAKE_BINARY_DIR}/py/mim/_plugins" "${_mim_py_plugin_stage}"
-    COMMAND "${CMAKE_COMMAND}" -E touch "${_mim_py_plugin_stage}/__init__.py"
-)
-add_custom_target(mim_py_main
-    # Wipe the source side of the stage so deleted py/src files don't linger.
-    # Generated artifacts under src/mim/_plugins are restaged below.
-    COMMAND "${CMAKE_COMMAND}" -E rm -rf "${MIM_PY_STAGE}/src" "${MIM_PY_STAGE}/tests"
-    COMMAND "${CMAKE_COMMAND}" -E copy_directory
-            "${CMAKE_CURRENT_SOURCE_DIR}" "${MIM_PY_STAGE}"
-    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            "$<TARGET_FILE:pymim>"
-            "${MIM_PY_STAGE}/src/mim/$<TARGET_FILE_NAME:pymim>"
-    ${_mim_py_main_runtime_commands}
-    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            "${MIM_PY_STUB_FILE}"
-            "${MIM_PY_STAGE}/src/mim/_mim.pyi"
-    ${_mim_py_stage_plugin_commands}
-    COMMAND ${_mim_py_python_command} ${_mim_py_pip_install} -e "${MIM_PY_STAGE}"
-    COMMENT "mim_py: staging & installing mim (editable)"
+add_custom_target(mim_py ALL
+    # Wipe the stage so deleted py/src files don't linger.
+    COMMAND "${CMAKE_COMMAND}" -E rm -rf "${_mim_py_pkg}"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/src/mim" "${_mim_py_pkg}"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:pymim>" "${_mim_py_pkg}"
+    ${_mim_py_runtime_commands}
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${MIM_PY_STUB_FILE}" "${_mim_py_pkg}"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_BINARY_DIR}/py/mim/_plugins" "${_mim_py_pkg}/_plugins"
+    COMMENT "mim_py: staging mim in ${MIM_PY_STAGE}"
     COMMAND_EXPAND_LISTS
     VERBATIM
 )
-add_dependencies(mim_py_main pymim mim_all_plugins mim_py_venv mim_py_stubs)
+add_dependencies(mim_py pymim mim_all_plugins mim_py_stubs)
 
-# Editable installs for third-party plugins under py/plugins/*/pyproject.toml.
-file(GLOB _mim_py_plugin_tomls CONFIGURE_DEPENDS
-     "${CMAKE_CURRENT_SOURCE_DIR}/plugins/*/pyproject.toml")
-set(_mim_py_plugin_targets)
-foreach(_toml ${_mim_py_plugin_tomls})
-    get_filename_component(_plugin_dir  "${_toml}" DIRECTORY)
-    get_filename_component(_plugin_name "${_plugin_dir}" NAME)
-    set(_target mim_py_plugin_${_plugin_name})
-    set(_stage "${CMAKE_BINARY_DIR}/mim_py_stage/plugins/${_plugin_name}")
-    add_custom_target(${_target}
-        COMMAND "${CMAKE_COMMAND}" -E copy_directory "${_plugin_dir}" "${_stage}"
-        COMMAND ${_mim_py_python_command} ${_mim_py_pip_install} -e "${_stage}"
-        COMMENT "mim_py: staging & installing ${_target} (editable)"
-        VERBATIM
-    )
-    add_dependencies(${_target} mim_py_main)
-    list(APPEND _mim_py_plugin_targets ${_target})
-endforeach()
+execute_process(
+    COMMAND "${Python_EXECUTABLE}" -c
+            "import sysconfig; print(sysconfig.get_path('platlib', vars={'base': '', 'platbase': ''}).lstrip('/\\\\'))"
+    OUTPUT_VARIABLE _mim_py_platlib
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+set(MIM_PY_INSTALL_DIR "${_mim_py_platlib}" CACHE STRING "Install directory of the mim Python package, relative to the install prefix.")
+set(_mim_py_install_pkg "${MIM_PY_INSTALL_DIR}/mim")
 
-add_custom_target(mim_py ALL)
-add_dependencies(mim_py mim_py_main ${_mim_py_plugin_targets})
+cmake_path(
+    RELATIVE_PATH CMAKE_INSTALL_LIBDIR
+    BASE_DIRECTORY "${_mim_py_install_pkg}"
+    OUTPUT_VARIABLE _mim_py_rel_libdir
+)
+if(APPLE)
+    set_target_properties(pymim PROPERTIES INSTALL_RPATH "@loader_path/${_mim_py_rel_libdir}")
+else()
+    set_target_properties(pymim PROPERTIES INSTALL_RPATH "$ORIGIN/${_mim_py_rel_libdir}")
+endif()
+
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/pyproject.toml" _mim_py_version REGEX "^version = ")
+string(REGEX REPLACE "^version = \"(.*)\"$" "\\1" _mim_py_version "${_mim_py_version}")
+file(CONFIGURE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/METADATA"
+    CONTENT "Metadata-Version: 2.1\nName: mim\nVersion: ${_mim_py_version}\n"
+)
+
+install(
+    DIRECTORY "${_mim_py_pkg}/"
+    DESTINATION "${_mim_py_install_pkg}"
+    # The staged extension and DLLs carry build-tree paths; the install rules below provide relocated ones.
+    PATTERN "*.so" EXCLUDE
+    PATTERN "*.pyd" EXCLUDE
+    PATTERN "*.dll" EXCLUDE
+    PATTERN "__pycache__" EXCLUDE
+)
+install(TARGETS pymim LIBRARY DESTINATION "${_mim_py_install_pkg}")
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/METADATA" DESTINATION "${MIM_PY_INSTALL_DIR}/mim-${_mim_py_version}.dist-info")
 
 # Windows has no RPATH, so pytest needs the mim DLLs on PATH.
 # The ;-separated value has to stay inline: routed through a variable, CMake list
@@ -308,16 +270,18 @@ if(WIN32)
     add_custom_target(test-py
         COMMAND "${CMAKE_COMMAND}" -E env
                 "PATH=${CMAKE_RUNTIME_OUTPUT_DIRECTORY};${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim;$ENV{PATH}"
-                "${MIM_PY_PYTHON}" -m pytest "${CMAKE_CURRENT_SOURCE_DIR}/tests"
-        DEPENDS mim_py_main
+                "PYTHONPATH=${MIM_PY_STAGE}"
+                "${Python_EXECUTABLE}" -m pytest "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+        DEPENDS mim_py
         COMMENT "mim_py: running Python tests"
         USES_TERMINAL
         VERBATIM
     )
 else()
     add_custom_target(test-py
-        COMMAND "${MIM_PY_PYTHON}" -m pytest "${CMAKE_CURRENT_SOURCE_DIR}/tests"
-        DEPENDS mim_py_main
+        COMMAND "${CMAKE_COMMAND}" -E env "PYTHONPATH=${MIM_PY_STAGE}"
+                "${Python_EXECUTABLE}" -m pytest "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+        DEPENDS mim_py
         COMMENT "mim_py: running Python tests"
         USES_TERMINAL
         VERBATIM

@@ -1,5 +1,5 @@
 # To run, do this beforehand:
-# source build/.venv/bin/activate
+# export PYTHONPATH=build/python
 import mim
 import mim.plug.regex as regex
 

@@ -159,8 +159,7 @@ const Def* Eval::pullback(const Def* aug, Lam* f) {
 
 const Def* Eval::augment_var(const Var* var, Lam*, Lam*) {
     assert(augmented.count(var));
-    auto aug_var = augmented[var];
-    assert(partial_pullback.count(aug_var));
+    assert(partial_pullback.count(augmented[var]));
     return var;
 }
 

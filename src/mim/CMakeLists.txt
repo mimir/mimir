@@ -40,7 +40,13 @@ target_sources(libmim
         phase/sccp_transform.cpp
 )
 
-set_target_properties(libmim PROPERTIES PREFIX "")
+# Every 0.x minor release breaks the ABI.
+set_target_properties(libmim
+    PROPERTIES
+        PREFIX ""
+        VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+        SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+)
 target_compile_features(libmim PUBLIC cxx_std_23)
 
 # In a shared libmim every intra-library call to an exported function goes through the PLT by default
@@ -85,6 +91,9 @@ install(
     DIRECTORY ${PROJECT_SOURCE_DIR}/include/mim
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     PATTERN "*.in" EXCLUDE
+    # They need automaton, which is linked into the regex plugin only.
+    PATTERN "dfa2matcher.h" EXCLUDE
+    PATTERN "regex2nfa.h" EXCLUDE
 )
 
 add_subdirectory(cli)
