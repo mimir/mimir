@@ -1,0 +1,31 @@
+// RUN: rm -rf %t && mkdir -p %t/p-env %t/p-cli %t/p2-env %t/sub
+// RUN: printf '%%s\n' 'plugin = mim/demo' 'plugin-path = sub, %libdir' > %t/mim.ini
+// RUN: env -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH MIM_PLUGIN_PATH="%t/from-missing%pathsep%t/p-env%pathsep%t/p2-env" %mim -l --config %t/mim.ini -P %t/p-cli | %FileCheck %s --check-prefix=PATHS
+
+// The manifest's `plugin`s add to the CLI's `-p`s.
+// RUN: env -u MIM_PLUGIN_PATH -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH %mim -VV --config %t/mim.ini %s -p clos -o - 2>&1 | %FileCheck %s
+
+// `plugin` keys may repeat, take comma lists and comments; `plugin-arg` reaches the plugin.
+// RUN: printf '%%s\n' 'plugin = mim/ll, mim/demo # trailing comment' 'plugin = mim/mem' 'plugin-path = %libdir' 'plugin-arg = ll:o=%t/out.ll' > %t/arg.ini
+// RUN: %mim --config %t/arg.ini %s
+// RUN: test -f %t/out.ll
+
+// Bad or missing configs fail loudly.
+// RUN: printf '%%s\n' 'import-path = a' 'bogus = 1' > %t/row.ini && ! %mim --config %t/row.ini 2>&1 | %FileCheck %s --check-prefix=ROW
+// RUN: ! %mim --config %t/does-not-exist.ini 2>&1 | %FileCheck %s --check-prefix=MISSING
+
+// Search-path sources add up, highest priority first: CLI, then env, then the `--config` file.
+// Relative `*-path` entries anchor to the config file's dir, absolute ones pass through.
+// PATHS: {{^    .*}}/p-cli"{{$}}
+// PATHS-NOT: {{^    .*}}/from-missing"{{$}}
+// PATHS-NEXT: {{^    .*}}/p-env"{{$}}
+// PATHS-NEXT: {{^    .*}}/p2-env"{{$}}
+// PATHS-NEXT: {{^    .*}}/sub"{{$}}
+// PATHS-NEXT: {{^    .*}}/lib"{{$}}
+
+// CHECK: load plugin `clos`
+// CHECK: load plugin `mim/demo`
+// CHECK: plugin {{.*}}/mim/demo.mim";
+
+// ROW: {{^}}error: {{.*}}:2: unknown manifest key `bogus`{{$}}
+// MISSING: {{^}}error: cannot read config file `{{.*}}does-not-exist.ini`{{$}}

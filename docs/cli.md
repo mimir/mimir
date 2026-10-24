@@ -30,19 +30,19 @@ a plugin library is host-native code, a `.mim` is portable source, and a backend
 
 Two kinds of entry feed them:
 
-- A _plain directory_ is probed as-is and is what `-P`, `-I`, their environment variables, and `mim.ini` add.
+- A _plain directory_ is probed as-is and is what `-P`, `-I`, their environment variables, and the `--config` file add.
 - A _prefix root_ stands for an install tree and derives `<root>/lib/mim`, `<root>/share/mim`, and `<root>/lib/mim/rt` from itself.
 
 `--prefix-path` / `MIM_PREFIX_PATH` add a prefix root, as do the install prefix and the tree `libmim` was loaded from.
 
-For every lookup below, sources add up in priority order: CLI flag, then environment variable, then `mim.ini`.
+For every lookup below, sources add up in priority order: CLI flag, then environment variable, then the `--config` file.
 `plugin-path`, `import-path`, and `prefix-path` resolve independently.
 Entries keep the order you wrote them, so a path given in several places is searched at its highest-priority position.
 
 | Looking for | Order |
 | --- | --- |
-| `libmim_<name>` | cwd, the plugin search paths (`-P`, then `MIM_PLUGIN_PATH`, then `mim.ini`'s `plugin-path`), then each root's `lib/mim` |
-| `<name>.mim` | cwd, the import search paths (`-I`, then `MIM_IMPORT_PATH`, then `mim.ini`'s `import-path`), the plugin search paths, then each root's `share/mim` and `lib/mim` |
+| `libmim_<name>` | cwd, the plugin search paths (`-P`, then `MIM_PLUGIN_PATH`, then the `--config` file's `plugin-path`), then each root's `lib/mim` |
+| `<name>.mim` | cwd, the import search paths (`-I`, then `MIM_IMPORT_PATH`, then the `--config` file's `import-path`), the plugin search paths, then each root's `share/mim` and `lib/mim` |
 | runtime modules | cwd `rt`, the plugin search paths each suffixed with `rt`, then each root's `lib/mim/rt` |
 
 Plugin directories are searched for imports too, since a plugin ships both of its halves together.
@@ -54,7 +54,7 @@ Plugin directories are searched for imports too, since a plugin ships both of it
 
 ### Project Configuration {#climanifest}
 
-A project can pin its plugins, search paths, and plugin arguments in a `mim.ini` file next to its sources:
+A project can pin its plugins, search paths, and plugin arguments in a `mim.ini` file:
 
 ```ini
 plugin = ll
@@ -67,13 +67,10 @@ plugin-arg = ll:o=out.ll
 - Keys are the long option names above: `plugin`, `plugin-path`, `import-path`, `prefix-path`, `plugin-arg`.
 - Each key takes a comma-separated list and may repeat; values concatenate in written order.
 - `#` starts a comment to end of line.
-- Relative `*-path` entries resolve against the directory of the `mim.ini` file.
-- Only these keys are recognized, but a manifest can load native plugins and redirect imports; treat a discovered `mim.ini` as trusted input.
+- Relative `*-path` entries resolve against the directory of the config file.
+- Only these keys are recognized, but a manifest can load native plugins and redirect imports; treat the file as trusted input.
 
-`mim` looks for `mim.ini` in the directory of the input file, or the current working directory if no input is given.
-It then walks up to the repository root, the first directory containing a `.git` entry. The nearest `mim.ini` wins.
-Use `--config <path>` to read an explicit file, and `--no-config` to skip `mim.ini`. Neither affects environment variables. `--config` and `--no-config` are mutually exclusive.
-Every `*-path` key adds to what the command line and environment provide, in the [Search Paths](@ref clisearchpaths) order, so the file supplies the defaults.
+Pass `--config <path>` to read the file. Every `*-path` key adds to what the command line and environment provide, in the [Search Paths](@ref clisearchpaths) order, so the file supplies the defaults.
 
 ### Arguments {#clipluginargs}
 

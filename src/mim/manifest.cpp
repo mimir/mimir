@@ -22,15 +22,15 @@ std::string_view trim(std::string_view s) {
     return beg == std::string_view::npos ? std::string_view{} : s.substr(beg, s.find_last_not_of(" \t\r") - beg + 1);
 }
 
-std::vector<std::string> split_list(std::string_view s) {
+fe::Vector<std::string> split_list(std::string_view s) {
     return std::views::split(s, ',')
          | std::views::transform([](auto&& r) { return std::string(trim({r.begin(), r.end()})); })
-         | std::views::filter([](auto&& item) { return !item.empty(); }) | std::ranges::to<std::vector>();
+         | std::views::filter([](auto&& item) { return !item.empty(); }) | std::ranges::to<fe::Vector<std::string>>();
 }
 
 struct List_Entry {
     std::string_view key;
-    std::vector<std::string> Manifest::* list;
+    fe::Vector<std::string> Manifest::* list;
 };
 
 constexpr auto lists = std::array{
@@ -43,30 +43,6 @@ constexpr auto lists = std::array{
 } // namespace
 
 namespace fs = std::filesystem;
-
-std::optional<fs::path> find_manifest(const fs::path& start_in) {
-    std::error_code ec{};
-    auto start = start_in.empty() ? fs::current_path(ec) : fs::absolute(start_in, ec);
-    if (ec) return std::nullopt;
-
-    auto is_file = fs::is_regular_file(start, ec);
-    if (ec && ec != std::errc::no_such_file_or_directory) return std::nullopt;
-    auto walk = is_file ? start.parent_path() : start;
-
-    if (walk.empty()) {
-        walk = fs::current_path(ec);
-        if (ec) return std::nullopt;
-    }
-
-    for (;;) {
-        if (fs::is_regular_file(walk / Manifest_File, ec)) return walk / Manifest_File;
-        if (fs::exists(walk / ".git", ec)) return std::nullopt;
-
-        auto parent = walk.parent_path();
-        if (parent == walk || parent.empty()) return std::nullopt;
-        walk = std::move(parent);
-    }
-}
 
 Manifest load_manifest(const fs::path& file) {
     std::error_code ec{};
@@ -118,11 +94,11 @@ Manifest load_manifest(const fs::path& file) {
     return manifest;
 }
 
-std::vector<std::string> paths_from_env(const char* var) {
+fe::Vector<std::string> paths_from_env(const char* var) {
     if (auto env = std::getenv(var))
         return std::views::split(std::string_view(env), fe::sys::Path_Sep)
              | std::views::transform([](auto&& r) { return std::string(r.begin(), r.end()); })
-             | std::views::filter([](auto&& p) { return !p.empty(); }) | std::ranges::to<std::vector>();
+             | std::views::filter([](auto&& p) { return !p.empty(); }) | std::ranges::to<fe::Vector<std::string>>();
     return {};
 }
 
