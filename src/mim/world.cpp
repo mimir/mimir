@@ -29,6 +29,13 @@ std::optional<nat_t> pack_unrolls(const Def* d, const Def* index, u64 threshold)
     return {};
 }
 
+/// A curried Lam whose innermost body is still being emitted; reducing it would copy that empty Lam for good.
+bool has_unset_curry(const Lam* lam) {
+    for (auto body = lam->body(); auto inner = body->isa_mut<Lam>(); body = inner->body())
+        if (!inner->is_set()) return true;
+    return false;
+}
+
 /// Does `d#index ← val` rebuild an aggregate right away? Mirrors the two folding rules in World::insert.
 bool insert_rebuilds(const Def* d, const Def* index, u64 threshold) {
     if (d->isa<Tuple>()) return bool(Lit::isa(index));
@@ -441,7 +448,7 @@ const Def* World::app(const Def* callee, const Def* arg) {
         if (var && arg == var) return lam->body();
 
         // β-reduce or partially evaluate a set, mutable Lam.
-        if (lam->filter() != lit_ff()) {
+        if (lam->filter() != lit_ff() && !has_unset_curry(lam)) {
             if (!var) {
                 if (lam->filter() == lit_tt()) return lam->body();
             } else if (is_frozen()) {
@@ -705,7 +712,7 @@ const Def* World::extract1(const Def* d, const Def* index) {
     auto index_ty = index->unfold_type();
     auto size     = Idx::isa(index_ty);
     auto lidx     = Lit::isa(index);
-    auto type     = d->unfold_type();
+    auto type     = d->unfold_type()->zonk(); // a Var's type may still be a since-resolved Hole of its binder
     if (!type) d->blame("`Level` has no type and hence no elements to extract").bail();
 
     if (is_folded_axis(type, index, size)) return d;
