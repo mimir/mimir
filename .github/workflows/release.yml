@@ -1,0 +1,33 @@
+name: release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  source-tarball:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Clone with submodules
+        run: |
+          NAME="mimir-${TAG#v}"
+          echo "NAME=$NAME" >> "$GITHUB_ENV"
+          git clone --recursive --shallow-submodules --depth 1 --branch "$TAG" \
+              "https://github.com/${{ github.repository }}.git" "$NAME"
+          find "$NAME" -name .git -prune -exec rm -rf {} +
+
+      - name: Pack and upload
+        run: |
+          tar -czf "$NAME.tar.gz" "$NAME"
+          gh release upload "$TAG" "$NAME.tar.gz" --clobber --repo "${{ github.repository }}"
