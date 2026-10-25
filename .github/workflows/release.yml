@@ -25,6 +25,7 @@ jobs:
           echo "NAME=$NAME" >> "$GITHUB_ENV"
           git clone --recursive --shallow-submodules --depth 1 --branch "$TAG" \
               "https://github.com/${{ github.repository }}.git" "$NAME"
+          git -C "$NAME" rev-parse --short HEAD > "$NAME/git-hash"
           find "$NAME" -name .git -prune -exec rm -rf {} +
 
       - name: Pack and upload

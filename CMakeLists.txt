@@ -16,6 +16,8 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET
     )
+elseif(EXISTS "${CMAKE_SOURCE_DIR}/git-hash")
+    file(STRINGS "${CMAKE_SOURCE_DIR}/git-hash" MIM_GIT_HASH LIMIT_COUNT 1) # written by the release workflow
 endif()
 
 if(NOT MIM_GIT_HASH)
