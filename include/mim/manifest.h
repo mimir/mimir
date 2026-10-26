@@ -7,8 +7,9 @@
 
 namespace mim {
 
-/// Project manifest from a `mim.ini` file.
+/// Project manifest from a `mim.toml` file.
 /// Holds the keys needed to compile a project: plugins, search paths, and plugin arguments.
+/// A `mim.toml` only accepts the flat subset of TOML that these five string-array keys need.
 struct Manifest {
     fe::Vector<std::string> plugins;      ///< `-p`/`--plugin`.
     fe::Vector<std::string> plugin_paths; ///< `-P`/`--plugin-path`.

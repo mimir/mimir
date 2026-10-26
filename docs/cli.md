@@ -54,18 +54,19 @@ Plugin directories are searched for imports too, since a plugin ships both of it
 
 ### Project Configuration {#climanifest}
 
-A project can pin its plugins, search paths, and plugin arguments in a `mim.ini` file:
+A project can pin its plugins, search paths, and plugin arguments in a `mim.toml` file:
 
-```ini
-plugin = ll
-plugin-path = build/plugins
-import-path = src, extra/mim
-prefix-path = /opt/misc
-plugin-arg = ll:o=out.ll
+```toml
+plugin      = ["ll"]
+plugin-path = ["build/plugins"]
+import-path = ["src", "extra/mim"]
+prefix-path = ["/opt/misc"]
+plugin-arg  = ["ll:o=out.ll"]
 ```
 
 - Keys are the long option names above: `plugin`, `plugin-path`, `import-path`, `prefix-path`, `plugin-arg`.
-- Each key takes a comma-separated list and may repeat; values concatenate in written order.
+- Values are TOML arrays of strings; each key may appear at most once.
+- A `mim.toml` only accepts this flat subset of TOML: tables and value types beyond string arrays are rejected.
 - `#` starts a comment to end of line.
 - Relative `*-path` entries resolve against the directory of the config file.
 - Only these keys are recognized, but a manifest can load native plugins and redirect imports; treat the file as trusted input.

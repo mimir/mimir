@@ -47,6 +47,7 @@ add_mim_test(mim-test
         dump.cpp
         level.cpp
         lexer.cpp
+        manifest.cpp
         nom.cpp
         restricted_dep_types.cpp
         test.cpp
