@@ -16,5 +16,5 @@ extern lam _compile (): compile.Phase = compile.phases ff (tensor.lower_to_mem, 
 // CHECK-DAG: nom Marker = I32
 // CHECK-DAG: buffer.read
 // CHECK-DAG: #tag
-// CHECK-DAG: nom Opt =
+// CHECK-DAG: maybe: option.Opt @ I32
 // CHECK-DAG: match #maybe

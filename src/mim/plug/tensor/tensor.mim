@@ -36,14 +36,33 @@ use core.ops.n;
 /// The buffer-world `btensor` plugin sits *below* `tensor` — `lower_to_mem` bufferizes onto `btensor.*` ops -
 /// so the definition lives there and both layers share one notion of a ring.
 anx Ring = btensor.Ring;
-
+///
+/// ### Tensor
+///
+/// `Tensor r s T` carries a logical rank `r`, shape `s` and element type `T`, distinct from ordinary arrays.
+/// Its nominal key identifies tensors across shape substitution and function boundaries without classifying shape or index arrays as tensors.
+/// The singleton witness preserves all three indices even when rank-0, singleton or empty array representations fold away.
+/// For example, `Tensor 2 (1, 4) I32` differs from `Tensor 1 4 I32`, and `Tensor 0 () I32` differs from `I32`.
+/// `⊥:T` records the element type without being evaluated; the singleton witness is erased before code generation.
 /// The private representation prevents array access from bypassing tensor operations.
 priv nom Tensor (r: Nat) (s: «r; Nat») (T: *) = [indices: «(r, s, ⊥:T)», data: «s; T»];
 /// The annex lets lowering identify the exported type constructor.
 pub anx let Tensor = Tensor;
-
-/// Bufferization accepts static literals here; external data must use Tensor-typed parameters.
+///
+/// ### from_array
+///
+/// Constructs a tensor from an array; bufferization accepts only static shapes and literal elements here.
+/// Uniform literals use `buffer.lit`; other literals use `buffer.init`.
+/// Use `from_array @(r, s, T) a` when array folding hides the intended singleton axes or rank.
+/// External data enters through Tensor-typed parameters.
 axm from_array: {r: Nat, s: «r; Nat», T: *} → [a: «s; T»] → Tensor r s T;
+///
+/// ### Element access and rank-0 conversion
+///
+/// `get` and `set` take one coordinate per logical axis, with type `Idx (s#j)` on axis `j`.
+/// This index contract does not insert runtime bounds checks.
+/// `scalar` constructs a rank-0 tensor; `item` extracts its element.
+/// These boundary operations remain axioms when they cannot fold, so early inlining cannot expose the private array representation.
 axm get: {r: Nat, s: «r; Nat», T: *}
        → [t: Tensor r s T, i: «j: r; Idx (s#j)»] → T, normalize_get;
 axm set: {r: Nat, s: «r; Nat», T: *}
@@ -1528,6 +1547,8 @@ axm fuse_tensor: compile.Phase;
 /// `get` / `set` / `generate` / `map_reduce` become `buffer.read` / `buffer.write` / `buffer.alloc`
 /// threading `mem.M`.
 /// The nominal `Tensor` key identifies tensor values; shape vectors remain ordinary arrays.
+/// Tensor types are rewritten throughout function signatures, aggregates and calls while preserving parameter groups and curry structure.
+/// Rank must be literal; literal zero extents are unsupported, and only the outermost extent may be a runtime value.
 /// `mem.add_mem` (scheduled next in the pipeline) threads the memory; run `buffer.lower_ptr`
 /// afterwards to reach `mem.Ptr`.
 ///

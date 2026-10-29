@@ -105,9 +105,14 @@ void LowerToMem::validate() {
             tensors_seen_      = true;
             auto [r, shape, T] = TensorType::decode(d->as<Nom>());
             if (!Lit::isa<u64>(r)) d->blame("cannot bufferize: non-literal tensor rank").bail();
-            for (auto extent : shape->projs(*Lit::isa<u64>(r)))
+            auto rank = *Lit::isa<u64>(r);
+            for (u64 i = 0; i != rank; ++i) {
+                auto extent = shape->proj(rank, i);
                 if (Lit::isa<u64>(extent) == 0)
                     d->blame("cannot bufferize: zero-extent tensors are not supported").bail();
+                if (i != 0 && !Lit::isa<u64>(extent))
+                    d->blame("cannot bufferize: runtime inner extent is not supported").bail();
+            }
             if (T->isa<Arr>() || mentions_tensor(T))
                 d->blame("cannot bufferize: tensor with aggregate tensor element type").bail();
         } else if ((d->isa<Nom>() || d->isa<Variant>()) && mentions_tensor(d)) {
