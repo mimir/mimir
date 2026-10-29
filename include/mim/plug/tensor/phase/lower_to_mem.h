@@ -6,45 +6,30 @@
 
 namespace mim::plug::tensor::phase {
 
-/// Bufferizes the low-level tensor axioms onto the shared `buffer` layer.
-/// `Extract` / `Insert` become `buffer.read` / `buffer.write`, `generate` becomes an allocating fill loop,
-/// `map_reduce` / `broadcast` / `pad` / `concat` /
-/// `gather` / `scatter` become their buffer-world `btensor.*` counterparts writing into a `buffer.alloc`ed destination,
-/// and tensor array values `«s; T»` become `buffer.Buf (r, s, T)` handles.
-/// Afterwards `buffer.lower_ptr` lowers the buffer layer to `mem.Ptr` + `mem.lea` / `mem.load` / `mem.store`.
-///
-/// This phase is *conversion-only*: it rewrites types and operations but does not thread the `mem.M`
-/// memory monad itself. Emitted buffer operations consume a `⊥: mem.M 0` placeholder (or a short local
-/// chain rooted in a LowerToMem::fresh_mem continuation's var), and the SSA value dependencies keep them
-/// anchored and ordered. The `mem.add_mem` phase
-/// (mim::plug::mem::phase::AddMem), scheduled right after this one in the pipeline, then mem-extends all
-/// continuations and rewires every memory operand to the scheduler-placed current memory — handling returns,
-/// error continuations, join points, branch arms, and interleaving with a caller's own memory operations
-/// uniformly.
-///
-/// Which array types denote tensors (as opposed to index/shape arrays that share the `Arr` structure) is
-/// determined by *role*: a pre-pass collects the array operand/result types of the tensor operations plus the
-/// values a `tensor.buf` annotation nominates, and only those types are rewritten to `Buf` — and only at
-/// function boundaries, never as a global type rewrite.
+/// Bufferizes nominal Tensor types and operations onto the shared buffer layer.
+/// The following mem.add_mem phase threads the emitted memory operands.
 class LowerToMem : public RWPhase {
 public:
     using RWPhase::RWPhase;
 
 private:
     void start() override;
+    void validate();
+    bool is_tensor_type(const Def*) const;
+    bool mentions_tensor(const Def*) const;
+    bool is_tensor_fn(Lam*) const;
+
     const Def* rewrite(const Def*) override;
     const Def* rewrite_mut_Lam(Lam*) override;
+    const Def* rewrite_imm_Nom(const Nom*) override;
+    const Def* rewrite_imm_Name(const Name*) override;
+    const Def* rewrite_imm_Struc(const Struc*) override;
     const Def* rewrite_imm_App(const App*) override;
-    const Def* rewrite_imm_Extract(const Extract*) override;
-    const Def* rewrite_imm_Insert(const Insert*) override;
+    const Def* buf_of(const Def*);
 
-    /// The type of @p lam with its tensor-typed domain converted.
-    const Pi* conv_type(Lam* lam);
-
-    /// Splits the Extract @p d into the recorded tensor it reads and its *rewritten* index.
-    /// A size-1 axis folds out of the array type, so the index is already the folded one `buffer` expects.
-    /// Yields a null base if @p d does not read a tensor.
-    std::pair<const Def*, const Def*> peel_tensor(const Def*);
+    const Def* lower_from_array(const App*);
+    const Def* lower_get(const App*);
+    const Def* lower_set(const App*);
     const Def* lower_splat(const App*);
     const Def* lower_generate(const App*);
     const Def* lower_broadcast(const App*);
@@ -53,45 +38,7 @@ private:
     const Def* lower_concat(const App*);
     const Def* lower_gather(const App*);
     const Def* lower_scatter(const App*);
-
-    /// Adapts a call to a bufferized function: materializes value-world tensor arguments into buffers;
-    /// continuation arguments pass through (their domains are converted by `rewrite_mut_Lam`).
-    const Def* lower_call(const App*, Lam* old_callee);
-
-    /// Converts an argument to a converted parameter type: tensor values become buffers (via `buffer.init`
-    /// on a `⊥` memory), recursing through sigmas; anything else is `rewrite`d.
-    const Def* materialize(const Def* old_ty, const Def* old_arg);
-
-    /// The already rewritten @p val as a `buffer.Buf`, materializing a value-world tensor (e.g. a literal)
-    /// from its old-world @p old.
-    /// The result is *not* a buffer if @p old's type was not recorded as a tensor type.
-    const Def* to_buffer(const Def* val, const Def* old);
-
-    /// LowerToMem::materialize of @p old_arg as a buffer.
-    /// A non-buffer value is wrapped in a `buffer.lit` of rank @p r and shape @p shape.
-    const Def* make_buffer(const Def* old_arg, const Def* r, const Def* shape);
-
-    /// LowerToMem::to_buffer on each element of an `«n; …»` operand list, re-tupled so the tuple type is
-    /// re-inferred from the converted elements; `nullptr` if one element is not a recorded tensor type.
-    const Def* buffer_list(const Def* list, const Def* old_list, const Def* n);
-
-    /// Fills a fresh buffer of (old) array type `arr_ty` with the (already rewritten) scalar `scalar`, via
-    /// `buffer.lit`. `btensor.lower_map_reduce` turns that into a fill loop, so it never materializes as a
-    /// monolithic `mem.store` of a giant literal array (which the LLVM backend cannot digest).
-    /// Used for constant splats `‹s; c›` and scalar `tensor.broadcast`s.
-    const Def* splat_buffer(const Def* arr_ty, const Def* scalar);
-
-    /// Pre-pass: records every array type used as a tensor operand/result and the set of bufferized
-    /// functions; hard-errors on program shapes the conversion cannot handle (there is no value-semantics
-    /// fallback in the default pipeline).
-    void collect_tensor_types();
-
-    /// Builds the `buffer.Buf` type for an old tensor array type `«s; T»` (peeling the nested `Arr`s).
-    const Def* buf_of(const Def* arr_ty);
-
-    /// Converts a boundary type: tensor array types become `buffer.Buf`, recursing through (immutable) sigmas
-    /// so that grouped parameters like `[«s; T», Idx s]` are converted as well; anything else is `rewrite`d.
-    const Def* conv_boundary(const Def* t);
+    const Def* splat_buffer(const Def*, const Def*);
 
     /// A `⊥: mem.M 0` placeholder consumed by emitted buffer operations; AddMem replaces it with the
     /// scheduler-placed current memory.
@@ -118,34 +65,12 @@ private:
     /// and the `tt` filter beta-reduces the continuations away again as soon as that happens.
     const Def* wrap_fresh_mem(const Def* body);
 
+    flags_t tensor_key_ = 0;
+    bool tensors_seen_  = false;
     /// The fresh-memory continuations minted while the current lam's body is being rewritten.
     fe::Vector<Lam*> pending_;
-
     /// Per-lam memo for the ops that consume a fresh memory (see LowerToMem::rewrite).
     DefMap<const Def*> fresh_memo_;
-
-    /// A function is bufferized iff it is external, set, and mentions a tensor type in its domain.
-    bool is_tensor_fn(Lam*) const;
-
-    /// Whether a type is a tensor or (recursively, through sigmas and continuation domains) contains one.
-    /// Never descends into `Arr` elements (so an index/shape array is not mistaken for a tensor).
-    bool mentions_tensor(const Def*) const;
-
-    DefSet tensor_ty_;
-
-    /// Whether the program contains any (fully applied) tensor-plugin operation.
-    /// Ops without any bufferized function boundary still lower: their value-world operands are
-    /// materialized into buffers (see `materialize`).
-    bool ops_seen_ = false;
-
-    /// Old-world functions that get bufferized (external, signature mentions a tensor).
-    /// Call sites of these functions must be adapted (see `lower_call`).
-    LamSet tensor_fns_;
-
-    /// Lams passed inside a tensor op's curry chain (combiners, affine index maps): they stay element-level —
-    /// they receive element values, never buffers — even when a parameter type incidentally collides with a
-    /// tensor type (pure type-based role tracking aliases, e.g. an `(x y: I32)` group *is* `«2; I32»`).
-    LamSet op_args_;
 };
 
 } // namespace mim::plug::tensor::phase

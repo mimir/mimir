@@ -1,0 +1,9 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+plugin core;
+plugin tensor;
+
+extern con ingress (n: Nat, return: Cn [tensor.Tensor 1 n I32]) =
+    return (tensor.from_array @(1, n, I32) ‹i: n; core.conv.u 4294967296 i›);
+
+// CHECK: error: from_array requires a static shape

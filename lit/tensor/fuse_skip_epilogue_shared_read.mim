@@ -19,8 +19,7 @@ let Ring = (Nat, 0, core.nat.add, core.nat.mul);
 
 let `* = product_2d Ring;
 
-extern con f (a: «2, 3; Nat», b: «3, 4; Nat», return: Cn [«8; Nat», «8; Nat»]) =
-    let (a, b) = (buf a, buf b);
+extern con f (a: tensor.Tensor 2 (2, 3) Nat, b: tensor.Tensor 2 (3, 4) Nat, return: Cn [tensor.Tensor 1 8 Nat, tensor.Tensor 1 8 Nat]) =
     let flat = reshape (2, 4) 8 (a * b);
     return (unary add1 flat, unary dbl flat);
 

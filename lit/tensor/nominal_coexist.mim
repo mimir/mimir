@@ -1,0 +1,20 @@
+// RUN: %mim %s -o - | %FileCheck %s --implicit-check-not=tensor.get
+
+plugin core;
+plugin compile;
+plugin option;
+plugin tensor;
+use core.ops.u.w;
+
+nom Marker = I32;
+
+extern con mixed (n: Nat, a: tensor.Tensor 1 n I32, tag: Marker, maybe: option.Opt@I32, return: Cn I32) =
+    return (tensor.get (a, core.idx 0 n 0) + #tag + option.unwrap_or maybe 0I32);
+
+extern lam _compile (): compile.Phase = compile.phases ff (tensor.lower_to_mem, compile.cleanup);
+
+// CHECK-DAG: nom Marker = I32
+// CHECK-DAG: buffer.read
+// CHECK-DAG: #tag
+// CHECK-DAG: nom Opt =
+// CHECK-DAG: match #maybe

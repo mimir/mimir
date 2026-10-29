@@ -99,7 +99,6 @@ const Def* Scalarize::Analysis::rewrite_mut_Lam(Lam* lam) {
 
 const Def* Scalarize::Analysis::rewrite_imm_App(const App* app) {
     auto res = mim::Analysis::rewrite_imm_App(app);
-    // `tensor.buf x` nominates `x` itself.
     if (app->axm() && is_polymorphic_arg(app)) keep_var(app->arg());
     return res;
 }

@@ -23,25 +23,25 @@ plugin compile;
 // The bounds check lowers to an unsigned core.icmp on the shifted read index.
 // CHECK-DAG: extern con pad1d_const
 // CHECK-DAG: core.icmp
-extern fun pad1d_const (input: «3; I32»): «6; I32» =
+extern fun pad1d_const (input: tensor.Tensor 1 3 I32): tensor.Tensor 1 6 I32 =
     return (tensor.pad 3 (0, 1, 2) (input, 0I32));
 
 // 1-D replicate pad: the read index is clamped to the nearest edge via core.extrema, no fill value needed.
 // CHECK-DAG: extern con pad1d_repl
 // CHECK-DAG: core.extrema
-extern fun pad1d_repl (input: «3; I32»): «6; I32» =
+extern fun pad1d_repl (input: tensor.Tensor 1 3 I32): tensor.Tensor 1 6 I32 =
     return (tensor.pad 3 (1, 1, 2) (input, ⊥:I32));
 
 // 2-D constant pad: (2, 3) -> (4, 7).
 // CHECK-DAG: extern con pad2d_const
-extern fun pad2d_const (input: «2, 3; I32»): «4, 7; I32» =
+extern fun pad2d_const (input: tensor.Tensor 2 (2, 3) I32): tensor.Tensor 2 (4, 7) I32 =
     return (tensor.pad (2, 3) (0, (1, 2), (1, 2)) (input, 0I32));
 
-// Size-1 axes: the logical shapes (1, 3) / (1, 5) fold to «3; I32» / «5; I32» at the type level, and
+// Size-1 axes: the logical shapes (1, 3) / (1, 5) retain rank 2 in Tensor, and
 // buffer.Buf folds them the same way — the loop generation iterates the logical rank-2 domain but
 // reads/writes with folded indices.
 // CHECK-DAG: extern con pad_size1
-extern fun pad_size1 (input: «1, 3; I32»): «1, 5; I32» =
+extern fun pad_size1 (input: tensor.Tensor 2 (1, 3) I32): tensor.Tensor 2 (1, 5) I32 =
     return (tensor.pad (1, 3) (0, (0, 1), (0, 1)) (input, 0I32));
 
 // Memory operations are emitted (the padded result is materialised into a buffer).

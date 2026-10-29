@@ -34,21 +34,21 @@ let Ring = (F32, 0.0:F32, math.arith.add fast, math.arith.mul fast);
 let same = ((1, 1), (1, 1), (1, 1));
 let pw   = ((1, 1), (1, 1), (0, 0));
 
-extern lam c64 (input: «2, 64, 8, 8; F32», w: «16, 64, 3, 3; F32»): «2, 16, 8, 8; F32» =
+extern lam c64 (input: tensor.Tensor 4 (2, 64, 8, 8) F32, w: tensor.Tensor 4 (16, 64, 3, 3) F32): tensor.Tensor 4 (2, 16, 8, 8) F32 =
     conv Ring same (input, w);
-extern lam c3 (input: «2, 3, 8, 8; F32», w: «16, 3, 3, 3; F32»): «2, 16, 8, 8; F32» =
+extern lam c3 (input: tensor.Tensor 4 (2, 3, 8, 8) F32, w: tensor.Tensor 4 (16, 3, 3, 3) F32): tensor.Tensor 4 (2, 16, 8, 8) F32 =
     conv Ring same (input, w);
-extern lam cs2 (input: «2, 64, 9, 9; F32», w: «16, 64, 3, 3; F32»): «2, 16, 4, 4; F32» =
+extern lam cs2 (input: tensor.Tensor 4 (2, 64, 9, 9) F32, w: tensor.Tensor 4 (16, 64, 3, 3) F32): tensor.Tensor 4 (2, 16, 4, 4) F32 =
     conv Ring ((2, 2), (1, 1), (0, 0)) (input, w);
-extern lam c64w (input: «2, 64, 16, 16; F32», w: «16, 64, 3, 3; F32»): «2, 16, 16, 16; F32» =
+extern lam c64w (input: tensor.Tensor 4 (2, 64, 16, 16) F32, w: tensor.Tensor 4 (16, 64, 3, 3) F32): tensor.Tensor 4 (2, 16, 16, 16) F32 =
     conv Ring same (input, w);
-extern lam p64 (input: «2, 64, 8, 8; F32», w: «16, 64, 1, 1; F32»): «2, 16, 8, 8; F32» =
+extern lam p64 (input: tensor.Tensor 4 (2, 64, 8, 8) F32, w: tensor.Tensor 4 (16, 64, 1, 1) F32): tensor.Tensor 4 (2, 16, 8, 8) F32 =
     conv Ring pw (input, w);
-extern lam p3 (input: «2, 64, 8, 8; F32», w: «3, 64, 1, 1; F32»): «2, 3, 8, 8; F32» =
+extern lam p3 (input: tensor.Tensor 4 (2, 64, 8, 8) F32, w: tensor.Tensor 4 (3, 64, 1, 1) F32): tensor.Tensor 4 (2, 3, 8, 8) F32 =
     conv Ring pw (input, w);
-extern lam p14 (input: «2, 64, 14, 14; F32», w: «16, 64, 1, 1; F32»): «2, 16, 14, 14; F32» =
+extern lam p14 (input: tensor.Tensor 4 (2, 64, 14, 14) F32, w: tensor.Tensor 4 (16, 64, 1, 1) F32): tensor.Tensor 4 (2, 16, 14, 14) F32 =
     conv Ring pw (input, w);
-extern lam c13 (input: «2, 64, 13, 13; F32», w: «16, 64, 3, 3; F32»): «2, 16, 13, 13; F32» =
+extern lam c13 (input: tensor.Tensor 4 (2, 64, 13, 13) F32, w: tensor.Tensor 4 (16, 64, 3, 3) F32): tensor.Tensor 4 (2, 16, 13, 13) F32 =
     conv Ring same (input, w);
 
 extern lam _compile (): compile.Phase =

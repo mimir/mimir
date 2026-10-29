@@ -1,0 +1,18 @@
+// RUN: %mim %s -o - | %FileCheck %s --implicit-check-not=tensor.from_array
+
+plugin tensor;
+plugin compile;
+
+lam unused {s: «1; Nat»} (a: «s; I32»): tensor.Tensor 1 s I32 = tensor.from_array a;
+lam generic {s: «1; Nat»} (a: «s; I32»): tensor.Tensor 1 s I32 = tensor.from_array a;
+lam pair (x: I32): tensor.Tensor 1 2 I32 = tensor.from_array (x, 1I32);
+
+extern con generic_literal (return: Cn [tensor.Tensor 1 4 I32]) =
+    return (generic @4 (2I32, 3I32, 5I32, 7I32));
+
+extern con pair_literal (return: Cn [tensor.Tensor 1 2 I32]) = return (pair 7I32);
+
+extern lam _compile (): compile.Phase = compile.phases ff (compile.beta_red, tensor.lower_to_mem, compile.cleanup);
+
+// CHECK-DAG: buffer.init (1, 4, I32) ({{.*}}, (2I32, 3I32, 5I32, 7I32))
+// CHECK-DAG: buffer.init (1, 2, I32) ({{.*}}, (7I32, 1I32))

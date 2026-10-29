@@ -1,0 +1,8 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+
+extern con scatter_unproven (n: Nat, a: tensor.Tensor 2 (n, 3) I32, index: tensor.Tensor 2 (2, 2) (Idx 3), updates: tensor.Tensor 2 (2, 2) I32, return: Cn [tensor.Tensor 2 (n, 3) I32]) =
+    return (tensor.scatter ((n, 3), (2, 2), (2, 2)) 1₂ (a, index, updates));
+
+// CHECK: error: cannot bufferize: scatter requires a literal axis and proven index shape bounds

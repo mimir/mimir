@@ -1,0 +1,6 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+extern fun ingress (n: Nat, a: «n; I32»): tensor.Tensor 1 n I32 = return (tensor.from_array @(1, n, I32) a);
+
+// CHECK: error: from_array requires a static shape
