@@ -1,0 +1,9 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+plugin compile;
+
+extern con inner (n: Nat, a: tensor.Tensor 2 (3, n) I32, return: Cn [tensor.Tensor 2 (3, n) I32]) = return a;
+extern lam _compile (): compile.Phase = tensor.lower_to_mem;
+
+// CHECK: error: cannot bufferize: runtime inner extent is not supported
