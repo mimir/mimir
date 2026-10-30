@@ -18,8 +18,8 @@ let Ring = (Nat, 0, core.nat.add, core.nat.mul);
 
 // CHECK-DAG: extern fun mm_pad
 extern fun mm_pad {m n l: Nat} (
-        a: «m, (n + 3) / 4 * 4; Nat»,
-        b: «(n + 3) / 4 * 4, l; Nat»): «m, l; Nat» =
+        a: tensor.Tensor 2 (m, (n + 3) / 4 * 4) Nat,
+        b: tensor.Tensor 2 ((n + 3) / 4 * 4, l) Nat): tensor.Tensor 2 (m, l) Nat =
     return (product_2d Ring (a, b));
 
 extern lam _compile (): compile.Phase =

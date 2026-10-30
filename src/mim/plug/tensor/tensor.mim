@@ -36,6 +36,20 @@ use core.ops.n;
 /// The buffer-world `btensor` plugin sits *below* `tensor` — `lower_to_mem` bufferizes onto `btensor.*` ops -
 /// so the definition lives there and both layers share one notion of a ring.
 anx Ring = btensor.Ring;
+
+/// The private representation prevents array access from bypassing tensor operations.
+priv nom Tensor (r: Nat) (s: «r; Nat») (T: *) = [indices: «(r, s, ⊥:T)», data: «s; T»];
+/// The annex lets lowering identify the exported type constructor.
+pub anx let Tensor = Tensor;
+
+/// Bufferization accepts static literals here; external data must use Tensor-typed parameters.
+axm from_array: {r: Nat, s: «r; Nat», T: *} → [a: «s; T»] → Tensor r s T;
+axm get: {r: Nat, s: «r; Nat», T: *}
+       → [t: Tensor r s T, i: «j: r; Idx (s#j)»] → T, normalize_get;
+axm set: {r: Nat, s: «r; Nat», T: *}
+       → [t: Tensor r s T, i: «j: r; Idx (s#j)», v: T] → Tensor r s T, normalize_set;
+axm scalar: {T: *} → T → Tensor 0 () T, normalize_scalar;
+axm item: {T: *} → Tensor 0 () T → T, normalize_item;
 ///
 /// ## Constructors
 ///
@@ -56,7 +70,7 @@ anx Ring = btensor.Ring;
 axm generate: {T: *, r: Nat}
             → [s_out: «r; Nat»]
             → [body: [«r; I64»] → T]
-            → «s_out; T»;
+            → Tensor r s_out T;
 ///
 /// ### splat
 ///
@@ -72,36 +86,11 @@ axm generate: {T: *, r: Nat}
 /// ```
 axm splat: {T: *, r: Nat}
          → [s_out: «r; Nat», value: T]
-         → «s_out; T»;
-///
-/// ## Annotations
-///
-/// ### buf
-///
-/// Nominates an array value as a *tensor*: one that lives in a buffer and is passed by
-/// handle, rather than an SSA aggregate that merely shares the `Arr` structure - an `(x y: I32)` group *is*
-/// a `«2; I32»`.
-/// The result type is the argument's, so an annotated tensor extracts, inserts and folds exactly like any
-/// other array and no tensor operation has to reimplement what MimIR's arrays already do.
-///
-/// Annotate *boundary* values only - an external function's array parameters.
-/// Everything a tensor operation produces is self-identifying, and `lower_to_mem` propagates tensor-ness
-/// from there; it consumes the annotation and every array type it reaches becomes a `buffer.Buf`.
-/// Losing one before that silently leaves a tensor with value semantics.
-axm buf: {T: *} → T → T;
+         → Tensor r s_out T;
 ///
 /// ## Accessors
 ///
-/// Element access is a plain `Extract` / `Insert`: `arr#(a, b, c)` ≡ `arr#a#b#c`.
-///
-/// ### shape
-///
-/// Returns the shape of `arr` as a rank-`r` array of Nats: `(s#0, …, s#(r-1))`.
-///
-/// The rank `r` is explicit: it selects the first `r` axes of `arr`'s fused shape.
-/// Size-1 axes collapse out of the type, so `arr` must have no literal-1 dims among the first `r`.
-///
-axm shape: {A: *} → [r: Nat] → [arr: A] → «r; Nat», normalize_shape;
+pub lam shape {r: Nat, s: «r; Nat», T: *} (t: Tensor r s T): «r; Nat» = s;
 ///
 /// ## Map-Reduce
 ///
@@ -157,8 +146,8 @@ axm map_reduce_post: {nis nps: Nat}
                    → [map_out: «Rn; affine.Index» → «Ro; affine.Index»]
                    → [     maps: «i: nis; «Rn; affine.Index» → «Ris#i; affine.Index»»,
                       post_maps: «j: nps; «Ro; affine.Index» → «Rps#j; affine.Index»»]
-                   → [is: «i: nis; «Sis#i; Tis#i»», post_is: «j: nps; «Sps#j; Tps#j»»]
-                   → «So; Tp»;
+                   → [is: «i: nis; Tensor (Ris#i) (Sis#i) (Tis#i)», post_is: «j: nps; Tensor (Rps#j) (Sps#j) (Tps#j)»]
+                   → Tensor Ro So Tp;
 ///
 /// ### Sched, SchedT, mk_sched
 ///
@@ -181,7 +170,7 @@ anx lam map_reduce {nis: Nat} {To: *, Ro Rn: Nat}
                    (f: Fn [To, «i: nis; Tis#i»] → To, init: To)
                    (map_out: «Rn; affine.Index» → «Ro; affine.Index»)
                    (maps: «i: nis; («Rn; affine.Index» → «Ris#i; affine.Index»)»)
-                   (is: «i: nis; «Sis#i; Tis#i»»): «So; To» =
+                   (is: «i: nis; Tensor (Ris#i) (Sis#i) (Tis#i)»): Tensor Ro So To =
     map_reduce_post
         (So, Sr, mk_sched (Rn, 0))
         (f, init, id @To) map_out (maps, ()) (is, ());
@@ -206,8 +195,8 @@ anx proj_map = btensor.proj_map;
 /// Lowered directly to packs by the `LowerMapReduce` phase (`lower_broadcast`): a size-1 axis broadcast to `n`
 /// becomes a `‹n; …›` pack instead of a copy loop.
 axm broadcast: {T: *, r: Nat}
-             → [s_in s_out: «r; Nat», input: «s_in; T»]
-             → «s_out; T», normalize_broadcast;
+             → [s_in s_out: «r; Nat», input: Tensor r s_in T]
+             → Tensor r s_out T, normalize_broadcast;
 ///
 /// ### broadcast_in_dim
 ///
@@ -217,8 +206,8 @@ axm broadcast: {T: *, r: Nat}
 /// @todo We could probably implement this in terms of `broadcast` and `transpose` directly.
 ///
 axm broadcast_in_dim: {T: *, r_in r_out: Nat}
-                    → [s_in: «r_in; Nat», s_out: «r_out; Nat», input: «s_in; T», index: «r_in; Idx r_out»]
-                    → «s_out; T», normalize_broadcast_in_dim;
+                    → [s_in: «r_in; Nat», s_out: «r_out; Nat», input: Tensor r_in s_in T, index: «r_in; Idx r_out»]
+                    → Tensor r_out s_out T, normalize_broadcast_in_dim;
 ///
 /// ### concat_acc
 ///
@@ -247,8 +236,8 @@ lam concat_shape {nis r: Nat} (ax: Idx r, Sis: «nis; «r; Nat»»): «r; Nat» 
 axm concat: {T: *, nis r: Nat}
           → [ax: Idx r]
           → {Sis: «i: nis; «r; Nat»»}
-          → [is: «i: nis; «Sis#i; T»»]
-          → «concat_shape (ax, Sis); T», normalize_concat;
+          → [is: «i: nis; Tensor r (Sis#i) T»]
+          → Tensor r (concat_shape (ax, Sis)) T, normalize_concat;
 ///
 /// ### flip
 ///
@@ -256,8 +245,8 @@ axm concat: {T: *, nis r: Nat}
 ///
 axm flip: {T: *, r: Nat}
         → [s_in: «r; Nat»]
-        → [input: «s_in; T»]
-        → «s_in; T», normalize_flip;
+        → [input: Tensor r s_in T]
+        → Tensor r s_in T, normalize_flip;
 ///
 /// ### pad_shape
 ///
@@ -278,8 +267,8 @@ lam pad_shape {r: Nat} (lo s_in hi: «r; Nat»): «r; Nat» =
 axm pad: {T: *, r: Nat}
        → [s_in: «r; Nat»]
        → [mode: Nat, lo hi: «r; Nat»]
-       → [input: «s_in; T», value: T]
-       → «pad_shape (lo, s_in, hi); T», normalize_pad;
+       → [input: Tensor r s_in T, value: T]
+       → Tensor r (pad_shape (lo, s_in, hi)) T, normalize_pad;
 ///
 /// ### repeat
 ///
@@ -288,8 +277,8 @@ axm pad: {T: *, r: Nat}
 axm repeat: {T: *, r: Nat}
           → [s_in: «r; Nat»]
           → [s_out: «r; Nat»]
-          → [input: «s_in; T»]
-          → «s_out; T», normalize_repeat;
+          → [input: Tensor r s_in T]
+          → Tensor r s_out T, normalize_repeat;
 ///
 /// ### reshape
 ///
@@ -301,8 +290,8 @@ axm repeat: {T: *, r: Nat}
 axm reshape: {T: *, r_in r_out: Nat}
            → [s_in: «r_in; Nat»]
            → [s_out: «r_out; Nat»]
-           → [input: «s_in; T»]
-           → «s_out; T», normalize_reshape;
+           → [input: Tensor r_in s_in T]
+           → Tensor r_out s_out T, normalize_reshape;
 ///
 /// ### slice
 ///
@@ -312,8 +301,8 @@ axm reshape: {T: *, r_in r_out: Nat}
 axm slice: {T: *, r: Nat}
          → [s_in: «r; Nat»]
          → [start step s_out: «r; Nat»]
-         → [input: «s_in; T»]
-         → «s_out; T», normalize_slice;
+         → [input: Tensor r s_in T]
+         → Tensor r s_out T, normalize_slice;
 ///
 /// ### transpose_shape
 ///
@@ -329,19 +318,18 @@ lam transpose_shape {r: Nat} (s: «r; Nat», permutation: «r; Idx r»): «r; Na
 ///
 /// `permutation` precedes `input`, and `{s}` is a *separate* implicit group introduced after it, so that `{T, r, s}`
 /// can be inferred: `permutation: «r; Idx r»` pins the rank `r`, and only then is the `{s}` Hole created — with the
-/// now-literal type `«r; Nat»`, which lets `input: «s; T»` read off exactly the first `r` axes of its shape.
-/// Merging the two groups would not do: the domain `«s; T»` is built once, while `r` is still unknown.
+/// now-literal type `«r; Nat»`, which lets `input: Tensor r s T` infer its shape index.
 axm transpose: {T: *, r: Nat}
              → [permutation: «r; Idx r»]
              → {s: «r; Nat»}
-             → [input: «s; T»]
-             → «transpose_shape (s, permutation); T», normalize_transpose;
+             → [input: Tensor r s T]
+             → Tensor r (transpose_shape (s, permutation)) T, normalize_transpose;
 ///
 /// ### transpose_2d
 ///
 /// Permutes the dimensions of a 2-dimensional tensor.
 ///
-anx lam transpose_2d {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, s#ff; T» = transpose (tt, ff) input;
+anx lam transpose_2d {T: *} {s: «2; Nat»} (input: Tensor 2 s T): Tensor 2 (s#tt, s#ff) T = transpose (tt, ff) input;
 ///
 /// ## Element-wise Operations
 ///
@@ -354,8 +342,8 @@ anx lam transpose_2d {T: *} {s: «2; Nat»} (input: «s; T»): «s#tt, s#ff; T»
 axm binary: {Ti1 Ti2 To: *}
           → [app: [Ti1, Ti2] → To]
           → {r: Nat, s: «r; Nat»}
-          → [is: [«s; Ti1», «s; Ti2»]]
-          → «s; To»;
+          → [is: [Tensor r s Ti1, Tensor r s Ti2]]
+          → Tensor r s To;
 ///
 /// ### map
 ///
@@ -364,8 +352,8 @@ axm binary: {Ti1 Ti2 To: *}
 axm map: {T: *, ni: Nat, Is: «ni; *»}
        → [app: «i: ni; Is#i» → T]
        → {r: Nat, s: «r; Nat»}
-       → [is: «i: ni; «s; Is#i»»]
-       → «s; T»;
+       → [is: «i: ni; Tensor r s (Is#i)»]
+       → Tensor r s T;
 ///
 /// ### select
 ///
@@ -373,8 +361,8 @@ axm map: {T: *, ni: Nat, Is: «ni; *»}
 ///
 axm select: {T: *}
           → {r: Nat, s: «r; Nat»}
-          → [is: [«s; Bool», «s; T», «s; T»]]
-          → «s; T»;
+          → [is: [Tensor r s Bool, Tensor r s T, Tensor r s T]]
+          → Tensor r s T;
 ///
 /// ### unary
 ///
@@ -383,8 +371,8 @@ axm select: {T: *}
 axm unary: {Ti To: *}
          → [app: Ti → To]
          → {r: Nat, s: «r; Nat»}
-         → [i: «s; Ti»]
-         → «s; To»;
+         → [i: Tensor r s Ti]
+         → Tensor r s To;
 ///
 /// ## Reductions
 ///
@@ -396,8 +384,8 @@ axm unary: {Ti To: *}
 ///
 axm bmm: [R: Ring]
        → {B M K N: Nat}
-       → [t1: «B, M, K; R#T», t2: «B, K, N; R#T»]
-       → «B, M, N; R#T»;
+       → [t1: Tensor 3 (B, M, K) (R#T), t2: Tensor 3 (B, K, N) (R#T)]
+       → Tensor 3 (B, M, N) (R#T);
 ///
 /// ### conv_shape
 ///
@@ -427,8 +415,8 @@ pub lam conv_shape (n cout: Nat, s k stride dilation padding: «2; Nat»): «4; 
 axm conv: [R: Ring]
         → {n cin cout h w kh kw: Nat}
         → [stride dilation padding: «2; Nat»]
-        → [input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»]
-        → «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T»;
+        → [input: Tensor 4 (n, cin, h, w) (R#T), weight: Tensor 4 (cout, cin, kh, kw) (R#T)]
+        → Tensor 4 (conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding)) (R#T);
 ///
 /// ### conv_grouped
 ///
@@ -440,8 +428,8 @@ axm conv: [R: Ring]
 axm conv_grouped: [R: Ring]
                 → {n cin cout h w ci kh kw: Nat}
                 → [groups: Nat, stride dilation padding: «2; Nat»]
-                → [input: «n, cin, h, w; R#T», weight: «cout, ci, kh, kw; R#T»]
-                → «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T»;
+                → [input: Tensor 4 (n, cin, h, w) (R#T), weight: Tensor 4 (cout, ci, kh, kw) (R#T)]
+                → Tensor 4 (conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding)) (R#T);
 ///
 /// ### dot_general_shape
 ///
@@ -475,8 +463,8 @@ axm dot_product: [R: Ring]
                → {nc nb: Nat}
                → [c1: «nc; Idx r1», c2: «nc; Idx r2», b1: «nb; Idx r1», b2: «nb; Idx r2»]
                → {s1: «r1; Nat», s2: «r2; Nat»}
-               → [a: «s1; R#T», b: «s2; R#T»]
-               → «dot_general_shape (c1, c2, b1, b2) (s1, s2); R#T»;
+               → [a: Tensor r1 s1 (R#T), b: Tensor r2 s2 (R#T)]
+               → Tensor (vec.len (dot_general_shape (c1, c2, b1, b2) (s1, s2))) (dot_general_shape (c1, c2, b1, b2) (s1, s2)) (R#T);
 ///
 /// ### pool
 ///
@@ -493,8 +481,8 @@ axm pool: {T: *}
         → [g: [T, T] → T, init: T]
         → {n c h w: Nat}
         → [kernel stride dilation padding s_out: «2; Nat»]
-        → [input: «n, c, h, w; T»]
-        → «n, c, s_out#0₂, s_out#1₂; T»;
+        → [input: Tensor 4 (n, c, h, w) T]
+        → Tensor 4 (n, c, s_out#0₂, s_out#1₂) T;
 ///
 /// ### product_2d
 ///
@@ -502,8 +490,8 @@ axm pool: {T: *}
 ///
 axm product_2d: [R: Ring]
               → {m k l: Nat}
-              → [t1: «m, k; R#T», t2: «k, l; R#T»]
-              → «m, l; R#T»;
+              → [t1: Tensor 2 (m, k) (R#T), t2: Tensor 2 (k, l) (R#T)]
+              → Tensor 2 (m, l) (R#T);
 ///
 /// ## Indexing
 ///
@@ -530,8 +518,8 @@ axm product_2d: [R: Ring]
 axm gather: {T: *, r: Nat}
           → [s_src: «r; Nat», s_idx: «r; Nat»]
           → [dim: Idx r]
-          → [input: «s_src; T», index: «s_idx; Idx (s_src#dim)»]
-          → «s_idx; T»;
+          → [input: Tensor r s_src T, index: Tensor r s_idx (Idx (s_src#dim))]
+          → Tensor r s_idx T;
 ///
 /// ### scatter
 ///
@@ -552,8 +540,8 @@ axm gather: {T: *, r: Nat}
 axm scatter: {T: *, r: Nat}
            → [s_src: «r; Nat», s_idx: «r; Nat», s_updates: «r; Nat»]
            → [dim: Idx r]
-           → [input: «s_src; T», index: «s_idx; Idx (s_src#dim)», updates: «s_updates; T»]
-           → «s_src; T»;
+           → [input: Tensor r s_src T, index: Tensor r s_idx (Idx (s_src#dim)), updates: Tensor r s_updates T]
+           → Tensor r s_src T;
 ///
 /// ## Reflection
 ///
@@ -703,14 +691,14 @@ anx lam mr_tileable
                 (f: Fn [To, «i: nis; Tis#i»] → To, init: To, post: Fn [To, []] → Tp)
                 (map_out: «Ro + Rr; affine.Index» → «Ro; affine.Index»)
                 (maps: «i: nis; («Ro + Rr; affine.Index» → «Ris#i; affine.Index»)»)
-                (is: «i: nis; «Sis#i; Tis#i»»)
+                (is: «i: nis; Tensor (Ris#i) (Sis#i) (Tis#i)»)
               : Tileable =
-    lam out_t (ro: Nat, so: «ro; Nat»): * = «so; Tp»;
+    lam out_t (ro: Nat, so: «ro; Nat»): * = Tensor ro so Tp;
     lam retile (Ro_n Rr_n: Nat)
                (So_n: «Ro_n; Nat», Sr_n: «Ro_n + Rr_n; Nat», sched_n: Sched)
                (iota:  «Ro_n + Rr_n; affine.Index» → «Ro + Rr; affine.Index»,
                 omega: [«Ro; affine.Index», «Ro_n + Rr_n; affine.Index»] → «Ro_n; affine.Index»)
-             : «So_n; Tp» =
+             : Tensor Ro_n So_n Tp =
         lam map_out_n (o: «Ro_n + Rr_n; affine.Index»): «Ro_n; affine.Index» =
             omega (map_out (iota o), o);
         map_reduce_post @(nis, 0) @(To, Tp, Ro_n, Ro_n + Rr_n, SchedT)
@@ -1077,7 +1065,7 @@ lam bid_map {r_in r_out: Nat} (s_in: «r_in; Nat», index: «r_in; Idx r_out»)
 /// ### broadcast_in_dim_impl
 ///
 priv anx lam broadcast_in_dim_impl {T: *, r_in r_out: Nat}
-    (s_in: «r_in; Nat», s_out: «r_out; Nat», input: «s_in; T», index: «r_in; Idx r_out»): «s_out; T» =
+    (s_in: «r_in; Nat», s_out: «r_out; Nat», input: Tensor r_in s_in T, index: «r_in; Idx r_out»): Tensor r_out s_out T =
     map_reduce (s_out, s_out) (tensor_copy, ⊥:T)
         affine.id (bid_map (s_in, index),) input;
 ///
@@ -1089,7 +1077,7 @@ lam flip_map {r: Nat} (s_in: «r; Nat») (o: «r; affine.Index»): «r; affine.I
 ///
 /// ### flip_impl
 ///
-priv anx lam flip_impl {T: *, r: Nat} (s_in: «r; Nat») (input: «s_in; T»): «s_in; T» =
+priv anx lam flip_impl {T: *, r: Nat} (s_in: «r; Nat») (input: Tensor r s_in T): Tensor r s_in T =
     map_reduce (s_in, s_in) (tensor_copy, ⊥:T)
         affine.id (flip_map s_in,) input;
 ///
@@ -1115,8 +1103,8 @@ priv anx lam gather_pointwise_elem_impl {T: *, r: Nat}
 priv anx lam map_impl {T: *, ni: Nat, Is: «ni; *»}
                      (app: «i: ni; Is#i» → T)
                      {r: Nat, s: «r; Nat»}
-                     (is: «i: ni; «s; Is#i»»)
-                     : «s; T» =
+                     (is: «i: ni; Tensor r s (Is#i)»)
+                     : Tensor r s T =
     fun app_mr (x: T, y: «i: ni; Is#i»)@tt = return (app y);
     // The `{Tis, Ris, Sis}` group stays explicit: with a *symbolic* `ni`, solving `Sis#i ≡ s` for all `i`
     // (i.e. `Sis := ‹ni; s›`) is Miller pattern unification. Adding that rule to `Checker::alpha_impl_` was tried
@@ -1141,7 +1129,7 @@ pub lam reduce_shape {r: Nat} (ax: Idx r, s: «r; Nat»): «r - 1; Nat» =
 ///
 /// Folds `input` along axis `ax` with `g`, seeded with `init`; the result drops that axis.
 /// The output axes run as the leading loops, `ax` as the trailing reduction loop.
-pub lam reduce {T: *} (g: [T, T] → T, init: T) {r: Nat} (ax: Idx r) {s: «r; Nat»} (input: «s; T»): «reduce_shape (ax, s); T» =
+pub lam reduce {T: *} (g: [T, T] → T, init: T) {r: Nat} (ax: Idx r) {s: «r; Nat»} (input: Tensor r s T): Tensor (r - 1) (reduce_shape (ax, s)) T =
     let a = core.idx2nat ax;
     map_reduce (reduce_shape (ax, s), ‹i: r; let ii = core.idx2nat i; s#(core.idx 0 r (core.select (ii < r - 1, shift_ax (a, ii), a)))›)
         (pool_fun g, init)
@@ -1153,7 +1141,7 @@ pub lam reduce {T: *} (g: [T, T] → T, init: T) {r: Nat} (ax: Idx r) {s: «r; N
 ///
 /// `binary app (x, y)` where `y` lacks axis `ax` of `x` and is broadcast along it.
 pub lam binary_ax {Ti1 Ti2 To: *} (app: [Ti1, Ti2] → To) {r: Nat} (ax: Idx r) {s: «r; Nat»}
-                  (x: «s; Ti1», y: «reduce_shape (ax, s); Ti2»): «s; To» =
+                  (x: Tensor r s Ti1, y: Tensor (r - 1) (reduce_shape (ax, s)) Ti2): Tensor r s To =
     fun app_mr (_: To, (u: Ti1, v: Ti2))@tt: To = return (app (u, v));
     let a = core.idx2nat ax;
     map_reduce (s, s) @((Ti1, Ti2), (r, r - 1), (s, reduce_shape (ax, s))) (app_mr, ⊥:To)
@@ -1162,7 +1150,7 @@ pub lam binary_ax {Ti1 Ti2 To: *} (app: [Ti1, Ti2] → To) {r: Nat} (ax: Idx r) 
 /// ### softmax
 ///
 /// Numerically stable softmax along axis `ax`: `exp (x - max) / Σ exp (x - max)`.
-pub lam softmax (m: Nat) {pe: «2; Nat»} {r: Nat} (ax: Idx r) {s: «r; Nat»} (input: «s; math.F pe»): «s; math.F pe» =
+pub lam softmax (m: Nat) {pe: «2; Nat»} {r: Nat} (ax: Idx r) {s: «r; Nat»} (input: Tensor r s (math.F pe)): Tensor r s (math.F pe) =
     let F  = math.F pe;
     let mx = reduce (math.extrema.fmax m, math.neg_inf pe) ax input;
     let e  = binary_ax (λ (x y: F): F = math.exp.exp m (math.arith.sub m (x, y))) ax (input, mx);
@@ -1182,12 +1170,12 @@ lam pool2d_in_map (stride dilation: «2; Nat») (o: «6; affine.Index»): «4; a
 ///
 priv anx lam pool_impl {T: *} (g: [T, T] → T, init: T) {n c h w: Nat}
                       (kernel stride dilation padding s_out: «2; Nat»)
-                      (input: «n, c, h, w; T»)
-                    : «n, c, s_out#0_2, s_out#1_2; T» =
+                      (input: Tensor 4 (n, c, h, w) T)
+                    : Tensor 4 (n, c, s_out#0_2, s_out#1_2) T =
     let s_in     = (n, c, h, w);
     let pad_lohi = (0, 0, padding#0_2, padding#1_2);
     let padded   = pad s_in (0, pad_lohi, pad_lohi) (input, init);
-    let s_padded = shape 4 padded;
+    let s_padded = shape padded;
 
     // Schedule (frontend, selected from the parameters — see `pool_schedule`).
     materialize (pool_schedule (stride, dilation) (
@@ -1207,7 +1195,7 @@ lam repeat_map {r: Nat} (s_in: «r; Nat») (o: «r; affine.Index»): «r; affine
 ///
 /// ### repeat_impl
 ///
-priv anx lam repeat_impl {T: *, r: Nat} (s_in: «r; Nat») (s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
+priv anx lam repeat_impl {T: *, r: Nat} (s_in: «r; Nat») (s_out: «r; Nat») (input: Tensor r s_in T): Tensor r s_out T =
     map_reduce (s_out, s_out) (tensor_copy, ⊥:T)
         affine.id (repeat_map s_in,) input;
 ///
@@ -1221,7 +1209,7 @@ anx lam reshape_map {r_in r_out: Nat} (s_in: «r_in; Nat», s_out: «r_out; Nat�
 /// ### reshape_impl
 ///
 priv anx lam reshape_impl {T: *, r_in r_out: Nat}
-                         (s_in: «r_in; Nat») (s_out: «r_out; Nat») (input: «s_in; T»): «s_out; T» =
+                         (s_in: «r_in; Nat») (s_out: «r_out; Nat») (input: Tensor r_in s_in T): Tensor r_out s_out T =
     map_reduce (s_out, s_out) (tensor_copy, ⊥:T)
         affine.id (reshape_map (s_in, s_out),) input;
 ///
@@ -1246,13 +1234,13 @@ lam conv2d_in_map (stride dilation: «2; Nat») (o: «7; affine.Index»): «4; a
 ///
 priv anx lam conv_impl (R: Ring) {n cin cout h w kh kw: Nat}
                       (stride dilation padding: «2; Nat»)
-                      (input: «n, cin, h, w; R#T», weight: «cout, cin, kh, kw; R#T»)
-                    : «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T» =
+                      (input: Tensor 4 (n, cin, h, w) (R#T), weight: Tensor 4 (cout, cin, kh, kw) (R#T))
+                    : Tensor 4 (conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding)) (R#T) =
     // Zero-pad only the spatial axes (lo = hi = (0, 0, pad_h, pad_w)); the pad value is the ring zero.
     let s_in     = (n, cin, h, w);
     let pad_lohi = (0, 0, padding#0_2, padding#1_2);
     let padded   = pad s_in (0, pad_lohi, pad_lohi) (input, R#_0);
-    let s_padded = shape 4 padded;
+    let s_padded = shape padded;
     let s_out    = conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding);
     let (_, _, oh, ow) = s_out;
 
@@ -1297,14 +1285,14 @@ lam conv_grouped_w_map (groups co: Nat) (o: «7; affine.Index»): «4; affine.In
 
 priv anx lam conv_grouped_impl (R: Ring) {n cin cout h w ci kh kw: Nat}
                               (groups: Nat, stride dilation padding: «2; Nat»)
-                              (input: «n, cin, h, w; R#T», weight: «cout, ci, kh, kw; R#T»)
-                            : «conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding); R#T» =
+                              (input: Tensor 4 (n, cin, h, w) (R#T), weight: Tensor 4 (cout, ci, kh, kw) (R#T))
+                            : Tensor 4 (conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding)) (R#T) =
     let ci_g     = refly.check (ci * groups == cin, ci, "conv_grouped: weight must hold cin / groups input channels");
     let co       = check_div (cout, groups) / groups;
     let s_in     = (n, cin, h, w);
     let pad_lohi = (0, 0, padding#0_2, padding#1_2);
     let padded   = pad s_in (0, pad_lohi, pad_lohi) (input, R#_0);
-    let s_padded = shape 4 padded;
+    let s_padded = shape padded;
     let s_out    = conv_shape (n, cout, (h, w), (kh, kw), stride, dilation, padding);
     let oh       = s_out#2_4;
     let ow       = s_out#3_4;
@@ -1361,9 +1349,9 @@ priv anx lam dot_product_impl
     (fastest_2: Nat)
     (R: Ring) (r1 r2: Nat) {nc nb: Nat}
     (c1: «nc; Idx r1», c2: «nc; Idx r2», b1: «nb; Idx r1», b2: «nb; Idx r2»)
-    {s1: «r1; Nat», s2: «r2; Nat»} (a: «s1; R#T», b: «s2; R#T»)
+    {s1: «r1; Nat», s2: «r2; Nat»} (a: Tensor r1 s1 (R#T), b: Tensor r2 s2 (R#T))
     : let s_out = dot_general_shape (c1, c2, b1, b2) (s1, s2);
-      «s_out; R#T»
+      Tensor (vec.len s_out) s_out (R#T)
     = let s_out    = dot_general_shape (c1, c2, b1, b2) (s1, s2);
       let bc_1     = vec.cat (b1, c1);
       let s1_res   = vec.diff (s1, bc_1);
@@ -1395,10 +1383,10 @@ priv anx lam dot_product_impl
       // reshape's input could not be checked. `sched#3_8` is the scheduled Tileable's (possibly
       // packed) output shape `So`.
       let kvec = option.is_some (vec.first `== (‹i: nc; core.idx2nat (c2#i)›, fastest_2));
-      lam go_n    (u: []): «s_out; R#T» =
+      lam go_n    (u: []): Tensor (vec.len s_out) s_out (R#T) =
           let sched = dot_schedule r_out t;
           reshape (sched#3_8) s_out (materialize sched);
-      lam go_kvec (u: []): «s_out; R#T» =
+      lam go_kvec (u: []): Tensor (vec.len s_out) s_out (R#T) =
           let sched = dot_schedule_kvec r_out t;
           reshape (sched#3_8) s_out (materialize sched);
       (go_n, go_kvec)#kvec ();
@@ -1406,13 +1394,13 @@ priv anx lam dot_product_impl
 /// ### bmm_impl
 ///
 /// `dot_product_impl` with literal ranks `(3, 3)`, batching axis 0 and contraction `k`.
-priv anx lam bmm_impl (fastest_2: Nat) (R: Ring) {B M K N: Nat} (t1: «B, M, K; R#T», t2: «B, K, N; R#T»): «B, M, N; R#T»
+priv anx lam bmm_impl (fastest_2: Nat) (R: Ring) {B M K N: Nat} (t1: Tensor 3 (B, M, K) (R#T), t2: Tensor 3 (B, K, N) (R#T)): Tensor 3 (B, M, N) (R#T)
         = dot_product_impl fastest_2 R (3, 3) (2_3, 1_3, 0_3, 0_3) (t1, t2);
 ///
 /// ### product_2d_impl
 ///
 /// `dot_product_impl` with literal ranks `(2, 2)` and the contraction `k`; see there for why the ranks are an explicit group.
-priv anx lam product_2d_impl (fastest_2: Nat) (R: Ring) {m k l: Nat} (t1: «m, k; R#T», t2: «k, l; R#T»): «m, l; R#T»
+priv anx lam product_2d_impl (fastest_2: Nat) (R: Ring) {m k l: Nat} (t1: Tensor 2 (m, k) (R#T), t2: Tensor 2 (k, l) (R#T)): Tensor 2 (m, l) (R#T)
         = dot_product_impl fastest_2 R (2, 2) (1_2, 0_2, (), ()) (t1, t2);
 ///
 /// ### scatter_step_impl
@@ -1442,7 +1430,7 @@ lam slice_map {r: Nat} (start step: «r; Nat») (o: «r; affine.Index»): «r; a
 /// ### slice_impl
 ///
 priv anx lam slice_impl {T: *, r: Nat} (s_in: «r; Nat»)
-                       (start step s_out: «r; Nat») (input: «s_in; T»): «s_out; T» =
+                       (start step s_out: «r; Nat») (input: Tensor r s_in T): Tensor r s_out T =
     map_reduce (s_out, s_out) (tensor_copy, ⊥:T)
         affine.id (slice_map (start, step),) input;
 ///
@@ -1454,8 +1442,8 @@ lam transpose_map {r: Nat} (perm: «r; Idx r») (o: «r; affine.Index»): «r; a
 /// ### transpose_impl
 ///
 priv anx lam transpose_impl {T: *, r: Nat}
-                           (permutation: «r; Idx r») {s: «r; Nat»} (input: «s; T»)
-                         : «transpose_shape (s, permutation); T»
+                           (permutation: «r; Idx r») {s: «r; Nat»} (input: Tensor r s T)
+                         : Tensor r (transpose_shape (s, permutation)) T
                          = let out_s = transpose_shape (s, permutation);
                            map_reduce (out_s, out_s) (tensor_copy, ⊥:T)
                                affine.id (transpose_map permutation,) input;
@@ -1463,19 +1451,19 @@ priv anx lam transpose_impl {T: *, r: Nat}
 /// ### binary_impl
 ///
 /// `map_impl` over two tensors.
-priv anx lam binary_impl {Ti1 Ti2 To: *} (app: [Ti1, Ti2] → To) {r: Nat, s: «r; Nat»} (is: [«s; Ti1», «s; Ti2»]): «s; To» =
+priv anx lam binary_impl {Ti1 Ti2 To: *} (app: [Ti1, Ti2] → To) {r: Nat, s: «r; Nat»} (is: [Tensor r s Ti1, Tensor r s Ti2]): Tensor r s To =
     map_impl app is;
 ///
 /// ### select_impl
 ///
 /// `map_impl` of `core.select` over three tensors.
-priv anx lam select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [«s; Bool», «s; T», «s; T»]): «s; T» =
+priv anx lam select_impl {T: *} {r: Nat, s: «r; Nat»} (is: [Tensor r s Bool, Tensor r s T, Tensor r s T]): Tensor r s T =
     map_impl core.select is;
 ///
 /// ### unary_impl
 ///
 /// `map_impl` over one tensor.
-priv anx lam unary_impl {Ti To: *} (app: Ti → To) {r: Nat, s: «r; Nat»} (i: «s; Ti»): «s; To» =
+priv anx lam unary_impl {Ti To: *} (app: Ti → To) {r: Nat, s: «r; Nat»} (i: Tensor r s Ti): Tensor r s To =
     map_impl app i;
 ///
 /// ## Phases
@@ -1537,10 +1525,9 @@ axm fuse_tensor: compile.Phase;
 /// ### lower_to_mem
 ///
 /// Bufferizes the core operations onto the `buffer` layer: tensor values become `buffer.Buf` handles,
-/// `extract` / `insert` / `generate` / `map_reduce` become `buffer.read` / `buffer.write` / `buffer.alloc`
+/// `get` / `set` / `generate` / `map_reduce` become `buffer.read` / `buffer.write` / `buffer.alloc`
 /// threading `mem.M`.
-/// This is where a `buf` annotation is consumed: it seeds the set of array types that denote tensors, next to
-/// the operand and result types of the operations above.
+/// The nominal `Tensor` key identifies tensor values; shape vectors remain ordinary arrays.
 /// `mem.add_mem` (scheduled next in the pipeline) threads the memory; run `buffer.lower_ptr`
 /// afterwards to reach `mem.Ptr`.
 ///

@@ -1,0 +1,8 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+
+extern con gather_unproven (n: Nat, a: tensor.Tensor 2 (n, 3) I32, index: tensor.Tensor 2 (2, 2) (Idx 3), return: Cn [tensor.Tensor 2 (2, 2) I32]) =
+    return (tensor.gather ((n, 3), (2, 2)) 1₂ (a, index));
+
+// CHECK: error: cannot bufferize: gather requires a literal axis and proven non-axis shape bounds

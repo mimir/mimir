@@ -1,0 +1,8 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+
+extern con ingress (a: «4; I32», return: Cn [tensor.Tensor 1 4 I32]) =
+    return (tensor.from_array a);
+
+// CHECK: error: from_array requires a static array literal

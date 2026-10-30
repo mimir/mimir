@@ -19,6 +19,24 @@
 
 namespace mim::plug::tensor::phase {
 
+namespace {
+
+const Def* as_array(const Def* tensor) { return tensor->world().struc(tensor)->proj(2, 1); }
+
+const Def* as_tensor(const Def* type, const Def* array) {
+    auto& w        = array->world();
+    auto [r, s, T] = *TensorType::isa(type);
+    auto indices   = w.wrap(w.tuple({r, s, w.bot(T)}));
+    return w.name(type, w.tuple({indices, array}));
+}
+
+const Def* undef_tensor(const Def* type) {
+    auto [r, s, T] = *TensorType::isa(type);
+    return as_tensor(type, type->world().bot(type->world().arr(s, T)));
+}
+
+} // namespace
+
 const Def* LowerMapReduce::rec_broadcast(const Def* s_in, const Def* s_out, const Def* input, u64 r, u64 i) {
     auto& w = new_world();
     // Base case: all dimensions have been processed; `input` is the final scalar.
@@ -67,9 +85,9 @@ const Def* LowerMapReduce::lower_broadcast(const App* app) {
     // r_nat will never be 0, as we would have normalized this case away already
     if (s_in == s_out) return input;
 
-    auto result = rec_broadcast(s_in, s_out, input, *r_nat, 0);
+    auto result = rec_broadcast(s_in, s_out, as_array(input), *r_nat, 0);
     log().d("broadcast result: {}", result);
-    return result;
+    return result ? as_tensor(rewrite(app->type()), result) : nullptr;
 }
 
 const Def* LowerMapReduce::lower_map_reduce(const App* app) {
@@ -129,7 +147,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         auto sr                    = Sr->projs(nloops);
 
         // Outer (parallel) loops over the leading Ro bounds of `Sr`, collecting the output iteration indices.
-        const Def* acc   = w.bot(cont->type()->as<Pi>()->dom());
+        const Def* acc   = undef_tensor(type);
         auto current_mut = fun;
         auto raw_out     = affine::counting_nest(current_mut, cont, acc, Defs(sr).subspan(0, ro), "forOut");
         auto out_iters   = btensor::to_idxs(w, Defs(sr).subspan(0, ro), raw_out);
@@ -151,11 +169,11 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
             auto sps_j = mr.Sps->proj(nps_nat, j);
             auto coords
                 = affine_map(mr.post_maps->proj(nps_nat, j), mr.Rps->proj(nps_nat, j), Ro, So, sps_j, write_coords);
-            return w.extract(new_post_is->proj(nps_nat, j), coords);
+            return w.extract(as_array(new_post_is->proj(nps_nat, j)), coords);
         });
 
         auto after_post = w.mut_con(mr.Tp)->set("afterPost");
-        after_post->app(true, cont, w.insert(wb_matrix, write_coords, after_post->var()));
+        after_post->app(true, cont, as_tensor(type, w.insert(as_array(wb_matrix), write_coords, after_post->var())));
         write_back->app(true, mr.post, {w.tuple({element_final, w.tuple(post_elements)}), after_post});
 
         // Inner (reduction) loops over the trailing `Rr` bounds of `Sr`, collecting the reduction iteration
@@ -175,7 +193,7 @@ const Def* LowerMapReduce::lower_map_reduce(const App* app) {
         DefVec input_elements(nis_nat, [&](size_t i) {
             auto sis_i  = mr.Sis->proj(nis_nat, i);
             auto coords = affine_map(mr.maps->proj(nis_nat, i), mr.Ris->proj(nis_nat, i), n, Sr, sis_i, iters);
-            return w.extract(new_is->proj(nis_nat, i), coords);
+            return w.extract(as_array(new_is->proj(nis_nat, i)), coords);
         });
 
         mr.comb->set("comb");
@@ -202,7 +220,7 @@ const Def* LowerMapReduce::build_pointwise(const Def* inputs,
     new_inputs->set("is");
 
     // Output loops over `So`, collecting the raw i64 iteration indices for `compute`.
-    const Def* acc   = w.bot(cont->type()->as<Pi>()->dom());
+    const Def* acc   = undef_tensor(type);
     auto current_mut = fun;
     auto so          = So->projs(ro);
     auto out_iters   = affine::counting_nest(current_mut, cont, acc, so, "forOut"); // raw i64 loop counters
@@ -211,7 +229,7 @@ const Def* LowerMapReduce::build_pointwise(const Def* inputs,
     // Write the computed element at the (identity) output coordinates; convert the i64 counters to `Idx (So#k)`.
     auto write_coords = btensor::to_idxs(w, so, out_iters);
     auto element      = compute(out_iters, new_inputs);
-    current_mut->app(true, cont, w.insert(wb_matrix, w.tuple(write_coords), element));
+    current_mut->app(true, cont, as_tensor(type, w.insert(as_array(wb_matrix), w.tuple(write_coords), element)));
     return call;
 }
 
@@ -229,13 +247,6 @@ const Def* LowerMapReduce::lower_generate(const App* app) {
         return nullptr;
     }
     auto rn = *r_l;
-
-    // Nested arrays erase literal singleton axes. If every logical axis is
-    // erased (including rank zero), the sole element is body((0, ..., 0)).
-    if (!type->isa<Arr>()) {
-        DefVec zeros(rn, [&](size_t) { return w.lit_i64(0); });
-        return w.app(body, w.tuple(zeros));
-    }
 
     auto unit    = w.tuple();
     auto compute = [&](Defs out_iters, const Def*) { return w.call(body, out_iters); };
@@ -262,18 +273,12 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
     auto rn       = *r_l;
     auto mode_nat = *mode_l;
 
-    // The output shape `s_out#d = lo#d + s_in#d + hi#d` is what `type` already carries.
-    auto out_arr = type->isa<Arr>();
-    if (!out_arr || out_arr->shape().rank() != rn) {
-        log().w("padded shape of {} is not a statically known rank-{} array", app, rn);
-        return nullptr;
-    }
-    auto s_out = *out_arr->shape();
+    auto s_out = TensorType::isa(type)->s;
 
     auto compute = [&](Defs out_iters, const Def* new_inputs) -> const Def* {
         auto [input, value]  = new_inputs->projs<2>();
         auto [coords, valid] = btensor::pad_coords(out_iters, lo, s_in, mode_nat != 0);
-        auto elem            = w.extract(input, w.tuple(coords));
+        auto elem            = w.extract(as_array(input), w.tuple(coords));
         return valid ? w.select(valid, elem, value) : elem; // constant: fill out-of-region cells with `value`
     };
 
@@ -317,7 +322,7 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
             DefVec coords(rn, [&](size_t d) {
                 return w.call(core::conv::u, Sis_i->proj(rn, d), d == axn ? ax_idx : out_iters[d]);
             });
-            return w.extract(new_inputs->proj(nisn, i), w.tuple(coords));
+            return w.extract(as_array(new_inputs->proj(nisn, i)), w.tuple(coords));
         };
         return btensor::concat_select(out_iters[axn], *exts, read);
     };
@@ -344,8 +349,9 @@ const Def* LowerMapReduce::lower_gather(const App* app) {
     if (!check_gather_shape_constraints(app, r, dim, s_src, s_idx)) return nullptr;
 
     auto compute = [&](Defs out_indices, const Def* inputs) -> const Def* {
-        auto element = w.app(w.annex<tensor::gather_pointwise_elem_impl>(), {T, r});
-        return w.call(element, Defs{s_src, s_idx}, dim, out_indices, inputs);
+        auto element        = w.app(w.annex<tensor::gather_pointwise_elem_impl>(), {T, r});
+        auto [input, index] = inputs->projs<2>();
+        return w.call(element, Defs{s_src, s_idx}, dim, out_indices, Defs{as_array(input), as_array(index)});
     };
     return build_pointwise(args, type, s_idx, *r_l, compute);
 }
@@ -380,12 +386,39 @@ const Def* LowerMapReduce::lower_scatter(const App* app) {
     auto visit_indices           = affine::counting_nest(current, cont, acc, dims, "scatter");
 
     auto step = w.app(w.annex<tensor::scatter_step_impl>(), {T, r});
-    auto next = w.call(step, Defs{s_src, s_idx, s_updates}, dim, visit_indices, Defs{acc, index, updates});
-    current->app(true, cont, next);
+    auto next = w.call(step, Defs{s_src, s_idx, s_updates}, dim, visit_indices,
+                       Defs{as_array(acc), as_array(index), as_array(updates)});
+    current->app(true, cont, as_tensor(type, next));
     return call;
 }
 
+const Def* LowerMapReduce::rewrite_imm_Nom(const Nom* nom) {
+    if (auto tensor = TensorType::isa(nom))
+        if (auto rank = Lit::isa<u64>(tensor->r))
+            for (auto extent : tensor->s->projs(*rank))
+                if (Lit::isa<u64>(extent) == 0) nom->blame("cannot lower value tensor with a zero extent").bail();
+    return RWPhase::rewrite_imm_Nom(nom);
+}
+
 const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
+    auto& w = new_world();
+    if (Axm::isa<tensor::from_array>(app) || Axm::isa<tensor::scalar>(app))
+        return as_tensor(rewrite(app->type()), rewrite(app->arg()));
+    if (Axm::isa<tensor::item>(app)) return as_array(rewrite(app->arg()));
+    if (Axm::isa<tensor::get>(app)) {
+        auto [t, i] = rewrite(app->arg())->projs<2>();
+        return w.extract(as_array(t), i);
+    }
+    if (Axm::isa<tensor::set>(app)) {
+        auto [t, i, v] = rewrite(app->arg())->projs<3>();
+        return as_tensor(rewrite(app->type()), w.insert(as_array(t), i, v));
+    }
+    if (Axm::isa<tensor::splat>(app)) {
+        auto type  = rewrite(app->type());
+        auto shape = TensorType::isa(type)->s;
+        return as_tensor(type, w.pack(shape, rewrite(app->arg()->proj(2, 1))));
+    }
+
     // A `tensor.if_static` still stuck at lowering time guards a runtime value: residualize to
     // its dynamic branch.
     if (Axm::isa<tensor::if_static>(app)) return rewrite(app->arg(3, 2));

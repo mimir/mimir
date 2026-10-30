@@ -20,7 +20,7 @@ use core.ops.u.w;
 
 fun mul_add (acc: I32, (a b: I32))@tt = return (acc + a * b);
 
-extern fun gemm (a: «4, 8; I32», b: «8, 4; I32»): «2, 2, 2, 2; I32» =
+extern fun gemm (a: tensor.Tensor 2 (4, 8) I32, b: tensor.Tensor 2 (8, 4) I32): tensor.Tensor 4 (2, 2, 2, 2) I32 =
     return (tensor.materialize (tensor.interchange (
         tensor.strip_mine_red (
             tensor.strip_mine_par (
@@ -39,9 +39,9 @@ extern fun gemm (a: «4, 8; I32», b: «8, 4; I32»): «2, 2, 2, 2; I32» =
 // a misplaced write (omega) or misrecombined read (iota) lands on a different value.
 // C_packed[0, 1, 1, 0] = C[1, 2] = 80.
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (mem.Char, 0)», 0), return: Cn [mem.M 0, I32]) =
-    let a = (‹8; 1I32›, ‹8; 2I32›, ‹8; 3I32›, ‹8; 4I32›);
-    let b = ‹8; (1I32, 3I32, 5I32, 7I32)›;
-    con done (o: «2, 2, 2, 2; I32») = return (m, o#(0₂, 1₂, 1₂, 0₂));
+    let a = tensor.from_array (‹8; 1I32›, ‹8; 2I32›, ‹8; 3I32›, ‹8; 4I32›);
+    let b = tensor.from_array ‹8; (1I32, 3I32, 5I32, 7I32)›;
+    con done (o: tensor.Tensor 4 (2, 2, 2, 2) I32) = return (m, tensor.get (o, (0₂, 1₂, 1₂, 0₂)));
     gemm ((a, b), done);
 
 // GONE-NOT: tensor.

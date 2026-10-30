@@ -31,7 +31,7 @@ let Ring = (Nat, 0, core.nat.add, core.nat.mul);
 // W4: (3, 2, 8, 4)
 // W8: (3, 2, 4, 8)
 // W16: (3, 2, 2, 16)
-extern fun fc (a: «6, 40; Nat», w: «32, 40; Nat»): «6, 32; Nat» =
-    return (product_2d Ring (buf a, transpose_2d (buf w)));
+extern fun fc (a: tensor.Tensor 2 (6, 40) Nat, w: tensor.Tensor 2 (32, 40) Nat): tensor.Tensor 2 (6, 32) Nat =
+    return (product_2d Ring (a, transpose_2d (w)));
 
 extern lam _compile (): compile.Phase = lower_tensor;

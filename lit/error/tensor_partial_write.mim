@@ -1,11 +1,8 @@
-// RUN: (! %mim %s 2>&1) | %FileCheck %s
+// RUN: (! %mim --no-opt %s 2>&1) | %FileCheck %s
 
 plugin tensor;
-plugin mem;
 
-// A partial write targets a sub-tensor, which has no buffer of its own.
-extern fun write_row (t: «4, 8; I32», row: «8; I32»): «4, 8; I32» =
-    let t = tensor.buf t;
-    return (t#1₄ ← row);
+extern fun write_row (t: tensor.Tensor 2 (4, 8) I32, row: tensor.Tensor 1 8 I32): tensor.Tensor 2 (4, 8) I32 =
+    return (tensor.set (t, 1₄, row));
 
-// CHECK: {{.*}}tensor_partial_write.mim:9:13-9:22: error: cannot bufferize: partial tensor write targets a sub-tensor
+// CHECK: error: argument is not assignable to callee's domain

@@ -17,12 +17,12 @@ let Ring = (F32, 0:F32, math.arith.add fast, math.arith.mul fast);
 
 let `* = product_2d Ring;
 
-lam attention (n d: Nat) (x: «n, d; F32», wq wk wv: «d, d; F32»): «n, d; F32» =
+lam attention (n d: Nat) (x: tensor.Tensor 2 (n, d) F32, wq wk wv: tensor.Tensor 2 (d, d) F32): tensor.Tensor 2 (n, d) F32 =
     let (q, k, v) = (x * wq, x * wk, x * wv);
     softmax fast 1₂ (q * transpose_2d k) * v;
 
-extern fun attn (x: «4, 8; F32», wq wk wv: «8, 8; F32»): «4, 8; F32» =
-    return (attention (4, 8) (buf x, buf wq, buf wk, buf wv));
+extern fun attn (x: tensor.Tensor 2 (4, 8) F32, wq wk wv: tensor.Tensor 2 (8, 8) F32): tensor.Tensor 2 (4, 8) F32 =
+    return (attention (4, 8) (x, wq, wk, wv));
 
-extern fun attn64 (x: «64, 8; F32», wq wk wv: «8, 8; F32»): «64, 8; F32» =
-    return (attention (64, 8) (buf x, buf wq, buf wk, buf wv));
+extern fun attn64 (x: tensor.Tensor 2 (64, 8) F32, wq wk wv: tensor.Tensor 2 (8, 8) F32): tensor.Tensor 2 (64, 8) F32 =
+    return (attention (64, 8) (x, wq, wk, wv));

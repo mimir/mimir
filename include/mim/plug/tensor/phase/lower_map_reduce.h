@@ -16,6 +16,7 @@ public:
 
 private:
     const Def* rewrite_imm_App(const App*) final;
+    const Def* rewrite_imm_Nom(const Nom*) final;
 
     const Def* lower_broadcast(const App*);
     const Def* lower_map_reduce(const App*);

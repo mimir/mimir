@@ -1,0 +1,6 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+extern lam thunk (): tensor.Tensor 1 2 I32 = tensor.generate 2 (λ (i: I64): I32 = 7I32);
+
+// CHECK: error: cannot bufferize: tensor function requires memory-aware CPS conversion

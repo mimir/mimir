@@ -1,0 +1,60 @@
+// RUN: %mim %s -o - | %FileCheck %s --implicit-check-not=' inj ' --implicit-check-not='(#'
+
+plugin core;
+plugin compile;
+plugin mem;
+plugin refly;
+plugin tensor;
+
+use tensor;
+
+lam unary_nom {Ti To: *} (f: Ti → To) {r: Nat, s: «r; Nat»} (t: Tensor r s Ti): Tensor r s To =
+    unary f t;
+lam binary_nom {Ti1 Ti2 To: *} (f: [Ti1, Ti2] → To) {r: Nat, s: «r; Nat»}
+               (a: Tensor r s Ti1, b: Tensor r s Ti2): Tensor r s To =
+    binary f (a, b);
+
+extern lam inferred {n: Nat} (a: Tensor 2 (4, n) I32): Tensor 2 (4, n) I32 =
+    unary_nom (λ (x: I32): I32 = x) a;
+extern lam inferred_binary {n: Nat} (a b: Tensor 2 (4, n) I32): Tensor 2 (4, n) I32 =
+    binary_nom (λ (x y: I32): I32 = x) (a, b);
+extern lam inferred_empty (a: Tensor 1 0 I32): Tensor 1 0 I32 =
+    unary_nom (λ (x: I32): I32 = x) a;
+extern lam grouped (n: Nat, pair: [m: Nat, a: Tensor 2 (m, n) I32]): Tensor 2 (pair#0₂, n) I32 =
+    unary_nom (λ (x: I32): I32 = x) (pair#1₂);
+
+lam in_universe (T: *): * = T;
+let _ = in_universe (Tensor 1 0 I32);
+let a = from_array @(1, 4, I32) (1I32, 2I32, 3I32, 4I32);
+let _ = refly.struc.e (get (a, 2₄), 3I32);
+let _ = refly.struc.e (get (set (a, 2₄, 9I32), 2₄), 9I32);
+let _ = refly.struc.e (item (scalar 7I32), 7I32);
+let _ = refly.struc.e (get (from_array @(2, (1, 4), I32) (1I32, 2I32, 3I32, 4I32), (0₁, 2₄)), 3I32);
+
+extern lam disjoint (t: Tensor 2 (2, 3) I32, v: I32): I32 =
+    refly.struc.e (get (set (t, (0₂, 1₃), v), (1₂, 2₃)), get (t, (1₂, 2₃)));
+extern lam symbolic (t: Tensor 1 4 I32, i: Idx 4, v: I32): I32 =
+    refly.struc.ne (get (set (t, i, v), 2₄), get (t, 2₄));
+
+extern lam ingress (): Tensor 1 4 I32 = from_array (1I32, 2I32, 3I32, 4I32);
+extern lam read (t: Tensor 1 4 I32, i: Idx 4): I32 = get (t, i);
+extern lam update (t: Tensor 1 4 I32, i: Idx 4, v: I32): Tensor 1 4 I32 = set (t, i, v);
+extern lam wrap (x: I32): Tensor 0 () I32 = scalar x;
+extern lam unwrap (t: Tensor 0 () I32): I32 = item t;
+
+extern lam _compile (): compile.Phase = compile.phases ff (
+    compile.scalarize,
+    compile.phases tt (compile.beta_red, compile.eta_conv),
+    mem.heap2stack,
+    mem.seo,
+    compile.adce,
+    compile.static_arg_opt,
+    tensor.lower_tensor,
+    tensor.fuse_tensor,
+);
+
+// CHECK-DAG: tensor.from_array
+// CHECK-DAG: tensor.get
+// CHECK-DAG: tensor.set
+// CHECK-DAG: tensor.scalar
+// CHECK-DAG: tensor.item

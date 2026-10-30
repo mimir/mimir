@@ -1,0 +1,6 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+extern con forward (r: Nat, s: «r; Nat», a: tensor.Tensor r s I32, return: Cn [tensor.Tensor r s I32]) = return a;
+
+// CHECK: error: cannot bufferize: non-literal tensor rank

@@ -49,6 +49,7 @@ add_mim_test(mim-test
         lexer.cpp
         nom.cpp
         restricted_dep_types.cpp
+        tensor.cpp
         test.cpp
         variant.cpp
 )
