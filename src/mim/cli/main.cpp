@@ -10,6 +10,7 @@
 #include <mim/config.h>
 #include <mim/driver.h>
 #include <mim/flags.h>
+#include <mim/manifest.h>
 #include <mim/phase.h>
 #include <mim/plugin.h>
 
@@ -158,7 +159,8 @@ int main(int argc, char** argv) {
         bool show_help_md      = false;
         bool show_version      = false;
         bool list_search_paths = false;
-        int verbose            = 0;
+        std::string config_path;
+        int verbose = 0;
         Opts opts;
         auto& flags      = driver.flags();
         auto& diag       = driver.diag();
@@ -195,11 +197,12 @@ int main(int argc, char** argv) {
             .opt(show_help_md              , ""          , ""  , "--help-md"             , "Displays this help as Markdown and exits.")
             .opt(show_version              , ""          , "-v", "--version"             , "Displays version info and exits.")
             .opt(list_search_paths         , ""          , "-l", "--list-search-paths"   , "Lists the search paths in order and exits.")
-            .opt(opts.plugins              , "plugin"    , "-p", "--plugin"              , "Dynamically loads a plugin; `foo/bar` finds `libmim_bar` in each search path's `foo`.")
-            .opt(opts.search_paths         , "path"      , "-P", "--plugin-path"         , "Path to search for plugins; also searched for imports.")
-            .opt(opts.import_paths         , "path"      , "-I", "--import-path"         , "Path to search for imports.")
-            .opt(opts.prefix_paths         , "path"      , "-R", "--prefix-path"         , "Install prefix/root to derive plugin, import, and runtime directories from.")
-            .opt(opts.plugin_args          , "plugin:arg", "-X", "--plugin-arg"          , "Passes an argument to a plugin/phase, e.g. `-X ll:o=output.ll`. Repeatable.")
+            .opt(opts.plugins              , "plugin"    , "-p", "--"s + Plugin_Key      , "Dynamically loads a plugin; `foo/bar` finds `libmim_bar` in each search path's `foo`.")
+            .opt(opts.search_paths         , "path"      , "-P", "--"s + Plugin_Path_Key , "Path to search for plugins; also searched for imports.")
+            .opt(opts.import_paths         , "path"      , "-I", "--"s + Import_Path_Key , "Path to search for imports.")
+            .opt(opts.prefix_paths         , "path"      , "-R", "--"s + Prefix_Path_Key , "Install prefix/root to derive plugin, import, and runtime directories from.")
+            .opt(opts.plugin_args          , "plugin:arg", "-X", "--"s + Plugin_Arg_Key  , "Passes an argument to a plugin/phase, e.g. `-X ll:o=output.ll`. Repeatable.")
+            .opt(config_path               , "path"      , ""  , "--config"              , "Reads project configuration from `<path>`.")
             .opt(flags.force_load          , ""          , ""  , "--force-load"          , "Loads plugins even on version mismatch.")
             .opt(flags.bootstrap           , ""          , ""  , "--bootstrap"           , "Bootstrap mode: only read Mim AST, don't compile to MimIR.")
             .opt(inc_verbose               , ""          , "-V", "--verbose"             , "Raises the log level from error to warn, info, verbose, debug, trace; repeatable.").cardinality(0, 5)
@@ -249,9 +252,9 @@ int main(int argc, char** argv) {
             .opt(watchpoints               , "gid"       , "-w", "--watch"               , "Triggers a breakpoint when a node with this global id is set.")
 #endif
             .section("Environment Variables", "Variable", {
-                {"MIM_PLUGIN_PATH", std::format("{}-separated list of plugin search paths, searched after those given via `-P`.", fe::sys::Path_Sep_Word)},
-                {"MIM_IMPORT_PATH", std::format("{}-separated list of import search paths, searched after those given via `-I`.", fe::sys::Path_Sep_Word)},
-                {"MIM_PREFIX_PATH", std::format("{}-separated list of install prefixes, searched after those given via `--prefix-path`.", fe::sys::Path_Sep_Word)},
+                {Plugin_Path_Env, std::format("{}-separated list of plugin search paths; adds to the `plugin-path`s of the `--config` file; `-P` paths are searched first.", fe::sys::Path_Sep_Word)},
+                {Import_Path_Env, std::format("{}-separated list of import search paths; adds to the `import-path`s of the `--config` file; `-I` paths are searched first.", fe::sys::Path_Sep_Word)},
+                {Prefix_Path_Env, std::format("{}-separated list of install prefixes; adds to the `prefix-path`s of the `--config` file; `-R` paths are searched first.", fe::sys::Path_Sep_Word)},
                 {"NO_COLOR"       , "Disables colored output if set to a non-empty value; wins over the two below."},
                 {"CLICOLOR_FORCE" , "Forces colored output if set to a non-empty value other than 0."},
                 {"CLICOLOR"       , "Disables colored output if set to 0."},
@@ -260,6 +263,33 @@ int main(int argc, char** argv) {
         // clang-format on
 
         if (auto err = cli.parse(argc, argv)) fe::throwf<std::invalid_argument>("{}", *err);
+
+        // A broken manifest must not block version output.
+        if (show_version) {
+            std::cout << "mim " << driver.version() << std::endl;
+            return EXIT_SUCCESS;
+        }
+
+        // Config sources add up, highest priority first: CLI, then env, then `--config`.
+        // Entries keep this order, so a path given in several places is searched at the
+        // highest-priority position without dropping the others.
+        opts.search_paths.append_range(paths_from_env(Plugin_Path_Env));
+        opts.import_paths.append_range(paths_from_env(Import_Path_Env));
+        opts.prefix_paths.append_range(paths_from_env(Prefix_Path_Env));
+
+        if (!config_path.empty()) {
+            try {
+                auto manifest = load_manifest(fs::path(config_path));
+                opts.plugins.append_range(manifest.plugins);
+                opts.search_paths.append_range(manifest.plugin_paths);
+                opts.import_paths.append_range(manifest.import_paths);
+                opts.prefix_paths.append_range(manifest.prefix_paths);
+                opts.plugin_args.append_range(manifest.plugin_args);
+            } catch (const std::invalid_argument&) {
+                // `--help` must work even if the project configuration is broken.
+                if (!show_help && !show_help_md) throw;
+            }
+        }
 
         // Resolved here and not in the handlers, so that the order of the two profiling options does not matter.
         auto& profile_file = opts.outs[Profile].name();
@@ -277,11 +307,6 @@ int main(int argc, char** argv) {
 
         if (show_help || show_help_md) {
             emit_help(cli, driver, opts.plugins, show_help_md);
-            return EXIT_SUCCESS;
-        }
-
-        if (show_version) {
-            std::cout << "mim " << driver.version() << std::endl;
             return EXIT_SUCCESS;
         }
 

@@ -43,8 +43,8 @@ class MimRoundTripTest(lit.formats.FileBasedTest):
         _, err, code = self.run(mim + [src] + self.flags + [outs[0]], os.path.dirname(src), timeout)
         if code != 0:
             # Only a diagnostic (exit code 1) of an expected-error test may stop here; anything else is a crash.
-            commands = [getattr(line, "command", line) for line in script]
-            if code == 1 and any(re.search(r"(?<![\w%])(!|not)\s+%mim\b", c) for c in commands):
+            commands = [str(getattr(line, "command", line)) for line in script]
+            if code == 1 and any(re.search(r"(?<![\w%])(!|not)\s+(?:\S+\s+)*%mim\b", c) for c in commands):
                 return lit.Test.Result(lit.Test.UNSUPPORTED, "input is an expected-error test")
             return lit.Test.Result(lit.Test.FAIL, f"emitting {name} failed with exit code {code}:\n{err}")
 

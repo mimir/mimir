@@ -9,6 +9,7 @@ target_sources(libmim
         driver.cpp
         dump.cpp
         lam.cpp
+        manifest.cpp
         nest.cpp
         phase.cpp
         plugin.cpp
