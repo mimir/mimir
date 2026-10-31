@@ -66,10 +66,8 @@ plugin-arg  = ["ll:o=out.ll"]
 
 - Keys are the long option names above: `plugin`, `plugin-path`, `import-path`, `prefix-path`, `plugin-arg`.
 - Values are TOML arrays of strings; each key may appear at most once.
-- A `mim.toml` only accepts this flat subset of TOML: tables and value types beyond string arrays are rejected.
 - `#` starts a comment to end of line.
 - Relative `*-path` entries resolve against the directory of the config file.
-- Only these keys are recognized, but a manifest can load native plugins and redirect imports; treat the file as trusted input.
 
 Pass `--config <path>` to read the file. Every `*-path` key adds to what the command line and environment provide, in the [Search Paths](@ref clisearchpaths) order, so the file supplies the defaults.
 
