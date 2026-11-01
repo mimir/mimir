@@ -1025,6 +1025,12 @@ private:
     }
 
     void note_vars(const Def* def) {
+        if (auto inst = isa_inst(&ctx_, def)) {
+            for (const auto& [arg, _] : inst->second)
+                for (auto op : arg)
+                    if (op->isa<Var>()) ctx_.whole_vars.emplace(op);
+            return;
+        }
         auto ex = def->isa<Extract>();
         for (auto op : def->ops())
             if (op && op->isa<Var>() && !(ex && op == ex->tuple() && ex->index()->isa<Lit>()))
