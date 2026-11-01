@@ -1,0 +1,68 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+// Laws for maps/sets of unknown content: lookups through inserts, overwrites, and a canonical order of literal keys.
+
+plugin core;
+plugin ord;
+plugin option;
+
+use core.ops.u.w;
+
+let Key = (I32, `<);
+let Map = ord.Map Key I64;
+let Set = ord.Set Key;
+
+extern fun get_hit(map: Map, x: I64): I64 =
+    let map = ord.insert.map (map, (0I32, x));
+    let map = ord.insert.map (map, (1I32, 11I64));
+    return (option.unwrap_unsafe (ord.get (map, 0I32)));
+
+extern fun get_unknown_key(map: Map, k: I32, x: I64): option.Opt@I64 =
+    let map = ord.insert.map (map, (0I32, x));
+    return (ord.get (map, k));
+
+extern fun contains_set(set: Set): Bool =
+    let set = ord.insert.set (set, 3I32);
+    let set = ord.insert.set (set, 5I32);
+    return (ord.contains.set (set, 3I32));
+
+extern fun overwrite(map: Map, x y: I64): Map =
+    let map = ord.insert.map (map, (0I32, x));
+    return (ord.insert.map (map, (0I32, y)));
+
+extern fun commute1(map: Map, x y: I64): Map =
+    return (ord.insert.map (ord.insert.map (map, (1I32, x)), (0I32, y)));
+
+extern fun commute2(map: Map, x y: I64): Map =
+    return (ord.insert.map (ord.insert.map (map, (0I32, y)), (1I32, x)));
+
+extern fun sort3(map: Map, a b c: I64): Map =
+    let map = ord.insert.map (map, (2I32, a));
+    let map = ord.insert.map (map, (0I32, b));
+    let map = ord.insert.map (map, (1I32, c));
+    let map = ord.insert.map (map, (2I32, c));
+    return map;
+
+// CHECK-LABEL: extern fun commute1
+// CHECK:       [[A:_[0-9]+]] = ord.insert.map {{.*}} (map, (0I32, y));
+// CHECK-NEXT:  [[B:_[0-9]+]] = ord.insert.map {{.*}} ([[A]], (1I32, x));
+// CHECK-NEXT:  return [[B]];
+
+// CHECK-LABEL: extern fun contains_set
+// CHECK-NEXT:  return tt;
+
+// CHECK-LABEL: extern fun get_hit
+// CHECK-NEXT:  return x_{{[0-9]+}};
+
+// CHECK-LABEL: extern fun get_unknown_key
+// CHECK:       ord.get
+
+// CHECK-LABEL: extern fun overwrite
+// CHECK-NEXT:  [[O:_[0-9]+]] = ord.insert.map {{.*}} ({{map_[0-9]+}}, (0I32, {{y_[0-9]+}}));
+// CHECK-NEXT:  return [[O]];
+
+// CHECK-LABEL: extern fun sort3
+// CHECK-NEXT:  (0I32, b)
+// CHECK-NEXT:  (1I32, c)
+// CHECK-NEXT:  (2I32, c)
+// CHECK-NEXT:  return
