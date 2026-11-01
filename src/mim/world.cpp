@@ -29,6 +29,8 @@ std::optional<nat_t> pack_unrolls(const Def* d, const Def* index, u64 threshold)
     return {};
 }
 
+// TODO I'm not too happy with this solutin.
+// Once we switch to a mostly immutable IR, we can hopefully detect this better
 /// A curried Lam whose innermost body is still being emitted; reducing it would copy that empty Lam for good.
 bool has_unset_curry(const Lam* lam) {
     LamSet seen; // a Pi may be its own codomain, so the chain may cycle
