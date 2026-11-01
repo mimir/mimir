@@ -231,7 +231,12 @@ protected:
 
     /// Registers @p arg as an incoming phi value for @p phi in @p callee, coming from predecessor @p pred.
     void emit_phi(Lam* callee, const Def* phi, std::string arg, Lam* pred) {
-        lam2bb_[callee].phis[phi].emplace_back(std::move(arg), id(pred, true));
+        // Inserting here would invalidate the `BB&` our caller holds.
+        auto i = lam2bb_.find(callee);
+        if (i == lam2bb_.end())
+            callee->blame(MIM_LL_BE "`{}` jumps to `{}`, which is not a basic block of `{}`", pred, callee, root())
+                .bail();
+        i->second.phis[phi].emplace_back(std::move(arg), id(pred, true));
         locals_[phi] = id(phi);
     }
 
