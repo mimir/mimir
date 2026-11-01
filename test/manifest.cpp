@@ -70,7 +70,13 @@ plugin-arg = ["ll:o=x",])");
         auto manifest = load_manifest(file.path);
         auto base     = file.path.parent_path();
         CHECK(manifest.plugin_paths[0] == (base / "sub").lexically_normal().string());
+
+#ifdef _WIN32
+        CHECK(fs::path(manifest.plugin_paths[1]).is_absolute()); // has a root
+        CHECK(fs::path(manifest.plugin_paths[1]).filename() == "abs");
+#else
         CHECK(manifest.plugin_paths[1] == "/abs");
+#endif
     }
 
     SUBCASE("errors") {
