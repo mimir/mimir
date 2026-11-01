@@ -31,8 +31,11 @@ std::optional<nat_t> pack_unrolls(const Def* d, const Def* index, u64 threshold)
 
 /// A curried Lam whose innermost body is still being emitted; reducing it would copy that empty Lam for good.
 bool has_unset_curry(const Lam* lam) {
-    for (auto body = lam->body(); auto inner = body->isa_mut<Lam>(); body = inner->body())
+    LamSet seen; // a Pi may be its own codomain, so the chain may cycle
+    for (auto body = lam->body(); auto inner = body->isa_mut<Lam>(); body = inner->body()) {
         if (!inner->is_set()) return true;
+        if (!seen.emplace(inner).second) break;
+    }
     return false;
 }
 
@@ -712,8 +715,9 @@ const Def* World::extract1(const Def* d, const Def* index) {
     auto index_ty = index->unfold_type();
     auto size     = Idx::isa(index_ty);
     auto lidx     = Lit::isa(index);
-    auto type     = d->unfold_type()->zonk(); // a Var's type may still be a since-resolved Hole of its binder
+    auto type     = d->unfold_type();
     if (!type) d->blame("`Level` has no type and hence no elements to extract").bail();
+    type = type->zonk(); // a Var's type may still be a since-resolved Hole of its binder
 
     if (is_folded_axis(type, index, size)) return d;
 
