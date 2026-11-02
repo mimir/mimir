@@ -109,7 +109,8 @@ public:
     /// Also `_i` - how the dumper spells case `i` - selects that case even if the variant names it otherwise.
     std::optional<size_t> find_ctor(const Def* variant, Dbg dbg) {
         if (auto i = find_name(variant, dbg)) return i;
-        auto name = dbg.sym().view();
+        auto sym  = dbg.sym();
+        auto name = sym.view();
         if (name.size() < 2 || name[0] != '_' || (name.size() > 2 && name[1] == '0')) return {};
         size_t i       = 0;
         auto [end, ec] = std::from_chars(name.data() + 1, name.data() + name.size(), i);
