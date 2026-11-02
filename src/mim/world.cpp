@@ -432,10 +432,15 @@ const Def* World::app(const Def* callee, const Def* arg) {
 
     auto new_arg = Check::coerce(pi->dom(), arg);
     if (!new_arg && is_lenient()) new_arg = arg;
-    if (!new_arg)
-        declared_here(arg->blame("argument is not assignable to callee's domain")
-                          .n("expected `{}`, got `{}`", pi->dom(), type_of(arg)))
-            .bail();
+    if (!new_arg) {
+        auto& err = arg->blame("argument is not assignable to callee's domain")
+                        .n("expected `{}`, got `{}`", pi->dom(), type_of(arg));
+        if (auto dom_t = pi->dom()->isa_type<Type>(); dom_t && Lit::isa(dom_t->level()) == nat_t(0) && !arg->is_term())
+            err.n("`{}` is a type, but the callee expects a term of type `{}`", arg, pi->dom());
+        else if (pi->dom()->isa<Type>() && arg->is_term())
+            err.n("`{}` is a term, but the callee expects a type", arg);
+        declared_here(err).bail();
+    }
 
     // re-zonk after assignable check above - we might have inferred new stuff
     arg    = new_arg->zonk();
