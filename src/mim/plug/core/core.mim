@@ -348,8 +348,8 @@ anx lam Select {T: □} (cond: Bool, t f: T): T = (f, t)#cond;
 ///
 /// ### lower_variant
 ///
-/// Lowers each Variant `| T_0 | ... | T_{n-1}` to its tag `Idx n` paired with a core.Union payload (mim::plug::core::LowerVariant).
-/// Cases with a sole inhabitant need no payload; a variant with only such cases lowers to its bare tag.
+/// Lowers each Variant `| T_0 | ... | T_{n-1}` to a representation without sum types (mim::plug::core::LowerVariant).
+/// Where the cases leave room, the tag shares the bits of the payload; otherwise it is paired with a core.Union payload.
 ///
 axm lower_variant: compile.Phase;
 ///

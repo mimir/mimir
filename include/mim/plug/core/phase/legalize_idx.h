@@ -6,29 +6,13 @@ namespace mim::plug::core::phase {
 
 /// Widens each `Idx s` with a literal size `s` that is no `Bool`, `I8`, `I16`, `I32`, or `I64` to the next of these.
 /// The values stay the same, so whatever only compares, shifts right, or divides them keeps working on the wider `Idx`.
-/// Each core operation that depends on the modulus `s` - core.wrap, core.conv, core.bitcast, and core.idx into `Idx s`,
-/// and every signed interpretation - is computed in `I64` instead and explicitly reduced modulo `s`. Where `Idx s` must
-/// stay, e.g. as the index of an `s`-tuple, the value is converted back; it is always in range.
+/// Each core operation that depends on the modulus `s` (see isa_odd_idx_op) is computed in `I64` and reduced.
+/// Where `Idx s` must stay, e.g. as the index of an `s`-tuple, the value is converted back; it is always in range.
 class LegalizeIdx : public RWPhase {
 public:
     using RWPhase::RWPhase;
 
 private:
-    /// @name I64 Arithmetic
-    /// All arguments and results live in new_world().
-    ///@{
-    const Def* zext(const Def* x);            ///< The unsigned value of @p x as `I64`.
-    const Def* sext(nat_t s, const Def* x);   ///< The signed representative of @p x in `Idx s` as `I64`.
-    const Def* narrow(nat_t s, const Def* y); ///< The `I64` @p y, which is below @p s, as a widened `Idx s`.
-    const Def* mod_u(nat_t s, const Def* y);  ///< The unsigned `I64` @p y modulo @p s.
-    const Def* mod_s(nat_t s, const Def* y);  ///< The signed `I64` @p y modulo @p s as a widened `Idx s`.
-    /// The `[M, I64]` result @p r of a signed effectful op with its value reduced modulo @p s.
-    const Def* mod_s_mem(nat_t s, const Def* r);
-    const Def* add(nat_t s, const Def* a, const Def* b);
-    const Def* sub(nat_t s, const Def* a, const Def* b);
-    const Def* mul(nat_t s, const Def* a, const Def* b);
-    ///@}
-
     /// The new_world() twin of the old_world() index @p type with each `Idx` kept at its original size.
     const Def* index_type(const Def* type);
     /// The old_world() @p index, rewritten but converted back to its original size.

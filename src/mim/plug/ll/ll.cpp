@@ -746,10 +746,10 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
 
         return bb.assign(name, "{} {} {}, {}", op, t, a, b);
     } else if (auto rem = Axm::isa<core::rem>(def)) {
-        auto d = Lit::expect(rem->callee()->as<App>()->arg(), "a literal `core.rem` modulus");
+        auto d = Lit::expect(rem->decurry()->arg(), "a literal `core.rem` modulus");
         return bb.assign(name, "urem {} {}, {}", convert(rem->type()), emit(rem->arg()), d);
     } else if (auto mulrem = Axm::isa<core::mulrem>(def)) {
-        auto d      = Lit::expect(mulrem->callee()->as<App>()->arg(), "a literal `core.mulrem` modulus");
+        auto d      = Lit::expect(mulrem->decurry()->arg(), "a literal `core.mulrem` modulus");
         auto [a, b] = mulrem->args<2>([this](auto def) { return emit(def); });
         auto t      = convert(mulrem->type());
         auto w      = std::max<nat_t>(1, idx_bitwidth(mulrem->type()));
@@ -828,13 +828,13 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
 
         auto aggregate
             = [](const Def* type) { return type->isa<Sigma>() || type->isa<Arr>() || Axm::isa<core::Union>(type); };
-        if (aggregate(bitcast->arg()->type()) || aggregate(bitcast->type())) {
+        auto src_t = bitcast->arg()->type();
+        auto dst_t = bitcast->type();
+        if (aggregate(src_t) || aggregate(dst_t)) {
             // LLVM cannot bitcast aggregates, so the bits go through a stack slot that holds and aligns either.
             auto layout = [](core::trait t, const Def* type) {
                 return Lit::expect(core::op(t, type), "a statically laid out bitcast operand");
             };
-            auto src_t  = bitcast->arg()->type();
-            auto dst_t  = bitcast->type();
             auto t_slot = layout(core::trait::size, dst_t) >= layout(core::trait::size, src_t) ? t_dst : t_src;
             entry_alloca(name + ".slot", t_slot,
                          std::max(layout(core::trait::align, src_t), layout(core::trait::align, dst_t)));

@@ -6,13 +6,6 @@
 
 namespace mim {
 
-static std::optional<size_t> case_of(const Join* join, const Def* c) {
-    auto ops = join->ops();
-    auto i   = std::ranges::find_if(ops, [c](const Def* op) { return Check::test_alpha(op, c); });
-    if (i == ops.end()) return {};
-    return i - ops.begin();
-}
-
 const Def* Join2Variant::lift(const Def* to, const Def* from, const Def* val) {
     auto join = to->isa<Join>();
     if (!join || Check::test_alpha(to, from)) return val;
@@ -27,7 +20,7 @@ const Def* Join2Variant::lift(const Def* to, const Def* from, const Def* val) {
         return w.match(ops);
     }
 
-    if (auto i = case_of(join, from)) return w.inj(rewrite(to), *i, val);
+    if (auto i = join->case_of(from)) return w.inj(rewrite(to), *i, val);
     fe::throwf("`{}` is not a case of union type `{}`", from, to);
 }
 
@@ -42,12 +35,10 @@ const Def* Join2Variant::rewrite_imm_Inj(const Inj* inj) {
     if (!join) return RWPhase::rewrite_imm_Inj(inj);
 
     auto value = inj->value();
-    auto i     = join->find_case(value);
-    if (!i) fe::throwf("`{}` is not a case of union type `{}`", value, join);
-    auto val = rewrite(value);
+    if (auto i = join->case_of(value->unfold_type())) return new_world().inj(rewrite(join), *i, rewrite(value));
     // A singleton case admits its inhabitant, whose own type is no case.
-    if (!Check::test_alpha(value->unfold_type(), join->op(*i))) val = new_world().wrap(val);
-    return new_world().inj(rewrite(join), *i, val);
+    if (auto i = join->find_case(value)) return new_world().inj(rewrite(join), *i, new_world().wrap(rewrite(value)));
+    fe::throwf("`{}` is not a case of union type `{}`", value, join);
 }
 
 const Def* Join2Variant::rewrite_imm_Match(const Match* match) {

@@ -367,9 +367,8 @@ public:
     virtual void rewrite_external(Def*);
     const Def* lookup(const Def*) override;
     /// Does this phase rewrite the type of the World::Annexes::opaque() Axm @p axm?
-    /// Then @p axm is rebuilt under the same flags with its rewritten type instead of resolved to the new_world()
-    /// annex.
-    virtual bool retype(const Axm* axm) { return false; }
+    /// Then @p axm is rebuilt under the same flags with its rewritten type, not resolved to the new_world() annex.
+    virtual bool retype([[maybe_unused]] const Axm* axm) { return false; }
     /// Does @p def reach a Def that satisfies @p pred?
     static bool mentions(const Def* def, auto pred) {
         for (auto queue = fe::BFSWorklist<DefSet>{def}; !queue.empty();) {

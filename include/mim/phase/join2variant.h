@@ -5,10 +5,9 @@
 namespace mim {
 
 /// Rewrites each Join `A ∪ B` into the Variant `| A | B` whose cases are the Join's ops in their sorted order.
-/// A value that used to inhabit a Join by subsumption - the Inj of a case, a dynamic Extract of a heterogeneous tuple,
-/// or a Match arm whose result is narrower than the Match - is explicitly injected into its case.
-/// A Match on a Join gets one arm per case; an arm that covered several cases receives its value re-injected into the
-/// Variant of its own domain.
+/// A value that inhabits a Join by subsumption is explicitly injected into its case.
+/// That is the Inj of a case, a dynamic Extract of a heterogeneous tuple, or a Match arm narrower than its Match.
+/// A Match on a Join gets one arm per case; an arm covering several cases gets its value re-injected into its domain.
 class Join2Variant : public RWPhase {
 public:
     using RWPhase::RWPhase;

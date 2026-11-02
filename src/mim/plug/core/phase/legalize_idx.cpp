@@ -26,39 +26,38 @@ bool is_unsigned(icmp id) {
     }
 }
 
-} // namespace
+/// @name I64 Arithmetic
+///@{
+const Def* zext(World& w, const Def* x) { return w.call(conv::u, w.lit_nat_0(), x); }
 
-const Def* LegalizeIdx::zext(const Def* x) { return new_world().call(conv::u, new_world().lit_nat_0(), x); }
-
-const Def* LegalizeIdx::sext(nat_t s, const Def* x) {
-    auto& w  = new_world();
-    auto z   = zext(x);
+/// The signed representative of @p x in `Idx s` as `I64`.
+const Def* sext(World& w, nat_t s, const Def* x) {
+    auto z   = zext(w, x);
     auto neg = w.call(icmp::ug, Defs{z, w.lit_i64((s - 1) / 2)});
     return w.select(neg, w.call(wrap::sub, Mode::none, Defs{z, w.lit_i64(s)}), z);
 }
 
-const Def* LegalizeIdx::narrow(nat_t s, const Def* y) {
-    return new_world().call(conv::u, new_world().lit_nat(widen(s)), y);
-}
+/// The `I64` @p y, which is below @p s, as a widened `Idx s`.
+const Def* narrow(World& w, nat_t s, const Def* y) { return w.call(conv::u, w.lit_nat(widen(s)), y); }
 
-const Def* LegalizeIdx::mod_u(nat_t s, const Def* y) { return new_world().call<rem>(new_world().lit_nat(s), y); }
+const Def* mod_u(World& w, nat_t s, const Def* y) { return w.call<rem>(w.lit_nat(s), y); }
 
-const Def* LegalizeIdx::mod_s(nat_t s, const Def* y) {
-    auto& w   = new_world();
+/// The signed `I64` @p y modulo @p s as a widened `Idx s`.
+const Def* mod_s(World& w, nat_t s, const Def* y) {
     auto zero = w.lit_i64(0);
     auto neg  = w.call(icmp::sl, Defs{y, zero});
-    auto m    = mod_u(s, w.select(neg, w.call(wrap::sub, Mode::none, Defs{zero, y}), y));
+    auto m    = mod_u(w, s, w.select(neg, w.call(wrap::sub, Mode::none, Defs{zero, y}), y));
     auto flip = w.select(w.call(icmp::e, Defs{m, zero}), zero, w.call(wrap::sub, Mode::none, Defs{w.lit_i64(s), m}));
-    return narrow(s, w.select(neg, flip, m));
+    return narrow(w, s, w.select(neg, flip, m));
 }
 
-const Def* LegalizeIdx::mod_s_mem(nat_t s, const Def* r) {
+/// The `[M, I64]` result @p r of a signed effectful op with its value reduced modulo @p s.
+const Def* mod_s_mem(World& w, nat_t s, const Def* r) {
     auto [m, v] = r->projs<2>();
-    return new_world().tuple({m, mod_s(s, v)});
+    return w.tuple({m, mod_s(w, s, v)});
 }
 
-const Def* LegalizeIdx::add(nat_t s, const Def* a, const Def* b) {
-    auto& w   = new_world();
+const Def* add(World& w, nat_t s, const Def* a, const Def* b) {
     auto t    = w.call(wrap::add, Mode::none, Defs{a, b});
     auto over = w.call(icmp::uge, Defs{t, w.lit_i64(s)});
     // Two values below `s` only wrap around `I64` if `s` exceeds `2^63`; `t < a` catches that.
@@ -66,81 +65,75 @@ const Def* LegalizeIdx::add(nat_t s, const Def* a, const Def* b) {
     return w.select(over, w.call(wrap::sub, Mode::none, Defs{t, w.lit_i64(s)}), t);
 }
 
-const Def* LegalizeIdx::sub(nat_t s, const Def* a, const Def* b) {
-    auto& w = new_world();
-    auto d  = w.call(wrap::sub, Mode::none, Defs{a, b});
+const Def* sub(World& w, nat_t s, const Def* a, const Def* b) {
+    auto d = w.call(wrap::sub, Mode::none, Defs{a, b});
     return w.select(w.call(icmp::ul, Defs{a, b}), w.call(wrap::add, Mode::none, Defs{d, w.lit_i64(s)}), d);
 }
 
-const Def* LegalizeIdx::mul(nat_t s, const Def* a, const Def* b) {
-    return new_world().call<mulrem>(new_world().lit_nat(s), Defs{a, b});
-}
+const Def* mul(World& w, nat_t s, const Def* a, const Def* b) { return w.call<mulrem>(w.lit_nat(s), Defs{a, b}); }
+///@}
+
+} // namespace
 
 const Def* LegalizeIdx::rewrite_imm_App(const App* app) {
     auto& w = new_world();
+    auto zx = [&](const Def* d) { return zext(w, rewrite(d)); };
+    auto sx = [&](nat_t s, const Def* d) { return sext(w, s, rewrite(d)); };
 
     if (auto s = isa_odd_idx(app)) return w.type_idx(widen(*s));
 
-    if (auto op = Axm::isa<wrap>(app)) {
-        if (auto s = isa_odd_idx(app->type())) {
-            auto [a, b] = op->args<2>([this](const Def* d) { return zext(rewrite(d)); });
-            // Without unsigned wrap-around, the result is below `s` anyway.
-            if (auto m = Lit::isa(op->decurry()->decurry()->arg()); m && (*m & nat_t(Mode::nuw)))
-                return narrow(*s, w.call(op.id(), Mode::nuw, Defs{a, b}));
-            switch (op.id()) {
-                case wrap::add: return narrow(*s, add(*s, a, b));
-                case wrap::sub: return narrow(*s, sub(*s, a, b));
-                case wrap::mul: return narrow(*s, mul(*s, a, b));
-                case wrap::shl: {
-                    auto pow = mod_u(*s, w.call(wrap::shl, Mode::none, Defs{w.lit_i64(1), b}));
-                    return narrow(*s, mul(*s, a, pow));
-                }
-            }
-        }
-    } else if (auto op = Axm::isa<conv>(app)) {
-        auto x   = op->arg();
-        auto src = Idx::isa_lit(x->type());
+    if (auto op = Axm::isa<conv>(app); op && op.id() == conv::u) {
+        auto x = op->arg();
         if (auto d = isa_odd_idx(app->type())) {
-            if (op.id() == conv::u) {
-                if (src && *src != 0 && *src <= *d) return narrow(*d, rewrite(x));
-                return narrow(*d, mod_u(*d, zext(rewrite(x))));
-            }
-            auto y = isa_odd_idx(x->type()) ? sext(*src, rewrite(x)) : w.call(conv::s, w.lit_nat_0(), rewrite(x));
-            return mod_s(*d, y);
+            if (auto src = Idx::isa_lit(x->type()); src && *src != 0 && *src <= *d) return narrow(w, *d, rewrite(x));
+            return narrow(w, *d, mod_u(w, *d, zx(x)));
         }
-        if (auto s = isa_odd_idx(x->type()); s && op.id() == conv::s)
-            return w.call(conv::s, rewrite(Idx::isa(app->type())), sext(*s, rewrite(x)));
+    }
+
+    auto s = isa_odd_idx_op(app);
+    if (!s) {
+        // An op that keeps `Idx s` yields its value in range but still has to widen it like everything else.
+        auto res = RWPhase::rewrite_imm_App(app);
+        if (auto type = rewrite(app->type()); type != res->type() && !type->isa<Pi>()) return coerce(type, res);
+        return res;
+    }
+
+    if (auto op = Axm::isa<wrap>(app)) {
+        auto [a, b] = op->args<2>(zx);
+        auto pow    = [&] { return mod_u(w, *s, w.call(wrap::shl, Mode::none, Defs{w.lit_i64(1), b})); };
+        switch (op.id()) {
+            case wrap::add: return narrow(w, *s, add(w, *s, a, b));
+            case wrap::sub: return narrow(w, *s, sub(w, *s, a, b));
+            case wrap::mul: return narrow(w, *s, mul(w, *s, a, b));
+            case wrap::shl: return narrow(w, *s, mul(w, *s, a, pow()));
+        }
     } else if (Axm::isa<bitcast>(app) || Axm::isa<idx>(app)) {
-        if (auto d = isa_odd_idx(app->type()))
-            return narrow(*d, mod_u(*d, w.call<bitcast>(w.type_i64(), rewrite(app->arg()))));
+        return narrow(w, *s, mod_u(w, *s, w.call<bitcast>(w.type_i64(), rewrite(app->arg()))));
+    } else if (auto op = Axm::isa<conv>(app)) {
+        auto x = op->arg();
+        if (auto d = isa_odd_idx(app->type())) {
+            auto src = isa_odd_idx(x->type());
+            return mod_s(w, *d, src ? sx(*src, x) : w.call(conv::s, w.lit_nat_0(), rewrite(x)));
+        }
+        return w.call(conv::s, rewrite(Idx::isa(app->type())), sx(*s, x));
     } else if (auto op = Axm::isa<icmp>(app)) {
-        auto [a, b] = op->args<2>();
-        if (auto s = isa_odd_idx(a->type())) {
-            auto ext = [&](const Def* x) { return is_unsigned(op.id()) ? zext(rewrite(x)) : sext(*s, rewrite(x)); };
-            return w.call(op.id(), Defs{ext(a), ext(b)});
-        }
+        auto ext = [&](const Def* x) { return is_unsigned(op.id()) ? zx(x) : sx(*s, x); };
+        return w.call(op.id(), Defs{ext(op->arg(2, 0)), ext(op->arg(2, 1))});
     } else if (auto op = Axm::isa<shr>(app)) {
-        if (auto s = isa_odd_idx(app->type()); s && op.id() == shr::a) {
-            auto [a, b] = op->args<2>();
-            return mod_s(*s, w.call(shr::a, Defs{sext(*s, rewrite(a)), zext(rewrite(b))}));
-        }
+        auto [a, b] = op->args<2>();
+        return mod_s(w, *s, w.call(shr::a, Defs{sx(*s, a), zx(b)}));
     } else if (auto op = Axm::isa<extrema>(app)) {
-        if (auto s = isa_odd_idx(app->type()); s && (op.id() == extrema::smin || op.id() == extrema::smax)) {
-            auto [a, b] = op->args<2>();
-            return mod_s(*s, w.call(op.id(), Defs{sext(*s, rewrite(a)), sext(*s, rewrite(b))}));
-        }
+        auto [a, b] = op->args<2>();
+        return mod_s(w, *s, w.call(op.id(), Defs{sx(*s, a), sx(*s, b)}));
     } else if (auto op = Axm::isa<abs>(app)) {
         auto [m, x] = op->args<2>();
-        if (auto s = isa_odd_idx(x->type())) return mod_s_mem(*s, w.call<abs>(Defs{rewrite(m), sext(*s, rewrite(x))}));
+        return mod_s_mem(w, *s, w.call<abs>(Defs{rewrite(m), sx(*s, x)}));
     } else if (auto op = Axm::isa<div>(app)) {
         auto [m, xy] = op->args<2>();
         auto [x, y]  = xy->projs<2>();
-        if (auto s = isa_odd_idx(x->type()); s && (op.id() == div::sdiv || op.id() == div::srem))
-            return mod_s_mem(*s,
-                             w.call(op.id(), Defs{rewrite(m), w.tuple({sext(*s, rewrite(x)), sext(*s, rewrite(y))})}));
+        return mod_s_mem(w, *s, w.call(op.id(), Defs{rewrite(m), w.tuple({sx(*s, x), sx(*s, y)})}));
     }
-
-    return RWPhase::rewrite_imm_App(app);
+    std::unreachable();
 }
 
 const Def* LegalizeIdx::index_type(const Def* type) {

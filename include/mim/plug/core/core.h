@@ -39,9 +39,9 @@ inline std::optional<nat_t> isa_odd_idx(const Def* type) {
     return {};
 }
 
-/// The isa_odd_idx size whose modulus the core operation @p def depends on, which a backend computing modulo the bit
-/// width gets wrong. Neither core.wrap without unsigned wrap-around nor core.idx with a mode depends on it. core.conv.u
-/// into such an `Idx` does but is left out, as core.legalize_idx emits it itself for values in range.
+/// The isa_odd_idx size whose modulus the core operation @p def depends on.
+/// Neither core.wrap without unsigned wrap-around nor core.idx with a mode depends on it.
+/// core.conv.u into such an `Idx` does, but core.legalize_idx emits that itself for values in range.
 inline std::optional<nat_t> isa_odd_idx_op(const Def* def) {
     auto mode = [](const App* op) { return Lit::isa(op->decurry()->decurry()->arg()); };
     if (auto op = Axm::isa<wrap>(def)) {

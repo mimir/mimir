@@ -18,8 +18,7 @@ private:
     /// How a lowered Variant packs its tag and case; cases with a sole inhabitant carry no data.
     struct Layout {
         enum class Kind {
-            /// `Idx (Σ s_i)`: every case is an `Idx s_i` - a dataless one counts as `Idx 1` - that occupies the values
-            /// from `offsets[i]` on.
+            /// `Idx (Σ s_i)`: case `i`, an `Idx s_i` or dataless as `Idx 1`, takes the values from `offsets[i]` on.
             /// Only chosen if it takes no more space than the largest case.
             Finite,
             /// `I64`: the tag sits in the low bits() that the alignment of each pointer case leaves free.
@@ -33,8 +32,8 @@ private:
         const Def* type = nullptr;
         DefVec cases;              ///< The lowered case types.
         fe::Vector<nat_t> offsets; ///< Kind::Finite only.
-        nat_t total = 0;           ///< Kind::Finite only.
 
+        nat_t total() const { return *Idx::isa_lit(type); }             ///< Kind::Finite only.
         nat_t bits() const { return std::bit_width(cases.size() - 1); } ///< Kind::Word only.
     };
 

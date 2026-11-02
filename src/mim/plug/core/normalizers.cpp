@@ -927,14 +927,7 @@ const Def* normalize_mulrem(const Def* type, const Def* callee, const Def* arg) 
     auto [a, b] = arg->projs<2>();
     if (a->isa<Bot>() || b->isa<Bot>()) return world.bot(type);
     if (Lit::isa(a) == 0 || Lit::isa(b) == 0 || *d == 1) return world.lit(type, 0);
-    if (auto la = Lit::isa(a), lb = Lit::isa(b); la && lb) {
-        // Doubling instead of multiplying never overflows `u64`.
-        auto add = [d = *d](u64 x, u64 y) { return x >= d - y ? x - (d - y) : x + y; };
-        u64 x = *la % *d, r = 0;
-        for (auto y = *lb % *d; y != 0; y >>= 1, x = add(x, x))
-            if (y & 1) r = add(r, x);
-        return world.lit(type, r);
-    }
+    if (auto la = Lit::isa(a), lb = Lit::isa(b); la && lb) return world.lit(type, idx_mul(*d, *la % *d, *lb % *d));
     return {};
 }
 
@@ -995,10 +988,11 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
     } else if (auto u = Axm::isa<Union>(type); u || type->isa<Sigma>()) {
         auto n = u ? Lit::isa(u->arg()->arity()) : std::optional<nat_t>(type->num_ops());
         if (!n) return {};
+        auto projs = u ? u->arg()->projs(*n) : DefVec();
 
         u64 size  = 0;
         u64 align = 1;
-        for (auto t : u ? u->arg()->projs(*n) : DefVec(type->ops().begin(), type->ops().end())) {
+        for (auto t : u ? Defs(projs) : type->ops()) {
             auto a = Lit::isa(core::op(trait::align, t));
             auto s = Lit::isa(core::op(trait::size, t));
             if (!a || !s) return {};

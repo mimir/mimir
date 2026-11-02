@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <bit>
 
-#include <mim/lam.h>
-
 #include "mim/plug/core/core.h"
 
 namespace mim::plug::core::phase {
@@ -46,7 +44,6 @@ bool LowerVariant::finite(Layout& l) {
     l.kind    = Layout::Kind::Finite;
     l.type    = w.type_idx(total);
     l.offsets = std::move(offsets);
-    l.total   = total;
     return true;
 }
 
@@ -83,9 +80,9 @@ const Def* LowerVariant::encode(const Layout& l, size_t i, const Def* value) {
     auto c  = l.cases[i];
     switch (l.kind) {
         case Layout::Kind::Finite: {
-            auto offset = w.lit_idx(l.total, l.offsets[i]);
+            auto offset = w.lit_idx(l.total(), l.offsets[i]);
             if (w.inhabitant(c)) return offset;
-            return w.call(wrap::add, Mode::nuw, Defs{offset, w.call(conv::u, w.lit_nat(l.total), value)});
+            return w.call(wrap::add, Mode::nuw, Defs{offset, w.call(conv::u, w.lit_nat(l.total()), value)});
         }
         case Layout::Kind::Word: {
             auto tag = w.lit_i64(i);
@@ -109,10 +106,10 @@ const Def* LowerVariant::tag(const Layout& l, const Def* x) {
     auto n  = l.cases.size();
     switch (l.kind) {
         case Layout::Kind::Finite: {
-            if (l.total == n) return x;
+            if (l.total() == n) return x;
             const Def* t = w.lit_idx(n, 0);
             for (size_t i = 1; i != n; ++i)
-                t = w.select(w.call(icmp::uge, Defs{x, w.lit_idx(l.total, l.offsets[i])}), w.lit_idx(n, i), t);
+                t = w.select(w.call(icmp::uge, Defs{x, w.lit_idx(l.total(), l.offsets[i])}), w.lit_idx(n, i), t);
             return t;
         }
         case Layout::Kind::Word: {

@@ -8,15 +8,24 @@
 
 namespace mim {
 
-std::optional<size_t> Join::find_case(const Def* value, bool infer) const {
-    auto alpha   = [infer](const Def* a, const Def* b) { return infer ? Check::alpha(a, b) : Check::test_alpha(a, b); };
-    auto value_t = value->unfold_type();
+static bool alpha(bool infer, const Def* a, const Def* b) {
+    return infer ? Check::alpha(a, b) : Check::test_alpha(a, b);
+}
+
+std::optional<size_t> Join::case_of(const Def* type, bool infer) const {
     for (size_t i = 0, e = num_ops(); i != e; ++i)
-        if (alpha(value_t, op(i))) return i;
+        if (alpha(infer, type, op(i))) return i;
+    return {};
+}
+
+std::optional<size_t> Join::find_case(const Def* value, bool infer) const {
+    auto value_t = value->unfold_type();
+    if (auto i = case_of(value_t, infer)) return i;
     for (size_t i = 0, e = num_ops(); i != e; ++i)
         if (auto single = op(i)->isa<Single>())
             // An open value may still turn out to be the singleton's inhabitant.
-            if (alpha(single->op(), value) || (!value->is_closed() && alpha(single->op()->unfold_type(), value_t)))
+            if (alpha(infer, single->op(), value)
+                || (!value->is_closed() && alpha(infer, single->op()->unfold_type(), value_t)))
                 return i;
     return {};
 }
@@ -30,13 +39,11 @@ DefVec Match::cases(const Def* scrutinee) {
 }
 
 bool Match::accepts(const Def* arm, const Def* c, bool infer) {
-    auto alpha = [infer](const Def* a, const Def* b) { return infer ? Check::alpha(a, b) : Check::test_alpha(a, b); };
-
     auto pi = arm->isa_type<Pi>();
     if (!pi) return false;
-    if (alpha(pi->dom(), c)) return true;
+    if (alpha(infer, pi->dom(), c)) return true;
     if (auto join = pi->dom()->isa_imm<Join>())
-        return std::ranges::any_of(join->ops(), [&](const Def* op) { return alpha(op, c); });
+        return std::ranges::any_of(join->ops(), [&](const Def* op) { return alpha(infer, op, c); });
     return false;
 }
 
