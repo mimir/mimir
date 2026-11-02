@@ -89,6 +89,13 @@ axm dispatch_normalize: Phase;
 ///
 axm eta_conv: Phase;
 ///
+/// ### join2variant
+///
+/// Rewrites each union type `A ∪ B` into the variant `| A | B` (mim::Join2Variant).
+/// Values that inhabit a union by subsumption are explicitly injected into their case.
+///
+axm join2variant: Phase;
+///
 /// ### lam_spec
 ///
 /// Specializes a Lam at its call site by inlining higher-order arguments (mim::LamSpec).

@@ -1,0 +1,13 @@
+// RUN: %mim %s -o -
+
+plugin core;
+plugin refly;
+
+let _ = refly.struc.e (core.rem 3 7I64, 1I64);
+let _ = refly.struc.e (core.rem 300 255I8, 255I8);
+
+// A product beyond `I64` still folds.
+let _ = refly.struc.e (core.mulrem 3000000000007 (2999999999999I64, 2999999999999I64), 64I64);
+let _ = refly.struc.e (core.mulrem 5 (0I64, 3I64), 0I64);
+
+lam keep (x: I8): I8 = refly.struc.e (core.rem 256 x, x);

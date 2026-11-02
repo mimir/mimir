@@ -49,6 +49,14 @@ private:
 public:
     using Setters<Join>::set;
 
+    /// @name Cases
+    /// @p infer resolves Hole%s, so a mere search should leave it `false`.
+    ///@{
+    std::optional<size_t> case_of(const Def* type, bool infer = false) const; ///< The case that *is* @p type.
+    /// The case @p value inhabits: the one its type is, or else a singleton of @p value.
+    std::optional<size_t> find_case(const Def* value, bool infer = false) const;
+    ///@}
+
     static constexpr auto Node      = mim::Node::Join;
     static constexpr size_t Num_Ops = std::dynamic_extent;
 

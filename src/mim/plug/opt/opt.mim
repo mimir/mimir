@@ -13,6 +13,7 @@
 /// This way the default pipeline does not have to import any of the optional plugins.
 ///
 plugin compile;
+plugin core;
 plugin mem;
 ///
 /// ## The default pipeline
@@ -88,7 +89,10 @@ extern lam _default_compile (): compile.Phase =
 
         // type legalization
         compile.nom_erasure,
+        compile.join2variant,
         compile.single_erasure,
+        core.lower_variant,
+        core.legalize_idx,
 
         // prepare codegen
         optimize,

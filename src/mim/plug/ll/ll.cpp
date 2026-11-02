@@ -156,6 +156,10 @@ std::string Emitter::convert_impl(const Def* type, bool simd) {
             // One LLVM array level per axis, so a fused Arr nests: `«3, 4; i32»` is `[3 x [4 x i32]]`.
             std::print(s, "[{} x {}]", size, convert(arr->elem(), simd));
         }
+    } else if (auto u = Axm::isa<core::Union>(type)) {
+        auto size  = Lit::expect(core::op(core::trait::size, u), "a statically-sized union");
+        auto align = Lit::expect(core::op(core::trait::align, u), "a statically-aligned union");
+        std::print(s, "[{} x i{}]", size / align, 8 * align);
     } else if (auto pi = type->isa<Pi>()) {
         if (!Pi::isa_returning(pi)) pi->blame(MIM_LL_BE "cannot convert the type of a basic block").bail();
         std::print(s, "{} (", convert_ret_pi(pi->ret_pi()));
@@ -429,19 +433,22 @@ std::string Emitter::emit_tuple(BB& bb, const std::string& name, const Def* tupl
         return emit(tuple->proj(2, 1));
     }
 
-    auto vec = vectorize(tuple->type()).has_value();
-    if (tuple->is_closed()) {
+    auto vec   = vectorize(tuple->type()).has_value();
+    auto elems = std::vector<std::pair<std::string, std::string>>();
+    for (size_t i = 0, n = tuple->num_projs(); i != n; ++i) {
+        auto e = tuple->proj(n, i);
+        if (auto v_elem = emit_unsafe(e); !v_elem.empty()) elems.emplace_back(convert(e->type()), v_elem);
+    }
+
+    // A closed element may still be computed by an instruction, e.g. a bitcast through a stack slot.
+    if (tuple->is_closed() && std::ranges::none_of(elems, [](const auto& e) { return e.second.starts_with('%'); })) {
         bool is_array = tuple->type()->isa<Arr>();
         std::string s;
         s += vec ? "<" : is_array ? "[" : "{";
         auto sep = "";
-        for (size_t i = 0, n = tuple->num_projs(); i != n; ++i) {
-            auto e = tuple->proj(n, i);
-            if (auto v_elem = emit_unsafe(e); !v_elem.empty()) {
-                auto t_elem = convert(e->type());
-                s += sep + t_elem + " " + v_elem;
-                sep = ", ";
-            }
+        for (const auto& [t_elem, v_elem] : elems) {
+            s += sep + t_elem + " " + v_elem;
+            sep = ", ";
         }
 
         return s += vec ? ">" : is_array ? "]" : "}";
@@ -449,18 +456,13 @@ std::string Emitter::emit_tuple(BB& bb, const std::string& name, const Def* tupl
 
     std::string prev = "undef";
     auto t           = convert(tuple->type());
-    for (size_t src = 0, dst = 0, n = tuple->num_projs(); src != n; ++src) {
-        auto e = tuple->proj(n, src);
-        if (auto elem = emit_unsafe(e); !elem.empty()) {
-            auto elem_t = convert(e->type());
-            // TODO: check dst vs src
-            auto namei = name + "." + std::to_string(dst);
-            if (vec)
-                prev = bb.assign(namei, "insertelement {} {}, {} {}, i32 {}", t, prev, elem_t, elem, dst);
-            else
-                prev = bb.assign(namei, "insertvalue {} {}, {} {}, {}", t, prev, elem_t, elem, dst);
-            dst++;
-        }
+    for (size_t dst = 0; const auto& [elem_t, elem] : elems) {
+        auto namei = name + "." + std::to_string(dst);
+        if (vec)
+            prev = bb.assign(namei, "insertelement {} {}, {} {}, i32 {}", t, prev, elem_t, elem, dst);
+        else
+            prev = bb.assign(namei, "insertvalue {} {}, {} {}, {}", t, prev, elem_t, elem, dst);
+        dst++;
     }
     return prev;
 }
@@ -489,7 +491,14 @@ std::string Emitter::repack(BB& bb, const std::string& name, const Def* type, co
     return r;
 }
 
-std::pair<std::string, std::string> Emitter::emit_gep_index(BB& bb, const std::string& name, const Def* index) {
+std::string Emitter::emit_gep_index(BB& bb, const std::string& name, const Def* index) {
+    if (auto n = Lit::isa(index->type()->arity()); n && *n != 1 && !Idx::isa(index->type())) {
+        auto res = std::string();
+        for (nat_t i = 0; i != *n; ++i)
+            res += (i ? ", " : "") + emit_gep_index(bb, name + "." + std::to_string(i), index->proj(*n, i));
+        return res;
+    }
+
     auto v_i = emit(index);
     auto t_i = convert(index->type());
 
@@ -502,7 +511,19 @@ std::pair<std::string, std::string> Emitter::emit_gep_index(BB& bb, const std::s
         }
     }
 
-    return std::pair(v_i, t_i);
+    return t_i + " " + v_i;
+}
+
+void Emitter::emit_slot_gep(BB& bb,
+                            const std::string& name,
+                            const std::string& t_tup,
+                            const std::string& v_tup,
+                            const Def* index) {
+    auto gep_i = emit_gep_index(bb, name, index);
+    entry_alloca(name + ".alloca", t_tup);
+    std::print(bb.body().emplace_back(), "store {} {}, {}* {}.alloca", t_tup, v_tup, t_tup, name);
+    std::print(bb.body().emplace_back(), "{}.gep = getelementptr inbounds {}, {}* {}.alloca, i64 0, {}", name, t_tup,
+               t_tup, name, gep_i);
 }
 
 std::string Emitter::emit_simd_index(BB& bb, const std::string& name, const Def* index) {
@@ -587,14 +608,8 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
             return bb.assign(name, "extractvalue {} {}, {}", t_tup, v_tup, v_i);
         }
 
-        auto t_elem     = convert(extract->type());
-        auto [v_i, t_i] = emit_gep_index(bb, name, index);
-
-        std::print(lam2bb_[root()].body().emplace_front(),
-                   "{}.alloca = alloca {} ; copy to alloca to emulate extract with store + gep + load", name, t_tup);
-        std::print(bb.body().emplace_back(), "store {} {}, {}* {}.alloca", t_tup, v_tup, t_tup, name);
-        std::print(bb.body().emplace_back(), "{}.gep = getelementptr inbounds {}, {}* {}.alloca, i64 0, {} {}", name,
-                   t_tup, t_tup, name, t_i, v_i);
+        auto t_elem = convert(extract->type());
+        emit_slot_gep(bb, name, t_tup, v_tup, index);
         return bb.assign(name, "load {}, {}* {}.gep", t_elem, t_elem, name);
     } else if (auto insert = def->isa<Insert>()) {
         if (Axm::isa<mem::M>(insert->tuple()->proj(insert->tuple()->num_projs(), 0)->type()))
@@ -610,13 +625,7 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         if (auto idx = Lit::isa(insert->index()))
             return bb.assign(name, "insertvalue {} {}, {} {}, {}", t_tup, v_tup, t_val, v_val, *idx);
 
-        auto t_elem     = convert(insert->value()->type());
-        auto [v_i, t_i] = emit_gep_index(bb, name, insert->index());
-        std::print(lam2bb_[root()].body().emplace_front(),
-                   "{}.alloca = alloca {} ; copy to alloca to emulate insert with store + gep + load", name, t_tup);
-        std::print(bb.body().emplace_back(), "store {} {}, {}* {}.alloca", t_tup, v_tup, t_tup, name);
-        std::print(bb.body().emplace_back(), "{}.gep = getelementptr inbounds {}, {}* {}.alloca, i64 0, {} {}", name,
-                   t_tup, t_tup, name, t_i, v_i);
+        emit_slot_gep(bb, name, t_tup, v_tup, insert->index());
         std::print(bb.body().emplace_back(), "store {} {}, {}* {}.gep", t_val, v_val, t_val, name);
         return bb.assign(name, "load {}, {}* {}.alloca", t_tup, t_tup, name);
     }
@@ -624,6 +633,9 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
 }
 
 std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, const Def* def) {
+    if (auto s = core::isa_odd_idx_op(def))
+        def->blame(MIM_LL_BE "`Idx {}` arithmetic is computed modulo its bit width; run `core.legalize_idx` first", *s)
+            .bail();
     std::string op;
     if (auto nat = Axm::isa<core::nat>(def)) {
         auto [a, b] = nat->args<2>([this](auto def) { return emit(def); });
@@ -733,6 +745,21 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         }
 
         return bb.assign(name, "{} {} {}, {}", op, t, a, b);
+    } else if (auto rem = Axm::isa<core::rem>(def)) {
+        auto d = Lit::expect(rem->decurry()->arg(), "a literal `core.rem` modulus");
+        return bb.assign(name, "urem {} {}, {}", convert(rem->type()), emit(rem->arg()), d);
+    } else if (auto mulrem = Axm::isa<core::mulrem>(def)) {
+        auto d      = Lit::expect(mulrem->decurry()->arg(), "a literal `core.mulrem` modulus");
+        auto [a, b] = mulrem->args<2>([this](auto def) { return emit(def); });
+        auto t      = convert(mulrem->type());
+        auto w      = std::max<nat_t>(1, idx_bitwidth(mulrem->type()));
+        auto wide   = 2 * w <= 64 ? 64_n : 128_n;
+        auto ext    = [&](const std::string& x, const std::string& suffix) {
+            return w == wide ? x : bb.assign(name + suffix, "zext {} {} to i{}", t, x, wide);
+        };
+        auto p = bb.assign(name + ".mul", "mul i{} {}, {}", wide, ext(a, ".a"), ext(b, ".b"));
+        auto r = bb.assign(name + ".rem", "urem i{} {}, {}", wide, p, d);
+        return w == wide ? r : bb.assign(name, "trunc i{} {} to {}", wide, r, t);
     } else if (auto icmp = Axm::isa<core::icmp>(def)) {
         auto [a, b] = icmp->args<2>([this](auto def) { return emit(def); });
         auto t      = convert(icmp->arg(2, 0)->type());
@@ -793,6 +820,24 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         auto t_dst        = convert(bitcast->type());
 
         if (auto lit = Lit::isa(bitcast->arg()); lit && *lit == 0) return "zeroinitializer";
+        auto aggregate
+            = [](const Def* type) { return type->isa<Sigma>() || type->isa<Arr>() || Axm::isa<core::Union>(type); };
+        auto src_t = bitcast->arg()->type();
+        auto dst_t = bitcast->type();
+        if (aggregate(src_t) || aggregate(dst_t)) {
+            // LLVM cannot bitcast aggregates, so the bits go through a stack slot that holds and aligns either.
+            auto layout = [](core::trait t, const Def* type) {
+                return Lit::expect(core::op(t, type), "a statically laid out bitcast operand");
+            };
+            auto t_slot = layout(core::trait::size, dst_t) >= layout(core::trait::size, src_t) ? t_dst : t_src;
+            entry_alloca(name + ".slot", t_slot,
+                         std::max(layout(core::trait::align, src_t), layout(core::trait::align, dst_t)));
+            bb.assign(name + ".src", "bitcast {}* {}.slot to {}*", t_slot, name, t_src);
+            std::print(bb.body().emplace_back(), "store {} {}, {}* {}.src", t_src, v_src, t_src, name);
+            bb.assign(name + ".dst", "bitcast {}* {}.slot to {}*", t_slot, name, t_dst);
+            return bb.assign(name, "load {}, {}* {}.dst", t_dst, t_dst, name);
+        }
+
         // clang-format off
         if (src_type_ptr && dst_type_ptr) return bb.assign(name,  "bitcast {} {} to {}", t_src, v_src, t_dst);
         if (src_type_ptr)                 return bb.assign(name, "ptrtoint {} {} to {}", t_src, v_src, t_dst);
@@ -830,9 +875,9 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
                              Lit::expect(i, "a struct-field index"));
 
         pointee->expect<Arr>("an array as `mem.lea` pointee");
-        auto [v_i, t_i] = emit_gep_index(bb, name, i);
+        auto gep_i = emit_gep_index(bb, name, i);
 
-        return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, {} {}", t_pointee, t_ptr, v_ptr, t_i, v_i);
+        return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, {}", t_pointee, t_ptr, v_ptr, gep_i);
     } else if (auto assume = Axm::isa<mem::assume>(def)) {
         auto p = assume->arg(2, 0);
         return bb.assign(name, "bitcast {} {} to {}", convert(p->type()), emit(p), convert(def->type()));

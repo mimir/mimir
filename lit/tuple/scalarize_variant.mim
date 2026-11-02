@@ -23,9 +23,7 @@ con run (o: Op, k: Cn I32) =
 extern con entry (o: Op, k: Cn I32) = run (o, k);
 extern con make (k: Cn Op) = k (Op#F add);
 
-// CHECK-DAG: extern fun entry ({{[_a-z0-9]+}}: (| _0: Cn [«2; I32», Cn I32] | _1: I32)): I32 =
-// CHECK-DAG: match {{[_a-z0-9]+}} with
-// CHECK-DAG: | _1 [[X:[_a-z0-9]+]]: I32 => [[K:[_a-z0-9]+]] [[X]];
-// CHECK-DAG: con [[K]] (
+// CHECK-DAG: extern con entry ({{[_a-z0-9]+}}: Bool, {{[_a-z0-9]+}}: core.Union @ 2 (Cn [«2; I32», Cn I32], I32), {{[_a-z0-9]+}}: Cn I32)
+// CHECK-DAG: core.bitcast @ (core.Union @ 2 (Cn [«2; I32», Cn I32], I32)) (Cn [«2; I32», Cn I32]) {{[_a-z0-9]+}} ((1I32, 2I32), {{[_a-z0-9]+}});
 // CHECK-DAG: fun {{[_a-z0-9]+}} ({{[_a-z0-9]+}}: «2; I32»): I32 =
-// CHECK-NOT: Match
+// CHECK-NOT: match

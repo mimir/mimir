@@ -1,0 +1,64 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 61
+// RUN: %t a ; test $? -eq 92
+// RUN: %t a b ; test $? -eq 124
+
+plugin core;
+plugin mem;
+
+use core.ops.u.w;
+
+// Cases that are all finite share one Idx: `None` takes 0 and `Some b` takes 1 + b.
+let OB  = | None | Some: Bool;
+let OOB = | None | Some: OB;
+let AB  = | A: Bool | B: Bool;
+// The tag hides in the low bit that the alignment of `I64` leaves free.
+let V   = | B: Bool | P: mem.Ptr0 I64;
+
+lam oob_code (o: OOB): I32 =
+    match o with
+        | None   => 1I32
+        | Some p => (match p with | None => 2I32 | Some b => (3I32, 4I32)#b);
+
+lam ab_code (v: AB): I32 =
+    match v with
+        | A b => (10I32, 20I32)#b
+        | B b => (30I32, 40I32)#b;
+
+// CHECK-DAG: extern {{fun|con}} oob_id ({{[_a-z0-9]+}}: I8
+extern fun oob_id (o: OOB): OOB = return o;
+// CHECK-DAG: extern {{fun|con}} ab_id ({{[_a-z0-9]+}}: I8
+extern fun ab_id (v: AB): AB = return v;
+
+// CHECK-DAG: extern con deref ({{[_a-z0-9]+}}: core.M 0, {{[_a-z0-9]+}}: I64, {{[_a-z0-9]+}}: Cn
+extern con deref ((m: mem.M 0, v: V), k: Cn [mem.M 0, I32]) =
+    match v with
+        | B b => k (m, (50I32, 60I32)#b)
+        | P p =>
+            let (m, x) = mem.load (m, p);
+            k (m, core.conv.u i32 x);
+
+// CHECK-DAG: extern {{fun|con}} opt_ptr ({{[_a-z0-9]+}}: I64
+extern fun opt_ptr (o: | None | Some: mem.Ptr0 I32): Bool = return (match o with | None => ff | Some _ => tt);
+
+// An `I8` has no free bit, and an `I32` would not fit into the 4 bytes it already takes together with the tag.
+// CHECK-DAG: extern {{fun|con}} opt_byte_ptr ({{[_a-z0-9]+}}: Bool, {{[_a-z0-9]+}}: core.Ptr (I8, 0)
+extern fun opt_byte_ptr (o: | None | Some: mem.Ptr0 I8): Bool = return (match o with | None => ff | Some _ => tt);
+// CHECK-DAG: extern {{fun|con}} opt_i32 ({{[_a-z0-9]+}}: Bool, {{[_a-z0-9]+}}: I32
+extern fun opt_i32 (o: | None | Some: I32): Bool = return (match o with | None => ff | Some _ => tt);
+
+lam oob (i: Idx 3): OOB = (OOB#None, OOB#Some (OB#None), OOB#Some (OB#Some tt))#i;
+lam ab (i: Bool, b: Bool): AB = (AB#A b, AB#B b)#i;
+
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
+    let (m, p) = mem.alloc (I64, 0) m;
+    let m      = mem.store (m, p, 100I64);
+    let v      = (V#B (core.icmp.e (argc, 2I32)), V#P p)#(core.icmp.e (argc, 3I32));
+    ret res    = deref $ (m, v);
+    let (m, r) = res;
+    let x      = oob_code (oob (core.conv.u 3 (argc - 1I32)));
+    let y      = ab_code (ab (core.icmp.e (argc, 2I32), core.icmp.e (argc, 3I32)));
+    return (m, x + y + r);

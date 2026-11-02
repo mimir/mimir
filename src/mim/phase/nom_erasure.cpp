@@ -1,26 +1,9 @@
 #include "mim/phase/nom_erasure.h"
 
-#include <fe/worklist.h>
-
 namespace mim {
 
-static bool has_nom(const Def* def) {
-    for (auto queue = fe::BFSWorklist<DefSet>{def}; !queue.empty();) {
-        auto d = queue.pop();
-        if (d->isa<Nom>()) return true;
-        for (auto dep : d->deps())
-            queue.push(dep);
-    }
-    return false;
-}
-
-const Def* NomErasure::lookup(const Def* old_def) {
-    // An opaque Axm whose type mentions a Nom is rebuilt under the same flags with an erased type.
-    if (auto axm = old_def->isa<Axm>()) {
-        if (auto new_def = Rewriter::lookup(axm)) return new_def;
-        if (has_nom(axm->type())) return nullptr;
-    }
-    return RWPhase::lookup(old_def);
+bool NomErasure::retype(const Axm* axm) {
+    return mentions(axm->type(), [](const Def* def) { return def->isa<Nom>(); });
 }
 
 const Def* NomErasure::rewrite_imm_Nom(const Nom* nom) {

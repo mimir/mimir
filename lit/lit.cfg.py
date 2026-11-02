@@ -1,4 +1,4 @@
-import os, sys
+import os, subprocess, sys
 sys.path.insert(0, os.path.dirname(__file__))
 from mim_sh_test import MimShTest
 from mim_roundtrip_test import MimRoundTripTest
@@ -35,6 +35,16 @@ config.substitutions.append(('%FileCheck', '"{}"'.format(config.filecheck)))
 # Parent of the plugin directory, so that a test can spell a plugin as the path `mim/<plugin>`.
 # os.path.join would mix in a backslash on Windows, which the external bash then swallows as an escape.
 config.substitutions.append(('%libdir', config.my_obj_root + '/lib'))
+# MSVC's link.exe lacks the compiler-rt builtins (e.g. `__umodti3` for an `i128` `urem`) that LLVM lowers to libcalls.
+clang_rt = ''
+if sys.platform == 'win32':
+    try:
+        lib = subprocess.run(['clang', '-print-libgcc-file-name', '--rtlib=compiler-rt'], capture_output=True, text=True).stdout.strip()
+        if os.path.exists(lib):
+            clang_rt = '"{}"'.format(lib.replace('\\', '/'))
+    except OSError:
+        pass
+config.substitutions.append(('%clang_rt', clang_rt))
 
 # inherit env vars
 config.environment = os.environ

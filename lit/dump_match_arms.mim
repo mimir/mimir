@@ -1,0 +1,29 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+// Re-reading a dump gives each `match` arms of its own, so arms that two of them share are spelled out in each.
+// A case prints as `_i`, which selects it even where the variant names it, as `option.Opt` does.
+
+plugin core;
+plugin option;
+
+let AB = | A: Bool | B: Bool;
+
+lam code (v: AB): Nat =
+    match v with
+        | A b => (10, 20)#b
+        | B b => (30, 40)#b;
+
+// CHECK-NOT: lam
+// CHECK: extern fun e
+// CHECK: | _0 [[B:[_a-z0-9]+]]: Bool => (10, 20)#[[B]]
+extern fun e (v: AB): Nat = return (code v);
+// CHECK: extern fun g
+// CHECK: | _0 [[B:[_a-z0-9]+]]: Bool => (10, 20)#[[B]]
+extern fun g (i b: Bool): Nat = return (code ((AB#A b, AB#B b)#i));
+
+// CHECK: extern fun h
+// CHECK: | _0 => 1
+extern fun h (o: option.Opt@(option.Opt@Bool)): Nat =
+    return (match o with
+        | None   => 1
+        | Some p => (match p with | None => 2 | Some b => (3, 4)#b));
