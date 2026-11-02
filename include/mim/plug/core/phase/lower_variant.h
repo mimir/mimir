@@ -42,6 +42,7 @@ private:
     const Def* operand(const Layout&, const Def* x);
     const Def* decode(const Layout&, size_t i, const Def* operand);
 
+    bool retype(const Axm*) final;
     const Def* rewrite_imm_Variant(const Variant*) final;
     const Def* rewrite_imm_Inj(const Inj*) final;
     const Def* rewrite_imm_Match(const Match*) final;

@@ -211,7 +211,10 @@ bool RWPhase::analyze() {
 
 const Def* RWPhase::lookup(const Def* old_def) {
     if (auto new_def = Rewriter::lookup(old_def)) return new_def;
-    if (auto flags = old_world().annexes().opaque(old_def)) return map(old_def, new_world().annex(*flags));
+    if (auto flags = old_world().annexes().opaque(old_def)) {
+        if (auto axm = old_def->isa<Axm>(); axm && retype(axm)) return nullptr;
+        return map(old_def, new_world().annex(*flags));
+    }
     return nullptr;
 }
 

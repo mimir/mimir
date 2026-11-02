@@ -17,6 +17,7 @@ private:
     /// Injects the new_world() value @p val of old_world() type @p from into the old_world() type @p to.
     const Def* lift(const Def* to, const Def* from, const Def* val);
 
+    bool retype(const Axm*) final;
     const Def* rewrite_imm_Join(const Join*) final;
     const Def* rewrite_imm_Inj(const Inj*) final;
     const Def* rewrite_imm_Match(const Match*) final;

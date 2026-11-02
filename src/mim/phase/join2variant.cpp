@@ -31,6 +31,10 @@ const Def* Join2Variant::lift(const Def* to, const Def* from, const Def* val) {
     fe::throwf("`{}` is not a case of union type `{}`", from, to);
 }
 
+bool Join2Variant::retype(const Axm* axm) {
+    return mentions(axm->type(), [](const Def* def) { return def->isa<Join>(); });
+}
+
 const Def* Join2Variant::rewrite_imm_Join(const Join* join) { return new_world().variant(rewrite(join->ops())); }
 
 const Def* Join2Variant::rewrite_imm_Inj(const Inj* inj) {

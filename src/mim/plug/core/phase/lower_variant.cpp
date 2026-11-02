@@ -152,6 +152,10 @@ const Def* LowerVariant::decode(const Layout& l, size_t i, const Def* operand) {
     std::unreachable();
 }
 
+bool LowerVariant::retype(const Axm* axm) {
+    return mentions(axm->type(), [](const Def* def) { return def->isa_imm<Variant>(); });
+}
+
 const Def* LowerVariant::rewrite_imm_Variant(const Variant* variant) { return layout(variant).type; }
 
 const Def* LowerVariant::rewrite_imm_Inj(const Inj* inj) {
