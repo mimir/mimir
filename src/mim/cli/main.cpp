@@ -270,9 +270,7 @@ int main(int argc, char** argv) {
             return EXIT_SUCCESS;
         }
 
-        // Config sources add up, highest priority first: CLI, then env, then `--config`.
-        // Entries keep this order, so a path given in several places is searched at the
-        // highest-priority position without dropping the others.
+        // Config sources add up, highest priority first: CLI, env, then `--config`; the file supplies the defaults.
         opts.search_paths.append_range(paths_from_env(Plugin_Path_Env));
         opts.import_paths.append_range(paths_from_env(Import_Path_Env));
         opts.prefix_paths.append_range(paths_from_env(Prefix_Path_Env));
@@ -284,7 +282,8 @@ int main(int argc, char** argv) {
                 opts.search_paths.append_range(manifest.plugin_paths);
                 opts.import_paths.append_range(manifest.import_paths);
                 opts.prefix_paths.append_range(manifest.prefix_paths);
-                opts.plugin_args.append_range(manifest.plugin_args);
+                // The last occurrence wins, so the manifest goes first to act as the default.
+                opts.plugin_args.insert(opts.plugin_args.begin(), manifest.plugin_args.begin(), manifest.plugin_args.end());
             } catch (const std::invalid_argument&) {
                 // `--help` must work even if the project configuration is broken.
                 if (!show_help && !show_help_md) throw;
