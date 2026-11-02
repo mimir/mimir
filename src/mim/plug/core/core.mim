@@ -191,6 +191,12 @@ axm div.(sdiv, udiv, srem, urem):
 ///
 axm rem: {s: Nat} → [d: Nat] → Idx s → Idx s, normalize_rem;
 ///
+/// ### mulrem
+///
+/// The product of `a` and `b` modulo the literal, non-zero `d`, computed without overflowing `Idx s`.
+///
+axm mulrem: {s: Nat} → [d: Nat] → «2; Idx s» → Idx s, normalize_mulrem;
+///
 /// ### icmp
 ///
 /// Integer comparison is composed of 5 disjoint relations:

@@ -601,8 +601,7 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         auto t_elem = convert(extract->type());
         auto gep_i  = emit_gep_index(bb, name, index);
 
-        std::print(lam2bb_[root()].body().emplace_front(),
-                   "{}.alloca = alloca {} ; copy to alloca to emulate extract with store + gep + load", name, t_tup);
+        entry_alloca(name + ".alloca", t_tup);
         std::print(bb.body().emplace_back(), "store {} {}, {}* {}.alloca", t_tup, v_tup, t_tup, name);
         std::print(bb.body().emplace_back(), "{}.gep = getelementptr inbounds {}, {}* {}.alloca, i64 0, {}", name,
                    t_tup, t_tup, name, gep_i);
@@ -623,8 +622,7 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
 
         auto t_elem = convert(insert->value()->type());
         auto gep_i  = emit_gep_index(bb, name, insert->index());
-        std::print(lam2bb_[root()].body().emplace_front(),
-                   "{}.alloca = alloca {} ; copy to alloca to emulate insert with store + gep + load", name, t_tup);
+        entry_alloca(name + ".alloca", t_tup);
         std::print(bb.body().emplace_back(), "store {} {}, {}* {}.alloca", t_tup, v_tup, t_tup, name);
         std::print(bb.body().emplace_back(), "{}.gep = getelementptr inbounds {}, {}* {}.alloca, i64 0, {}", name,
                    t_tup, t_tup, name, gep_i);
@@ -635,6 +633,9 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
 }
 
 std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, const Def* def) {
+    if (auto s = core::isa_odd_idx_op(def))
+        def->blame(MIM_LL_BE "`Idx {}` arithmetic is computed modulo its bit width; run `core.legalize_idx` first", *s)
+            .bail();
     std::string op;
     if (auto nat = Axm::isa<core::nat>(def)) {
         auto [a, b] = nat->args<2>([this](auto def) { return emit(def); });
@@ -747,6 +748,18 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
     } else if (auto rem = Axm::isa<core::rem>(def)) {
         auto d = Lit::expect(rem->callee()->as<App>()->arg(), "a literal `core.rem` modulus");
         return bb.assign(name, "urem {} {}, {}", convert(rem->type()), emit(rem->arg()), d);
+    } else if (auto mulrem = Axm::isa<core::mulrem>(def)) {
+        auto d      = Lit::expect(mulrem->callee()->as<App>()->arg(), "a literal `core.mulrem` modulus");
+        auto [a, b] = mulrem->args<2>([this](auto def) { return emit(def); });
+        auto t      = convert(mulrem->type());
+        auto w      = std::max<nat_t>(1, idx_bitwidth(mulrem->type()));
+        auto wide   = 2 * std::bit_width(d - 1) <= 64 ? 64_n : 128_n;
+        auto ext    = [&](const std::string& x, const std::string& suffix) {
+            return w == wide ? x : bb.assign(name + suffix, "zext {} {} to i{}", t, x, wide);
+        };
+        auto p = bb.assign(name + ".mul", "mul i{} {}, {}", wide, ext(a, ".a"), ext(b, ".b"));
+        auto r = bb.assign(name + ".rem", "urem i{} {}, {}", wide, p, d);
+        return w == wide ? r : bb.assign(name, "trunc i{} {} to {}", wide, r, t);
     } else if (auto icmp = Axm::isa<core::icmp>(def)) {
         auto [a, b] = icmp->args<2>([this](auto def) { return emit(def); });
         auto t      = convert(icmp->arg(2, 0)->type());
@@ -816,12 +829,15 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         auto aggregate
             = [](const Def* type) { return type->isa<Sigma>() || type->isa<Arr>() || Axm::isa<core::Union>(type); };
         if (aggregate(bitcast->arg()->type()) || aggregate(bitcast->type())) {
-            // LLVM cannot bitcast aggregates, so the bits go through a stack slot that holds the larger one.
-            auto size = [](const Def* type) {
-                return Lit::expect(core::op(core::trait::size, type), "a statically-sized bitcast operand");
+            // LLVM cannot bitcast aggregates, so the bits go through a stack slot that holds and aligns either.
+            auto layout = [](core::trait t, const Def* type) {
+                return Lit::expect(core::op(t, type), "a statically laid out bitcast operand");
             };
-            auto t_slot = size(bitcast->type()) >= size(bitcast->arg()->type()) ? t_dst : t_src;
-            std::print(lam2bb_[root()].body().emplace_front(), "{}.slot = alloca {}", name, t_slot);
+            auto src_t  = bitcast->arg()->type();
+            auto dst_t  = bitcast->type();
+            auto t_slot = layout(core::trait::size, dst_t) >= layout(core::trait::size, src_t) ? t_dst : t_src;
+            entry_alloca(name + ".slot", t_slot,
+                         std::max(layout(core::trait::align, src_t), layout(core::trait::align, dst_t)));
             bb.assign(name + ".src", "bitcast {}* {}.slot to {}*", t_slot, name, t_src);
             std::print(bb.body().emplace_back(), "store {} {}, {}* {}.src", t_src, v_src, t_src, name);
             bb.assign(name + ".dst", "bitcast {}* {}.slot to {}*", t_slot, name, t_dst);

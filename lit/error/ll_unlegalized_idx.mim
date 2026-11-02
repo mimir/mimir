@@ -1,0 +1,13 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: (! %mim %s -p ll 2>&1) | %FileCheck %s
+
+// Without core.legalize_idx, ll would compute `Idx 3` arithmetic modulo 4.
+
+plugin core;
+plugin compile;
+
+// The pipeline omits core.legalize_idx.
+extern lam _compile(): compile.Phase = compile.named "ll.emit";
+
+extern fun add (a b: Idx 3): Idx 3 = return (core.wrap.add 0 (a, b));
+// CHECK: error: ll backend: `Idx 3` arithmetic is computed modulo its bit width; run `core.legalize_idx` first

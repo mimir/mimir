@@ -980,20 +980,8 @@ const Def* World::inj(const Def* type, const Def* value) {
         value->blame("injecting into variant type `{}` requires the index of a case", type).bail();
     if (type->isa<Nom>()) return name(type, value);
     if (auto join = type->isa<Join>()) {
-        auto value_t = value->unfold_type();
         // Hole%s are resolved only once no case matches outright, so a mere search never commits to one.
-        auto is_case = [value, value_t](bool infer) {
-            auto alpha
-                = [infer](const Def* a, const Def* b) { return infer ? Check::alpha(a, b) : Check::test_alpha(a, b); };
-            return [=](const Def* c) {
-                // An open value may still turn out to be the singleton's inhabitant.
-                if (auto single = c->isa<Single>())
-                    return alpha(single->op(), value)
-                        || (!value->is_closed() && alpha(single->op()->unfold_type(), value_t));
-                return alpha(value_t, c);
-            };
-        };
-        if (!std::ranges::any_of(join->ops(), is_case(false)) && !std::ranges::any_of(join->ops(), is_case(true)))
+        if (!join->find_case(value) && !join->find_case(value, true))
             value->blame("value of type `{}` is not a case of union type `{}`", type_of(value), type).bail();
         return unify<Inj>(type, value, flags_t(0));
     }

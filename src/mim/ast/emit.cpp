@@ -1,3 +1,5 @@
+#include <charconv>
+
 #include "mim/def.h"
 #include "mim/rewrite.h"
 
@@ -104,22 +106,19 @@ public:
         add_names(variant, sym2idx);
     }
 
-    /// `_i` - how the dumper spells case `i` - selects that case even if the variant names it otherwise.
-    static std::optional<size_t> positional(const Def* variant, Dbg dbg) {
+    /// Also `_i` - how the dumper spells case `i` - selects that case even if the variant names it otherwise.
+    std::optional<size_t> find_ctor(const Def* variant, Dbg dbg) {
+        if (auto i = find_name(variant, dbg)) return i;
         auto name = dbg.sym().view();
         if (name.size() < 2 || name[0] != '_' || (name.size() > 2 && name[1] == '0')) return {};
-        size_t i = 0;
-        for (auto c : name.substr(1)) {
-            if (c < '0' || c > '9') return {};
-            i = 10 * i + size_t(c - '0');
-            if (i >= variant->num_ops()) return {};
-        }
+        size_t i       = 0;
+        auto [end, ec] = std::from_chars(name.data() + 1, name.data() + name.size(), i);
+        if (ec != std::errc() || end != name.data() + name.size() || i >= variant->num_ops()) return {};
         return i;
     }
 
     size_t ctor(const Def* variant, Dbg dbg) {
-        if (auto i = find_name(variant, dbg)) return *i;
-        if (auto i = positional(variant, dbg)) return *i;
+        if (auto i = find_ctor(variant, dbg)) return *i;
         error().e(dbg.loc(), "variant `{}` has no constructor `{}`", variant_str(variant), dbg).bail();
     }
 
@@ -561,8 +560,7 @@ static const Def* emit_ctor(Emitter& e, const Variant* variant, const Expr* inde
     auto i  = std::optional<nat_t>();
 
     if (auto path = index->isa<PathExpr>(); path && path->path()->dbgs().size() == 1) {
-        i = e.find_name(variant, path->dbg());
-        if (!i) i = Emitter::positional(variant, path->dbg());
+        i = e.find_ctor(variant, path->dbg());
         if (!i && !path->decl())
             e.error()
                 .e(path->dbg().loc(), "variant `{}` has no constructor `{}`", e.variant_str(variant), path->dbg())

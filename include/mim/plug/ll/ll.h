@@ -299,6 +299,13 @@ private:
     MIM_NOINLINE std::string emit_tuple(BB&, const std::string& name, const Def* tuple);
     /// The typed GEP operands of @p index; a multi-index yields one per axis.
     MIM_NOINLINE std::string emit_gep_index(BB&, const std::string& name, const Def* index);
+    /// Allocates the stack slot @p slot of @p type in the entry block, so that a loop does not allocate it again.
+    /// A non-zero @p align overrides the ABI alignment of @p type.
+    void entry_alloca(const std::string& slot, const std::string& type, nat_t align = 0) {
+        auto& os = lam2bb_[root()].body().emplace_front();
+        std::print(os, "{} = alloca {}", slot, type);
+        if (align != 0) std::print(os, ", align {}", align);
+    }
     MIM_NOINLINE std::optional<std::string> emit_builtin(BB&, const std::string& name, const Def*);
     MIM_NOINLINE std::optional<std::string> emit_core(BB&, const std::string& name, const Def*);
     MIM_NOINLINE std::optional<std::string> emit_mem(BB&, const std::string& name, const Def*);
