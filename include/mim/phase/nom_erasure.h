@@ -12,6 +12,7 @@ public:
     using RWPhase::RWPhase;
 
 private:
+    const Def* lookup(const Def*) final;
     const Def* rewrite_imm_Nom(const Nom*) final;
     const Def* rewrite_imm_Name(const Name*) final;
     const Def* rewrite_imm_Struc(const Struc*) final;
