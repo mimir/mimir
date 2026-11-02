@@ -42,8 +42,7 @@ bool Match::accepts(const Def* arm, const Def* c, bool infer) {
     auto pi = arm->isa_type<Pi>();
     if (!pi) return false;
     if (alpha(infer, pi->dom(), c)) return true;
-    if (auto join = pi->dom()->isa_imm<Join>())
-        return std::ranges::any_of(join->ops(), [&](const Def* op) { return alpha(infer, op, c); });
+    if (auto join = pi->dom()->isa_imm<Join>()) return join->case_of(c, infer).has_value();
     return false;
 }
 

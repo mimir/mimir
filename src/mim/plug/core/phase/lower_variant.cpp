@@ -88,8 +88,7 @@ const Def* LowerVariant::encode(const Layout& l, size_t i, const Def* value) {
             auto tag = w.lit_i64(i);
             if (w.inhabitant(c)) return tag;
             auto bits = Axm::isa<Ptr>(c) ? w.call<bitcast>(w.type_i64(), value)
-                                         : w.call(wrap::shl, Mode::none,
-                                                  Defs{w.call(conv::u, w.lit_nat_0(), value), w.lit_i64(l.bits())});
+                                         : w.call(wrap::shl, Mode::none, Defs{zext(w, value), w.lit_i64(l.bits())});
             return w.call(bit2::or_, 0_n, Defs{bits, tag});
         }
         case Layout::Kind::Tagged: {
@@ -113,7 +112,7 @@ const Def* LowerVariant::tag(const Layout& l, const Def* x) {
             return t;
         }
         case Layout::Kind::Word: {
-            auto mask = w.lit_i64((nat_t(1) << l.bits()) - 1);
+            auto mask = w.lit_i64(l.mask());
             return w.call(conv::u, w.lit_nat(n), w.call(bit2::and_, 0_n, Defs{x, mask}));
         }
         case Layout::Kind::Tagged: return x->proj(2, 0);
@@ -128,13 +127,13 @@ const Def* LowerVariant::decode(const Layout& l, size_t i, const Def* operand) {
     switch (l.kind) {
         case Layout::Kind::Finite: {
             // The operand is at least the offset, so subtracting in `I64` needs no reduction.
-            auto wide = w.call(conv::u, w.lit_nat_0(), operand);
+            auto wide = zext(w, operand);
             auto rel  = w.call(wrap::sub, Mode::none, Defs{wide, w.lit_i64(l.offsets[i])});
             return w.call(conv::u, w.lit_nat(*idx_size(c)), rel);
         }
         case Layout::Kind::Word: {
             if (Axm::isa<Ptr>(c)) {
-                auto mask = w.lit_i64(~((nat_t(1) << l.bits()) - 1));
+                auto mask = w.lit_i64(~l.mask());
                 return w.call<bitcast>(c, w.call(bit2::and_, 0_n, Defs{operand, mask}));
             }
             auto bits = w.call(shr::l, Defs{operand, w.lit_i64(l.bits())});

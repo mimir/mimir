@@ -306,6 +306,8 @@ private:
         std::print(os, "{} = alloca {}", slot, type);
         if (align != 0) std::print(os, ", align {}", align);
     }
+    /// Stores the tuple @p v of type @p t in `name.alloca` and points `name.gep` at its element @p index.
+    void emit_slot_gep(BB&, const std::string& name, const std::string& t, const std::string& v, const Def* index);
     MIM_NOINLINE std::optional<std::string> emit_builtin(BB&, const std::string& name, const Def*);
     MIM_NOINLINE std::optional<std::string> emit_core(BB&, const std::string& name, const Def*);
     MIM_NOINLINE std::optional<std::string> emit_mem(BB&, const std::string& name, const Def*);

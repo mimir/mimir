@@ -35,6 +35,7 @@ private:
 
         nat_t total() const { return *Idx::isa_lit(type); }             ///< Kind::Finite only.
         nat_t bits() const { return std::bit_width(cases.size() - 1); } ///< Kind::Word only.
+        nat_t mask() const { return (nat_t(1) << bits()) - 1; }         ///< Kind::Word only.
     };
 
     Layout layout(const Variant*);

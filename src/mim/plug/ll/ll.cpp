@@ -516,6 +516,18 @@ std::string Emitter::emit_gep_index(BB& bb, const std::string& name, const Def* 
     return t_i + " " + v_i;
 }
 
+void Emitter::emit_slot_gep(BB& bb,
+                            const std::string& name,
+                            const std::string& t_tup,
+                            const std::string& v_tup,
+                            const Def* index) {
+    auto gep_i = emit_gep_index(bb, name, index);
+    entry_alloca(name + ".alloca", t_tup);
+    std::print(bb.body().emplace_back(), "store {} {}, {}* {}.alloca", t_tup, v_tup, t_tup, name);
+    std::print(bb.body().emplace_back(), "{}.gep = getelementptr inbounds {}, {}* {}.alloca, i64 0, {}", name, t_tup,
+               t_tup, name, gep_i);
+}
+
 std::string Emitter::emit_simd_index(BB& bb, const std::string& name, const Def* index) {
     auto v_i = emit(index);
     if (Lit::isa(index)) return v_i;
@@ -599,12 +611,7 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         }
 
         auto t_elem = convert(extract->type());
-        auto gep_i  = emit_gep_index(bb, name, index);
-
-        entry_alloca(name + ".alloca", t_tup);
-        std::print(bb.body().emplace_back(), "store {} {}, {}* {}.alloca", t_tup, v_tup, t_tup, name);
-        std::print(bb.body().emplace_back(), "{}.gep = getelementptr inbounds {}, {}* {}.alloca, i64 0, {}", name,
-                   t_tup, t_tup, name, gep_i);
+        emit_slot_gep(bb, name, t_tup, v_tup, index);
         return bb.assign(name, "load {}, {}* {}.gep", t_elem, t_elem, name);
     } else if (auto insert = def->isa<Insert>()) {
         if (Axm::isa<mem::M>(insert->tuple()->proj(insert->tuple()->num_projs(), 0)->type()))
@@ -620,12 +627,7 @@ std::optional<std::string> Emitter::emit_builtin(BB& bb, const std::string& name
         if (auto idx = Lit::isa(insert->index()))
             return bb.assign(name, "insertvalue {} {}, {} {}, {}", t_tup, v_tup, t_val, v_val, *idx);
 
-        auto t_elem = convert(insert->value()->type());
-        auto gep_i  = emit_gep_index(bb, name, insert->index());
-        entry_alloca(name + ".alloca", t_tup);
-        std::print(bb.body().emplace_back(), "store {} {}, {}* {}.alloca", t_tup, v_tup, t_tup, name);
-        std::print(bb.body().emplace_back(), "{}.gep = getelementptr inbounds {}, {}* {}.alloca, i64 0, {}", name,
-                   t_tup, t_tup, name, gep_i);
+        emit_slot_gep(bb, name, t_tup, v_tup, insert->index());
         std::print(bb.body().emplace_back(), "store {} {}, {}* {}.gep", t_val, v_val, t_val, name);
         return bb.assign(name, "load {}, {}* {}.alloca", t_tup, t_tup, name);
     }

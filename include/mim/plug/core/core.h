@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <bit>
 
 #include <mim/axm.h>
 #include <mim/lam.h>
@@ -33,11 +34,18 @@ inline const Def* mode(World& w, VMode m) {
 }
 ///@}
 
+/// The size of the smallest of `I8`, `I16`, `I32`, and `I64` that holds the values of `Idx s`.
+inline nat_t widen_idx(nat_t s) { return Idx::bitwidth2size(std::max(8_n, std::bit_ceil(Idx::size2bitwidth(s)))); }
+
 /// The literal size of the `Idx` @p type if it is no `Bool`, `I8`, `I16`, `I32`, or `I64`.
 inline std::optional<nat_t> isa_odd_idx(const Def* type) {
-    if (auto s = Idx::isa_lit(type); s && *s > 2 && *s != 1_n << 8 && *s != 1_n << 16 && *s != 1_n << 32) return s;
+    if (auto s = Idx::isa_lit(type); s && *s > 2 && widen_idx(*s) != *s) return s;
     return {};
 }
+
+inline const Def* zext(World& w, const Def* x) {
+    return w.call(conv::u, w.lit_nat_0(), x);
+} ///< Zero-extends @p x to `I64`.
 
 /// The isa_odd_idx size whose modulus the core operation @p def depends on.
 /// Neither core.wrap without unsigned wrap-around nor core.idx with a mode depends on it.

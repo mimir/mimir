@@ -118,15 +118,12 @@ std::string pick_name(Ctx* ctx, const Def* def) {
 
 /// Forgets the names of @p var and its projections, so that the next spelling picks fresh ones.
 void unname(Ctx* ctx, const Var* var) {
-    auto keys = DefVec();
-    for (const auto& [def, _] : ctx->names) {
-        auto root = def;
+    std::erase_if(ctx->names, [var](const auto& entry) {
+        const Def* root = entry.first;
         while (auto ex = root->isa<Extract>())
             root = ex->tuple();
-        if (root == var) keys.emplace_back(def);
-    }
-    for (auto def : keys)
-        ctx->names.erase(def);
+        return root == var;
+    });
 }
 
 /// Did a pattern keep @p def whole?
