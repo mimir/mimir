@@ -47,6 +47,21 @@ inline const Def* zext(World& w, const Def* x) {
     return w.call(conv::u, w.lit_nat_0(), x);
 } ///< Zero-extends @p x to `I64`.
 
+/// Does core.icmp @p id give the same result on the canonical values of any `Idx s`?
+inline bool is_unsigned(icmp id) {
+    switch (id) {
+        case icmp::f:
+        case icmp::e:
+        case icmp::ug:
+        case icmp::uge:
+        case icmp::ul:
+        case icmp::ule:
+        case icmp::ne:
+        case icmp::t: return true;
+        default: return false;
+    }
+}
+
 /// The isa_odd_idx size whose modulus the core operation @p def depends on.
 /// Neither core.wrap without unsigned wrap-around nor core.idx with a mode depends on it.
 /// core.conv.u into such an `Idx` does, but core.legalize_idx emits that itself for values in range.
@@ -60,7 +75,7 @@ inline std::optional<nat_t> isa_odd_idx_op(const Def* def) {
     if (Axm::isa<bitcast>(def)) return isa_odd_idx(def->type());
     if (auto op = Axm::isa<conv>(def); op && op.id() == conv::s)
         return isa_odd_idx(def->type()).or_else([&] { return isa_odd_idx(op->arg()->type()); });
-    if (auto op = Axm::isa<icmp>(def)) return isa_odd_idx(op->arg(2, 0)->type());
+    if (auto op = Axm::isa<icmp>(def); op && !is_unsigned(op.id())) return isa_odd_idx(op->arg(2, 0)->type());
     if (auto op = Axm::isa<shr>(def); op && op.id() == shr::a) return isa_odd_idx(def->type());
     if (auto op = Axm::isa<extrema>(def); op && (op.id() == extrema::smin || op.id() == extrema::smax))
         return isa_odd_idx(def->type());

@@ -433,19 +433,22 @@ std::string Emitter::emit_tuple(BB& bb, const std::string& name, const Def* tupl
         return emit(tuple->proj(2, 1));
     }
 
-    auto vec = vectorize(tuple->type()).has_value();
-    if (tuple->is_closed()) {
+    auto vec   = vectorize(tuple->type()).has_value();
+    auto elems = std::vector<std::pair<std::string, std::string>>();
+    for (size_t i = 0, n = tuple->num_projs(); i != n; ++i) {
+        auto e = tuple->proj(n, i);
+        if (auto v_elem = emit_unsafe(e); !v_elem.empty()) elems.emplace_back(convert(e->type()), v_elem);
+    }
+
+    // A closed element may still be computed by an instruction, e.g. a bitcast through a stack slot.
+    if (tuple->is_closed() && std::ranges::none_of(elems, [](const auto& e) { return e.second.starts_with('%'); })) {
         bool is_array = tuple->type()->isa<Arr>();
         std::string s;
         s += vec ? "<" : is_array ? "[" : "{";
         auto sep = "";
-        for (size_t i = 0, n = tuple->num_projs(); i != n; ++i) {
-            auto e = tuple->proj(n, i);
-            if (auto v_elem = emit_unsafe(e); !v_elem.empty()) {
-                auto t_elem = convert(e->type());
-                s += sep + t_elem + " " + v_elem;
-                sep = ", ";
-            }
+        for (const auto& [t_elem, v_elem] : elems) {
+            s += sep + t_elem + " " + v_elem;
+            sep = ", ";
         }
 
         return s += vec ? ">" : is_array ? "]" : "}";
@@ -453,18 +456,13 @@ std::string Emitter::emit_tuple(BB& bb, const std::string& name, const Def* tupl
 
     std::string prev = "undef";
     auto t           = convert(tuple->type());
-    for (size_t src = 0, dst = 0, n = tuple->num_projs(); src != n; ++src) {
-        auto e = tuple->proj(n, src);
-        if (auto elem = emit_unsafe(e); !elem.empty()) {
-            auto elem_t = convert(e->type());
-            // TODO: check dst vs src
-            auto namei = name + "." + std::to_string(dst);
-            if (vec)
-                prev = bb.assign(namei, "insertelement {} {}, {} {}, i32 {}", t, prev, elem_t, elem, dst);
-            else
-                prev = bb.assign(namei, "insertvalue {} {}, {} {}, {}", t, prev, elem_t, elem, dst);
-            dst++;
-        }
+    for (size_t dst = 0; const auto& [elem_t, elem] : elems) {
+        auto namei = name + "." + std::to_string(dst);
+        if (vec)
+            prev = bb.assign(namei, "insertelement {} {}, {} {}, i32 {}", t, prev, elem_t, elem, dst);
+        else
+            prev = bb.assign(namei, "insertvalue {} {}, {} {}, {}", t, prev, elem_t, elem, dst);
+        dst++;
     }
     return prev;
 }
@@ -755,7 +753,7 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         auto [a, b] = mulrem->args<2>([this](auto def) { return emit(def); });
         auto t      = convert(mulrem->type());
         auto w      = std::max<nat_t>(1, idx_bitwidth(mulrem->type()));
-        auto wide   = 2 * std::bit_width(d - 1) <= 64 ? 64_n : 128_n;
+        auto wide   = 2 * w <= 64 ? 64_n : 128_n;
         auto ext    = [&](const std::string& x, const std::string& suffix) {
             return w == wide ? x : bb.assign(name + suffix, "zext {} {} to i{}", t, x, wide);
         };
@@ -822,12 +820,6 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
         auto t_dst        = convert(bitcast->type());
 
         if (auto lit = Lit::isa(bitcast->arg()); lit && *lit == 0) return "zeroinitializer";
-        // clang-format off
-        if (src_type_ptr && dst_type_ptr) return bb.assign(name,  "bitcast {} {} to {}", t_src, v_src, t_dst);
-        if (src_type_ptr)                 return bb.assign(name, "ptrtoint {} {} to {}", t_src, v_src, t_dst);
-        if (dst_type_ptr)                 return bb.assign(name, "inttoptr {} {} to {}", t_src, v_src, t_dst);
-        // clang-format on
-
         auto aggregate
             = [](const Def* type) { return type->isa<Sigma>() || type->isa<Arr>() || Axm::isa<core::Union>(type); };
         auto src_t = bitcast->arg()->type();
@@ -845,6 +837,12 @@ std::optional<std::string> Emitter::emit_core(BB& bb, const std::string& name, c
             bb.assign(name + ".dst", "bitcast {}* {}.slot to {}*", t_slot, name, t_dst);
             return bb.assign(name, "load {}, {}* {}.dst", t_dst, t_dst, name);
         }
+
+        // clang-format off
+        if (src_type_ptr && dst_type_ptr) return bb.assign(name,  "bitcast {} {} to {}", t_src, v_src, t_dst);
+        if (src_type_ptr)                 return bb.assign(name, "ptrtoint {} {} to {}", t_src, v_src, t_dst);
+        if (dst_type_ptr)                 return bb.assign(name, "inttoptr {} {} to {}", t_src, v_src, t_dst);
+        // clang-format on
 
         auto size2width = [&](const Def* type) {
             if (type->isa<Nat>()) return 64_n;

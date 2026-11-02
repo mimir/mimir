@@ -1,0 +1,12 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim %s -p ll
+// RUN: clang %{s:stem}.ll -c -o %t -Wno-override-module
+
+// Unsigned comparisons of canonical `Idx 3` values need no core.legalize_idx.
+
+plugin core;
+plugin compile;
+
+extern lam _compile(): compile.Phase = compile.named "ll.emit";
+
+extern fun lt (a b: Idx 3): Bool = return (core.icmp.ul (a, b));

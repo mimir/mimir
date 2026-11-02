@@ -6,20 +6,6 @@ namespace mim::plug::core::phase {
 
 namespace {
 
-bool is_unsigned(icmp id) {
-    switch (id) {
-        case icmp::f:
-        case icmp::e:
-        case icmp::ug:
-        case icmp::uge:
-        case icmp::ul:
-        case icmp::ule:
-        case icmp::ne:
-        case icmp::t: return true;
-        default: return false;
-    }
-}
-
 /// @name I64 Arithmetic
 ///@{
 const Def* op64(World& w, wrap id, const Def* a, const Def* b) { return w.call(id, Mode::none, Defs{a, b}); }
@@ -64,8 +50,16 @@ const Def* sub(World& w, nat_t s, const Def* a, const Def* b) {
     return narrow(w, s, w.select(w.call(icmp::ul, Defs{a, b}), op64(w, wrap::add, d, w.lit_i64(s)), d));
 }
 
-const Def* mul(World& w, nat_t s, const Def* a, const Def* b) {
-    return narrow(w, s, w.call<mulrem>(w.lit_nat(s), Defs{a, b}));
+/// The product of the widened `Idx s` values @p a and @p b.
+const Def* mul(World& w, nat_t s, const Def* a, const Def* b) { return w.call<mulrem>(w.lit_nat(s), Defs{a, b}); }
+
+/// The bits of @p x as `I64`, zero-extended if @p x is narrower.
+const Def* bits(World& w, const Def* x) {
+    auto type = x->type();
+    if (!Idx::isa(type) && !type->isa<Nat>())
+        if (auto size = Lit::isa(op(trait::size, type)); size && *size < 8)
+            return zext(w, w.call<bitcast>(w.type_int(8 * *size), x));
+    return w.call<bitcast>(w.type_i64(), x);
 }
 ///@}
 
@@ -95,16 +89,16 @@ const Def* LegalizeIdx::rewrite_imm_App(const App* app) {
     }
 
     if (auto op = Axm::isa<wrap>(app)) {
-        auto [a, b] = op->args<2>(zx);
-        auto pow    = [&] { return mod_u(w, *s, op64(w, wrap::shl, w.lit_i64(1), b)); };
+        auto [a, b] = op->args<2>([this](const Def* d) { return rewrite(d); });
+        auto pow    = [&] { return narrow(w, *s, mod_u(w, *s, op64(w, wrap::shl, w.lit_i64(1), zext(w, b)))); };
         switch (op.id()) {
-            case wrap::add: return add(w, *s, a, b);
-            case wrap::sub: return sub(w, *s, a, b);
+            case wrap::add: return add(w, *s, zext(w, a), zext(w, b));
+            case wrap::sub: return sub(w, *s, zext(w, a), zext(w, b));
             case wrap::mul: return mul(w, *s, a, b);
             case wrap::shl: return mul(w, *s, a, pow());
         }
     } else if (Axm::isa<bitcast>(app) || Axm::isa<idx>(app)) {
-        return narrow(w, *s, mod_u(w, *s, w.call<bitcast>(w.type_i64(), rewrite(app->arg()))));
+        return narrow(w, *s, mod_u(w, *s, bits(w, rewrite(app->arg()))));
     } else if (auto op = Axm::isa<conv>(app)) {
         auto x = op->arg();
         if (auto d = isa_odd_idx(app->type())) {
@@ -113,8 +107,7 @@ const Def* LegalizeIdx::rewrite_imm_App(const App* app) {
         }
         return w.call(conv::s, rewrite(Idx::isa(app->type())), sx(*s, x));
     } else if (auto op = Axm::isa<icmp>(app)) {
-        auto ext    = [&](const Def* x) { return is_unsigned(op.id()) ? zx(x) : sx(*s, x); };
-        auto [a, b] = op->args<2>(ext);
+        auto [a, b] = op->args<2>([&](const Def* x) { return sx(*s, x); });
         return w.call(op.id(), Defs{a, b});
     } else if (auto op = Axm::isa<shr>(app)) {
         auto [a, b] = op->args<2>();

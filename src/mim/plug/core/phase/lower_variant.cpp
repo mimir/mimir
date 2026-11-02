@@ -183,7 +183,9 @@ const Def* LowerVariant::rewrite_imm_Match(const Match* match) {
     }
 
     // Evaluating every arm is only sound as long as none of them has an effect.
-    if (has_mem_ty(match->type())) fe::throwf("cannot lower effectful direct-style match `{}`", match);
+    if (std::ranges::any_of(match->arms(),
+                            [](const Def* arm) { return mentions(arm, [](const Def* d) { return Axm::isa<M>(d); }); }))
+        fe::throwf("cannot lower effectful direct-style match `{}`", match);
     for (size_t i = 0; i != n; ++i)
         arms[i] = w.app(rewrite(match->arm(i)), decode(l, i, op));
     return w.extract(w.tuple(arms), t);
