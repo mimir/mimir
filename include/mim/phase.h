@@ -401,7 +401,9 @@ protected:
     }
     /// Converts the *new* leaf @p new_val into the *new* @p new_type, whose representation this phase changed.
     /// @returns `nullptr` if this phase has no such conversion.
-    virtual const Def* coerce_leaf(const Def* new_type, const Def* new_val) { return nullptr; }
+    virtual const Def* coerce_leaf([[maybe_unused]] const Def* new_type, [[maybe_unused]] const Def* new_val) {
+        return nullptr;
+    }
     ///@}
 
     /// Run **after** all roots have been walked but still **before** the two worlds are swapped.
