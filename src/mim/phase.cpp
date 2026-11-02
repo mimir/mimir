@@ -277,6 +277,7 @@ const Def* RWPhase::reshape(DefVec& todo, const Def* type) {
     if (front) {
         if (auto res = Check::coerce(type, front)) return todo.pop_back(), res;
         if (auto res = eta_coerce(type, front)) return todo.pop_back(), res;
+        if (auto res = coerce_leaf(type, front)) return todo.pop_back(), res;
     }
 
     if (auto s = w.inhabitant(type)) return s;

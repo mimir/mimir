@@ -1,0 +1,16 @@
+// RUN: %mim %s -o -
+
+plugin core;
+plugin mem;
+plugin refly;
+
+lam layout (T: *): [Nat, Nat] = (core.trait.size T, core.trait.align T);
+
+let _ = refly.struc.e (layout Nat, (8, 8));
+let _ = refly.struc.e (layout (Idx 70000), (4, 4));
+let _ = refly.struc.e (layout [], (0, 1));
+let _ = refly.struc.e (layout [mem.M 0, I32], (4, 4));
+let _ = refly.struc.e (layout [I8, I64, I8], (24, 8));
+let _ = refly.struc.e (layout (core.Union (I32, [I64, I8])), (16, 8));
+let _ = refly.struc.e (layout (core.Union (I8, [I8, I8, I8])), (3, 1));
+let _ = refly.struc.e (layout [I8, core.Union (I8, I32)], (8, 4));

@@ -908,6 +908,17 @@ const Def* normalize_conv(const Def* dst_t, const Def*, const Def* x) {
     return {};
 }
 
+const Def* normalize_rem(const Def* type, const Def* callee, const Def* x) {
+    auto& world = type->world();
+    auto d      = Lit::isa(callee->as<App>()->arg());
+    if (!d || *d == 0) return {};
+
+    if (x->isa<Bot>()) return world.bot(type);
+    if (auto l = Lit::isa(x)) return world.lit(type, *l % *d);
+    if (auto s = Idx::isa_lit(type); s && *s != 0 && *s <= *d) return x;
+    return {};
+}
+
 const Def* normalize_idx2nat(const Def* type, const Def*, const Def* x) {
     auto& world = type->world();
 
@@ -943,13 +954,15 @@ const Def* normalize_bitcast(const Def* dst_t, const Def*, const Def* src) {
 }
 
 // TODO this currently hard-codes x86_64 ABI
-// TODO in contrast to C, we might want to give singleton types like 'Idx 1' or '[]' a size of 0 and simply nuke each
+// TODO in contrast to C, we might want to give singleton types like 'Idx 1' a size of 0 and simply nuke each
 // and every occurance of these types in a later phase
 // TODO Pi and others
 template<trait id>
 const Def* normalize_trait(const Def*, const Def*, const Def* type) {
     auto& world = type->world();
-    if (Axm::isa<Ptr>(type)) {
+    if (Axm::isa<M>(type)) {
+        return world.lit_nat(id == trait::size ? 0 : 1); // the ll backend drops it
+    } else if (Axm::isa<Ptr>(type) || type->isa<Nat>()) {
         return world.lit_nat(8);
     } else if (type->isa<Pi>()) {
         return world.lit_nat(8); // Gets lowered to function ptr
@@ -960,7 +973,7 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
             case 16: return world.lit_nat(2);
             case 32: return world.lit_nat(4);
             case 64: return world.lit_nat(8);
-            default: std::unreachable();
+            default: return {};
         }
     } else if (type->isa<Sigma>()) {
         u64 offset = 0;
@@ -974,12 +987,28 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
             offset = fe::pad(offset, *a) + *s;
         }
 
-        offset   = fe::pad(offset, align);
-        u64 size = std::max(1_u64, offset);
+        switch (id) {
+            case trait::align: return world.lit_nat(align);
+            case trait::size: return world.lit_nat(fe::pad(offset, align));
+        }
+    } else if (auto u = Axm::isa<Union>(type)) {
+        auto n = Lit::isa(u->arg()->arity());
+        if (!n) return {};
+
+        u64 size  = 0;
+        u64 align = 1;
+        for (auto t : u->arg()->projs(*n)) {
+            auto a = Lit::isa(core::op(trait::align, t));
+            auto s = Lit::isa(core::op(trait::size, t));
+            if (!a || !s) return {};
+
+            align = std::max(align, *a);
+            size  = std::max(size, *s);
+        }
 
         switch (id) {
             case trait::align: return world.lit_nat(align);
-            case trait::size: return world.lit_nat(size);
+            case trait::size: return world.lit_nat(fe::pad(size, align));
         }
     } else if (auto arr = type->isa_imm<Arr>()) {
         // One axis at a time, so a fused Arr multiplies in every extent: `«a, b; T»` is `a * size «b; T»`.

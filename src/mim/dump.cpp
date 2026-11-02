@@ -47,6 +47,7 @@ struct Ctx {
     DefSet bound;            ///< Projections of a dependent Sigma's Var a pattern binds in place of a dead component.
     DefSet whole_vars;       ///< Var%s used as a whole; see isa_fun.
     DefSet arms;             ///< Lam%s a `match` spells out as its arms instead of declaring them.
+    DefSet spelled;          ///< Arms already spelled out; a re-read dump binds fresh names for each further spelling.
     DefSet header;           ///< Def%s a Lam's header prints inline, as it precedes the block that `let`s them.
     DefSet inlined;          ///< Def%s inside a binder the dump prints *inline* - they have no block to `let` them.
     /// A Lam's codomain refers to its Pi's Var - or its dependent domain's - but only the Lam's Var is bound by name.
@@ -113,6 +114,19 @@ std::string pick_name(Ctx* ctx, const Def* def) {
                   : base;
     ctx->taken.emplace(name);
     return ctx->names.emplace(def, name).first->second;
+}
+
+/// Forgets the names of @p var and its projections, so that the next spelling picks fresh ones.
+void unname(Ctx* ctx, const Var* var) {
+    auto keys = DefVec();
+    for (const auto& [def, _] : ctx->names) {
+        auto root = def;
+        while (auto ex = root->isa<Extract>())
+            root = ex->tuple();
+        if (root == var) keys.emplace_back(def);
+    }
+    for (auto def : keys)
+        ctx->names.erase(def);
 }
 
 /// Did a pattern keep @p def whole?
@@ -714,6 +728,7 @@ void full(std::ostream& os, Full d) {
             if (binds && variant) os << ' ';
             if (d.ctx()->arms.contains(arm)) {
                 auto lam = arm->as_mut<Lam>();
+                if (auto var = lam->has_var(); var && !d.ctx()->spelled.emplace(lam).second) unname(d.ctx(), var);
                 if (binds) ptrn(os, d.ctx(), lam->has_var(), dom);
                 // Another `match` would swallow the arms that follow.
                 std::print(os, " => {}", d.op(lam->body(), Prec::Where));
@@ -990,7 +1005,7 @@ private:
         if (auto mut = def->isa_mut()) return (void)muts.emplace_back(mut);
         auto match = def->isa<Match>();
         printed_deps(def, [&](const Def* op) {
-            // An arm twice in the same `match` cannot be spelled out at both places either.
+            // An arm twice in the same `match` cannot be spelled out at both places.
             auto arm = match && std::ranges::count(match->arms(), op) == 1;
             note_use(op, arm ? match : nullptr);
             local_muts(op, seen, muts);
@@ -1000,7 +1015,7 @@ private:
     /// Records that @p op is an arm of @p match or, if `nullptr`, used otherwise.
     void note_use(const Def* op, const Match* match) {
         if (!op || !op->isa_mut<Lam>()) return;
-        if (auto [i, ins] = arm_of_.emplace(op, match); !ins && i->second != match) i->second = nullptr;
+        if (auto [i, ins] = arm_of_.emplace(op, match); !ins && !match) i->second = nullptr;
     }
 
     /// The Def%s the dump prints @p def with: a type nobody prints must not drag in a `let` that nothing refers to.
@@ -1426,7 +1441,8 @@ private:
     Ctx ctx_;
     Srcs srcs_;
     MutSet scheduled_;
-    /// The one `match` a Lam is an arm of, or `nullptr` if it is used otherwise and hence needs a declaration.
+    /// A `match` a Lam is an arm of, or `nullptr` if it is used otherwise and hence needs a declaration.
+    /// Re-reading spells out an arm per `match` anyway, so one shared by several is spelled out in each.
     DefMap<const Match*> arm_of_;
 };
 

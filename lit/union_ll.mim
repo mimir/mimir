@@ -1,0 +1,39 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 12
+// RUN: %t a ; test $? -eq 52
+// RUN: %t a b ; test $? -eq 127
+
+plugin core;
+plugin mem;
+
+use core.ops.u.w;
+
+// An arm whose domain is a union covers several cases.
+lam classify (u: I32 ∪ Bool ∪ I64): I32 =
+    match u with
+        | a: I32 ∪ Bool =>
+            (match a with
+                | x: I32  => x
+                | b: Bool => (0I32, 50I32)#b)
+        | c: I64 => core.conv.u i32 c + 1I32;
+
+let V = | A: I32 | B: I64;
+
+// Arms of different types yield a union.
+lam mix (v: V): I32 ∪ I64 =
+    match v with
+        | A x => x
+        | B y => y;
+
+lam back (u: I32 ∪ I64): I32 =
+    match u with
+        | x: I32 => x
+        | y: I64 => core.conv.u i32 y + 100I32;
+
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
+    // A dynamic extract from a heterogeneous tuple yields a union.
+    let tup = (argc + 10I32, core.icmp.e (argc, 2I32), core.conv.u i64 (argc + 20I32));
+    let v   = (V#A argc, V#B (core.conv.u i64 argc))#(core.icmp.e (argc, 3I32));
+    return (m, classify tup#(core.conv.u 3 (argc - 1I32)) + back (mix v));
