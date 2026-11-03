@@ -283,7 +283,8 @@ int main(int argc, char** argv) {
                 opts.import_paths.append_range(manifest.import_paths);
                 opts.prefix_paths.append_range(manifest.prefix_paths);
                 // The last occurrence wins, so the manifest goes first to act as the default.
-                opts.plugin_args.insert(opts.plugin_args.begin(), manifest.plugin_args.begin(), manifest.plugin_args.end());
+                opts.plugin_args.insert(opts.plugin_args.begin(), manifest.plugin_args.begin(),
+                                        manifest.plugin_args.end());
             } catch (const std::invalid_argument&) {
                 // `--help` must work even if the project configuration is broken.
                 if (!show_help && !show_help_md) throw;
