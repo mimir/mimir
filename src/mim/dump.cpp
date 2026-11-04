@@ -818,11 +818,32 @@ private:
         // A substitution maps each generic subterm to exactly one instance subterm.
         if (auto [j, ins] = subst_.emplace(g, i); !ins) return j->second == i;
         if (is_param(g)) return true;
+        if (auto arr = g->isa_imm<Arr>()) {
+            auto shape = fe::lookup(subst_, *arr->shape());
+            auto body  = fe::lookup(subst_, arr->body());
+            if (!body && arr->body()->is_closed()) body = arr->body();
+            auto same_shape = shape && i->isa_imm<Arr>() && *i->as<Arr>()->shape() == shape;
+            if (shape && body && !same_shape) {
+                if (auto pack = shape->isa_imm<Pack>()) {
+                    if (Lit::isa(pack->body()) == 1) return Check::test_alpha(body, i);
+                    if (Lit::isa(pack->body()) == 0) return Check::test_alpha(i->world().sigma(), i);
+                }
+                auto freeze = i->world().freeze();
+                auto type   = i->world().arr(shape, body);
+                return type && Check::test_alpha(type, i);
+            }
+        }
+        if (auto sig = g->isa_imm<Sigma>())
+            if (auto arr = i->isa_imm<Arr>();
+                arr && arr->shape().is_dim() && Lit::isa(*arr->shape()) == sig->num_ops()) {
+                for (auto op : sig->ops())
+                    if (!match(op, arr->body())) return false;
+                return match(g->type(), i->type());
+            }
         if (g->node() != i->node() || g->flags() != i->flags() || g->num_ops() != i->num_ops()) return false;
-        if (!match(g->type(), i->type())) return false;
         for (size_t k = 0, n = g->num_ops(); k != n; ++k)
             if (!match(g->op(k), i->op(k))) return false;
-        return true;
+        return match(g->type(), i->type());
     }
 
     const fe::Vector<Lam*>& chain_;
