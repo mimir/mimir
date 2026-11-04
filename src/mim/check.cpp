@@ -139,10 +139,8 @@ const Def* Check::coerce_(const Def* type, const Def* val) {
     // Only do this when @p type is a Pi: if it is a Hole, we'd commit before knowing what's expected;
     // if it's an aggregate, we might consume implicits belonging to the value's element type.
     if (auto pi = type->isa<Pi>(); pi && !pi->is_implicit() && Pi::isa_implicit(val_ty)) {
-        while (auto ipi = Pi::isa_implicit(val_ty)) {
-            val    = w.app(val, w.mut_hole(ipi->dom()));
-            val_ty = val->unfold_type()->zonk();
-        }
+        val    = w.implicit_holes(val);
+        val_ty = val->unfold_type()->zonk();
         if (type == val_ty) return val;
     }
 
@@ -158,6 +156,19 @@ const Def* Check::coerce_(const Def* type, const Def* val) {
             new_ops[i] = new_val;
         }
         return w.tuple(new_ops);
+    }
+
+    // A dynamic Extract's type joins its components' types, which may only agree once each is coerced on its own.
+    if (auto extract = val->isa<Extract>();
+        extract && val_ty->isa<Join>() && !type->isa<Join>() && !Hole::isa_unset(type)) {
+        auto tuple = extract->tuple();
+        if (auto sigma = tuple->unfold_type()->zonk()->isa_imm<Sigma>()) {
+            auto n       = sigma->num_ops();
+            auto new_ops = DefVec(n);
+            for (size_t i = 0; i != n; ++i)
+                if (!(new_ops[i] = coerce_(type, tuple->proj(n, i)))) return fail();
+            return w.extract(w.tuple(new_ops), extract->index());
+        }
     }
 
     auto num_deferred = deferred_.size();

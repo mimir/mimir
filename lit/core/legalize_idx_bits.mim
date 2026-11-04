@@ -1,0 +1,29 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 4
+// RUN: %t a ; test $? -eq 8
+
+plugin core;
+plugin math;
+plugin mem;
+
+use core.ops.u.w;
+
+// A float or an aggregate narrower than `I64` takes its own width before it is zero-extended.
+extern fun f2i (x: math.F32): I32 = return (core.conv.u i32 (core.bitcast (Idx 3) x));
+extern fun a2i (x: «2; I8»): I32 = return (core.conv.u i32 (core.bitcast (Idx 3) x));
+
+// The operands of `core.mulrem` need not be reduced, so `2^63 * 2^63` needs `i128`.
+lam mr (x: I64): I64 = core.mulrem 3 (x, x);
+
+// `mem.Ptr0 I8` leaves no bit for a tag, so the pointer goes into a `core.Union` with the `I32`.
+let V = | P: mem.Ptr0 I8 | N: I32;
+
+lam code (v: V): I32 = match v with | P _ => 7I32 | N n => n;
+
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
+    let (m, p) = mem.alloc (I8, 0) m;
+    let v      = (V#N 3I32, V#P p)#(core.icmp.e (argc, 2I32));
+    let big    = core.wrap.shl 0 (core.conv.u i64 argc, 62I64);
+    return (m, code v + core.conv.u i32 (mr big));

@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m venv .venv
-          .venv/bin/pip install "lit<24" psutil
+          .venv/bin/pip install "lit<24" psutil "pytest<10" libclang
           brew install llvm@22
           LLVM_PREFIX=$(brew --prefix llvm@22)
           echo "LLVM_PREFIX=${LLVM_PREFIX}" >> $GITHUB_ENV

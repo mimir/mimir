@@ -1,0 +1,7 @@
+// RUN: %mim %s
+
+// Each component of a dynamic extract is coerced to the expected type, which resolves its holes separately.
+nom Box {T: *} = | Empty | Full: T;
+
+lam pick {T: *} (b: Bool, v: T): Box@T = (Box#Empty, Box#Full v)#b;
+lam nat (b: Bool): Box@Nat = (Box#Empty, Box#Empty)#b;

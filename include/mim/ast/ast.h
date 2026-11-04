@@ -1172,21 +1172,23 @@ public:
     NomDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Expr> body)
         : RecDecl(loc, mods, dbg, body) {}
 
-    /// The visibility of the named constructors and fields: that of the enclosing top-level declaration.
-    Vis named_vis() const { return named_vis_; }
+    /// The visibility of this `nom`'s representation: that of the enclosing top-level declaration.
+    Vis rep_vis() const { return rep_vis_; }
 
-    void bind_decl(Scopes&) const override;
+    void bind_body(Scopes&) const override;
     void emit_decl(Emitter&) const override;
     void emit_body(Emitter&) const override;
     /// Emits a `nom` without a mutable body as soon as a sibling refers to it; `nullptr` on a cycle.
     const Def* emit_ahead(Emitter&) const;
+    /// Sets @p lam's body to this LamDecl::nom_sugar before emitting the latter's body.
+    void emit_sugar(Emitter&, Lam* lam) const;
     void stream_(fe::Tab&, std::ostream&) const override;
 
 private:
     void emit_nom(Emitter&, const Def* body) const;
 
     mutable bool emitting_ = false;
-    mutable Vis named_vis_ = Vis::Pub;
+    mutable Vis rep_vis_   = Vis::Pub;
 };
 
 /// `tag dbg dom_0 ... dom_n-1: codom = body;` with LamDecl::tag `lam`/`con`/`fun` or anonymous `λ`/`cn`/`fn`.
@@ -1217,18 +1219,19 @@ public:
 
     using VLA_Types = std::tuple<Ptr<Dom>>;
 
-    LamDecl(Loc loc, Mods mods, Tok::Tag tag, Dbg dbg, Ptr<Expr> codom, Ptr<Expr> body)
+    LamDecl(Loc loc, Mods mods, Tok::Tag tag, Dbg dbg, Ptr<Expr> codom, Ptr<Expr> body, const NomDecl* nom_sugar)
         : RecDecl(loc, mods, dbg, body)
         , tag_(tag)
-        , codom_(codom) {}
+        , codom_(codom)
+        , nom_sugar_(nom_sugar) {}
 
     Tok::Tag tag() const { return tag_; }
     auto doms() const { return vla<0>(); }
     const Dom* dom(size_t i) const { return doms()[i].get(); }
     size_t num_doms() const { return doms().size(); }
     const Expr* codom() const { return codom_.get(); }
-    /// The `nom` if this is `lam I dom+ = nom I = e; I`, which `nom I dom+ = e` desugars to.
-    const NomDecl* nom_sugar() const;
+    /// The `nom` of `lam I dom+ = nom I = e; I` if `nom I dom+ = e` desugared to this; within `e`, `I` is this LamDecl.
+    const NomDecl* nom_sugar() const { return nom_sugar_; }
 
     void bind_decl(Scopes&) const override;
     void bind_body(Scopes&) const override;
@@ -1239,6 +1242,7 @@ public:
 private:
     Tok::Tag tag_;
     Ptr<Expr> codom_;
+    const NomDecl* nom_sugar_;
 };
 
 /// `mutual decl* end` groups RecDecl%s that may refer to each other.

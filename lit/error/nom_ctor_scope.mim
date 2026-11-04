@@ -11,5 +11,5 @@ end
 
 lam get (x: Nat): Nat = match m.some x with | None => 0 | Some y => y;
 
-// CHECK: {{.*}}nom_ctor_scope.mim:12:25-12:69: error: constructors and fields of private nominal type `O` are only allowed within module `m`
+// CHECK: {{.*}}nom_ctor_scope.mim:12:25-12:69: error: the representation of private nominal type `O` is only accessible within module `m`
 // CHECK: {{.*}}nom_ctor_scope.mim:6:9-6:32: note: declared here

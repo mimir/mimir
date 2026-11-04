@@ -24,7 +24,7 @@ jobs:
 
       - name: Install dependencies
         shell: cmd
-        run: python -m pip install "lit<24" psutil
+        run: python -m pip install "lit<24" psutil "pytest<10" libclang
 
       - name: Install FileCheck
         uses: i3h/download-release-asset@v1

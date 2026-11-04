@@ -806,7 +806,7 @@ Ptr<RecDecl> Parser::parse_nom_decl(Tracker track, Mods mods) {
         return ptr<NomDecl>(track, mods, dbg, body);
     }
 
-    // `nom I (dom)+ = e` is sugar for `lam I (dom)+ = nom I = e; I`; within `e`, `I` names this very instance.
+    // `nom I (dom)+ = e` is sugar for `lam I (dom)+ = nom I = e; I`; within `e`, `I` names the type constructor.
     Ptrs<LamDecl::Dom> doms;
     do {
         auto dom_track = tracker();
@@ -815,10 +815,12 @@ Ptr<RecDecl> Parser::parse_nom_decl(Tracker track, Mods mods) {
     } while (ISA(ahead().tag(), C_CURRIED_P));
     expect(Tag::T_assign, "nominal type declaration");
     auto body  = parse_expr("underlying type of a nominal type declaration");
+    auto nom   = ptr<NomDecl>(track, Mods{}, dbg, body);
+    auto sugar = nom.get();
     auto decls = Ptrs<ValDecl>();
-    decls.emplace_back(ptr<NomDecl>(track, Mods{}, dbg, body));
+    decls.emplace_back(std::move(nom));
     auto inst = ptr<DeclExpr>(track, ptr<PathExpr>(ptr<Path>(dbg.loc(), Dbgs{dbg})), false, decls);
-    return ptr<LamDecl>(track, mods, Tag::K_lam, dbg, nullptr, inst, doms);
+    return ptr<LamDecl>(track, mods, Tag::K_lam, dbg, nullptr, inst, sugar, doms);
 }
 
 Ptr<ValDecl> Parser::parse_rule_decl(Tracker track, Mods mods) {
@@ -907,7 +909,7 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
                     .n("write an unnamed component as `_: T`");
     }
 
-    return ptr<LamDecl>(track, mods, tag, dbg, codom, body, doms);
+    return ptr<LamDecl>(track, mods, tag, dbg, codom, body, nullptr, doms);
 }
 
 } // namespace mim::ast

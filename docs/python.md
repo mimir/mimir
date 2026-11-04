@@ -7,18 +7,18 @@ Its binding code is generated directly from the C++ headers via [nanobind](https
 Because the surface is generated, it stays close to the C++ API by construction.
 Names such as `lit_i8`, `type_i32`, `arr`, `mut_con`, and `optimize` are exposed with the same spelling you see in the C++ code.
 You have to enable `MIM_BUILD_PYTHON` (default) during configuration for Python support.
-The build creates a virtual environment at `build/.venv` and installs `mim` into it.
-Only the initial creation of that venv needs a network connection to fetch `pip`, `setuptools`, `wheel`, `pytest`, and `libclang` (which the binding generator runs on).
-Once `build/.venv` exists, all further builds stay offline.
-
-Activate that environment before importing `mim`:
+The binding generator runs on the clang Python bindings (`clang.cindex`) of the Python CMake finds, so install them first: e.g. `clang` on Arch, `python3-clang-<N>` on Debian/Ubuntu, or `pip install libclang`.
+The build fetches nothing.
+It stages the package in `build/python`, so point `PYTHONPATH` there to import `mim` from the build tree:
 
 ```sh
-source build/.venv/bin/activate
+export PYTHONPATH=build/python
 python -c 'import mim; print(mim.Driver)'
 ```
 
-Run the Python test suite with:
+`cmake --install` puts the package into the Python `site-packages` below the install prefix; `MIM_PY_INSTALL_DIR` overrides that location.
+
+Run the Python test suite (requires `pytest`) with:
 
 ```sh
 cmake --build build --target test-py
@@ -75,7 +75,7 @@ So the Python surface follows the same “named IR handle” model as the C++ AP
 ## Loading Plugins {#pyplugins}
 
 Runtime plugins are still discovered the same way as in C++.
-`Driver()` usually picks up the in-tree plugin build directory automatically, including from the editable Python package.
+`Driver()` usually picks up the in-tree plugin build directory automatically, including from the staged Python package.
 Use `add_plugin_path(...)` only when you want to load plugins from an extra directory;
 `add_import_path(...)` and `add_prefix_path(...)` add an import directory and an install prefix respectively:
 

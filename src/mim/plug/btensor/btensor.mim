@@ -114,17 +114,29 @@ axm map_reduce_post: {nis nps: Nat}
                       post_is: «j: nps; buffer.Buf (Rps#j, Sps#j, Tps#j)»]
                    → [mem.M 0, buffer.Buf (Ro, So, Tp)];
 ///
-/// ### mk_sched
+/// ### Sched
 ///
-/// The canonical **schedule** value: a chooser over the target's loop-nest builder, picking
+/// The **schedule** record a nest builder is handed:
 ///
 /// - `vdim`, the dim to run innermost as the unit-stride vector loop — a parallel dim runs over a row
 ///   of accumulators, the innermost **reduction** dim selects the reduction-vectorized nest (see
 ///   `mr_nest`), and `vdim ≥ Rn` means "none";
 /// - `unroll`, the number of trailing reduction dims to unroll into straight-line code.
 ///
-/// `tensor.mk_sched` is an alias for this lam: `btensor` owns it for the same reason it owns `Ring`.
-anx lam mk_sched (vdim unroll: Nat) (N: *) (mk: [vdim unroll: Nat] → N): N = mk (vdim, unroll);
+/// Transforms update the field they decide (`s#vdim ← d`) and pass the rest through.
+/// `tensor.Sched` is an alias for this type: `btensor` owns it for the same reason it owns `Ring`.
+anx let Sched = [vdim unroll: Nat];
+///
+/// ### SchedT
+///
+/// The type of a schedule **chooser**: for whatever nest type `N` the lowering instantiates, it is handed
+/// the target's builder `mk` and returns the nest to run.
+anx let SchedT = [N: *] → (Sched → N) → N;
+///
+/// ### mk_sched
+///
+/// The canonical chooser: it hands the builder `s` itself.
+anx lam mk_sched (s: Sched) (N: *) (mk: Sched → N): N = mk s;
 ///
 /// ### proj_map
 ///
@@ -334,8 +346,10 @@ anx lam NestT (ro rr: Nat, Sr: «ro + rr; Nat», To U: *): * =
 ///   into its body.
 ///
 /// Per-cell fold order is untouched by any of these transforms.
-anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
+anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (s: Sched)
                    : NestT (ro, rr, Sr, To, U) =
+    let vdim   = s#vdim;
+    let unroll = s#unroll;
     let r    = ro + rr;
     // The unroll window must stay within the reduction dims.
     let u_lo = r - unroll;
@@ -514,7 +528,7 @@ anx lam mr_nest (ro rr: Nat, Sr: «ro + rr; Nat», To U: *) (vdim unroll: Nat)
 /// Destination-passing map-reduce: apply the selected nest to ordinary fold and write-back functions.
 priv anx lam map_reduce_post_impl {nis nps: Nat}
     {To Tp: *, Ro Rr: Nat}
-    (So: «Ro; Nat», Sr: «Ro + Rr; Nat», sched: [N: *] → ([vdim unroll: Nat] → N) → N)
+    (So: «Ro; Nat», Sr: «Ro + Rr; Nat», sched: SchedT)
     {Tis: «nis; *», Tps: «nps; *»}
     (f: Fn [mem.M 0, To, «i: nis; Tis#i»] → [mem.M 0, To], init: To,
      post: Fn [mem.M 0, To, «j: nps; Tps#j»] → [mem.M 0, Tp])

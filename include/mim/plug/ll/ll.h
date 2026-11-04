@@ -231,7 +231,12 @@ protected:
 
     /// Registers @p arg as an incoming phi value for @p phi in @p callee, coming from predecessor @p pred.
     void emit_phi(Lam* callee, const Def* phi, std::string arg, Lam* pred) {
-        lam2bb_[callee].phis[phi].emplace_back(std::move(arg), id(pred, true));
+        // Inserting here would invalidate the `BB&` our caller holds.
+        auto i = lam2bb_.find(callee);
+        if (i == lam2bb_.end())
+            callee->blame(MIM_LL_BE "`{}` jumps to `{}`, which is not a basic block of `{}`", pred, callee, root())
+                .bail();
+        i->second.phis[phi].emplace_back(std::move(arg), id(pred, true));
         locals_[phi] = id(phi);
     }
 
@@ -292,7 +297,17 @@ private:
     // Case groups of emit_bb_impl, split so one recursion level only pays the frame of the group it hits.
     MIM_NOINLINE std::string emit_lit(const Def*);
     MIM_NOINLINE std::string emit_tuple(BB&, const std::string& name, const Def* tuple);
-    MIM_NOINLINE std::pair<std::string, std::string> emit_gep_index(BB&, const std::string& name, const Def* index);
+    /// The typed GEP operands of @p index; a multi-index yields one per axis.
+    MIM_NOINLINE std::string emit_gep_index(BB&, const std::string& name, const Def* index);
+    /// Allocates the stack slot @p slot of @p type in the entry block, so that a loop does not allocate it again.
+    /// A non-zero @p align overrides the ABI alignment of @p type.
+    void entry_alloca(const std::string& slot, const std::string& type, nat_t align = 0) {
+        auto& os = lam2bb_[root()].body().emplace_front();
+        std::print(os, "{} = alloca {}", slot, type);
+        if (align != 0) std::print(os, ", align {}", align);
+    }
+    /// Stores the tuple @p v of type @p t in `name.alloca` and points `name.gep` at its element @p index.
+    void emit_slot_gep(BB&, const std::string& name, const std::string& t, const std::string& v, const Def* index);
     MIM_NOINLINE std::optional<std::string> emit_builtin(BB&, const std::string& name, const Def*);
     MIM_NOINLINE std::optional<std::string> emit_core(BB&, const std::string& name, const Def*);
     MIM_NOINLINE std::optional<std::string> emit_mem(BB&, const std::string& name, const Def*);

@@ -10,78 +10,17 @@
 
 namespace mim::plug::mem {
 
-/// @name mem.M
+/// @name mem.M and mem.Ptr
+/// mem.M and mem.Ptr are core.M and core.Ptr; their helpers live in mim::plug::core.
 ///@{
-
-inline Lam* mut_con(World& w, nat_t a = 0) { return w.mut_con(w.call<M>(a)); } ///< Yields `con[mem.M 0]`.
-
-/// Yields `con[mem.M 0, dom]`.
-inline Lam* mut_con(const Def* dom) {
-    World& w = dom->world();
-    return w.mut_con({w.call<M>(0), dom});
-}
-
-/// If @p def is a `mem.M`-typed value, yields its memory type `mem.M a`; otherwise `nullptr`.
-inline const App* isa_mem(const Def* def) { return Axm::isa<mem::M>(def->type()); }
-
-/// Does @p pi already thread memory - a leading `mem.M`, either directly or grouped as the first
-/// component of the first parameter (e.g. the `Fn [mem.M 0, To, ins] → …` shape of a mem-threaded combiner)?
-inline bool has_leading_mem(const Pi* pi) {
-    if (pi->num_doms() == 0) return false;
-    auto dom0 = pi->dom(pi->num_doms(), 0);
-    if (Axm::isa<mem::M>(dom0)) return true;
-    if (auto sig = dom0->isa<Sigma>(); sig && sig->num_ops() != 0 && Axm::isa<mem::M>(sig->op(0))) return true;
-    return false;
-}
-
-/// Returns the (first) element of type `mem.M a` from the given tuple.
-inline const Def* mem_def(const Def* def) {
-    if (isa_mem(def)) return def;
-    if (def->isa<Arr>() || def->type()->isa<Arr>()) return {}; // don't look into possibly gigantic arrays
-
-    if (def->num_projs() > 1) {
-        for (auto proj : def->projs())
-            if (auto mem = mem_def(proj)) return mem;
-    }
-
-    return {};
-}
-
-/// Returns the memory argument of a function if it has one.
-inline const Def* mem_var(Lam* lam) { return mem_def(lam->var()); }
-
-/// Is @p type `mem.M` or a Sigma with a `mem.M` component?
-inline bool has_mem_ty(const Def* type) {
-    if (Axm::isa<mem::M>(type)) return true;
-    if (auto sigma = type->isa<Sigma>())
-        return std::ranges::any_of(sigma->ops(), [](const Def* op) { return Axm::isa<mem::M>(op); });
-    return false;
-}
-
-/// Removes recusively all occurences of mem from a type (sigma).
-inline const Def* strip_mem_ty(const Def* def) {
-    auto& world = def->world();
-
-    if (auto sigma = def->isa<Sigma>()) {
-        DefVec new_ops;
-        for (auto op : sigma->ops())
-            if (auto new_op = strip_mem_ty(op); new_op != world.sigma()) new_ops.push_back(new_op);
-
-        return world.sigma(new_ops);
-    } else if (Axm::isa<mem::M>(def)) {
-        return world.sigma();
-    }
-
-    return def;
-}
-///@}
-
-/// @name mem.Ptr
-///@{
-inline const Def* pointee(const Def* ptr) {
-    auto [pointee, _] = Axm::as<Ptr>(ptr->type())->args<2>();
-    return pointee;
-}
+using core::has_leading_mem;
+using core::has_mem_ty;
+using core::isa_mem;
+using core::mem_def;
+using core::mem_var;
+using core::mut_con;
+using core::pointee;
+using core::strip_mem_ty;
 ///@}
 
 /// @name mem.lea

@@ -357,6 +357,12 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
         auto lifted
             = w.tuple(rewrite(idxs)->projs([&](const Def* i) { return w.call(core::conv::u, w.lit_i64(), i); }));
         auto f_lam = f->isa_mut<Lam>();
+        // An η-reduced map, e.g. `affine.op.add` itself, has no body to inline, so its η-expansion stands in for it.
+        if (!f_lam) {
+            auto& eta = etas_[f];
+            if (!eta) eta = Lam::eta_expand(f);
+            f_lam = eta;
+        }
 
         Lam* idx_map_lam = nullptr;
         Lam* rw_idx_lam  = nullptr;

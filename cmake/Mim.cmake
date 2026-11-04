@@ -327,8 +327,9 @@ function(add_mim_runtime)
     if(N_SOURCES EQUAL 1)
         add_custom_command(
             OUTPUT  ${RT_LL}
-            COMMAND ${MIM_CLANG} -S -emit-llvm -O2 ${RT_SOURCES} -o ${RT_LL}
+            COMMAND ${MIM_CLANG} -S -emit-llvm -O2 ${PARSED_SOURCES} -o ${RT_LL}
             DEPENDS ${RT_SOURCES}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
             COMMENT "Compiling MimIR runtime '${PLUGIN}' to LLVM IR"
             VERBATIM
         )
@@ -340,13 +341,14 @@ function(add_mim_runtime)
             )
         endif()
         set(RT_BCS "")
-        foreach(src IN LISTS RT_SOURCES)
+        foreach(src IN LISTS PARSED_SOURCES)
             cmake_path(GET src STEM stem)
             set(bc ${RT_DIR}/${PLUGIN}_${stem}.bc)
             add_custom_command(
                 OUTPUT  ${bc}
                 COMMAND ${MIM_CLANG} -emit-llvm -O2 -c ${src} -o ${bc}
-                DEPENDS ${src}
+                DEPENDS ${CMAKE_CURRENT_LIST_DIR}/${src}
+                WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
                 COMMENT "Compiling MimIR runtime source '${stem}' to LLVM bitcode"
                 VERBATIM
             )

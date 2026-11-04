@@ -70,6 +70,7 @@ private:
     /// Rewritten access-map lams, keyed by `f` and then `sin`: shared annex lams like `tensor.proj_map` are reached
     /// from `affine.map`s over different domains, and a fold only holds for the extents that justified it.
     DefMap<DefMap<Lam*>> specialized_;
+    DefMap<Lam*> etas_;
 };
 
 } // namespace mim::plug::affine::phase

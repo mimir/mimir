@@ -1,3 +1,5 @@
+#include <charconv>
+
 #include "mim/def.h"
 #include "mim/rewrite.h"
 
@@ -104,8 +106,20 @@ public:
         add_names(variant, sym2idx);
     }
 
+    /// Also `_i` - how the dumper spells case `i` - selects that case even if the variant names it otherwise.
+    std::optional<size_t> find_ctor(const Def* variant, Dbg dbg) {
+        if (auto i = find_name(variant, dbg)) return i;
+        auto sym  = dbg.sym();
+        auto name = sym.view();
+        if (name.size() < 2 || name[0] != '_' || (name.size() > 2 && name[1] == '0')) return {};
+        size_t i       = 0;
+        auto [end, ec] = std::from_chars(name.data() + 1, name.data() + name.size(), i);
+        if (ec != std::errc() || end != name.data() + name.size() || i >= variant->num_ops()) return {};
+        return i;
+    }
+
     size_t ctor(const Def* variant, Dbg dbg) {
-        if (auto i = find_name(variant, dbg)) return *i;
+        if (auto i = find_ctor(variant, dbg)) return *i;
         error().e(dbg.loc(), "variant `{}` has no constructor `{}`", variant_str(variant), dbg).bail();
     }
 
@@ -120,8 +134,7 @@ public:
     ///@}
 
     /// @name Nominal scope
-    /// Only the `mod` declaring a `nom` - or one nested in it - may use `inj` and `#` on it.
-    /// Its named constructors and fields have NomDecl::named_vis.
+    /// Only the `mod` declaring a private `nom` - or one nested in it - may access its representation.
     ///@{
     void push_mod(const ModDecl* mod) { mods_.emplace_back(mod); }
     void pop_mod() { mods_.pop_back(); }
@@ -131,15 +144,16 @@ public:
     struct NomInfo {
         const Nom* decl;
         const ModDecl* owner;
-        Vis named_vis;
     };
 
-    void add_nom(const Nom* nom, const NomDecl* decl) { key2nom_[nom->key()] = {nom, mods_.back(), decl->named_vis()}; }
+    void add_nom(const Nom* nom, const NomDecl* decl) {
+        key2nom_[nom->key()] = {nom, decl->rep_vis() == Vis::Priv ? mods_.back() : nullptr};
+    }
 
-    /// The declared `nom` that @p nom instantiates, the `mod` owning it, and NomDecl::named_vis.
+    /// The declared `nom` that @p nom instantiates and, if its representation is private, the `mod` owning it.
     NomInfo nom_decl(const Nom* nom) const {
         auto i = key2nom_.find(nom->key());
-        return i != key2nom_.end() ? i->second : NomInfo{nom, nullptr, Vis::Pub};
+        return i != key2nom_.end() ? i->second : NomInfo{nom, nullptr};
     }
 
     bool within(const ModDecl* mod) const { return std::ranges::find(mods_, mod) != mods_.end(); }
@@ -491,23 +505,21 @@ const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
     return rhs()->emit(e);
 }
 
-/// A `nom`'s intro and elim are private to the `mod` that declared it; the type itself is not.
-/// @p named: access through a named constructor or field rather than `inj` or `#`.
-static void check_nom_scope(Emitter& e, Loc loc, const Nom* nom, bool named = false) {
-    auto [decl, owner, named_vis] = e.nom_decl(nom);
-    if (!owner || (named && named_vis == Vis::Pub) || e.within(owner)) return;
+/// A private `nom`'s representation is confined to the `mod` that declared it; the type itself is not.
+static void check_nom_scope(Emitter& e, Loc loc, const Nom* nom) {
+    auto [decl, owner] = e.nom_decl(nom);
+    if (!owner || e.within(owner)) return;
     auto where = owner->isa<File>() ? fe::format_cite("file `{}`", owner->loc().src->path().filename().string())
                                     : fe::format_cite("module `{}`", owner->dbg());
     e.error()
-        .e(loc, "{} nominal type `{}` are only allowed within {}",
-           named ? "constructors and fields of private" : "`inj` and `#` on", nom, where)
+        .e(loc, "the representation of private nominal type `{}` is only accessible within {}", nom, where)
         .n(decl->loc(), "declared here")
         .bail();
 }
 
-/// Checks and prepares access to @p nom through its named constructors or fields.
+/// Checks and prepares access to @p nom's representation.
 static void open_nom(Emitter& e, Loc loc, const Nom* nom) {
-    check_nom_scope(e, loc, nom, true);
+    check_nom_scope(e, loc, nom);
     e.adopt_names(nom);
 }
 
@@ -527,8 +539,7 @@ const Def* PrefixExpr::emit_(Emitter& e) const {
     switch (op().tag()) {
         case Tag::T_extract:
             if (auto nom = def->isa_type<Nom>()) {
-                check_nom_scope(e, loc(), nom);
-                e.adopt_names(nom);
+                open_nom(e, loc(), nom);
                 return e.world().struc(def);
             }
             if (!def->zonk()->isa_type<Single>()) {
@@ -550,7 +561,7 @@ static const Def* emit_ctor(Emitter& e, const Variant* variant, const Expr* inde
     auto i  = std::optional<nat_t>();
 
     if (auto path = index->isa<PathExpr>(); path && path->path()->dbgs().size() == 1) {
-        i = e.find_name(variant, path->dbg());
+        i = e.find_ctor(variant, path->dbg());
         if (!i && !path->decl())
             e.error()
                 .e(path->dbg().loc(), "variant `{}` has no constructor `{}`", e.variant_str(variant), path->dbg())
@@ -581,7 +592,7 @@ const Def* InfixExpr::emit_(Emitter& e) const {
             return w.join(types);
         }
         case Tag::T_extract: {
-            auto tup = lhs()->emit(e);
+            auto tup = w.implicit_holes(lhs()->emit(e));
             if (auto variant = tup->isa<Variant>()) return emit_ctor(e, variant, rhs());
             if (auto nom = tup->isa<Nom>()) {
                 if (auto variant = nom->op()->isa<Variant>()) {
@@ -637,6 +648,7 @@ const Def* InfixExpr::emit_(Emitter& e) const {
         case Tag::T_arrow_r: return w.pi(l, r);
         case Tag::T_at: return w.app(l, r);
         case Tag::K_inj:
+            r = w.implicit_holes(r);
             if (auto nom = r->isa<Nom>()) check_nom_scope(e, loc(), nom);
             return w.inj(r, l);
         default: return w.implicit_app(c, w.tuple({l, r})); // MIM_INFIX_SUGAR
@@ -996,6 +1008,13 @@ const Def* NomDecl::emit_ahead(Emitter& e) const {
     return def_;
 }
 
+void NomDecl::emit_sugar(Emitter& e, Lam* lam) const {
+    // `I dom` then resolves to this very instance as an application of a Lam to its own Var.
+    emit_decl(e);
+    lam->set_body(emit_ahead(e));
+    emit_body(e);
+}
+
 void NomDecl::emit_nom(Emitter& e, const Def* body) const {
     // World::dump finds a file's annexes by their qualified sym.
     auto sym = annex_ ? annex_->qualified(e.driver(), dbg().sym()) : dbg().sym();
@@ -1056,7 +1075,11 @@ void LamDecl::emit_body(Emitter& e) const {
     auto _ = e.world().push(loc());
     {
         auto _body = e.world().push(body()->loc());
-        doms().back()->lam_->set_body(body()->emit(e));
+        auto lam   = doms().back()->lam_;
+        if (auto nom = nom_sugar())
+            nom->emit_sugar(e, lam);
+        else
+            lam->set_body(body()->emit(e));
     }
 
     // rewrite holes

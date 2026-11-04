@@ -1,0 +1,13 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// An access map `(i, k) ↦ i + k` η-reduces to `affine.op.add` itself, which has no body to inline.
+plugin core;
+plugin mem;
+plugin affine;
+
+lam win (i k: affine.Index): affine.Index = affine.op.add (i, k);
+
+// CHECK-LABEL: extern con window
+// CHECK:       core.wrap.add
+extern fun window (m: mem.M 0, i: Idx 4, k: Idx 3): [mem.M 0, Idx 6] =
+    return (affine.map @(1, 2) @((4, 3), 6) win (i, k) m);

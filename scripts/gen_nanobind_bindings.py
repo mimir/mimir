@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate nanobind Python bindings for C++ headers using libclang (from venv).
+Generate nanobind Python bindings for C++ headers using libclang.
 
 Usage:
     ./gen_nanobind_bindings.py path/to/header.h                    # stdout
@@ -9,10 +9,10 @@ Usage:
     ./gen_nanobind_bindings.py --dir include/mim --recursive
         --namespace mim -I /custom/include
 
-Requires the `libclang` wheel (bundles libclang + its Python bindings); it is
-installed into the build venv by CMake, which also invokes this script.  Its
-bindings drive the toolchain's own libclang where there is one (`$MIM_LIBCLANG`
-overrides the search); the wheel's bundled library is the fallback.
+Requires the clang Python bindings (`clang.cindex`), e.g. from the distribution's
+clang package or the `libclang` wheel.  They drive the toolchain's own libclang
+where there is one (`$MIM_LIBCLANG` overrides the search); otherwise whatever
+libclang the bindings find themselves.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import difflib
+import enum
 import json
 import os
 import re
@@ -31,26 +32,15 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-#  Bootstrap: import the venv's bundled libclang
-# ---------------------------------------------------------------------------
-
 _SCRIPT_DIR = Path(__file__).resolve().parent  # scripts/
 _REPO_ROOT = _SCRIPT_DIR.parent                # repo root
-
-# Under the build venv's Python the `libclang` wheel is already importable; a
-# system Python needs the repo `.venv`'s site-packages on the path to find it.
-if sys.prefix == sys.base_prefix:
-    _site = _REPO_ROOT / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
-    if _site.is_dir():
-        sys.path.insert(0, str(_site))
 
 try:
     import clang.cindex  # pyright: ignore[reportMissingImports]
 except Exception as e:  # ImportError, or libclang failing to load
     print(
         f"ERROR: libclang not available: {e}\n"
-        "  Run under the build venv, or `pip install libclang` into it.",
+        "  Install your distribution's clang Python bindings or `pip install libclang`.",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -62,7 +52,10 @@ TypeKind = clang.TypeKind
 # A libclang newer than these bindings reports kinds they have no name for, and
 # an unnamed kind makes every `.kind` access raise; a placeholder is simply never
 # equal to a kind we look for.
+# Bindings from clang 19 on are closed `enum.Enum`s, which come with their distribution's libclang.
 for _enum in (CursorKind, TypeKind):
+    if isinstance(_enum, enum.EnumMeta):
+        continue
     for _id in range(1, 1000):
         try:
             _enum.from_id(_id)

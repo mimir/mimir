@@ -78,6 +78,16 @@ TEST_CASE("World: dependent projection with a mutable op") {
     CHECK(w.extract(a, 3, 2) == w.extract(a, 3, 2));
 }
 
+TEST_CASE("World: β-reduce a Lam that is its own body") {
+    Driver driver;
+    World& w = driver.world();
+    auto rec = w.mut_pi(w.type())->set_dom(w.type_nat());
+    rec->set_codom(rec);
+    auto lam = w.mut_lam(rec);
+    lam->set(true, lam);
+    CHECK(w.app(lam, w.lit_nat(0)) == lam);
+}
+
 TEST_CASE("Annex") {
     SUBCASE("mangle") {
         CHECK(Annex::demangle(*Annex::mangle("test")) == "test");

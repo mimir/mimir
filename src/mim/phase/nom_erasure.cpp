@@ -2,6 +2,10 @@
 
 namespace mim {
 
+bool NomErasure::retype(const Axm* axm) {
+    return mentions(axm->type(), [](const Def* def) { return def->isa<Nom>(); });
+}
+
 const Def* NomErasure::rewrite_imm_Nom(const Nom* nom) {
     auto type = rewrite(nom->op());
     log().d("nom-erasure `{}` → `{}`", nom, type);

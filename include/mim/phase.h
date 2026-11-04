@@ -4,6 +4,7 @@
 
 #include <fe/cast.h>
 #include <fe/term.h>
+#include <fe/worklist.h>
 
 #include "mim/def.h"
 #include "mim/nest.h"
@@ -365,6 +366,19 @@ public:
     ///@{
     virtual void rewrite_external(Def*);
     const Def* lookup(const Def*) override;
+    /// Does this phase rewrite the type of the World::Annexes::opaque() Axm @p axm?
+    /// Then @p axm is rebuilt under the same flags with its rewritten type, not resolved to the new_world() annex.
+    virtual bool retype([[maybe_unused]] const Axm* axm) { return false; }
+    /// Does @p def reach a Def that satisfies @p pred?
+    static bool mentions(const Def* def, auto pred) {
+        for (auto queue = fe::BFSWorklist<DefSet>{def}; !queue.empty();) {
+            auto d = queue.pop();
+            if (pred(d)) return true;
+            for (auto dep : d->deps())
+                queue.push(dep);
+        }
+        return false;
+    }
     ///@}
 
     /// @name World
@@ -398,6 +412,11 @@ protected:
     /// Does coerce() explode and reassemble values of @p type?
     static bool splittable(const Def* type) {
         return (type->isa<Sigma>() || type->isa_imm<Arr>()) && type->num_tprojs() != 1;
+    }
+    /// Converts the *new* leaf @p new_val into the *new* @p new_type, whose representation this phase changed.
+    /// @returns `nullptr` if this phase has no such conversion.
+    virtual const Def* coerce_leaf([[maybe_unused]] const Def* new_type, [[maybe_unused]] const Def* new_val) {
+        return nullptr;
     }
     ///@}
 
