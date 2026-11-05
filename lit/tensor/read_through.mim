@@ -1,24 +1,24 @@
 // RUN: %mim %s -o - | %FileCheck %s --implicit-check-not=tensor.broadcast --implicit-check-not=tensor.repeat
 
-// `tensor.lower_tensor` answers a read of a `broadcast` / `repeat` from its input instead of
-// materializing the shape op — what the `tensor.get` normalizer used to do before element access
-// became a plain `Extract`.
-
 plugin tensor;
 plugin compile;
+plugin refly;
 
 use tensor;
 
-// Pass-through axes keep their index, broadcast (size-1) axes read the input at 0:
-// `b#(1, 2)` is `input[1][0]`, i.e. `(1, 2)#1` = 2.
-let b = broadcast ((2, 1), (2, 3), (1, 2));
+let b = broadcast ((2, 1), (2, 3), from_array @(2, (2, 1), Nat) (1, 2));
 
-// The read index is reduced mod `s_in` per axis: `rep#(3, 4)` is `m#[3 mod 2][4 mod 3]` = `m#(1, 1)` = 5.
-let m   = ((1, 2, 3), (4, 5, 6));
+let m   = tensor.from_array ((1, 2, 3), (4, 5, 6));
 let rep = repeat (2, 3) (4, 6) m;
 
-extern fun broadcast_read (): Nat = return (b#(1₂, 2₃));
-extern fun repeat_read    (): Nat = return (rep#(3₄, 4₆));
+let _ = refly.struc.e (tensor.get (b, (1₂, 2₃)), 2);
+let _ = refly.struc.e (tensor.get (rep, (3₄, 4₆)), 5);
+
+extern lam broadcast_param (t: Tensor 2 (2, 1) Nat, i: Idx 2, j: Idx 3): Nat =
+    refly.struc.e (get (broadcast ((2, 1), (2, 3), t), (i, j)), get (t, (i, 0₁)));
+
+extern fun broadcast_read (): Nat = return (tensor.get (b, (1₂, 2₃)));
+extern fun repeat_read    (): Nat = return (tensor.get (rep, (3₄, 4₆)));
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (

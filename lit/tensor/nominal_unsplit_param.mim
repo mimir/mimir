@@ -1,0 +1,12 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+plugin tensor;
+plugin math;
+
+use tensor;
+
+// Nominal parameters survive scalarization as a single buffer.
+extern fun r0 (x: tensor.Tensor 3 (20, 30, 40) math.F32): tensor.Tensor 2 (30, 40) math.F32 =
+    return (reduce (math.arith.add math.mode.fast, 0:math.F32) 0₃ x);
+
+// CHECK: extern con r0

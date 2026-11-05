@@ -1,0 +1,9 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+plugin core;
+
+extern con cat (n: Nat, a: tensor.Tensor 1 n I32, b: tensor.Tensor 1 2 I32, return: Cn [tensor.Tensor 1 (core.nat.add (n, 2)) I32]) =
+    return (tensor.concat 0₁ (a, b));
+
+// CHECK: error: cannot bufferize: concat requires literal extents along its axis

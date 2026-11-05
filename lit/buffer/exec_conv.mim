@@ -18,17 +18,17 @@ use core.ops.u.w;
 
 let R = (I32, 0I32, `+, `*);
 
-extern fun small (input: «2, 3, 4, 4; I32», w: «2, 3, 3, 3; I32»): «2, 2, 2, 2; I32» =
+extern fun small (input: tensor.Tensor 4 (2, 3, 4, 4) I32, w: tensor.Tensor 4 (2, 3, 3, 3) I32): tensor.Tensor 4 (2, 2, 2, 2) I32 =
     return (tensor.conv R ((1, 1), (1, 1), (0, 0)) (input, w));
 
-extern fun wide (input: «2, 4, 4, 4; I32», w: «2, 4, 3, 3; I32»): «2, 2, 2, 2; I32» =
+extern fun wide (input: tensor.Tensor 4 (2, 4, 4, 4) I32, w: tensor.Tensor 4 (2, 4, 3, 3) I32): tensor.Tensor 4 (2, 2, 2, 2) I32 =
     return (tensor.conv R ((1, 1), (1, 1), (0, 0)) (input, w));
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (mem.Char, 0)», 0), return: Cn [mem.M 0, I32]) =
-    con done_s (os: «2, 2, 2, 2; I32») =
-        con done_w (ow: «2, 2, 2, 2; I32») = return (m, os#(1₂, 1₂, 1₂, 1₂) + ow#(0₂, 1₂, 0₂, 1₂));
-        wide ((‹2, 4, 4, 4; 1I32›, ‹2, 4, 3, 3; 1I32›), done_w);
-    small ((‹2, 3, 4, 4; 1I32›, ‹2, 3, 3, 3; 1I32›), done_s);
+    con done_s (os: tensor.Tensor 4 (2, 2, 2, 2) I32) =
+        con done_w (ow: tensor.Tensor 4 (2, 2, 2, 2) I32) = return (m, tensor.get (os, (1₂, 1₂, 1₂, 1₂)) + tensor.get (ow, (0₂, 1₂, 0₂, 1₂)));
+        wide ((tensor.from_array ‹2, 4, 4, 4; 1I32›, tensor.from_array ‹2, 4, 3, 3; 1I32›), done_w);
+    small ((tensor.from_array ‹2, 3, 4, 4; 1I32›, tensor.from_array ‹2, 3, 3, 3; 1I32›), done_s);
 
 // GONE-NOT: tensor.
 // GONE-NOT: buffer.

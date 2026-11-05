@@ -18,8 +18,7 @@ lam add1 (x: Nat): Nat = x + 1;
 lam mo (i k: affine.Index): «1; affine.Index» = i;
 lam mi (i k: affine.Index): «2; affine.Index» = (i, k);
 
-extern con f (input: «4, 8; Nat», return: Cn «4; Nat») =
-    let input = buf input;
+extern con f (input: tensor.Tensor 2 (4, 8) Nat, return: Cn [tensor.Tensor 1 4 Nat]) =
     let packed = materialize (strip_mine_par (
         mr_tileable @1 @(1, 1) (4, 0, (4, 8))
             (addf, 0, id)

@@ -123,9 +123,7 @@ static bool reads_as_produced(const Def* value, const Def* S) {
 static std::optional<PureRead> read_through(World& w, const Def* value, const Def* slot_map, const Def* S) {
     if (!reads_as_produced(value, S)) return {};
     if (auto pr = is_pure_read(value)) {
-        // A source whose axes are all size 1 type-collapses to a plain scalar («1; T» ≡ T): the
-        // fused op would carry an input the bufferization cannot represent - keep the copy instead.
-        if (!pr->src->type()->isa<Arr>()) return {};
+        if (!TensorType::isa(pr->src->type())) return {};
         return pr;
     }
 
@@ -134,8 +132,7 @@ static std::optional<PureRead> read_through(World& w, const Def* value, const De
         auto [s_in, s_out, input] = bc->arg()->projs<3>();
         auto r_l                  = Lit::isa<u64>(r);
         if (!r_l) return {};
-        // See above: an all-size-1 source is a type-collapsed scalar - not readable through.
-        if (!input->type()->isa<Arr>()) return {};
+        if (!TensorType::isa(input->type())) return {};
 
         // Source axis d reads o#d where the sizes agree and index 0 where the source axis is 1
         // (expressed as `o#d · 0`, like `bid_map`). Bail on axes where neither is provable.

@@ -18,12 +18,12 @@ use core.ops.u.w;
 
 let R: tensor.Ring = (I32, 0I32, `+, `*);
 
-extern fun mm (a: «2, 4; I32», b: «4, 2; I32»): «2, 2; I32» =
+extern fun mm (a: tensor.Tensor 2 (2, 4) I32, b: tensor.Tensor 2 (4, 2) I32): tensor.Tensor 2 (2, 2) I32 =
     return (tensor.product_2d R (a, b));
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (mem.Char, 0)», 0), return: Cn [mem.M 0, I32]) =
-    con done (o: «2, 2; I32») = return (m, o#(1₂, 1₂));
-    mm ((‹2; ‹4; 1I32››, ‹4; ‹2; 2I32››), done);
+    con done (o: tensor.Tensor 2 (2, 2) I32) = return (m, tensor.get (o, (1₂, 1₂)));
+    mm ((tensor.from_array ‹2; ‹4; 1I32››, tensor.from_array ‹4; ‹2; 2I32››), done);
 
 // GONE-NOT: tensor.
 // GONE-NOT: buffer.

@@ -17,12 +17,6 @@ public:
 
 private:
     const Def* rewrite_imm_App(const App*) final;
-    const Def* rewrite_imm_Extract(const Extract*) final;
-
-    /// Reads straight through a `broadcast` / `repeat` at @p index instead of materializing it.
-    /// Per axis the shape op either passes the index through, reads a size-1 input axis at 0, or (for `repeat`)
-    /// wraps it; an axis that is none of these decidably keeps the shape op.
-    const Def* read_through(const Def* base, Defs index);
 
     /// The `_impl` @p Id: as code, it is rewritten - and thus lowered - once per phase.
     template<annex_without_subs Id>

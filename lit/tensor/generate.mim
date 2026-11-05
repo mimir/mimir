@@ -2,8 +2,9 @@
 
 // CHECK-DAG: affine.For
 // CHECK-LABEL: extern fun generate2d
+// CHECK: 7I32
 // CHECK-LABEL: extern fun generate_singleton
-// CHECK: return 7I32
+
 
 plugin core;
 plugin tensor;
@@ -15,12 +16,11 @@ lam row_value (i _: I64): I32 = core.select (i == 0I64, 10I32, 20I32);
 
 lam singleton_value (_ _: I64): I32 = 7I32;
 
-extern fun generate2d (): «2, 3; I32» =
+extern fun generate2d (): tensor.Tensor 2 (2, 3) I32 =
     return (tensor.generate (2, 3) row_value);
 
-// Both logical singleton axes fold to the scalar representation. PE evaluates
-// the only valid coordinate directly, without constructing a physical buffer.
-extern fun generate_singleton (): I32 =
+// Both singleton axes remain in the nominal result type.
+extern fun generate_singleton (): tensor.Tensor 2 (1, 1) I32 =
     return (tensor.generate (1, 1) singleton_value);
 
 extern lam _compile (): compile.Phase =

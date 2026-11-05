@@ -6,7 +6,7 @@
 // VGG16 forward pass (batch 10, 3x224x224 -> 1000 logits), rewritten in surface syntax from a PyTorch graph
 // dump: five conv blocks (13 3x3 "same" convolutions, each followed by bias + ReLU) separated by 2x2/stride-2
 // max-pools, then flatten and three fully-connected layers. Conv biases are broadcast NCHW-style via
-// tensor.broadcast, FC biases tiled via tensor.repeat; «c; F32» already is «1, c, 1, 1; F32», so no reshape is needed.
+// tensor.broadcast, FC biases tiled via tensor.repeat; explicit reshapes insert the singleton bias axes.
 // Lowered through the DEFAULT pipeline on the Mim IR level (no codegen), checking that no tensor / map_reduce / affine residue remains.
 // CHECK: extern con vgg16
 // GONE-NOT: tensor.
@@ -34,33 +34,33 @@ lam relu (x: F32): F32 = fmax (0:F32, x);
 let same = ((1, 1), (1, 1), (1, 1));
 
 // Per-channel bias + ReLU after a convolution: `bias` is broadcast over NCHW.
-lam conv_epilogue (n c h w: Nat) (t: «n, c, h, w; F32», b: «c; F32»): «n, c, h, w; F32» =
-    unary relu (t + broadcast ((1, c, 1, 1), (n, c, h, w), b));
+lam conv_epilogue (n c h w: Nat) (t: tensor.Tensor 4 (n, c, h, w) F32, b: tensor.Tensor 1 c F32): tensor.Tensor 4 (n, c, h, w) F32 =
+    unary relu (t + broadcast ((1, c, 1, 1), (n, c, h, w), reshape c (1, c, 1, 1) b));
 
 // x·Wᵀ + b for a linear layer with the weight stored PyTorch-style as «c_out, c_in; F32».
-lam linear (n c_in c_out: Nat) (x: «n, c_in; F32», w: «c_out, c_in; F32», b: «c_out; F32»): «n, c_out; F32» =
-    x * transpose_2d w + repeat (1, c_out) (n, c_out) b;
+lam linear (n c_in c_out: Nat) (x: tensor.Tensor 2 (n, c_in) F32, w: tensor.Tensor 2 (c_out, c_in) F32, b: tensor.Tensor 1 c_out F32): tensor.Tensor 2 (n, c_out) F32 =
+    x * transpose_2d w + repeat (1, c_out) (n, c_out) (reshape c_out (1, c_out) b);
 
 // Parameters follow torchvision's vgg16: w<i>/b<i> is features.<i>.{weight,bias}, fc<i>_* is classifier.<i>.*.
 extern fun vgg16
-    (x: «10, 3, 224, 224; F32»,
-     w0:  «64, 3, 3, 3; F32»,    b0:  «64; F32»,
-     w2:  «64, 64, 3, 3; F32»,   b2:  «64; F32»,
-     w5:  «128, 64, 3, 3; F32»,  b5:  «128; F32»,
-     w7:  «128, 128, 3, 3; F32», b7:  «128; F32»,
-     w10: «256, 128, 3, 3; F32», b10: «256; F32»,
-     w12: «256, 256, 3, 3; F32», b12: «256; F32»,
-     w14: «256, 256, 3, 3; F32», b14: «256; F32»,
-     w17: «512, 256, 3, 3; F32», b17: «512; F32»,
-     w19: «512, 512, 3, 3; F32», b19: «512; F32»,
-     w21: «512, 512, 3, 3; F32», b21: «512; F32»,
-     w24: «512, 512, 3, 3; F32», b24: «512; F32»,
-     w26: «512, 512, 3, 3; F32», b26: «512; F32»,
-     w28: «512, 512, 3, 3; F32», b28: «512; F32»,
-     fc0_w: «4096, 25088; F32»,  fc0_b: «4096; F32»,
-     fc3_w: «4096, 4096; F32»,   fc3_b: «4096; F32»,
-     fc6_w: «1000, 4096; F32»,   fc6_b: «1000; F32»)
-    : «10, 1000; F32» =
+    (x: tensor.Tensor 4 (10, 3, 224, 224) F32,
+     w0:  tensor.Tensor 4 (64, 3, 3, 3) F32,    b0:  tensor.Tensor 1 64 F32,
+     w2:  tensor.Tensor 4 (64, 64, 3, 3) F32,   b2:  tensor.Tensor 1 64 F32,
+     w5:  tensor.Tensor 4 (128, 64, 3, 3) F32,  b5:  tensor.Tensor 1 128 F32,
+     w7:  tensor.Tensor 4 (128, 128, 3, 3) F32, b7:  tensor.Tensor 1 128 F32,
+     w10: tensor.Tensor 4 (256, 128, 3, 3) F32, b10: tensor.Tensor 1 256 F32,
+     w12: tensor.Tensor 4 (256, 256, 3, 3) F32, b12: tensor.Tensor 1 256 F32,
+     w14: tensor.Tensor 4 (256, 256, 3, 3) F32, b14: tensor.Tensor 1 256 F32,
+     w17: tensor.Tensor 4 (512, 256, 3, 3) F32, b17: tensor.Tensor 1 512 F32,
+     w19: tensor.Tensor 4 (512, 512, 3, 3) F32, b19: tensor.Tensor 1 512 F32,
+     w21: tensor.Tensor 4 (512, 512, 3, 3) F32, b21: tensor.Tensor 1 512 F32,
+     w24: tensor.Tensor 4 (512, 512, 3, 3) F32, b24: tensor.Tensor 1 512 F32,
+     w26: tensor.Tensor 4 (512, 512, 3, 3) F32, b26: tensor.Tensor 1 512 F32,
+     w28: tensor.Tensor 4 (512, 512, 3, 3) F32, b28: tensor.Tensor 1 512 F32,
+     fc0_w: tensor.Tensor 2 (4096, 25088) F32,  fc0_b: tensor.Tensor 1 4096 F32,
+     fc3_w: tensor.Tensor 2 (4096, 4096) F32,   fc3_b: tensor.Tensor 1 4096 F32,
+     fc6_w: tensor.Tensor 2 (1000, 4096) F32,   fc6_b: tensor.Tensor 1 1000 F32)
+    : tensor.Tensor 2 (10, 1000) F32 =
     let (x,
          w0, b0,
          w2, b2,
@@ -78,23 +78,23 @@ extern fun vgg16
          fc0_w, fc0_b,
          fc3_w, fc3_b,
          fc6_w, fc6_b)
-      = (buf x,
-         buf w0, buf b0,
-         buf w2, buf b2,
-         buf w5, buf b5,
-         buf w7, buf b7,
-         buf w10, buf b10,
-         buf w12, buf b12,
-         buf w14, buf b14,
-         buf w17, buf b17,
-         buf w19, buf b19,
-         buf w21, buf b21,
-         buf w24, buf b24,
-         buf w26, buf b26,
-         buf w28, buf b28,
-         buf fc0_w, buf fc0_b,
-         buf fc3_w, buf fc3_b,
-         buf fc6_w, buf fc6_b);
+      = (x,
+         w0, b0,
+         w2, b2,
+         w5, b5,
+         w7, b7,
+         w10, b10,
+         w12, b12,
+         w14, b14,
+         w17, b17,
+         w19, b19,
+         w21, b21,
+         w24, b24,
+         w26, b26,
+         w28, b28,
+         fc0_w, fc0_b,
+         fc3_w, fc3_b,
+         fc6_w, fc6_b);
     // Block 1: 3 -> 64 -> 64, pool 224 -> 112.
     let a = conv_epilogue (10, 64, 224, 224) (conv Ring same (x, w0), b0);
     let a = conv_epilogue (10, 64, 224, 224) (conv Ring same (a, w2), b2);

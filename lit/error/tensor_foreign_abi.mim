@@ -1,0 +1,7 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+extern con foreign [n: Nat, a: tensor.Tensor 1 n I32, return: Cn [tensor.Tensor 1 n I32]];
+extern con caller (n: Nat, a: tensor.Tensor 1 n I32, return: Cn [tensor.Tensor 1 n I32]) = foreign (n, a, return);
+
+// CHECK: error: cannot bufferize: tensor external requires an explicit buffer ABI

@@ -33,26 +33,25 @@ let `+ = binary (math.arith.add fast);
 let `- = binary (math.arith.sub fast);
 let `* = binary (math.arith.mul fast);
 
-lam tanh      {r: Nat, s: «r; Nat»} (i: «s; F32»): «s; F32»  = unary (math.tri.tanh fast) i;
-lam is_finite {r: Nat, s: «r; Nat»} (i: «s; F32»): «s; Bool» = unary (math.is_finite fast) i;
+lam tanh      {r: Nat, s: «r; Nat»} (i: tensor.Tensor r s F32): tensor.Tensor r s F32  = unary (math.tri.tanh fast) i;
+lam is_finite {r: Nat, s: «r; Nat»} (i: tensor.Tensor r s F32): tensor.Tensor r s Bool = unary (math.is_finite fast) i;
 
-extern fun main_hlo (w: «8; «3; F32»», b: «3; F32», x: «4; «8; F32»», t: «4; «3; F32»»): F32 =
-    let (w, b, x, t) = (buf w, buf b, buf x, buf t);
+extern fun main_hlo (w: tensor.Tensor 2 (8, 3) F32, b: tensor.Tensor 1 3 F32, x: tensor.Tensor 2 (4, 8) F32, t: tensor.Tensor 2 (4, 3) F32): F32 =
     // forward: a = tanh(x·w + b)
     let z = product_2d Ring (x, w);                                     // [4, 3]
-    let a = tanh (z + broadcast ((1, 3), (4, 3), b));                   // [4, 3]
+    let a = tanh (z + broadcast ((1, 3), (4, 3), reshape 3 (1, 3) b));                   // [4, 3]
     // loss gradient d = c * (a - t), with c a *scalar* broadcast
-    let d = broadcast ((1, 1), (4, 3), c) * (a - t);                    // [4, 3]
+    let d = broadcast ((1, 1), (4, 3), from_array @(2, (1, 1), F32) c) * (a - t);                    // [4, 3]
     // row reduction + select (kept live through the result)
     let rmax = reduce (math.extrema.fmax fast, neg_inf) 1₂ z;           // [4]
-    let sel  = select (is_finite rmax, rmax, ‹4; 0: F32›);              // [4]
+    let sel  = select (is_finite rmax, rmax, splat (4, 0:F32));              // [4]
     // backward: dW = (dᵀ·x)ᵀ, dx = d·wᵀ, db = Σ_n d
     let dW = transpose_2d (dot_product Ring (0₂, 0₂, (), ()) (d, x));   // [8, 3]
     let dx = dot_product Ring (1₂, 1₂, (), ()) (d, w);                  // [4, 8]
     let db = reduce (math.arith.add fast, 0: F32) 0₂ d;                 // [3]
     // SGD update
-    let w2 = w - ‹8, 3; lr› * dW;
-    let b2 = b - ‹3; lr› * db;
+    let w2 = w - from_array ‹8, 3; lr› * dW;
+    let b2 = b - from_array ‹3; lr› * db;
     // sum one element of each result so no chain is dead-code-eliminated
     let add = math.arith.add fast;
-    return (add (add (w2#(0₈, 0₃), b2#0₃), add (dx#(0₄, 0₈), sel#0₄)));
+    return (add (add (get (w2, (0₈, 0₃)), get (b2, 0₃)), add (tensor.get (dx, (0₄, 0₈)), tensor.get (sel, 0₄))));

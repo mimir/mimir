@@ -26,24 +26,24 @@ lam mi (i j k a: affine.Index): «4; affine.Index» = (i, j, k, a);
 
 // out[i,j,k] = sum_a input[i,j,k,a], scheduled with `sched`.
 lam sum_last (sched: tensor.SchedT)
-             (input: «2, 3, 4, 5; I32»): «2, 3, 4; I32» =
+             (input: tensor.Tensor 4 (2, 3, 4, 5) I32): tensor.Tensor 3 (2, 3, 4) I32 =
     tensor.map_reduce_post
         ((2, 3, 4), (2, 3, 4, 5), sched)
         (add, 0I32, tensor.id) mo (mi, ()) (input, ());
 
 // vdim 0 of 3 parallel dims: not vectorizable, must run the full classic nest.
-extern fun sum_weak_vdim (input: «2, 3, 4, 5; I32»): «2, 3, 4; I32» =
+extern fun sum_weak_vdim (input: tensor.Tensor 4 (2, 3, 4, 5) I32): tensor.Tensor 3 (2, 3, 4) I32 =
     return (sum_last (tensor.mk_sched (0, 0)) input);
 
 // Sentinel vdim with unroll 2 > reduction rank 1: the window must clamp to the reduction dims.
-extern fun sum_over_unroll (input: «2, 3, 4, 5; I32»): «2, 3, 4; I32» =
+extern fun sum_over_unroll (input: tensor.Tensor 4 (2, 3, 4, 5) I32): tensor.Tensor 3 (2, 3, 4) I32 =
     return (sum_last (tensor.mk_sched (4, 2)) input);
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (mem.Char, 0)», 0), return: Cn [mem.M 0, I32]) =
-    let t = ‹2; ‹3; ‹4; ‹5; 1I32››››;
-    con done1 (o: «2, 3, 4; I32») =
-        let v1 = o#(1₂, 2₃, 3₄);
-        con done2 (o: «2, 3, 4; I32») =
-            return (m, v1 + o#(1₂, 2₃, 3₄));
+    let t = tensor.from_array ‹2; ‹3; ‹4; ‹5; 1I32››››;
+    con done1 (o: tensor.Tensor 3 (2, 3, 4) I32) =
+        let v1 = tensor.get (o, (1₂, 2₃, 3₄));
+        con done2 (o: tensor.Tensor 3 (2, 3, 4) I32) =
+            return (m, v1 + tensor.get (o, (1₂, 2₃, 3₄)));
         sum_over_unroll (t, done2);
     sum_weak_vdim (t, done1);

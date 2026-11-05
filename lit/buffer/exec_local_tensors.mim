@@ -18,10 +18,10 @@ plugin buffer;
 use core.ops.u.w;
 
 extern con main (mm: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (mem.Char, 0)», 0), return: Cn [mem.M 0, I32]) =
-    let m  = ((10I32, 20I32), (30I32, 40I32));
-    let s  = m#(1₂, 1₂) ← 2I32;
-    let b  = tensor.broadcast ((1, 2), (2, 2), (5I32, 7I32));
-    return (mm, s#(1₂, 1₂) + s#(1₂, 0₂) + b#(1₂, 0₂) + b#(0₂, 0₂));
+    let m  = tensor.from_array ((10I32, 20I32), (30I32, 40I32));
+    let s  = tensor.set (m, (1₂, 1₂), 2I32);
+    let b  = tensor.broadcast ((1, 2), (2, 2), tensor.from_array @(2, (1, 2), I32) (5I32, 7I32));
+    return (mm, tensor.get (s, (1₂, 1₂)) + tensor.get (s, (1₂, 0₂)) + tensor.get (b, (1₂, 0₂)) + tensor.get (b, (0₂, 0₂)));
 
 // CHECK: 42I32
 // GONE-NOT: tensor.

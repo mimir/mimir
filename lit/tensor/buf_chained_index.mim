@@ -6,7 +6,6 @@
 
 plugin tensor;
 
-extern fun f (t: «64, 32; I32»): «64, 32; I32» =
-    let t = tensor.buf t;
-    let x = t#1₆₄#2₃₂;
-    return (t#0₆₄#0₃₂ ← x);
+extern fun f (t: tensor.Tensor 2 (64, 32) I32): tensor.Tensor 2 (64, 32) I32 =
+    let x = tensor.get (t, (1₆₄, 2₃₂));
+    return (tensor.set (t, (0₆₄, 0₃₂), x));

@@ -1,0 +1,7 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+nom Box = tensor.Tensor 1 2 I32;
+extern con hidden (box: Box, return: Cn I32) = return 0I32;
+
+// CHECK: error: cannot bufferize: unsupported tensor aggregate carrier

@@ -15,8 +15,8 @@ use tensor;
 let Ring = (Nat, 0, core.nat.add, core.nat.mul);
 
 // CHECK-DAG: extern fun mm_dyn
-extern fun mm_dyn {m k l: Nat} (a: «m, k; Nat», b: «k, l; Nat»): «m, l; Nat» =
-    return (product_2d Ring (buf a, buf b));
+extern fun mm_dyn {m k l: Nat} (a: tensor.Tensor 2 (m, k) Nat, b: tensor.Tensor 2 (k, l) Nat): tensor.Tensor 2 (m, l) Nat =
+    return (product_2d Ring (a, b));
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (

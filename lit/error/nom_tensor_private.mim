@@ -1,0 +1,6 @@
+// RUN: (! %mim --no-opt %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+extern lam bad (t: tensor.Tensor 1 4 I32): «4; I32» = #t;
+
+// CHECK: error: the representation of private nominal type `Tensor` is only accessible within file `tensor.mim`
