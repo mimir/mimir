@@ -1,0 +1,57 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+plugin core;
+plugin tensor;
+plugin affine;
+plugin mem;
+use tensor;
+
+let I32Ring = (I32, 0I32, core.wrap.add 0, core.wrap.mul 0);
+fun post (x: I32, _: [])@tt: I32 = return x;
+lam out_ij (i j k: affine.Index): «2; affine.Index» = (i, j);
+lam left_ik (i j k: affine.Index): «2; affine.Index» = (i, k);
+lam right_kj (i j k: affine.Index): «2; affine.Index» = (k, j);
+
+lam mk_mm {n: Nat} (a: Tensor 2 (n, 4) I32, b: Tensor 2 (4, 4) I32) =
+    mr_tileable @2 @(2, 1) ((n, 4), (0, 1), (n, 4, 4))
+        (dot_general_fun I32Ring, 0I32, post) out_ij (left_ik, right_kj) (a, b);
+
+extern fun rt_peel_main {n: Nat} (a: Tensor 2 (n, 4) I32, b: Tensor 2 (4, 4) I32)
+    : Tensor 2 (core.nat.mul (core.nat.div (n, 3), 3), 4) I32 =
+    let nm = core.nat.mul (core.nat.div (n, 3), 3);
+    let part = slice (n, 4) ((0, 0), (1, 1), (nm, 4)) a;
+    let packed = materialize (strip_mine_par (mk_mm (part, b), 0, 3));
+    return (reshape (core.nat.div (nm, 3), 3, 4) (nm, 4) packed);
+
+extern fun rt_peel_epi {n: Nat} (a: Tensor 2 (n, 4) I32, b: Tensor 2 (4, 4) I32)
+    : Tensor 2 (core.nat.sub (n, core.nat.mul (core.nat.div (n, 3), 3)), 4) I32 =
+    let nm = core.nat.mul (core.nat.div (n, 3), 3);
+    let part = slice (n, 4) ((nm, 0), (1, 1), (core.nat.sub (n, nm), 4)) a;
+    return (materialize (mk_mm (part, b)));
+
+extern fun rt_pad {n: Nat} (a: Tensor 2 (n, 4) I32, b: Tensor 2 (4, 4) I32): Tensor 2 (n, 4) I32 =
+    let np = core.nat.mul (core.nat.div (core.nat.add (n, 2), 3), 3);
+    let hi = core.nat.sub (np, n);
+    let padded = pad (n, 4) (0, (0, 0), (hi, 0)) (a, 0I32);
+    let padded = core.bitcast (Tensor 2 (np, 4) I32) padded;
+    let packed = materialize (strip_mine_par (mk_mm (padded, b), 0, 3));
+    let result = reshape (core.nat.div (np, 3), 3, 4) (np, 4) packed;
+    return (slice (np, 4) ((0, 0), (1, 1), (n, 4)) result);
+
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr (mem.Ptr (I8, 0), 0), return: Cn [mem.M 0, I32]) =
+    let base = from_array @(2, (4, 4), I32) (‹4; 1I32›, ‹4; 2I32›, ‹4; 3I32›, ‹4; 4I32›);
+    let identity = from_array @(2, (4, 4), I32) ((1I32, 0I32, 0I32, 0I32), (0I32, 1I32, 0I32, 0I32), (0I32, 0I32, 1I32, 0I32), (0I32, 0I32, 0I32, 1I32));
+    let n = core.nat.add (core.bitcast Nat argc, 4);
+    let a = repeat (4, 4) (n, 4) base;
+    con done (result: Tensor 2 (n, 4) I32) =
+        let p0 = get (result, (core.idx 0 n 0, 0₄));
+        let p4 = get (result, (core.idx 0 n 4, 0₄));
+        let p3 = get (result, (core.idx 0 n 3, 0₄));
+        return (m, core.wrap.add 0 (p0, core.wrap.add 0 (core.wrap.mul 0 (10I32, p4), core.wrap.mul 0 (100I32, p3))));
+    rt_pad ((a, identity), done);
+
+// CHECK-DAG: rt_peel_main
+// CHECK-DAG: rt_peel_epi
+// CHECK-DAG: rt_pad
+// CHECK-DAG: mem.load
+// CHECK-DAG: mem.store

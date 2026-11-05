@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <optional>
 
 #include <mim/lam.h>
@@ -191,6 +192,20 @@ inline const Def* build_pointwise(const Def* result_ty, // [mem.M 0, buffer.Buf 
     auto wr_mem = buffer::op_write(el_mem, loop_buf, folded_idx(s_out, iters), elem)->proj(2, 0);
     cur->app(true, cont, w.tuple({wr_mem, loop_buf}));
     return call;
+}
+
+/// `buffer.copy` lowers to one whole-array load/store, so a runtime @p shape copies elementwise instead.
+/// Once `buffer.lower_ptr` emits a `memcpy` for runtime-sized arrays, every caller can go back to `buffer::op_copy`.
+inline const Def* copy_buffer(const Def* mem, const Def* dst, const Def* src, const Def* shape, u64 rank) {
+    if (std::ranges::all_of(shape->projs(rank), [](const Def* extent) { return extent->isa<Lit>(); }))
+        return buffer::op_copy(mem, dst, src);
+    auto& w      = mem->world();
+    auto result  = w.sigma({mem->type(), dst->type()});
+    auto compute = [shape](Defs iters, const Def* src, const Def* loop_mem) {
+        auto [m, elem] = buffer::op_read(loop_mem, src, folded_idx(shape, iters))->projs<2>();
+        return std::pair(m, elem);
+    };
+    return build_pointwise(result, mem, dst, src, shape, rank, "buffer_copy", compute)->proj(2, 0);
 }
 
 } // namespace mim::plug::btensor
