@@ -211,7 +211,10 @@ bool RWPhase::analyze() {
 
 const Def* RWPhase::lookup(const Def* old_def) {
     if (auto new_def = Rewriter::lookup(old_def)) return new_def;
-    if (auto flags = old_world().annexes().opaque(old_def)) return map(old_def, new_world().annex(*flags));
+    if (auto flags = old_world().annexes().opaque(old_def)) {
+        if (auto axm = old_def->isa<Axm>(); axm && retype(axm)) return nullptr;
+        return map(old_def, new_world().annex(*flags));
+    }
     return nullptr;
 }
 
@@ -277,6 +280,7 @@ const Def* RWPhase::reshape(DefVec& todo, const Def* type) {
     if (front) {
         if (auto res = Check::coerce(type, front)) return todo.pop_back(), res;
         if (auto res = eta_coerce(type, front)) return todo.pop_back(), res;
+        if (auto res = coerce_leaf(type, front)) return todo.pop_back(), res;
     }
 
     if (auto s = w.inhabitant(type)) return s;

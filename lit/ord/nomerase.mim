@@ -1,0 +1,16 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s --implicit-check-not='nom' --implicit-check-not='|'
+
+// `ord.get` stays opaque, but its codomain `option.Opt` must still be erased and lowered.
+
+plugin core;
+plugin ord;
+plugin option;
+
+use core.ops.u.w;
+
+let Map = ord.Map (I32, `<) I64;
+
+extern fun get(map: Map, x: I64): [Map, option.Opt@I64] =
+    let map2 = ord.insert.map (map, (0I32, x));
+    return (map2, ord.get (map, 2I32));
+// CHECK: extern con get ({{.*}}, return{{.*}}: Cn [ord.Map {{.*}}, [Bool, I64]])

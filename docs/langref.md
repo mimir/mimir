@@ -546,6 +546,8 @@ e   ::= "|" (I (":" e)? ("|" I (":" e)?)*)?
 - Constructor names are looked up in the scrutinee's _type_, so any scrutinee works, not just an annotated variable.
   Variants are structural, so two of the same shape are the same type; where they put a name at different positions, it is ambiguous and needs an index.
   A name reaches only the type it was declared on, so an instance of a polymorphic variant such as `V T` carries none and its cases are selected by index.
+- `_n` names case `n` of any variant, whatever its constructors are called: `List#_1` and `| _1 (h, t) => e` select `Cons` below.
+  A dump spells the cases that way, since constructor names live only in the source; a constructor actually declared as `_n` takes precedence.
 
 ```mim
 rec List = | Nil | Cons: [Nat, List];

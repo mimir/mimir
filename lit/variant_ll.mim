@@ -1,0 +1,39 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: %FileCheck %s < %{s:stem}.ll
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 22
+// RUN: %t a ; test $? -eq 38
+// RUN: %t a b ; test $? -eq 200
+
+plugin core;
+plugin mem;
+
+use core.ops.u.w;
+
+let V = | A: I32 | B: [I64, I8] | C;
+
+lam pick (i: Idx 3, x: I32): V = (V#A x, V#B (core.conv.u i64 x, 7I8), V#C)#i;
+
+// Pure arms are all evaluated and the tag selects a result.
+lam score (v: V): I32 =
+    match v with
+        | A x      => x
+        | B (y, z) => core.conv.u i32 y + core.conv.u i32 z
+        | C        => 100I32;
+
+// Continuation arms become a branch on the tag.
+con run (v: V, k: Cn I32) =
+    match v with
+        | A x      => k x
+        | B (y, z) => k (core.conv.u i32 y + core.conv.u i32 z)
+        | C        => k 100I32;
+
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
+    let v = pick (core.conv.u 3 (argc - 1I32), argc + 10I32);
+    ret r = run $ v;
+    return (m, score v + r);
+
+// The payload is the largest case in words of the strictest alignment.
+// CHECK: {i8, [2 x i64]}
+// CHECK: switch i2

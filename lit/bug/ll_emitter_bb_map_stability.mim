@@ -1,0 +1,28 @@
+// RUN: (! %mim -p ll %s 2>&1) | %FileCheck %s
+// CHECK: error: ll backend: `main` jumps to `{{.*}}`, which is not a basic block of `main`
+
+plugin core;
+use core.ops.u.w;
+
+plugin mem;
+plugin buffer;
+plugin tensor;
+
+extern fun println_str[mem.M 0, mem.Ptr0 «⊤:Nat; I8»]: mem.M 0;
+extern fun print_int_matrix [mm: mem.M 0, k l: Nat, mat: buffer.Buf (2, (⊤:Nat, ⊤:Nat), I32)] : mem.M 0;
+
+fun println_str_wrap {n: Nat} (mm: mem.M 0, str: «n; I8»): mem.M 0 =
+    ret (mm, ptr) = mem.slot («n; I8», 0) $ mm;
+    let mm = mem.store (mm, ptr, str);
+    let ptr = core.bitcast (mem.Ptr0 «⊤:Nat; I8») ptr;
+    ret mm = println_str $ (mm, ptr);
+    return mm;
+
+extern con main (mm: mem.M 0, argc: I32, argv: mem.Ptr0 (mem.Ptr0 I8), return: Cn [mem.M 0, I32]) =
+    core.select (argc < 2I32, no_args, has_args) (mm, return) where
+        con no_args (mm: mem.M 0, return: Cn [mem.M 0, I32]) =
+            ret mm = println_str_wrap @19 $ (mm, "Usage: nqueens <n>\0");
+            return (mm, 1I32);
+        con has_args (mm: mem.M 0, return: Cn [mem.M 0, I32]) =
+            return (mm, 0I32);
+    end;

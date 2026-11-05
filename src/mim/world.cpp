@@ -29,6 +29,18 @@ std::optional<nat_t> pack_unrolls(const Def* d, const Def* index, u64 threshold)
     return {};
 }
 
+// TODO I'm not too happy with this solutin.
+// Once we switch to a mostly immutable IR, we can hopefully detect this better
+/// A curried Lam whose innermost body is still being emitted; reducing it would copy that empty Lam for good.
+bool has_unset_curry(const Lam* lam) {
+    LamSet seen; // a Pi may be its own codomain, so the chain may cycle
+    for (auto body = lam->body(); auto inner = body->isa_mut<Lam>(); body = inner->body()) {
+        if (!inner->is_set()) return true;
+        if (!seen.emplace(inner).second) break;
+    }
+    return false;
+}
+
 /// Does `d#index ← val` rebuild an aggregate right away? Mirrors the two folding rules in World::insert.
 bool insert_rebuilds(const Def* d, const Def* index, u64 threshold) {
     if (d->isa<Tuple>()) return bool(Lit::isa(index));
@@ -420,10 +432,15 @@ const Def* World::app(const Def* callee, const Def* arg) {
 
     auto new_arg = Check::coerce(pi->dom(), arg);
     if (!new_arg && is_lenient()) new_arg = arg;
-    if (!new_arg)
-        declared_here(arg->blame("argument is not assignable to callee's domain")
-                          .n("expected `{}`, got `{}`", pi->dom(), type_of(arg)))
-            .bail();
+    if (!new_arg) {
+        auto& err = arg->blame("argument is not assignable to callee's domain")
+                        .n("expected `{}`, got `{}`", pi->dom(), type_of(arg));
+        if (auto dom_t = pi->dom()->isa_type<Type>(); dom_t && Lit::isa(dom_t->level()) == nat_t(0) && !arg->is_term())
+            err.n("`{}` is a type, but the callee expects a term of type `{}`", arg, pi->dom());
+        else if (pi->dom()->isa<Type>() && arg->is_term())
+            err.n("`{}` is a term, but the callee expects a type", arg);
+        declared_here(err).bail();
+    }
 
     // re-zonk after assignable check above - we might have inferred new stuff
     arg    = new_arg->zonk();
@@ -441,7 +458,7 @@ const Def* World::app(const Def* callee, const Def* arg) {
         if (var && arg == var) return lam->body();
 
         // β-reduce or partially evaluate a set, mutable Lam.
-        if (lam->filter() != lit_ff()) {
+        if (lam->filter() != lit_ff() && !has_unset_curry(lam)) {
             if (!var) {
                 if (lam->filter() == lit_tt()) return lam->body();
             } else if (is_frozen()) {
@@ -707,6 +724,7 @@ const Def* World::extract1(const Def* d, const Def* index) {
     auto lidx     = Lit::isa(index);
     auto type     = d->unfold_type();
     if (!type) d->blame("`Level` has no type and hence no elements to extract").bail();
+    type = type->zonk(); // a Var's type may still be a since-resolved Hole of its binder
 
     if (is_folded_axis(type, index, size)) return d;
 
@@ -967,20 +985,8 @@ const Def* World::inj(const Def* type, const Def* value) {
         value->blame("injecting into variant type `{}` requires the index of a case", type).bail();
     if (type->isa<Nom>()) return name(type, value);
     if (auto join = type->isa<Join>()) {
-        auto value_t = value->unfold_type();
         // Hole%s are resolved only once no case matches outright, so a mere search never commits to one.
-        auto is_case = [value, value_t](bool infer) {
-            auto alpha
-                = [infer](const Def* a, const Def* b) { return infer ? Check::alpha(a, b) : Check::test_alpha(a, b); };
-            return [=](const Def* c) {
-                // An open value may still turn out to be the singleton's inhabitant.
-                if (auto single = c->isa<Single>())
-                    return alpha(single->op(), value)
-                        || (!value->is_closed() && alpha(single->op()->unfold_type(), value_t));
-                return alpha(value_t, c);
-            };
-        };
-        if (!std::ranges::any_of(join->ops(), is_case(false)) && !std::ranges::any_of(join->ops(), is_case(true)))
+        if (!join->find_case(value) && !join->find_case(value, true))
             value->blame("value of type `{}` is not a case of union type `{}`", type_of(value), type).bail();
         return unify<Inj>(type, value, flags_t(0));
     }

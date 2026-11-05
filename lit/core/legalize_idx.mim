@@ -1,0 +1,42 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module %clang_rt
+// RUN: %t ; test $? -eq 0
+// RUN: %t a ; test $? -eq 0
+// RUN: %t a b ; test $? -eq 0
+
+// Each component of `ops` depends on the modulus of `Idx 3` or `I2`.
+// Applied to a literal, the normalizers fold it; applied to a runtime value, it reaches the backend widened to `I8`.
+// main returns how many components disagree.
+
+plugin core;
+plugin mem;
+
+use core.ops.u.w;
+
+let I2 = Idx 4;
+
+lam u (v: Idx 3): I32 = core.conv.u i32 v;
+lam s (v: Idx 3): I32 = core.conv.s i32 v;
+
+lam ops (x: I32): «17; I32» =
+    let a = core.conv.u 3 x;
+    let b = core.conv.u 3 (core.wrap.mul 0 (x, 5I32));
+    let c = core.conv.u 4 (core.wrap.mul 0 (x, 3I32));
+    let one = core.conv.u 3 1I32;
+    let one4 = core.conv.u 4 1I32;
+    let e   = core.conv.u 3000000000007 (core.wrap.mul 0 (core.conv.u i64 x, 1000000007I64));
+    (u (core.wrap.add 0 (a, b)), u (core.wrap.sub 0 (a, b)), u (core.wrap.mul 0 (a, b)), u (core.wrap.shl 0 (a, one)),
+     (0I32, 1I32)#(core.icmp.sl (a, b)), (0I32, 1I32)#(core.icmp.ul (a, b)), s a, s (core.shr.a (a, one)),
+     s (core.extrema.smax (a, b)), core.conv.u i32 (core.wrap.add 0 (c, c)), core.conv.u i32 (core.wrap.mul 0 (c, c)),
+     core.conv.s i32 c, s (core.conv.s 3 (core.wrap.sub 0 (0I32, x))), core.conv.u i32 (core.bitcast I2 x),
+     u (core.idx 0 3 (core.idx2nat x)), core.conv.u i32 (core.wrap.mul 0 (e, e)),
+     core.conv.u i32 (core.wrap.add 2 (core.shr.l (c, one4), one4)));
+
+lam diff (x y: I32): I32 = (0I32, 1I32)#(core.icmp.ne (x, y));
+
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
+    let got  = ops (argc + 4I32);
+    let want = (ops 5I32, ops 6I32, ops 7I32)#(core.conv.u 3 (argc - 1I32));
+    let d    = ‹i: 17; diff (got#i, want#i)›;
+    return (m, d#0_17 + d#1_17 + d#2_17 + d#3_17 + d#4_17 + d#5_17 + d#6_17 + d#7_17 + d#8_17 + d#9_17 + d#10_17 + d#11_17 + d#12_17 + d#13_17 + d#14_17 + d#15_17 + d#16_17);

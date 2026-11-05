@@ -9,6 +9,7 @@ target_sources(libmim
         driver.cpp
         dump.cpp
         lam.cpp
+        manifest.cpp
         nest.cpp
         phase.cpp
         plugin.cpp
@@ -35,6 +36,7 @@ target_sources(libmim
         phase/dispatch_normalize.cpp
         phase/single_erasure.cpp
         phase/nom_erasure.cpp
+        phase/join2variant.cpp
         phase/ret_wrap.cpp
         phase/sccp_analysis.cpp
         phase/sccp_transform.cpp

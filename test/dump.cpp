@@ -356,3 +356,41 @@ TEST_CASE("dump: scope") {
         CHECK_MESSAGE(Check::alpha(def, got.begin()->second), std::string(name));
     }
 }
+
+TEST_CASE("dump: folded nominal indices") {
+    for (bool lib : {false, true}) {
+        auto driver = Driver();
+        auto& w     = driver.world();
+        auto ast    = ast::AST(w);
+        auto parser = ast::Parser(ast);
+        auto is     = std::istringstream(R"(
+            plugin core;
+            nom Indexed (r: Nat) (s: «r; Nat») (T: *) = [«(r, s, ⊥:T)», «s; T», «s; Bool»];
+            extern lam scalar (a: Indexed 0 () I32): Indexed 0 () I32 = a;
+            extern lam vector (a: Indexed 1 3 I32): Indexed 1 3 I32 = a;
+            extern lam singleton (a: Indexed 2 (1, 3) I32): Indexed 2 (1, 3) I32 = a;
+            extern lam uniform (a: Indexed 1 4 Nat): Indexed 1 4 Nat = a;
+            extern lam empty (a: Indexed 4 (1, 2, 0, 3) I32): Indexed 4 (1, 2, 0, 3) I32 = a;
+        )");
+        auto file   = parser.import(is, "nom_indices.mim");
+        REQUIRE(file);
+        file->compile(ast);
+        const Def* ctor = nullptr;
+        for (auto decl : file->decls())
+            if (decl->dbg().sym() == "Indexed") ctor = decl->def();
+        REQUIRE(ctor);
+        REQUIRE(w.annexes().attach(plug::core::Plugin_Id, 255, 0, w.sym("core.Indexed"), ctor));
+        // The generic Nom now lives in Driver::library, so the dump must not mix it into the instance World.
+        if (lib) driver.move_to_library(w);
+
+        auto& world = driver.world();
+        auto gid    = world.curr_gid();
+        auto os     = std::ostringstream();
+        world.dump(os);
+        auto text = os.str();
+        CHECK(world.curr_gid() == gid);
+        for (auto args : {"0 () I32", "1 3 I32", "2 (1, 3) I32", "1 4 Nat", "4 (1, 2, 0, 3) I32"})
+            CHECK_MESSAGE(text.find(std::format("core.Indexed {}", args)) != std::string::npos, lib, text);
+        CHECK_MESSAGE(text.find("nom Indexed") == std::string::npos, lib, text);
+    }
+}

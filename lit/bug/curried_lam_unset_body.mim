@@ -1,0 +1,16 @@
+// RUN: %mim %s --no-opt -o - | %FileCheck %s
+// CHECK: (0I32, 1I32, 2I32)
+plugin core;
+plugin tuple;
+
+mutual
+    lam step (n i: Nat, arr: «i; I32»)@(core.pe.is_closed (n, i, arr)): «n; I32» =
+        core.select (
+            core.ncmp.e (i, n),
+            core.bitcast «n; I32» arr,
+            buildarr n (tuple.cat (arr, core.bitcast I32 i))
+        );
+    lam buildarr {i: Nat} (n: Nat) (arr: «i; I32»): «n; I32» = step (n, i, arr);
+end;
+
+extern lam f (): «3; I32» = buildarr 3 ();

@@ -1,0 +1,11 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: %FileCheck %s < %{s:stem}.ll
+// RUN: clang %{s:stem}.ll -c -o %t -Wno-override-module
+
+// The slot holds the larger `«9; I8»` but must also be aligned for the `I64` loaded from it.
+
+plugin core;
+
+extern fun low (x: «9; I8»): I64 = return (core.bitcast I64 x);
+// CHECK: alloca [9 x i8], align 8

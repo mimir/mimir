@@ -1,0 +1,10 @@
+// RUN: (! %mim -p opt %s -o - 2>&1) | %FileCheck %s
+
+// Every arm of a direct-style match is evaluated, so the `None` arm would load from a null pointer.
+
+plugin core;
+plugin mem;
+
+extern fun get (m: mem.M 0, o: | None | Some: mem.Ptr0 I32): I32 =
+    return (match o with | None => 0I32 | Some p => (let (_, v) = mem.load (m, p); v));
+// CHECK: error: cannot lower effectful direct-style match
