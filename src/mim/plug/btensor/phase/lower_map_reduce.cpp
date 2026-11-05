@@ -14,6 +14,23 @@
 
 namespace mim::plug::btensor::phase {
 
+namespace {
+
+const Def* conditional_read(const Def* valid, const Def* mem, const Def* buf, const Def* index, const Def* fill) {
+    auto& w          = mem->world();
+    auto result      = w.sigma({mem->type(), fill->type()});
+    auto [fun, call] = ds_splice(mem, result, "pad_read");
+    auto [m, ret]    = fun->vars<2>();
+    auto read        = w.mut_con(mem->type())->set("pad_input");
+    auto pad         = w.mut_con(mem->type())->set("pad_fill");
+    read->app(true, ret, buffer::op_read(read->var(), buf, index));
+    pad->app(true, ret, {pad->var(), fill});
+    fun->branch(true, valid, read, pad, m);
+    return call;
+}
+
+} // namespace
+
 const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
     if (Axm::isa<btensor::map_reduce_post>(app)) return lower_map_reduce_post(app);
     if (Axm::isa<btensor::broadcast>(app)) return lower_broadcast(app);
@@ -111,10 +128,14 @@ const Def* LowerMapReduce::lower_broadcast(const App* app) {
         return RWPhase::rewrite_imm_App(app);
     }
 
-    // Non-size-1 input dims mirror the matching output index; size-1 dims are dropped from each buffer index.
     auto compute = [&](const DefVec& iters, const Def* in_buf, const Def* mem) -> std::pair<const Def*, const Def*> {
-        auto idxs             = w.tuple(to_idxs(w, s_out->projs(*r_l), iters));
-        auto [rd_mem, rd_val] = buffer::op_read(mem, in_buf, *Shape(idxs).fold(s_in))->projs<2>();
+        DefVec coords(*r_l, [&](size_t d) {
+            auto extent = s_in->proj(*r_l, d);
+            if (extent == s_out->proj(*r_l, d)) return iters[d];
+            auto singleton = w.call(core::ncmp::e, Defs{extent, w.lit_nat_1()});
+            return w.select(singleton, w.lit_i64(0), iters[d]);
+        });
+        auto [rd_mem, rd_val] = buffer::op_read(mem, in_buf, folded_idx(s_in, coords))->projs<2>();
         return {rd_mem, rd_val};
     };
 
@@ -139,10 +160,17 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
         return RWPhase::rewrite_imm_App(app);
     }
 
+    bool runtime_input = false;
+    for (auto extent : s_in->projs(*r_l))
+        runtime_input |= !Lit::isa<u64>(extent);
     auto compute = [&](const DefVec& iters, const Def* ins, const Def* mem) -> std::pair<const Def*, const Def*> {
         auto [in_buf, fill]  = ins->projs<2>();
         auto [coords, valid] = pad_coords(iters, lo, s_in, *mode_l != 0);
-        auto [rd_mem, elem]  = buffer::op_read(mem, in_buf, *Shape(w, coords).fold(s_in))->projs<2>();
+        if (valid && runtime_input) {
+            auto [rd_mem, elem] = conditional_read(valid, mem, in_buf, *Shape(w, coords).fold(s_in), fill)->projs<2>();
+            return {rd_mem, elem};
+        }
+        auto [rd_mem, elem] = buffer::op_read(mem, in_buf, *Shape(w, coords).fold(s_in))->projs<2>();
         return {rd_mem, valid ? w.select(valid, elem, fill) : elem}; // constant: fill out-of-region cells with `val`
     };
 
@@ -240,7 +268,7 @@ const Def* LowerMapReduce::lower_scatter(const App* app) {
     auto [fun_mem, out_buf, in_buf, idx_buf, update_buf] = fun->var(2, 0)->projs<5>();
     const Def* cont                                      = fun->var(2, 1);
 
-    const Def* acc            = w.tuple({buffer::op_copy(fun_mem, out_buf, in_buf), out_buf});
+    const Def* acc            = w.tuple({copy_buffer(fun_mem, out_buf, in_buf, s_src, *r_l), out_buf});
     auto current              = fun;
     auto iters                = affine::counting_nest(current, cont, acc, s_idx->projs(*r_l), "scatter");
     auto [loop_mem, loop_buf] = acc->projs<2>();

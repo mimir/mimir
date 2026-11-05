@@ -113,8 +113,7 @@ private:
     void rewrite_body(const Stub&);
 
     /// Builds the closure type for the `Cn` @p pi; with @p env_type, the bare code `Cn` instead of the Sigma.
-    /// The @p fvs spell captured values referenced by a non-closed pi's dom types as env-slot projections.
-    const Def* clos_type_of(const Pi* pi, const Def* env_type = nullptr, Defs fvs = {});
+    const Def* clos_type_of(const Pi* pi, const Def* env_type = nullptr);
     /// Rewrites a return continuation's type: stays a plain `Cn`, but its domains are closure-converted.
     const Pi* rewrite_ret_cn(const Pi*);
     /// A telescope's Cn keeps its shape; only its return continuation's domain is rewritten as rewrite_ret_cn() does.

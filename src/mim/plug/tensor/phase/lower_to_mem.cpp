@@ -110,8 +110,6 @@ void LowerToMem::validate() {
                 auto extent = shape->proj(rank, i);
                 if (Lit::isa<u64>(extent) == 0)
                     d->blame("cannot bufferize: zero-extent tensors are not supported").bail();
-                if (i != 0 && !Lit::isa<u64>(extent))
-                    d->blame("cannot bufferize: runtime inner extent is not supported").bail();
             }
             if (T->isa<Arr>() || mentions_tensor(T))
                 d->blame("cannot bufferize: tensor with aggregate tensor element type").bail();
@@ -257,7 +255,7 @@ const Def* LowerToMem::uncurry(Lam* lam) {
     bind_old(lam->has_var());
     bind_old(inner->has_var());
     for (size_t i = 0; i != k; ++i) {
-        sigma->set(i, rewrite(pi->dom()->proj(k, i)));
+        sigma->set(i, rewrite(lam->var(k, i)->type()));
         if (pi_mut) map(pi_mut->var(k, i), sigma->var(n, i));
         map(lam->var(k, i), sigma->var(n, i));
     }
@@ -274,14 +272,21 @@ const Def* LowerToMem::uncurry(Lam* lam) {
 
     auto new_lam = w.mut_con(sigma)->set(lam->dbg());
     map(lam, new_lam);
-    map(inner, new_lam);
     for (size_t i = 0; i != k; ++i)
         map(lam->var(k, i), new_lam->var(n, i));
     if (k > 1) map(lam->var(), w.tuple(DefVec(k, [&](size_t i) { return new_lam->var(n, i); })));
     for (size_t i = 0; i != m; ++i)
         map(inner->var(m, i), new_lam->var(n, k + i));
     if (m > 1) map(inner->var(), w.tuple(DefVec(m, [&](size_t i) { return new_lam->var(n, k + i); })));
-    auto ___ = enter(new_lam);
+    auto adapter = w.mut_con(rewrite(inner->type())->as<Pi>()->dom())->set(inner->dbg());
+    map(inner, adapter);
+    DefVec args;
+    for (size_t i = 0; i != k; ++i)
+        args.emplace_back(new_lam->var(n, i));
+    for (auto arg : adapter->vars())
+        args.emplace_back(arg);
+    adapter->app(true, new_lam, w.tuple(args));
+    auto ___ = enter(lam);
     new_lam->set(rewrite(inner->filter()), wrap_fresh_mem(rewrite(inner->body())));
     return seal(lam, new_lam);
 }
@@ -342,11 +347,12 @@ const Def* LowerToMem::lower_get(const App* app) {
 const Def* LowerToMem::lower_set(const App* app) {
     auto [old, index, value] = app->args<3>();
     auto [r, s, T]           = TensorType::decode(app->type()->as<Nom>());
+    auto shape               = rewrite(s);
     auto source              = rewrite(old);
     auto [br, bs, bT]        = Axm::isa<buffer::Buf>(source->type())->args<3>();
     auto [m, dst]            = buffer::op_alloc(br, bs, bT, fresh_mem())->projs<2>();
-    auto copied              = buffer::op_copy(m, dst, source);
-    auto idx                 = *Shape(rewrite(index)).fold(rewrite(s));
+    auto copied              = btensor::copy_buffer(m, dst, source, shape, *Lit::isa<u64>(r));
+    auto idx                 = *Shape(rewrite(index)).fold(shape);
     return buffer::op_write(copied, dst, idx, rewrite(value))->proj(2, 1);
 }
 
