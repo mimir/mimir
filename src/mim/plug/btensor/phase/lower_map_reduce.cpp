@@ -16,6 +16,9 @@ namespace mim::plug::btensor::phase {
 
 namespace {
 
+/// Reads `buf[index]` only if @p valid, else yields @p fill.
+/// A runtime input extent may be 0, so the clamped read of the branch-free select path would touch an empty buffer.
+/// Once every input extent is proven ≥ 1, the select path is safe again and this branch can go.
 const Def* conditional_read(const Def* valid, const Def* mem, const Def* buf, const Def* index, const Def* fill) {
     auto& w          = mem->world();
     auto result      = w.sigma({mem->type(), fill->type()});
@@ -132,6 +135,8 @@ const Def* LowerMapReduce::lower_broadcast(const App* app) {
         DefVec coords(*r_l, [&](size_t d) {
             auto extent = s_in->proj(*r_l, d);
             if (extent == s_out->proj(*r_l, d)) return iters[d];
+            // A symbolic input extent is either 1 or the output extent, which only the runtime can tell apart.
+            // Literal extents fold at construction; a proof of `extent ≠ 1` would fold the symbolic case too.
             auto singleton = w.call(core::ncmp::e, Defs{extent, w.lit_nat_1()});
             return w.select(singleton, w.lit_i64(0), iters[d]);
         });
@@ -160,6 +165,7 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
         return RWPhase::rewrite_imm_App(app);
     }
 
+    // Static inputs keep the branch-free read-and-select path; see conditional_read.
     bool runtime_input
         = std::ranges::any_of(s_in->projs(*r_l), [](const Def* extent) { return !Lit::isa<u64>(extent); });
     auto compute = [&](const DefVec& iters, const Def* ins, const Def* mem) -> std::pair<const Def*, const Def*> {

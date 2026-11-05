@@ -195,6 +195,7 @@ inline const Def* build_pointwise(const Def* result_ty, // [mem.M 0, buffer.Buf 
 }
 
 /// `buffer.copy` lowers to one whole-array load/store, so a runtime @p shape copies elementwise instead.
+/// Once `buffer.lower_ptr` emits a `memcpy` for runtime-sized arrays, every caller can go back to `buffer::op_copy`.
 inline const Def* copy_buffer(const Def* mem, const Def* dst, const Def* src, const Def* shape, u64 rank) {
     if (std::ranges::all_of(shape->projs(rank), [](const Def* extent) { return extent->isa<Lit>(); }))
         return buffer::op_copy(mem, dst, src);
