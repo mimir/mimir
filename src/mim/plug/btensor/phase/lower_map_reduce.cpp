@@ -160,9 +160,8 @@ const Def* LowerMapReduce::lower_pad(const App* app) {
         return RWPhase::rewrite_imm_App(app);
     }
 
-    bool runtime_input = false;
-    for (auto extent : s_in->projs(*r_l))
-        runtime_input |= !Lit::isa<u64>(extent);
+    bool runtime_input
+        = std::ranges::any_of(s_in->projs(*r_l), [](const Def* extent) { return !Lit::isa<u64>(extent); });
     auto compute = [&](const DefVec& iters, const Def* ins, const Def* mem) -> std::pair<const Def*, const Def*> {
         auto [in_buf, fill]  = ins->projs<2>();
         auto [coords, valid] = pad_coords(iters, lo, s_in, *mode_l != 0);
