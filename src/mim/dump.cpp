@@ -811,6 +811,56 @@ private:
         return vars_.contains(def);
     }
 
+    /// Appends the axes of @p shape that World::seq keeps; `false` for a dynamic rank.
+    static bool axes(Shape shape, DefVec& res) {
+        if (shape.is_dim()) {
+            if (Shape::extent(*shape) != 1) res.emplace_back(*shape);
+            return true;
+        }
+        auto r = shape.rank();
+        if (!r) return false;
+        for (nat_t k = 0; k != *r; ++k)
+            if (auto a = shape[k]; !a)
+                return false;
+            else if (Shape::extent(a) != 1)
+                res.emplace_back(a);
+        return true;
+    }
+
+    /// Is @p i what World::arr normalizes `«shape; g»` to, with @p shape already in the World of @p i?
+    /// Building that Arr would mix in the generic @p g, which may live in Driver::library.
+    bool is_arr(Shape shape, const Def* g, const Def* i) {
+        auto dims = DefVec();
+        if (!axes(shape, dims)) return false;
+        auto inst = fe::lookup(subst_, g);
+        auto gen  = DefVec();
+        if (auto zero = std::ranges::find(dims, 0, [](const Def* a) { return Shape::extent(a); }); zero != dims.end()) {
+            dims.erase(zero, dims.end());
+            inst = i->world().sigma();
+        } else if (inst) {
+            for (auto arr = inst->isa_imm<Arr>(); arr; arr = inst->isa_imm<Arr>()) {
+                if (!axes(arr->shape(), dims)) return false;
+                inst = arr->body();
+            }
+        } else {
+            for (auto arr = g->isa_imm<Arr>(); arr; arr = g->isa_imm<Arr>()) {
+                if (!axes(arr->shape(), gen)) return false;
+                g = arr->body();
+            }
+        }
+
+        auto body = [&](const Def* ib) { return inst ? inst == ib : match(g, ib); };
+        if (dims.empty() && gen.empty()) return body(i);
+        auto arr  = i->isa_imm<Arr>();
+        auto idim = DefVec();
+        if (!arr || !axes(arr->shape(), idim) || idim.size() != dims.size() + gen.size()) return false;
+        for (size_t k = 0, n = dims.size(); k != n; ++k)
+            if (dims[k] != idim[k]) return false;
+        for (size_t k = 0, n = gen.size(); k != n; ++k)
+            if (!match(gen[k], idim[dims.size() + k])) return false;
+        return body(arr->body());
+    }
+
     bool match(const Def* g, const Def* i) {
         if (g == i) return true;
         // Only a Level has no type.
@@ -819,19 +869,10 @@ private:
         if (auto [j, ins] = subst_.emplace(g, i); !ins) return j->second == i;
         if (is_param(g)) return true;
         if (auto arr = g->isa_imm<Arr>()) {
-            auto shape = fe::lookup(subst_, *arr->shape());
-            auto body  = fe::lookup(subst_, arr->body());
-            if (!body && arr->body()->is_closed()) body = arr->body();
+            auto shape      = fe::lookup(subst_, *arr->shape());
+            auto body       = arr->body();
             auto same_shape = shape && i->isa_imm<Arr>() && *i->as<Arr>()->shape() == shape;
-            if (shape && body && !same_shape) {
-                if (auto pack = shape->isa_imm<Pack>()) {
-                    if (Lit::isa(pack->body()) == 1) return Check::test_alpha(body, i);
-                    if (Lit::isa(pack->body()) == 0) return Check::test_alpha(i->world().sigma(), i);
-                }
-                auto freeze = i->world().freeze();
-                auto type   = i->world().arr(shape, body);
-                return type && Check::test_alpha(type, i);
-            }
+            if (shape && (subst_.contains(body) || body->is_closed()) && !same_shape) return is_arr(shape, body, i);
         }
         if (auto sig = g->isa_imm<Sigma>())
             if (auto arr = i->isa_imm<Arr>();
