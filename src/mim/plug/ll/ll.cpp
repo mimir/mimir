@@ -874,7 +874,26 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
             return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, i32 {}", t_pointee, t_ptr, v_ptr,
                              Lit::expect(i, "a struct-field index"));
 
-        pointee->expect<Arr>("an array as `mem.lea` pointee");
+        auto leaf = pointee->expect<Arr>("an array as `mem.lea` pointee")->elem();
+        DefVec dims;
+        while (auto dim = leaf->isa<Arr>()) {
+            dims.push_back(dim->arity());
+            leaf = dim->elem();
+        }
+        if (std::ranges::any_of(dims, [](const Def* n) { return !Lit::isa(n); })) {
+            auto offset = emit(i);
+            if (auto width = idx_bitwidth(i->type()); width < 64)
+                offset = bb.assign(name + ".index", "zext {} {} to i64", convert(i->type()), offset);
+            for (size_t axis = 0; auto dim : dims)
+                offset = bb.assign(name + ".offset" + std::to_string(axis++), "mul i64 {}, {}", offset, emit(dim));
+            auto t_leaf     = convert(leaf, false);
+            auto space      = Axm::isa<mem::Ptr>(ptr->type())->arg(2, 1);
+            auto t_leaf_ptr = std::format("{} addrspace({})*", t_leaf, space);
+            auto base       = bb.assign(name + ".base", "bitcast {} {} to {}", t_ptr, v_ptr, t_leaf_ptr);
+            auto address = bb.assign(name + ".address", "getelementptr inbounds {}, {} {}, i64 {}", t_leaf, t_leaf_ptr,
+                                     base, offset);
+            return bb.assign(name, "bitcast {} {} to {}", t_leaf_ptr, address, convert(def->type()));
+        }
         auto gep_i = emit_gep_index(bb, name, i);
 
         return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, {}", t_pointee, t_ptr, v_ptr, gep_i);

@@ -1,0 +1,15 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin core;
+plugin tensor;
+plugin compile;
+
+extern fun read_at {n: Nat, i: Idx n} (a: tensor.Tensor 1 n I32): I32 =
+    return (tensor.get (a, i));
+
+extern lam _compile (): compile.Phase = tensor.lower_to_mem;
+
+// CHECK: extern con read_at
+// CHECK-SAME: [[N:[a-zA-Z0-9_]+]]: Nat
+// CHECK-SAME: Idx [[N]]
+// CHECK-SAME: buffer.Buf (1, [[N]], I32)
