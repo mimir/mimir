@@ -24,4 +24,4 @@ Use the primary UTF-8 surface syntax.
   Don't call such a value `mem`: it shadows the module `mem`, so a later `mem.store` no longer resolves.
   Numbered names are fine for distinct sibling parameters of one binder.
 - No generated gid-suffixed identifiers (`x_535733`, `mem_19234`) in checked-in code; name them `x`, `mem`.
-- Comment sparingly; see the *Comments* section in `.github/copilot-instructions.md`.
+- Comment sparingly; see the *Comments* section in `AGENTS.md`.
