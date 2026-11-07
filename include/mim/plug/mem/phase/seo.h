@@ -19,7 +19,7 @@ namespace mim::plug::mem::phase {
 /// * optimistically combines φs/Vars that are already present with those being constructed through SSA translation
 /// * since abstract domain is a MimIR expression, stack slots themselves can be propagated etc.
 /// * contifies for free: a continuation parameter that all call sites agree on is propagated away
-/// * reduces operator strength: `i * c` becomes a new param if `i` is a ⊤ var that some call site steps by `i ± t`
+/// * reduces operator strength: `x * c` becomes a new param if `x` is affine in ⊤ vars that call sites step by `± t`
 ///
 /// Additional papers worth reading:
 /// * [Constant propagation with conditional branches](https://dl.acm.org/doi/pdf/10.1145/103135.103136)
@@ -55,9 +55,9 @@ public:
         const Def* t;
     };
 
-    /// `i * c` of the tvar `i` of a Lam.
+    /// `x * c` with `x` affine in the tvars of a Lam.
     struct Mul {
-        size_t i;
+        const Def* x;
         const Def* c;
 
         bool operator==(const Mul&) const = default;
@@ -196,6 +196,10 @@ private:
     DefVec build_args(const App* old_app, Lam* old_lam, Defs old_targs);
     /// The new param that replaces `x * c`, if any.
     const Def* reduced(const Def* x, const Def* c);
+    /// `x' - x` across a call site of @p lam that steps its tvars by @p steps, if every tvar of @p x has a step.
+    std::optional<Step> delta(Lam* lam, const Def* x, const Steps& steps);
+    /// @p x with @p lam's tvars replaced by @p old_targs.
+    const Def* subst(Lam* lam, const Def* x, Defs old_targs);
 
     Analysis analysis_;
     LamBiMap lam_old2new_;

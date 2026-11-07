@@ -1,20 +1,21 @@
 // RUN: rm -f %{s:stem}.ll
 // RUN: %mim -p opt %s -p ll -o - | %FileCheck %s
 // RUN: clang %{s:stem}.ll -o %t -Wno-override-module
-// RUN: %t ; test $? -eq 80
-// RUN: %t a b ; test $? -eq 210
+// RUN: %t ; test $? -eq 86
+// RUN: %t a b ; test $? -eq 197
 
 plugin core;
 plugin mem;
 
-// Sums `i * 7I32 + argc * i` for `i < argc + 4I32`.
+// Sums `i * 7I32 + (i + 2I32 * k) * 5I32 + argc * i` for `i < argc + 4I32`, where `k` counts down by `3I32`.
 extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
-    head (0I32, 0I32) where
-        con head (i s: I32) =
+    head (0I32, 0I32, 0I32) where
+        con head (i s k: I32) =
             (exit, body)#(core.icmp.sl (i, core.wrap.add 0 (argc, 4I32))) () where
                 con body () =
                     let s = core.wrap.add 0 (s, core.wrap.mul 0 (i, 7I32));
-                    head (core.wrap.add 0 (i, 1I32), core.wrap.add 0 (s, core.wrap.mul 0 (argc, i)));
+                    let s = core.wrap.add 0 (s, core.wrap.mul 0 (core.wrap.add 0 (i, core.wrap.mul 0 (2I32, k)), 5I32));
+                    head (core.wrap.add 0 (i, 1I32), core.wrap.add 0 (s, core.wrap.mul 0 (argc, i)), core.wrap.sub 0 (k, 3I32));
                 con exit () = return (m, s);
             end;
     end;

@@ -339,6 +339,35 @@ static bool depends(Lam* lam, const Def* def) {
     return (var && def->has_free_var(var)) || lam->nests(def);
 }
 
+static std::optional<size_t> isa_tvar(Lam* lam, const Def* def) {
+    if (auto [var, i] = Var::isa_tproj(def); var && var == lam->has_var()) return i;
+    return {};
+}
+
+/// The innermost rewritable Lam whose var @p x mentions.
+static Lam* innermost(const Def* x) {
+    Lam* res = nullptr;
+    for (auto var : x->free_vars())
+        if (auto lam = Lam::isa_rewritable(var->binder()); lam && !lam->is_dependent())
+            if (!res || res->nests(lam)) res = lam;
+    return res;
+}
+
+/// Is @p x affine in @p lam's tvars, each of which satisfies @p ok?
+template<class F>
+static bool is_affine(Lam* lam, const Def* x, F ok) {
+    if (auto i = isa_tvar(lam, x)) return ok(*i);
+    if (!depends(lam, x)) return true;
+    if (auto o = isa_op(x)) {
+        auto [op, a, b] = *o;
+        if (op == SEO::Op::mul)
+            return (!depends(lam, a) && is_affine(lam, b, ok)) || (!depends(lam, b) && is_affine(lam, a, ok));
+        if (op == SEO::Op::sub && x->type()->isa<Nat>()) return false; // saturates
+        return is_affine(lam, a, ok) && is_affine(lam, b, ok);
+    }
+    return false;
+}
+
 /// Can every site in @p lam's scope use @p t, and does it stay the same while @p lam loops?
 static bool is_invariant(Lam* lam, const Def* t) {
     return t->in_scope(lam) && !depends(lam, t) && !RWPhase::mentions(t, [](const Def* d) { return d->isa<Proxy>(); });
@@ -356,11 +385,10 @@ static std::optional<SEO::Step> isa_step(Lam* lam, const Def* var, const Def* ab
 }
 
 void SEO::Analysis::record_mul(const Def* x, const Def* c) {
-    if (auto [var, i] = Var::isa_tproj(x); var && i)
-        if (auto lam = Lam::isa_rewritable(var->binder()); lam && !depends(lam, c)) {
-            auto& muls = lam2muls_[lam];
-            if (auto mul = Mul{*i, c}; std::ranges::find(muls, mul) == muls.end()) muls.emplace_back(mul);
-        }
+    if (auto lam = innermost(x); lam && !depends(lam, c) && is_affine(lam, x, [](size_t) { return true; })) {
+        auto& muls = lam2muls_[lam];
+        if (auto mul = Mul{x, c}; std::ranges::find(muls, mul) == muls.end()) muls.emplace_back(mul);
+    }
 }
 
 const Def* SEO::Analysis::apply_known(const App* site, Lam* known, Defs abstr_targs) {
@@ -646,7 +674,8 @@ const SEO::Sig& SEO::sig_of(Lam* old_lam) {
 
     if (auto muls = analysis_.muls(old_lam); muls && !analysis_.unknowns().contains(old_lam))
         for (auto mul : *muls)
-            if (analysis_.is_iv(old_lam->tvar(mul.i))) sig.muls.emplace_back(mul);
+            if (is_affine(old_lam, mul.x, [&](size_t i) { return analysis_.is_iv(old_lam->tvar(i)); }))
+                sig.muls.emplace_back(mul);
     sig.sieve.cat(sig.muls.size(), [](size_t) { return true; });
 
     // A new signature is needed iff some var is dropped/propagated/merged or some phi/mul has to be threaded in -
@@ -770,7 +799,7 @@ Lam* SEO::build_lam(Lam* old_lam) {
     for (size_t i = 0, e = sig.phis.size(); i != e; ++i)
         if (sig.sieve.cat(i) != Sieve::Gone) new_doms.emplace_back(rewrite(sig.phis[i].phi->type()));
     for (auto mul : sig.muls)
-        new_doms.emplace_back(rewrite(old_lam->tdom(mul.i)));
+        new_doms.emplace_back(rewrite(mul.x->type()));
 
     auto new_lam = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
     lam_old2new_.insert(old_lam, new_lam);
@@ -831,13 +860,16 @@ DefVec SEO::build_args(const App* old_app, Lam* old_lam, Defs old_targs) {
 
     auto steps = analysis_.steps(old_app);
     for (size_t k = 0, e = sig.muls.size(); k != e; ++k) {
-        auto [i, c] = sig.muls[k];
+        auto [x, c] = sig.muls[k];
         auto new_c  = rewrite(c);
-        if (auto step = steps ? (*steps)[i] : std::nullopt) {
+        auto d      = steps ? delta(old_lam, x, *steps) : std::nullopt;
+        // A saturating core.nat.sub only commutes with scaling a bare tvar.
+        if (d && d->op == Op::sub && x->type()->isa<Nat>() && !isa_tvar(old_lam, x)) d.reset();
+        if (d) {
             auto j = build_lam(old_lam)->var(sig.sieve.num_new(), sig.sieve.cat(sig.phis.size() + k));
-            new_args.emplace_back(step->t ? mk_op(step->op, j, mk_op(Op::mul, rewrite(step->t), new_c)) : j);
+            new_args.emplace_back(d->t ? mk_op(d->op, j, mk_op(Op::mul, d->t, new_c)) : j);
         } else {
-            new_args.emplace_back(mk_op(Op::mul, rewrite(old_targs[i]), new_c));
+            new_args.emplace_back(mk_op(Op::mul, subst(old_lam, x, old_targs), new_c));
         }
     }
 
@@ -845,14 +877,46 @@ DefVec SEO::build_args(const App* old_app, Lam* old_lam, Defs old_targs) {
 }
 
 const Def* SEO::reduced(const Def* x, const Def* c) {
-    if (auto [var, i] = Var::isa_tproj(x); var && i)
-        if (auto old_lam = var->binder()->isa_mut<Lam>()) {
-            const auto& sig = sig_of(old_lam);
-            if (auto k = std::ranges::find(sig.muls, Mul{*i, c}); k != sig.muls.end())
-                return build_lam(old_lam)->var(sig.sieve.num_new(),
-                                               sig.sieve.cat(sig.phis.size() + (k - sig.muls.begin())));
-        }
+    if (auto old_lam = innermost(x)) {
+        const auto& sig = sig_of(old_lam);
+        if (auto k = std::ranges::find(sig.muls, Mul{x, c}); k != sig.muls.end())
+            return build_lam(old_lam)->var(sig.sieve.num_new(),
+                                           sig.sieve.cat(sig.phis.size() + (k - sig.muls.begin())));
+    }
     return nullptr;
+}
+
+std::optional<SEO::Step> SEO::delta(Lam* lam, const Def* x, const Steps& steps) {
+    if (auto i = isa_tvar(lam, x)) {
+        if (auto step = steps[*i]) return Step{step->op, step->t ? rewrite(step->t) : nullptr};
+        return {};
+    }
+    if (!depends(lam, x)) return Step{Op::add, nullptr};
+
+    auto [op, a, b] = *isa_op(x);
+    if (op == Op::mul) {
+        auto [y, k] = depends(lam, a) ? std::pair{a, b} : std::pair{b, a};
+        auto d      = delta(lam, y, steps);
+        if (d && d->t) d->t = mk_op(Op::mul, d->t, rewrite(k));
+        return d;
+    }
+
+    auto da = delta(lam, a, steps);
+    auto db = delta(lam, b, steps);
+    if (!da || !db) return {};
+    if (op == Op::sub) db->op = db->op == Op::add ? Op::sub : Op::add;
+    if (!da->t) return db;
+    if (!db->t) return da;
+    if (da->op == db->op) return Step{da->op, mk_op(Op::add, da->t, db->t)};
+    if (x->type()->isa<Nat>()) return {}; // saturates
+    return Step{da->op, mk_op(Op::sub, da->t, db->t)};
+}
+
+const Def* SEO::subst(Lam* lam, const Def* x, Defs old_targs) {
+    if (auto i = isa_tvar(lam, x)) return rewrite(old_targs[*i]);
+    if (!depends(lam, x)) return rewrite(x);
+    auto [op, a, b] = *isa_op(x);
+    return mk_op(op, subst(lam, a, old_targs), subst(lam, b, old_targs));
 }
 
 } // namespace mim::plug::mem::phase
