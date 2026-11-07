@@ -1,13 +1,11 @@
 // RUN: rm -f %{s:stem}.ll
-// RUN: %mim %s -p ll -o - | %FileCheck %s
+// RUN: %mim -p opt %s -p ll -o - | %FileCheck %s
 // RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t ; test $? -eq 80
 // RUN: %t a b ; test $? -eq 210
 
 plugin core;
 plugin mem;
-plugin compile;
-plugin opt;
 
 // Sums `i * 7I32 + argc * i` for `i < argc + 4I32`.
 extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
@@ -20,7 +18,5 @@ extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.P
                 con exit () = return (m, s);
             end;
     end;
-
-extern lam _compile(): compile.Phase = compile.phases ff (core.osr, opt._default_compile ());
 
 // CHECK-NOT: core.wrap.mul

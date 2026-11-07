@@ -1,6 +1,7 @@
 // RUN: %mim %s -o - | %FileCheck %s
 plugin core;
 plugin compile;
+plugin mem;
 
 extern fun use_ [I32]: [];
 extern fun take [Cn I32]: [];
@@ -34,6 +35,20 @@ extern fun chain (lo hi: I32): I32 =
             end;
     end;
 
+// `next` and `back` don't use a var of `head`, so `x` and `m` are no step yet; propagating `i + 1I32` makes them one.
+extern fun sibling (lo hi: I32): I32 =
+    head (lo, 1I32) where
+        con head (i n: I32) =
+            (exit, body)#(core.icmp.sl (i, hi)) () where
+                con body () =
+                    ret _ = use_ $ (core.wrap.mul 0 (i, 4I32));
+                    next (core.wrap.add 0 (i, 1I32), core.wrap.mul 0 (n, 2I32));
+                con next (x m: I32) = back (x, m);
+                con back (x m: I32) = head (x, m);
+                con exit () = return n;
+            end;
+    end;
+
 // `loop` escapes into `take`, so its signature stays.
 extern fun escape (lo hi: I32): I32 =
     loop lo where
@@ -61,7 +76,7 @@ extern fun nat_down (hi k: Nat): Nat =
             end;
     end;
 
-extern lam _compile(): compile.Phase = core.osr;
+extern lam _compile(): compile.Phase = mem.seo;
 
 // CHECK-LABEL: extern fun chain
 // CHECK:       con head ({{[[:alnum:]_]+}}: I32, {{[[:alnum:]_]+}}: I32, [[J:_[0-9]+]]: I32)
@@ -88,3 +103,8 @@ extern lam _compile(): compile.Phase = core.osr;
 // CHECK:       head{{[[:alnum:]_]*}} ({{[[:alnum:]_]+}}, [[NN]]);
 // CHECK:       [[IN:_[0-9]+]] = core.nat.mul
 // CHECK:       head{{[[:alnum:]_]*}} (hi{{[[:alnum:]_]*}}, [[IN]]);
+
+// CHECK-LABEL: extern fun sibling
+// CHECK:       con head{{[[:alnum:]_]*}} ({{[[:alnum:]_]+}}: I32, {{[[:alnum:]_]+}}: I32, [[JS:_[0-9]+]]: I32)
+// CHECK:       [[NS:_[0-9]+]] = core.wrap.add 0 @ i32 (4I32, [[JS]]);
+// CHECK:       head{{[[:alnum:]_]*}} ({{[[:alnum:]_]+}}, {{[[:alnum:]_]+}}, [[NS]]);

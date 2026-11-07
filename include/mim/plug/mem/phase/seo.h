@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include <fe/worklist.h>
 
 #include <mim/def.h>
@@ -17,6 +19,7 @@ namespace mim::plug::mem::phase {
 /// * optimistically combines φs/Vars that are already present with those being constructed through SSA translation
 /// * since abstract domain is a MimIR expression, stack slots themselves can be propagated etc.
 /// * contifies for free: a continuation parameter that all call sites agree on is propagated away
+/// * reduces operator strength: `i * c` becomes a new param if `i` is a ⊤ var that some call site steps by `i ± t`
 ///
 /// Additional papers worth reading:
 /// * [Constant propagation with conditional branches](https://dl.acm.org/doi/pdf/10.1145/103135.103136)
@@ -25,6 +28,7 @@ namespace mim::plug::mem::phase {
 /// * [Simple and efficient construction of static single assignment
 /// form](https://dl.acm.org/doi/10.1007/978-3-642-37051-9_6)
 /// * [Contification using dominators](https://dl.acm.org/doi/10.1145/507635.507639)
+/// * [Operator Strength Reduction](https://dl.acm.org/doi/10.1145/504709.504710)
 ///
 /// Due to MimIR's sea of node structure a number of other optimizations kick in such as arithmetic simplifications and
 /// code motion.
@@ -41,6 +45,27 @@ namespace mim::plug::mem::phase {
 /// ```
 /// A var that has reached ⊤ for propagation but still awaits GVN bundling is marked with a dedicated Proxy sentinel.
 class SEO : public RWPhase {
+public:
+    /// The subtag core.nat and core.wrap share.
+    enum class Op : sub_t { add, sub, mul };
+
+    /// `i ↦ i op t` at a call site; `t == nullptr` means `i ↦ i`.
+    struct Step {
+        Op op;
+        const Def* t;
+    };
+
+    /// `i * c` of the tvar `i` of a Lam.
+    struct Mul {
+        size_t i;
+        const Def* c;
+
+        bool operator==(const Mul&) const = default;
+    };
+
+    using Steps = fe::Vector<std::optional<Step>>;
+    using Muls  = fe::Vector<Mul>;
+
 private:
     using Super = mim::RWPhase;
 
@@ -62,13 +87,18 @@ private:
         /// Only then may build_args() find an argument for a phi threaded through @p lam.
         bool can_supply(Lam* lam, const Def* sloxy);
 
+        // OSR
+        const Steps* steps(const App* site) const { return fe::lookup(app2steps_, site); }
+        const Muls* muls(Lam* lam) const { return fe::lookup(lam2muls_, lam); }
+        bool is_iv(const Def* var) const { return is_top(var) && stepped_.contains(var); }
+
     private:
         // SCCP
         const Proxy* mk_sccp_top(const Def* var);
         const Def* sccp_join(Lam*, const Def*, const Def*);
 
-        /// Applies @p known to @p abstr_targs (one per tvar): propagates phis, runs SCCP + GVN, and sets the vars.
-        const Def* apply_known(Lam* known, Defs abstr_targs);
+        /// Applies @p known at @p site to @p abstr_targs: propagates phis, runs SCCP + GVN + OSR, and sets the vars.
+        const Def* apply_known(const App* site, Lam* known, Defs abstr_targs);
         /// An App that merely records "@p callee applied to these abstract args"; never emitted code.
         const Def* abstract_app(const Def* callee, const Def* arg);
 
@@ -91,6 +121,9 @@ private:
         /// Writes `concr ↦ abstr` resolved against @p sloxy, which pin_slot erases again.
         void resolve(const Def* sloxy, const Def* concr, const Def* abstr);
         void propagate_phis(Lam*, DefVec& vars, DefVec& abstr_args);
+
+        // OSR
+        void record_mul(const Def* x, const Def* c);
         const Def* sloxy2val(const Def* sloxy) { return lam2sloxy2val(curr_mut<Lam>(), sloxy); }
         const Def* sloxy2val(const Def* sloxy, const Def* val) { return lam2sloxy2val_[curr_mut<Lam>()][sloxy] = val; }
         const Def* rewrite_imm_App(const App*) final;
@@ -105,6 +138,9 @@ private:
         DefSet visited_;
         DefSet first_;
         DefMap<Vars> non_mem_fvs_;
+        DefMap<Steps> app2steps_;
+        DefSet stepped_;
+        LamMap<Muls> lam2muls_;
 
         // global (kept between iterations)
         DefSet slots_;                 // actually slot ptrs
@@ -133,11 +169,12 @@ private:
         const Def* val;
     };
 
-    /// The new signature of an old Lam: the old Lam's tvars sieved, with Sig::phis appended as further candidates.
-    /// So Sieve::num_new is the new Lam's arity, Sieve::operator[] the new index of an old tvar,
-    /// and Sieve::cat the new index of a phi.
+    /// The new signature of an old Lam: the old Lam's tvars sieved, with Sig::phis and Sig::muls appended as
+    /// candidates. So Sieve::num_new is the new Lam's arity, Sieve::operator[] the new index of an old tvar, and
+    /// Sieve::cat the new index of a phi or - behind them - a mul.
     struct Sig {
         fe::Vector<Phi> phis; ///< Its live phis.
+        Muls muls;            ///< Its strength-reduced products; always kept.
         Sieve sieve{0};       ///< @see Sig
         bool todo = false;    ///< Does the old Lam need a new signature at all?
     };
@@ -154,9 +191,11 @@ private:
     const Def* var_of(Lam* old_lam);
     /// Builds (and caches) the new Lam for @p old_lam with propagated vars removed and kept phis appended.
     Lam* build_lam(Lam* old_lam);
-    /// Builds the argument list for a jump to @p old_lam (with the given @p old_targs, one per tvar)
+    /// Builds the argument list for the jump @p old_app to @p old_lam (with the given @p old_targs, one per tvar)
     /// matching the signature built by build_lam().
-    DefVec build_args(Lam* old_lam, Defs old_targs);
+    DefVec build_args(const App* old_app, Lam* old_lam, Defs old_targs);
+    /// The new param that replaces `x * c`, if any.
+    const Def* reduced(const Def* x, const Def* c);
 
     Analysis analysis_;
     LamBiMap lam_old2new_;

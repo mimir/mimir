@@ -360,13 +360,6 @@ axm lower_variant: compile.Phase;
 ///
 axm legalize_idx: compile.Phase;
 ///
-/// ### osr
-///
-/// Operator strength reduction (mim::plug::core::phase::OSR).
-/// Each `core.wrap.mul` of a loop's induction variable and a loop-invariant factor becomes a new loop param that advances by addition.
-///
-axm osr: compile.Phase;
-///
 /// ## Operators
 ///
 /// Bindings for the infix operators, which are sugar for an application of the escaped name.

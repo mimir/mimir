@@ -37,6 +37,9 @@ void SEO::Analysis::reset() {
     lam2sloxy2val_.clear();
     first_.clear();
     non_mem_fvs_.clear();
+    app2steps_.clear();
+    stepped_.clear();
+    lam2muls_.clear();
 }
 
 /*
@@ -308,7 +311,59 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
     }
 }
 
-const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
+// OSR
+
+static_assert(Annex::flags2sub(flags_t(core::nat::mul)) == sub_t(SEO::Op::mul));
+static_assert(Annex::flags2sub(flags_t(core::wrap::mul)) == sub_t(SEO::Op::mul));
+
+/// Matches `x op y` for core.nat and core.wrap.
+static std::optional<std::tuple<SEO::Op, const Def*, const Def*>> isa_op(const Def* def) {
+    auto match = [](auto app) { return std::tuple_cat(std::tuple{SEO::Op(app.sub())}, app->template args<2>()); };
+    if (auto app = Axm::isa<core::nat>(def); app && app.sub() <= sub_t(SEO::Op::mul)) return match(app);
+    if (auto app = Axm::isa<core::wrap>(def); app && app.sub() <= sub_t(SEO::Op::mul)) return match(app);
+    return {};
+}
+
+static std::array<const Def*, 2> isa_mul(const Def* def) {
+    if (auto o = isa_op(def); o && std::get<0>(*o) == SEO::Op::mul) return {std::get<1>(*o), std::get<2>(*o)};
+    return {};
+}
+
+static const Def* mk_op(SEO::Op o, const Def* a, const Def* b) {
+    if (a->type()->isa<Nat>()) return core::op(core::nat(Annex::base<core::nat>() | flags_t(o)), a, b);
+    return core::op(core::wrap(Annex::base<core::wrap>() | flags_t(o)), a, b);
+}
+
+static bool depends(Lam* lam, const Def* def) {
+    auto var = lam->has_var();
+    return (var && def->has_free_var(var)) || lam->nests(def);
+}
+
+/// Can every site in @p lam's scope use @p t, and does it stay the same while @p lam loops?
+static bool is_invariant(Lam* lam, const Def* t) {
+    return t->in_scope(lam) && !depends(lam, t) && !RWPhase::mentions(t, [](const Def* d) { return d->isa<Proxy>(); });
+}
+
+static std::optional<SEO::Step> isa_step(Lam* lam, const Def* var, const Def* abstr) {
+    if (abstr == var) return SEO::Step{SEO::Op::add, nullptr};
+    if (auto o = isa_op(abstr)) {
+        auto [op, x, y] = *o;
+        if (op == SEO::Op::mul) return {};
+        if (x == var && is_invariant(lam, y)) return SEO::Step{op, y};
+        if (op == SEO::Op::add && y == var && is_invariant(lam, x)) return SEO::Step{op, x};
+    }
+    return {};
+}
+
+void SEO::Analysis::record_mul(const Def* x, const Def* c) {
+    if (auto [var, i] = Var::isa_tproj(x); var && i)
+        if (auto lam = Lam::isa_rewritable(var->binder()); lam && !depends(lam, c)) {
+            auto& muls = lam2muls_[lam];
+            if (auto mul = Mul{*i, c}; std::ranges::find(muls, mul) == muls.end()) muls.emplace_back(mul);
+        }
+}
+
+const Def* SEO::Analysis::apply_known(const App* site, Lam* known, Defs abstr_targs) {
     auto n = abstr_targs.size();
     assert(n == known->num_tvars());
     log().d("known edge: {} → {}", curr_mut(), known);
@@ -340,6 +395,15 @@ const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
 
     gvn_bundle(known, all_vars, all_abstr_args, all_abstr_vars);
     gvn_split(known, all_vars, all_abstr_args, all_abstr_vars);
+
+    for (size_t i = 0; i != n; ++i)
+        if (all_abstr_vars[i] == all_vars[i])
+            if (auto step = isa_step(known, all_vars[i], all_abstr_args[i])) {
+                auto& steps = app2steps_[site];
+                steps.resize(n);
+                steps[i] = step;
+                if (step->t) stepped_.emplace(all_vars[i]);
+            }
 
     lattice(known->var(), world().tuple(all_abstr_vars.span().subspan(0, n)));
 
@@ -382,7 +446,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 // The ptr var is defined *by* the slot, so pass ⊥ (not the sloxy) as its abstract argument:
                 // this keeps the sloxy out of the abstract body, so it only survives if an unresolved
                 // load/store actually references it - `lattice(ptr, sloxy)` above still drives that resolution.
-                return apply_known(ret_lam, {abstr_mem, world().bot(ptr->type())});
+                return apply_known(app, ret_lam, {abstr_mem, world().bot(ptr->type())});
             }
         }
     } else if (auto store = Axm::isa<mem::store>(app)) {
@@ -422,13 +486,14 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             log().d("load from unknown ptr: {}", abstr_ptr);
         }
     } else {
+        if (auto [a, b] = isa_mul(app); a) record_mul(a, b), record_mul(b, a);
         auto abstr_callee = rewrite(app->callee());
         auto abstr_arg    = rewrite(app->arg());
         // A direct-style call's effects bypass the continuation the per-Lam store state follows.
         if (has_mem_ty(app->type())) pin_reachable_slots(abstr_callee, abstr_arg);
         if (auto known = Lam::isa_rewritable(abstr_callee)) {
             auto n = known->num_tvars();
-            return apply_known(known, abstr_arg->projs(n));
+            return apply_known(app, known, abstr_arg->projs(n));
         }
     }
 
@@ -579,7 +644,12 @@ const SEO::Sig& SEO::sig_of(Lam* old_lam) {
         return keep(old_lam, phi, val);
     });
 
-    // A new signature is needed iff some var is dropped/propagated/merged or some phi has to be threaded in -
+    if (auto muls = analysis_.muls(old_lam); muls && !analysis_.unknowns().contains(old_lam))
+        for (auto mul : *muls)
+            if (analysis_.is_iv(old_lam->tvar(mul.i))) sig.muls.emplace_back(mul);
+    sig.sieve.cat(sig.muls.size(), [](size_t) { return true; });
+
+    // A new signature is needed iff some var is dropped/propagated/merged or some phi/mul has to be threaded in -
     // except for an unknown lam, which is used as a value somewhere and hence must keep its signature as is.
     sig.todo = !sig.sieve.all() && !analysis_.unknowns().contains(old_lam);
 
@@ -596,7 +666,7 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
             profile_count("seo.slots.eliminated");
             assert(!analysis_.unknowns().contains(ret_lam)); // promoted -> ret_lam was never reached as a value
             auto new_lam  = build_lam(ret_lam);
-            auto new_args = build_args(ret_lam, {mem, ptr});
+            auto new_args = build_args(old_app, ret_lam, {mem, ptr});
             return map(old_app, new_world().app(new_lam, new_args));
         }
 
@@ -619,6 +689,11 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
             return new_world().tuple({new_mem, rewrite(abstr_val)});
         }
     } else {
+        if (auto [a, b] = isa_mul(old_app); a) {
+            if (auto j = reduced(a, b)) return j;
+            if (auto j = reduced(b, a)) return j;
+        }
+
         auto old_lam = old_app->callee()->isa_mut<Lam>();
         if (!old_lam) {
             // The callee may fold to a rebuilt lam in the new world only,
@@ -633,7 +708,7 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
             if (sig_of(old_lam).todo) {
                 log().d("needs seo: {}", old_lam);
                 auto new_lam  = build_lam(old_lam);
-                auto new_args = build_args(old_lam, old_app->targs());
+                auto new_args = build_args(old_app, old_lam, old_app->targs());
                 return map(old_app, new_world().app(new_lam, new_args));
             }
         }
@@ -694,6 +769,8 @@ Lam* SEO::build_lam(Lam* old_lam) {
             profile_count("seo.sccp.vars_eliminated");
     for (size_t i = 0, e = sig.phis.size(); i != e; ++i)
         if (sig.sieve.cat(i) != Sieve::Gone) new_doms.emplace_back(rewrite(sig.phis[i].phi->type()));
+    for (auto mul : sig.muls)
+        new_doms.emplace_back(rewrite(old_lam->tdom(mul.i)));
 
     auto new_lam = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
     lam_old2new_.insert(old_lam, new_lam);
@@ -734,7 +811,7 @@ Lam* SEO::build_lam(Lam* old_lam) {
     return new_lam;
 }
 
-DefVec SEO::build_args(Lam* old_lam, Defs old_targs) {
+DefVec SEO::build_args(const App* old_app, Lam* old_lam, Defs old_targs) {
     const auto& sig = sig_of(old_lam);
     size_t n        = old_lam->num_tvars();
     assert(old_targs.size() == n);
@@ -752,7 +829,30 @@ DefVec SEO::build_args(Lam* old_lam, Defs old_targs) {
             new_args.emplace_back(rewrite(arg));
         }
 
+    auto steps = analysis_.steps(old_app);
+    for (size_t k = 0, e = sig.muls.size(); k != e; ++k) {
+        auto [i, c] = sig.muls[k];
+        auto new_c  = rewrite(c);
+        if (auto step = steps ? (*steps)[i] : std::nullopt) {
+            auto j = build_lam(old_lam)->var(sig.sieve.num_new(), sig.sieve.cat(sig.phis.size() + k));
+            new_args.emplace_back(step->t ? mk_op(step->op, j, mk_op(Op::mul, rewrite(step->t), new_c)) : j);
+        } else {
+            new_args.emplace_back(mk_op(Op::mul, rewrite(old_targs[i]), new_c));
+        }
+    }
+
     return new_args;
+}
+
+const Def* SEO::reduced(const Def* x, const Def* c) {
+    if (auto [var, i] = Var::isa_tproj(x); var && i)
+        if (auto old_lam = var->binder()->isa_mut<Lam>()) {
+            const auto& sig = sig_of(old_lam);
+            if (auto k = std::ranges::find(sig.muls, Mul{*i, c}); k != sig.muls.end())
+                return build_lam(old_lam)->var(sig.sieve.num_new(),
+                                               sig.sieve.cat(sig.phis.size() + (k - sig.muls.begin())));
+        }
+    return nullptr;
 }
 
 } // namespace mim::plug::mem::phase
