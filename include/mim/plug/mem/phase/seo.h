@@ -159,8 +159,7 @@ private:
     DefVec build_args(Lam* old_lam, Defs old_targs);
 
     Analysis analysis_;
-    Lam2Lam lam_old2new_;
-    Lam2Lam lam_new2old_;
+    LamBiMap lam_old2new_;
     GIDNodeMap<Lam*, Sig> lam2sig_; // a Sig& outlives nested rewrites
     DefVec sloxies_;                // the eliminated sloxies; every Lam's phi candidates
 };

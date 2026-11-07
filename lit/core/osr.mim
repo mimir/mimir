@@ -1,0 +1,90 @@
+// RUN: %mim %s -o - | %FileCheck %s
+plugin core;
+plugin compile;
+
+extern fun use_ [I32]: [];
+extern fun take [Cn I32]: [];
+
+// `i * 4I32` and `k * i` become params of `head` that advance by `4I32` and `k`.
+// `n` is no induction variable, as its backedge passes `n * 2I32`.
+extern fun direct (lo hi k: I32): I32 =
+    head (lo, 1I32) where
+        con head (i n: I32) =
+            (exit, body)#(core.icmp.sl (i, hi)) () where
+                con body () =
+                    ret _ = use_ $ (core.wrap.mul 0 (i, 4I32));
+                    ret _ = use_ $ (core.wrap.mul 0 (k, i));
+                    ret _ = use_ $ (core.wrap.mul 0 (n, 3I32));
+                    head (core.wrap.add 0 (i, 1I32), core.wrap.mul 0 (n, 2I32));
+                con exit () = return n;
+            end;
+    end;
+
+// The step `i - 2I32` reaches `head` through `next` and `back`, so `i * 4I32` steps by `-8`.
+extern fun chain (lo hi: I32): I32 =
+    head (lo, 1I32) where
+        con head (i n: I32) =
+            (exit, body)#(core.icmp.sl (i, hi)) () where
+                con body () =
+                    ret _ = use_ $ (core.wrap.mul 0 (i, 4I32));
+                    next (core.wrap.sub 0 (i, 2I32));
+                con next (x: I32) = back (x, 1I32);
+                con back (x m: I32) = head (x, core.wrap.add 0 (n, m));
+                con exit () = return n;
+            end;
+    end;
+
+// `loop` escapes into `take`, so its signature stays.
+extern fun escape (lo hi: I32): I32 =
+    loop lo where
+        con loop (i: I32) =
+            (exit, body)#(core.icmp.sl (i, hi)) () where
+                con body () =
+                    ret _ = use_ $ (core.wrap.mul 0 (i, 4I32));
+                    ret _ = take $ loop;
+                    loop (core.wrap.add 0 (i, 1I32));
+                con exit () = return i;
+            end;
+    end;
+
+extern fun use_n [Nat]: [];
+
+// `i * k` steps by `k` via the saturating `core.nat.sub`.
+extern fun nat_down (hi k: Nat): Nat =
+    head hi where
+        con head (i: Nat) =
+            (exit, body)#(core.ncmp.g (i, 0)) () where
+                con body () =
+                    ret _ = use_n $ (core.nat.mul (i, k));
+                    head (core.nat.sub (i, 1));
+                con exit () = return i;
+            end;
+    end;
+
+extern lam _compile(): compile.Phase = core.osr;
+
+// CHECK-LABEL: extern fun chain
+// CHECK:       con head ({{[[:alnum:]_]+}}: I32, {{[[:alnum:]_]+}}: I32, [[J:_[0-9]+]]: I32)
+// CHECK:       [[NEXT:_[0-9]+]] = core.wrap.add 0 @ i32 (4294967288I32, [[J]]);
+// CHECK:       head ({{[[:alnum:]_]+}}, {{[[:alnum:]_]+}}, [[NEXT]]);
+// CHECK:       [[INIT:_[0-9]+]] = core.wrap.mul 0 @ i32 (4I32, lo);
+// CHECK:       head (lo, 1I32, [[INIT]]);
+
+// CHECK-LABEL: extern fun direct
+// CHECK:       con head{{[[:alnum:]_]*}} ({{[[:alnum:]_]+}}: I32, {{[[:alnum:]_]+}}: I32, [[J4:_[0-9]+]]: I32, [[JK:_[0-9]+]]: I32)
+// CHECK-NOT:   core.wrap.mul 0 @ i32 (4I32, i
+// CHECK-DAG:   core.wrap.mul 0 @ i32 (2I32, n
+// CHECK-DAG:   [[N4:_[0-9]+]] = core.wrap.add 0 @ i32 (4I32, [[J4]]);
+// CHECK-DAG:   [[NK:_[0-9]+]] = core.wrap.add 0 @ i32 (k, [[JK]]);
+// CHECK:       head{{[[:alnum:]_]*}} ({{[[:alnum:]_]+}}, {{[[:alnum:]_]+}}, [[N4]], [[NK]]);
+
+// CHECK-LABEL: extern fun escape
+// CHECK:       con loop ({{[[:alnum:]_]+}}: I32) =
+// CHECK:       core.wrap.mul 0 @ i32 (4I32, i
+
+// CHECK-LABEL: extern fun nat_down
+// CHECK:       con head{{[[:alnum:]_]*}} ({{[[:alnum:]_]+}}: Nat, [[JN:_[0-9]+]]: Nat)
+// CHECK:       [[NN:_[0-9]+]] = core.nat.sub ([[JN]], k{{[[:alnum:]_]*}});
+// CHECK:       head{{[[:alnum:]_]*}} ({{[[:alnum:]_]+}}, [[NN]]);
+// CHECK:       [[IN:_[0-9]+]] = core.nat.mul
+// CHECK:       head{{[[:alnum:]_]*}} (hi{{[[:alnum:]_]*}}, [[IN]]);

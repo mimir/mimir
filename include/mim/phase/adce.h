@@ -62,8 +62,7 @@ private:
 
     Analysis analysis_;
     LamMap<Sieve> lam2sieve_;
-    Lam2Lam lam_old2new_;
-    Lam2Lam lam_new2old_;
+    LamBiMap lam_old2new_;
 };
 
 } // namespace mim

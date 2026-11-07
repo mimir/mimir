@@ -5,6 +5,7 @@
 
 #include "mim/plug/core/phase/legalize_idx.h"
 #include "mim/plug/core/phase/lower_variant.h"
+#include "mim/plug/core/phase/osr.h"
 
 using namespace mim;
 using namespace mim::plug;
@@ -12,6 +13,7 @@ using namespace mim::plug;
 static void reg_phases(Flags2Phases& phases) {
     Phase::hook<core::legalize_idx, core::phase::LegalizeIdx>(phases);
     Phase::hook<core::lower_variant, core::phase::LowerVariant>(phases);
+    Phase::hook<core::osr, core::phase::OSR>(phases);
 }
 
 MIM_PLUGIN_ENTRY(core) {

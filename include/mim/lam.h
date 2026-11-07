@@ -204,12 +204,13 @@ private:
 };
 
 /// @name Lam
-/// GIDSet / GIDMap keyed by Lam::gid of `Lam*`.
+/// GIDSet / GIDMap / GIDBiMap keyed by Lam::gid of `Lam*`.
 ///@{
 template<class To>
-using LamMap  = GIDMap<Lam*, To>;
-using LamSet  = GIDSet<Lam*>;
-using Lam2Lam = LamMap<Lam*>;
+using LamMap   = GIDMap<Lam*, To>;
+using LamSet   = GIDSet<Lam*>;
+using Lam2Lam  = LamMap<Lam*>;
+using LamBiMap = GIDBiMap<Lam*, Lam*>;
 ///@}
 
 class App : public Def, public Setters<App> {

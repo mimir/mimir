@@ -624,7 +624,7 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
             // The callee may fold to a rebuilt lam in the new world only,
             // e.g. a branch `(f, t)#cond` whose cond becomes constant after GVN merged vars.
             if (auto new_lam = rewrite(old_app->callee())->isa_mut<Lam>())
-                if (auto ol = fe::lookup(lam_new2old_, new_lam)) old_lam = ol;
+                if (auto ol = fe::lookup(lam_old2new_.right(), new_lam)) old_lam = ol;
         }
 
         if (old_lam) {
@@ -677,7 +677,7 @@ const Def* SEO::var_of(Lam* old_lam) {
 
 Lam* SEO::build_lam(Lam* old_lam) {
     assert(!old_lam->is_dependent() && "apply_known pins a dependent signature to \u22a4");
-    if (auto memo = fe::lookup(lam_old2new_, old_lam)) return memo;
+    if (auto memo = fe::lookup(lam_old2new_.left(), old_lam)) return memo;
 
     log().d("build new lam for {}", old_lam);
     invalidate();
@@ -695,9 +695,8 @@ Lam* SEO::build_lam(Lam* old_lam) {
     for (size_t i = 0, e = sig.phis.size(); i != e; ++i)
         if (sig.sieve.cat(i) != Sieve::Gone) new_doms.emplace_back(rewrite(sig.phis[i].phi->type()));
 
-    auto new_lam          = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
-    lam_old2new_[old_lam] = new_lam;
-    lam_new2old_[new_lam] = old_lam;
+    auto new_lam = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg_key());
+    lam_old2new_.insert(old_lam, new_lam);
 
     // Map all *kept* vars/phis before rewriting any propagated value below: that rewrite may recursively
     // re-enter old_lam and must be able to resolve them - see var_of().
