@@ -215,6 +215,14 @@ protected:
         return touch(), true;
     }
 
+    /// Forgets all of lattice(), so that the next round starts from scratch as a full one.
+    /// Call it from reset() - i.e. between two rounds.
+    void restart() {
+        lattice_.clear();
+        dirty_.clear();
+        nonlocal_ = true;
+    }
+
     /// Writes `concr ↦ abstr` into lattice() and map().
     /// invalidate()s - and thereby triggers another fixed-point round - iff this changes observable information:
     /// an existing entry was overwritten, or a fresh fact other than ⊤ was inserted.

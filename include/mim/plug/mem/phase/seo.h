@@ -91,6 +91,8 @@ private:
         const Steps* steps(const App* site) const { return fe::lookup(app2steps_, site); }
         const Muls* muls(Lam* lam) const { return fe::lookup(lam2muls_, lam); }
         bool is_iv(const Def* var) const { return is_top(var) && stepped_.contains(var); }
+        /// The virtual slots that shadow @p sloxy's value times a constant.
+        const DefVec* mulxies(const Def* sloxy) const { return fe::lookup(sloxy2mulxies_, sloxy); }
 
     private:
         // SCCP
@@ -124,6 +126,11 @@ private:
 
         // OSR
         void record_mul(const Def* x, const Def* c);
+        /// `load(S) * c` reads the virtual slot that shadows `S * c` if @p c's abstract value stays fixed while `S`
+        /// lives.
+        const Def* load_mul(const App* mul, const Def* x, const Def* c);
+        /// `x * c` spelled via @p mulxy's phis, if @p x is affine in its sloxy's phis.
+        const Def* mul_of(const Proxy* mulxy, const Def* x);
         const Def* sloxy2val(const Def* sloxy) { return lam2sloxy2val(curr_mut<Lam>(), sloxy); }
         const Def* sloxy2val(const Def* sloxy, const Def* val) { return lam2sloxy2val_[curr_mut<Lam>()][sloxy] = val; }
         const Def* rewrite_imm_App(const App*) final;
@@ -141,6 +148,7 @@ private:
         DefMap<Steps> app2steps_;
         DefSet stepped_;
         LamMap<Muls> lam2muls_;
+        DefSet used_mulxies_;
 
         // global (kept between iterations)
         DefSet slots_;                 // actually slot ptrs
@@ -150,6 +158,11 @@ private:
         LamMap<Vars> lam2live_;        // slot Var%s a Lam may access; only grows
         LamSet unknowns_;              // Lam%s reached as a *value*; their signature must stay untouched
         LamMap<MutSet> lam2callers_;   // all muts that apply a Lam; tainted when the Lam's abstract vars change
+
+        // kept across restarts
+        DefMap<DefVec> sloxy2mulxies_; // a new mulxy restarts the analysis, as earlier rounds lacked its phis
+        DefSet dead_mulxies_;          // never re-added, so restarts cannot oscillate
+        bool restart_ = false;
     };
 
 public:

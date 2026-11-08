@@ -16,6 +16,7 @@ enum {
     Proxy_Bundle,   // proxy(lam, var1, var2, ..., varn) <- GVN congruence class
     Proxy_Sloxy,    // proxy(lam, ptr)                   <- slot invoked at lam where ptr is the slot cons's ptr var
     Proxy_Phi,      // proxy(lam_var, sloxy)             <- phi we need at lam for sloxy
+    Proxy_Mulxy,    // proxy(sloxy, c, i1, ..., in)      <- virtual slot that holds sloxy's element at path i times c
 };
 
 // vars are the tvars followed by the phis.
@@ -33,6 +34,17 @@ static const Proxy* isa_bundle(const Def* def, Lam* lam);
 
 void SEO::Analysis::reset() {
     Super::reset();
+    if (std::exchange(restart_, false)) {
+        log().d("restart: new mulxies");
+        slots_.clear();
+        var2slot_.clear();
+        slot2stored_.clear();
+        slot2resolved_.clear();
+        lam2live_.clear();
+        unknowns_.clear();
+        lam2callers_.clear();
+        restart();
+    }
     visited_.clear();
     lam2sloxy2val_.clear();
     first_.clear();
@@ -40,6 +52,7 @@ void SEO::Analysis::reset() {
     app2steps_.clear();
     stepped_.clear();
     lam2muls_.clear();
+    used_mulxies_.clear();
 }
 
 /*
@@ -294,19 +307,26 @@ void SEO::Analysis::resolve(const Def* sloxy, const Def* concr, const Def* abstr
 }
 
 void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
+    auto propagate = [&](const Def* sloxy) {
+        if (auto value = sloxy2val(sloxy)) {
+            auto phi = mk_phi(world(), lam, sloxy);
+            phis.emplace_back(phi);
+            abstr_args.emplace_back(value);
+            log().d("propagate phi {} for sloxy {} with value {}", phi, sloxy, value);
+        } else {
+            log().d("no value for sloxy {}", sloxy);
+        }
+    };
+
     const auto& live = lam2live_[lam];
     for (auto ptr : slots()) {
         if (!live.contains(slot_var(ptr))) {
             profile_count("seo.phis.dead");
         } else if (auto sloxy = Proxy::isa<Proxy_Sloxy>(rewrite(ptr))) {
-            if (auto value = sloxy2val(sloxy)) {
-                auto phi = mk_phi(world(), lam, sloxy);
-                phis.emplace_back(phi);
-                abstr_args.emplace_back(value);
-                log().d("propagate phi {} for sloxy {} with value {}", phi, sloxy, value);
-            } else {
-                log().d("no value for sloxy {}", sloxy);
-            }
+            propagate(sloxy);
+            if (auto mulxies = fe::lookup(sloxy2mulxies_, sloxy))
+                for (auto mulxy : *mulxies)
+                    propagate(mulxy);
         }
     }
 }
@@ -325,7 +345,10 @@ static std::optional<std::tuple<SEO::Op, const Def*, const Def*>> isa_op(const D
 }
 
 static std::array<const Def*, 2> isa_mul(const Def* def) {
-    if (auto o = isa_op(def); o && std::get<0>(*o) == SEO::Op::mul) return {std::get<1>(*o), std::get<2>(*o)};
+    if (auto o = isa_op(def)) {
+        auto [op, a, b] = *o;
+        if (op == SEO::Op::mul) return {a, b};
+    }
     return {};
 }
 
@@ -389,6 +412,73 @@ void SEO::Analysis::record_mul(const Def* x, const Def* c) {
         auto& muls = lam2muls_[lam];
         if (auto mul = Mul{x, c}; std::ranges::find(muls, mul) == muls.end()) muls.emplace_back(mul);
     }
+}
+
+static const Def* elem(const Def* agg, Defs path) {
+    auto& w = agg->world();
+    return path.empty() ? agg : w.extract(agg, w.tuple(path));
+}
+
+const Def* SEO::Analysis::mul_of(const Proxy* mulxy, const Def* x) {
+    auto sloxy = mulxy->op(0), c = mulxy->op(1);
+    auto path = mulxy->ops().subspan(2);
+    if (x->is_closed()) return mk_op(Op::mul, x, c);
+
+    auto agg = x;
+    while (auto extract = agg->isa<Extract>())
+        agg = extract->tuple();
+    auto phi = Proxy::isa<Proxy_Phi>(agg);
+    if (auto bundle = Proxy::isa<Proxy_Bundle>(agg))
+        for (auto member : bundle->ops().subspan(1))
+            if (auto p = Proxy::isa<Proxy_Phi>(member); p && p->op(1) == sloxy) phi = p;
+    if (phi && phi->op(1) == sloxy) {
+        if (elem(agg, path) != x) return nullptr;
+        auto mul_phi = world().proxy(pointee(mulxy), {phi->op(0), mulxy}, Proxy_Phi, true);
+        if (auto val = lattice(mul_phi); val && !Proxy::isa<Proxy_SCCP_Top>(val)) return val;
+        return nullptr;
+    }
+
+    // `(y op t) * c = y * c op t * c` - also for a saturating core.nat.sub, as c is no negative Nat.
+    if (auto o = isa_op(x)) {
+        auto [op, y, t] = *o;
+        if (op == Op::mul) return nullptr;
+        if (op == Op::add && y->is_closed()) std::swap(y, t);
+        auto y_mul = mul_of(mulxy, y);
+        if (!y_mul && op == Op::add) std::swap(y, t), y_mul = mul_of(mulxy, y);
+        if (y_mul) return mk_op(op, y_mul, mk_op(Op::mul, t, c));
+    }
+    return nullptr;
+}
+
+const Def* SEO::Analysis::load_mul(const App* mul, const Def* x, const Def* c) {
+    if (auto extract = x->isa<Extract>())
+        if (auto load = Axm::isa<mem::load>(extract->tuple()); load && load->projs<2>()[1] == x)
+            if (auto [sloxy, path] = sloxy_path(rewrite(load->args<2>()[1])); sloxy) {
+                // c must stay the same while the slot lives.
+                auto abstr_c = rewrite(c);
+                if (RWPhase::mentions(abstr_c, [](const Def* d) { return d->isa<Proxy>(); })
+                    || !abstr_c->in_scope(sloxy->op(0)->isa_mut()))
+                    return nullptr;
+
+                auto ptr_type = load->args<2>()[1]->type();
+                auto mulxy    = world().proxy(ptr_type, Def::cat({sloxy, abstr_c}, path), Proxy_Mulxy, true);
+                if (dead_mulxies_.contains(mulxy)) return nullptr;
+                mulxy->set(mul->dbg_key());
+                used_mulxies_.emplace(mulxy);
+                auto& mulxies = sloxy2mulxies_[sloxy];
+                if (std::ranges::find(mulxies, mulxy) == mulxies.end()) {
+                    log().d("new mulxy {}", mulxy);
+                    mulxies.emplace_back(mulxy);
+                    restart_ = true;
+                    touch();
+                }
+                if (auto prod = mul_of(mulxy, rewrite(x))) {
+                    log().d("load mul: {} → {}", mul, prod);
+                    resolve(sloxy, mul, prod);
+                    return prod;
+                }
+            }
+    return nullptr;
 }
 
 const Def* SEO::Analysis::apply_known(const App* site, Lam* known, Defs abstr_targs) {
@@ -470,6 +560,9 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 fe::assert_emplace(first_, ptr);
                 lattice(ptr, sloxy);
                 sloxy2val(sloxy, world().bot(pointee(sloxy))); // a load before any store yields undef
+                if (auto mulxies = fe::lookup(sloxy2mulxies_, sloxy))
+                    for (auto mulxy : *mulxies)
+                        sloxy2val(mulxy, world().bot(pointee(mulxy)));
                 // Treat the slot jump like an app of `ret_lam` so mem and existing phis flow across the edge.
                 // The ptr var is defined *by* the slot, so pass ⊥ (not the sloxy) as its abstract argument:
                 // this keeps the sloxy out of the abstract body, so it only survives if an unresolved
@@ -489,7 +582,17 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
                 if (auto grown = world().vars().merge(stored, non_mem_free_vars(abstr_val)); grown != stored)
                     stored = grown, touch();
                 if (!path.empty()) resolve(sloxy, ptr, abstr_ptr); // lets the rewrite recognize a promoted lea
-                sloxy2val(sloxy, path.empty() ? abstr_val : world().insert(agg, world().tuple(path), abstr_val));
+                auto old_agg = sloxy2val(sloxy);
+                auto new_agg = path.empty() ? abstr_val : world().insert(agg, world().tuple(path), abstr_val);
+                if (auto mulxies = fe::lookup(sloxy2mulxies_, sloxy))
+                    for (auto mulxy : *mulxies) {
+                        auto mulxy_path = mulxy->ops().subspan(2);
+                        auto new_elem   = elem(new_agg, mulxy_path);
+                        if (old_agg && elem(old_agg, mulxy_path) == new_elem) continue;
+                        auto prod = mul_of(mulxy->as<Proxy>(), new_elem);
+                        sloxy2val(mulxy, prod ? prod : mk_op(Op::mul, new_elem, mulxy->op(1)));
+                    }
+                sloxy2val(sloxy, new_agg);
                 log().d("store: {} ← {}", abstr_ptr, abstr_val);
                 return abstr_mem;
             }
@@ -514,7 +617,11 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
             log().d("load from unknown ptr: {}", abstr_ptr);
         }
     } else {
-        if (auto [a, b] = isa_mul(app); a) record_mul(a, b), record_mul(b, a);
+        if (auto [a, b] = isa_mul(app); a) {
+            if (auto prod = load_mul(app, a, b)) return prod;
+            if (auto prod = load_mul(app, b, a)) return prod;
+            record_mul(a, b), record_mul(b, a);
+        }
         auto abstr_callee = rewrite(app->callee());
         auto abstr_arg    = rewrite(app->arg());
         // A direct-style call's effects bypass the continuation the per-Lam store state follows.
@@ -576,6 +683,21 @@ static bool keep(Lam* lam, const Def* old_var, const Def* abstr) {
 void SEO::Analysis::finalize() {
     for (auto def : world().externals().muts())
         analyze(def);
+
+    // A mulxy no mul reads anymore - e.g. as its abstract c has changed - would only thread dead phis.
+    // A pinned slot threads no phis, so its mulxies are inert.
+    for (auto& [sloxy, mulxies] : sloxy2mulxies_) {
+        if (lattice(sloxy->op(1)) != sloxy) continue;
+        auto dead
+            = std::ranges::remove_if(mulxies, [this](const Def* mulxy) { return !used_mulxies_.contains(mulxy); });
+        for (auto mulxy : dead) {
+            log().d("dead mulxy {}", mulxy);
+            dead_mulxies_.emplace(mulxy);
+            restart_ = true;
+            touch();
+        }
+        mulxies.erase(dead.begin(), dead.end());
+    }
 }
 
 void SEO::Analysis::analyze(const Def* def) {
@@ -645,7 +767,11 @@ bool SEO::analyze() {
     if (Super::analyze()) return true;
 
     for (auto ptr : analysis_.slots())
-        if (auto sloxy = isa_promoted(ptr)) sloxies_.emplace_back(sloxy);
+        if (auto sloxy = isa_promoted(ptr)) {
+            sloxies_.emplace_back(sloxy);
+            if (auto mulxies = analysis_.mulxies(sloxy))
+                sloxies_.insert(sloxies_.end(), mulxies->begin(), mulxies->end());
+        }
     return false;
 }
 
@@ -719,6 +845,7 @@ const Def* SEO::rewrite_imm_App(const App* old_app) {
         }
     } else {
         if (auto [a, b] = isa_mul(old_app); a) {
+            if (auto prod = abstracted(old_app)) return map(old_app, rewrite(prod));
             if (auto j = reduced(a, b)) return j;
             if (auto j = reduced(b, a)) return j;
         }
