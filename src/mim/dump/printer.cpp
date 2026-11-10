@@ -152,7 +152,7 @@ void Namer::unname(const Var* var) {
 
 std::string Namer::name(const Def* def) {
     if (auto ex = def->isa<Extract>())
-        if (auto i = fe::lookup(ret_projs_, ex->tuple()); i && Lit::isa(ex->index()) == *i) return "return"s;
+        if (rets_.contains(ex->tuple()) && Lit::isa(ex->index()) == 1) return "return"s;
     if (plain_) return pick(def);
     if (auto sym = def->sym(); sym && sym != '_' && PlainNames::claim(def->world().driver(), sym, def->gid()))
         return sym.str();
@@ -175,12 +175,8 @@ std::string Printer::id(const Def* def) {
     return name(def);
 }
 
-const Generic* Printer::isa_inst(const Def* def) const {
-    if (auto nom = def->isa<Nom>())
-        if (auto generic = fe::lookup(plan_.generics, nom->key());
-            generic && nom != generic->nom && nom->args().size() == generic->implicit.size())
-            return generic;
-    return nullptr;
+const std::pair<Sym, Args>* Printer::isa_inst(const Def* def) const {
+    return def->isa<Nom>() ? fe::lookup(plan_.insts, def) : nullptr;
 }
 
 bool Printer::has_decl(const Def* def) const {
@@ -359,6 +355,13 @@ void Printer::lam_codom(std::ostream& os, Lam* lam, LamKind kind) {
         std::print(os, ": {}", op(lam->type()->codom()));
 }
 
+void Printer::rule_ptrn(std::ostream& os, Rule* rule) {
+    auto dom = rule->dom();
+    auto num = num_binders(dom);
+    auto var = rule->has_var();
+    bndr(os, Delim::ptrn(), var, dom, num, num, num != 0 && split(var, dom, num), false);
+}
+
 void Printer::lam_header(std::ostream& os, fe::View<Lam*> chain, LamKind kind) {
     auto _    = fe::Restore(in_header_, true);
     auto last = chain.back();
@@ -461,10 +464,15 @@ void Printer::shape(std::ostream& os, const Seq* seq, const Def* var) {
     }
 }
 
-void Printer::print_inst(std::ostream& os, Op d, const Generic& generic) {
-    os << namer_.annex(generic.sym);
-    for (size_t i = 0; auto arg : d->as<Nom>()->args())
-        std::print(os, "{}{}", generic.implicit[i++] ? " @ " : " ", d.r(arg, Prec::App));
+void Printer::print_inst(std::ostream& os, Op d, const std::pair<Sym, Args>& inst) {
+    os << namer_.annex(inst.first);
+    for (const auto& [arg, implicit] : inst.second) {
+        os << (implicit ? " @ " : " ");
+        if (arg.size() == 1)
+            os << d.r(arg.front(), Prec::App);
+        else
+            std::print(os, "({})", ops(arg));
+    }
 }
 
 void Printer::print_lit(std::ostream& os, Op d, const Lit* lit) {

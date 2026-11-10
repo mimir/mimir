@@ -74,23 +74,6 @@ TEST_CASE("Nom: instances of a generic nom") {
     CHECK(!Check::alpha(w.nom(1, w.type_nat()), w.nom(1, w.type_bool())));
 }
 
-TEST_CASE("Nom: an instance carries its arguments") {
-    Driver driver;
-    World& w = driver.world();
-
-    // Π T: *. P T - where P ignores T.
-    auto pi = w.mut_pi(w.type<1>())->set_dom(w.type<0>());
-    pi->set_codom(w.nom(1, w.type_nat(), Defs{pi->var()}));
-
-    auto nat = pi->reduce(w.type_nat())->as<Nom>();
-    CHECK(nat->op() == w.type_nat());
-    CHECK(nat->args().size() == 1);
-    CHECK(nat->args().front() == w.type_nat());
-    CHECK(nat == w.nom(1, w.type_nat(), Defs{w.type_nat()}));
-    CHECK(nat != pi->reduce(w.type_bool()));
-    CHECK(nat != w.nom(1, w.type_nat()));
-}
-
 TEST_CASE("NomErasure: nominals erase to what they wrap") {
     Driver driver;
     World& w = driver.world();

@@ -1,17 +1,6 @@
 #include "dumper.h"
 
-using namespace std::literals;
-
 namespace mim::dump {
-
-namespace {
-
-std::string_view external(const Def* def) {
-    if (def->is_external()) return "extern "sv;
-    return ""sv;
-}
-
-} // namespace
 
 void Dumper::dump_annexes(std::string self, std::span<const DumpAnnex> annexes) {
     p_.namer().self(std::move(self));
@@ -51,12 +40,7 @@ void Dumper::dump_annexes(std::string self, std::span<const DumpAnnex> annexes) 
             emit_nom("anx nom", name, nom);
             continue;
         }
-        auto axm = def->as<Axm>();
-        std::print(os_, "{}axm {}: {}", p_.tab(), name, p_.op(axm->type()));
-        auto [curry, trip] = Axm::infer_curry_and_trip(axm->type());
-        if (axm->curry() != curry || axm->trip() != trip) std::print(os_, ", {}", axm->curry());
-        if (axm->trip() != trip) std::print(os_, ", {}", axm->trip());
-        std::println(os_, ";");
+        emit_axm(name, def->as<Axm>());
     }
     if (!curr_mod.empty()) std::println(os_, "{}end", --p_.tab());
     p_.namer().mod({});
@@ -138,9 +122,10 @@ void Dumper::note_use(const Def* op, const Match* match) {
 }
 
 void Dumper::note_vars(const Def* def) {
-    if (p_.isa_inst(def)) {
-        for (auto arg : def->as<Nom>()->args())
-            if (arg->isa<Var>()) plan().whole_vars.emplace(arg);
+    if (auto inst = p_.isa_inst(def)) {
+        for (const auto& [arg, _] : inst->second)
+            for (auto op : arg)
+                if (op->isa<Var>()) plan().whole_vars.emplace(op);
         return;
     }
     auto ex = def->isa<Extract>();
@@ -315,6 +300,14 @@ void Dumper::emit_item(const Def* def) {
     emit_let(def);
 }
 
+void Dumper::emit_axm(std::string_view name, const Axm* axm) {
+    std::print(os_, "{}axm {}: {}", p_.tab(), name, p_.op(axm->type()));
+    auto [curry, trip] = Axm::infer_curry_and_trip(axm->type());
+    if (axm->curry() != curry || axm->trip() != trip) std::print(os_, ", {}", axm->curry());
+    if (axm->trip() != trip) std::print(os_, ", {}", axm->trip());
+    std::println(os_, ";");
+}
+
 void Dumper::emit_nom(std::string_view kw, std::string_view name, const Nom* nom) {
     std::print(os_, "{}{} {} = ", p_.tab(), kw, name);
     emit_rhs(p_.op(nom->op()));
@@ -393,11 +386,8 @@ void Dumper::emit_decl(Def* mut) {
 }
 
 void Dumper::emit_rule(Rule* rule) {
-    auto dom = rule->dom();
-    auto num = num_binders(dom);
     std::print(os_, "{}rule {} ", p_.tab(), p_.id(rule));
-    auto var = rule->has_var();
-    p_.bndr(os_, Delim::ptrn(), var, dom, num, num, num != 0 && p_.split(var, dom, num), false);
+    p_.rule_ptrn(os_, rule);
     std::print(os_, ": {}", p_.full(rule->lhs()));
     if (rule->guard() != rule->world().lit_tt()) std::print(os_, " when {}", p_.full(rule->guard()));
     std::println(os_, " => {};", p_.full(rule->rhs()));
@@ -413,14 +403,8 @@ void Dumper::emit_lam(Lam* lam) {
     auto kind  = lam_kind(last, p_.isa_fun(last) && !shadows_ret(last));
 
     // A `fun` binds its `ret` continuation as `return`, so that is the name its Var has to print with.
-    if (kind == LamKind::Fun) {
-        if (auto var = last->has_var()) {
-            if (auto num = num_binders(last->type()->dom()); num == 1)
-                p_.namer().bind(var, "return");
-            else
-                p_.namer().ret(var, num - 1);
-        }
-    }
+    if (kind == LamKind::Fun)
+        if (auto var = last->has_var()) p_.namer().ret(var);
     // A Lam without a body forward-declares what a native translation unit provides - and only an `extern`
     // may go without one.
     if (!last->is_set()) return emit_bodyless(lam, last, kind);
@@ -434,7 +418,7 @@ void Dumper::emit_lam(Lam* lam) {
         p_.namer().bind(chain[i], std::format("({})", ref));
     }
 
-    std::print(os_, "{}{}{} {}", p_.tab(), external(lam), decl_kw(kind), p_.id(lam));
+    std::print(os_, "{}{}{} {}", p_.tab(), lam->is_external() ? "extern " : "", decl_kw(kind), p_.id(lam));
     p_.lam_header(os_, chain, kind);
     os_ << " =\n";
 

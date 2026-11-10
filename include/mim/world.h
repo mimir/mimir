@@ -641,8 +641,7 @@ public:
 
     /// @name Nominal Newtypes
     ///@{
-    /// Make @p type Nom%inal under @p key; @p args are the parameters of a generic Nom.
-    const Nom* nom(flags_t key, const Def* type, Defs args = {});
+    const Nom* nom(flags_t key, const Def* type);      ///< Make @p type Nom%inal under @p key.
     const Def* name(const Def* nom, const Def* struc); ///< Name a @p struc%tural to make it @p nom%inal.
     const Def* struc(const Def* nom);                  ///< Get the structural part of a @p nom%inal.
     ///@}

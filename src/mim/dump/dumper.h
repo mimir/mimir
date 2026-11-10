@@ -29,7 +29,7 @@ public:
 
     /// Only @p live Def%s - what the dumped roots reach - count as existing.
     void live(const DefSet& live) { plan().live = &live; }
-    void generics(Generics generics) { plan().generics = std::move(generics); }
+    void insts(Insts insts) { plan().insts = std::move(insts); }
     /// Switches to plain names; @p reserved are names the dump refers to verbatim and hence must not pick.
     void plain(std::span<const std::string> reserved) { p_.namer().plain(reserved); }
 
@@ -79,9 +79,10 @@ private:
     /// The Def%s the dump prints @p def with: a type nobody prints must not drag in a `let` that nothing refers to.
     /// A Lam spells out its Pi, so only the components of that one are referenced.
     void printed_deps(const Def* def, auto f) const {
-        if (p_.isa_inst(def)) {
-            for (auto arg : def->as<Nom>()->args())
-                f(arg);
+        if (auto inst = p_.isa_inst(def)) {
+            for (const auto& [arg, _] : inst->second)
+                for (auto op : arg)
+                    f(op);
             return;
         }
         if (auto lam = def->isa_mut<Lam>()) {
@@ -129,6 +130,7 @@ private:
     ///@{
     void emit(Def* key);
     void emit_item(const Def* def);
+    void emit_axm(std::string_view name, const Axm* axm);
     void emit_nom(std::string_view kw, std::string_view name, const Nom* nom);
     /// The right-hand side of a declaration; only a bare variant may refer back to the name it declares.
     void emit_rhs(Op rhs);

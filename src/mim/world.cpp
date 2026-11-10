@@ -1124,10 +1124,9 @@ const Def* World::unwrap(const Def* op) {
     op->blame("operand of a singleton elimination is of type `{}` but must be of singleton type", type_of(op)).bail();
 }
 
-const Nom* World::nom(flags_t key, const Def* type, Defs args) {
-    type     = type->zonk();
-    auto ops = DefVec(args.size() + 1, [&](size_t i) { return i == 0 ? type : args[i - 1]->zonk(); });
-    if (auto t = type->unfold_type()) return unify<Nom>(t, key, ops);
+const Nom* World::nom(flags_t key, const Def* type) {
+    type = type->zonk();
+    if (auto t = type->unfold_type()) return unify<Nom>(t, type, key);
     type->blame("`Level` cannot be wrapped in a nominal newtype").bail();
 }
 

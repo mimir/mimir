@@ -32,15 +32,12 @@ fe::Vector<Lam*> curry_chain(Lam*);
 /// need not exist as Def%s.
 nat_t num_binders(const Def* type);
 
-/// A generic `anx nom` from elsewhere.
-struct Generic {
-    Sym sym;                   ///< The qualified name of its annex Lam.
-    const Def* nom;            ///< The Nom that Lam returns; its Nom::args are the Lam%s' own Var%s.
-    fe::Vector<bool> implicit; ///< Whether each curried parameter is implicit.
-};
+/// Each curried argument of an application and whether its Pi is implicit.
+using Args = fe::Vector<std::pair<DefVec, bool>>;
 
-/// Keyed by Nom::key, which an instance shares with its generic Nom.
-using Generics = ankerl::unordered_dense::map<flags_t, Generic>;
+/// An instance of a generic `anx nom` from elsewhere: its annex's qualified name and arguments.
+/// Each curried argument holds either the whole argument or the components a re-read dump tuples up again.
+using Insts = DefMap<std::pair<Sym, Args>>;
 
 /// The surface syntax a Lam prints with; a `fun` is sugar for a Lam of the shape `[<params>, Cn <ret>]`.
 enum class LamKind { Lam, Con, Fun };
@@ -75,9 +72,9 @@ public:
     const std::string& bind(const Def* def, std::string name) {
         return names_.emplace(def, std::move(name)).first->second;
     }
-    /// The @p i-th projection of @p var is the `ret` continuation a `fun` calls `return`, whatever its Def::sym.
-    /// Keyed by Var and index, because the projection itself need not exist as a Def while the World is frozen.
-    void ret(const Def* var, nat_t i) { ret_projs_.emplace(var, i); }
+    /// The last component of @p var - a `fun`'s - is the `ret` continuation it calls `return`, whatever its Def::sym.
+    /// Keyed by Var, because the projection itself need not exist as a Def while the World is frozen.
+    void ret(const Def* var) { rets_.emplace(var); }
 
     /// Def::unique_name - or a plain name while dumping a World or formatting a diagnostic, where a gid is noise.
     std::string name(const Def*);
@@ -92,7 +89,7 @@ private:
     std::string pick(const Def*);
 
     DefMap<std::string> names_;
-    DefMap<nat_t> ret_projs_;
+    DefSet rets_;
     /// Distinct identifiers picked instead of Def::unique_name, so a re-read dump keeps them as its Def::sym%s.
     ankerl::unordered_dense::set<std::string> taken_;
     ankerl::unordered_dense::map<std::string, size_t> counters_; ///< Next numbered variant to try per base name.
@@ -110,7 +107,7 @@ struct Plan {
     /// What the dumped roots reach; `nullptr` dumps whatever exists.
     /// A dead projection left behind by normalization must not bind a name a re-read dump would not bind.
     const DefSet* live = nullptr;
-    Generics generics;
+    Insts insts;
 };
 
 class Printer;
@@ -187,8 +184,7 @@ public:
 
     /// @name Queries
     ///@{
-    /// The Generic the Def instantiates, if it is a Nom that does.
-    const Generic* isa_inst(const Def*) const;
+    const std::pair<Sym, Args>* isa_inst(const Def*) const;
     /// Does the Def print by name, bound by a declaration of its own - be it a decl or a `nom`?
     bool has_decl(const Def*) const;
     /// Does the Def always print Full - instead of by name?
@@ -200,11 +196,7 @@ public:
 
     /// @name Patterns
     ///@{
-    /// Whether @p def of @p type comes apart into @p n components; by_name agrees with that from then on.
-    bool split(const Def* def, const Def* type, size_t n);
-    /// A binder within @p delim: `(a: A, b: B) as x` if it comes apart into @p parts, `(x: T)` if not.
-    /// @p num is how many components it has; @p limit how many of them to print - a returning Lam hides its last.
-    void bndr(std::ostream&, Delim, const Def* def, const Def* type, size_t num, size_t limit, bool parts, bool alias);
+    void rule_ptrn(std::ostream&, Rule*);
     /// The parameter lists of a curried @p chain and its result type.
     void lam_header(std::ostream&, fe::View<Lam*> chain, LamKind);
     /// The names of the constructors live in the frontend, so each case prints under its index.
@@ -218,7 +210,7 @@ private:
     bool needs_parens(Op) const;
     void print(std::ostream&, Op);
     void print_full(std::ostream&, Op);
-    void print_inst(std::ostream&, Op, const Generic&);
+    void print_inst(std::ostream&, Op, const std::pair<Sym, Args>&);
     void print_lit(std::ostream&, Op, const Lit*);
     void print_insert(std::ostream&, Op, const Insert*);
     void print_pi(std::ostream&, Op, const Pi*);
@@ -239,7 +231,12 @@ private:
     bool by_name(const Extract*) const;
     bool destructible(const Def* def, const Def* type, size_t n) const;
     void alias_sigma(const Def* type, const Def* def);
+    /// Whether @p def of @p type comes apart into @p n components; by_name agrees with that from then on.
+    bool split(const Def* def, const Def* type, size_t n);
     void whole(std::ostream&, const Def* def, const Def* type);
+    /// A binder within @p delim: `(a: A, b: B) as x` if it comes apart into @p parts, `(x: T)` if not.
+    /// @p num is how many components it has; @p limit how many of them to print - a returning Lam hides its last.
+    void bndr(std::ostream&, Delim, const Def* def, const Def* type, size_t num, size_t limit, bool parts, bool alias);
     void ptrn(std::ostream&, const Def* def, const Def* type, bool brckt = false, const Def* binder = nullptr);
     void ptrns(std::ostream&, const Def* def, const Def* type, size_t n, size_t limit, bool brckt);
     void lam_ptrn(std::ostream&, Lam*, LamKind, bool last, bool alias);

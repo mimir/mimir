@@ -806,7 +806,7 @@ Ptr<RecDecl> Parser::parse_nom_decl(Tracker track, Mods mods) {
         return ptr<NomDecl>(track, mods, dbg, body);
     }
 
-    // `nom I (dom)+ = e` desugars to `lam I (dom)+ = nom I = e; I`; within `e`, `I` names the type constructor.
+    // `nom I (dom)+ = e` is sugar for `lam I (dom)+ = nom I = e; I`; within `e`, `I` names the type constructor.
     Ptrs<LamDecl::Dom> doms;
     do {
         auto dom_track = tracker();

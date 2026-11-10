@@ -8,6 +8,7 @@
 #include "mim/ast/lexer.h"
 
 #include "dumper.h"
+#include "inst.h"
 
 using namespace std::literals;
 
@@ -39,38 +40,19 @@ dump::Srcs dump_imports(std::ostream& os, const Driver& driver, fe::Vector<std::
     return srcs;
 }
 
-/// The generic `anx nom`s from elsewhere - the Nom%s the annex Lam%s of an `import` return.
-/// @p self is the `<world name>.` prefix of the annexes the dump declares itself.
-dump::Generics generics(World& world, std::string_view self) {
-    auto res = dump::Generics();
-    auto lib = world.driver().library();
-    for (auto w : {&world, lib == &world ? nullptr : lib})
-        if (w)
-            for (auto [sym, def] : w->annexes().entries())
-                if (auto lam = def->isa_mut<Lam>(); lam && !sym.view().starts_with(self)) {
-                    auto chain = dump::curry_chain(lam);
-                    if (auto body = chain.back()->body())
-                        if (auto nom = body->isa<Nom>()) {
-                            auto implicit = fe::Vector<bool>();
-                            for (auto l : chain)
-                                implicit.emplace_back(l->type()->is_implicit());
-                            res.emplace(nom->key(), dump::Generic{sym, nom, std::move(implicit)});
-                        }
-                }
-    return res;
-}
-
 /// What the externals reach.
 struct Reached {
     DefSet live;
     fe::Vector<dump::DumpAnnex> annexes; ///< The annexes of the dumped file itself, in declaration order.
+    dump::Insts insts;
 };
 
 /// An `import` declares its own annexes; those of the dumped file itself only exist if the dump declares them.
 /// Only a loaded plugin registers its annexes, so find them by what the externals reach.
 Reached reach(World& world, std::string_view self) {
-    auto res  = Reached();
-    auto todo = DefVec(world.externals().muts().begin(), world.externals().muts().end());
+    auto generics = dump::Generics(world, self);
+    auto res      = Reached();
+    auto todo     = DefVec(world.externals().muts().begin(), world.externals().muts().end());
     res.live.insert(todo.begin(), todo.end());
     while (!todo.empty()) {
         auto def = todo.back();
@@ -82,6 +64,8 @@ Reached reach(World& world, std::string_view self) {
             auto mod  = dot == std::string_view::npos ? std::string_view() : name.substr(0, dot);
             res.annexes.emplace_back(std::string(mod), std::string(mod.empty() ? name : name.substr(dot + 1)), def);
         }
+        if (auto nom = def->isa<Nom>())
+            if (auto inst = generics.isa_inst(nom)) res.insts.emplace(nom, std::move(*inst));
         for (auto dep : def->deps())
             if (dep && res.live.emplace(dep).second) todo.emplace_back(dep);
     }
@@ -138,15 +122,15 @@ void World::dump(std::ostream& os) {
     for (auto mut : externals().muts())
         reserved.emplace_back(mut->sym().str());
 
-    auto self            = file_stem(*this) + ".";
-    auto [live, annexes] = reach(*this, self);
+    auto self                   = file_stem(*this) + ".";
+    auto [live, annexes, insts] = reach(*this, self);
     for (const auto& annex : annexes)
         reserved.emplace_back(annex.mod.empty() ? annex.name : annex.mod);
 
     auto dumper = dump::Dumper(os, Def::Dump::All, flags().mim_typed_let, std::move(srcs));
     dumper.plain(reserved);
     dumper.live(live);
-    dumper.generics(generics(*this, self));
+    dumper.insts(std::move(insts));
     if (!annexes.empty()) dumper.dump_annexes(std::move(self), annexes);
     dumper.dump(externals().mutate());
 
