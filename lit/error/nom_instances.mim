@@ -1,0 +1,11 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+// Two instances of one `nom` print alike, so a note spells out what each one wraps.
+plugin core;
+
+nom Box (T: *) = [x: T, y: T];
+
+lam bad (b: Box Nat): Box Bool = b;
+
+// CHECK: error: function body is not assignable to its declared codomain
+// CHECK: note: these are distinct instances of one `nom`: the former wraps `«2; Bool»`, the latter `«2; Nat»`

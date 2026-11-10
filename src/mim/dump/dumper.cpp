@@ -255,7 +255,8 @@ void Dumper::bucket() {
         if (def->isa<Nom>()) {
             while (key && inlines(key))
                 key = owner((*nest_)[key]->inest());
-            // TODO A Nom over a Var in its own Lam's signature has no valid place: `lam k (n: Nat, x: V n)`.
+            // TODO Without its generic `nom`, an instance over a Lam's Var has no valid place in that Lam's signature.
+            // See lit/nom_generic_roundtrip.mim.
         }
         // A binder that prints inline has no block of its own, so what belongs into it is inlined as well.
         if (key && inlines(key) && !(mut && is_recursive(mut))) {
@@ -409,18 +410,19 @@ void Dumper::emit_lam(Lam* lam) {
     // may go without one.
     if (!last->is_set()) return emit_bodyless(lam, last, kind);
 
+    auto name = p_.id(lam);
+    std::print(os_, "{}{}{} {}", p_.tab(), lam->is_external() ? "extern " : "", decl_kw(kind), name);
+    p_.lam_header(os_, chain, kind);
+    os_ << " =\n";
+
     // An inner Lam of the chain has no name; its outer Lam%s applied to their own Var%s reduce to it.
-    auto ref = p_.id(lam);
+    auto ref = name;
     for (size_t i = 1; i != chain.size(); ++i) {
         auto var = chain[i - 1]->has_var();
         if (!var) break;
         ref += std::format(" {}{}", chain[i - 1]->type()->is_implicit() ? "@" : "", p_.name(var));
         p_.namer().bind(chain[i], std::format("({})", ref));
     }
-
-    std::print(os_, "{}{}{} {}", p_.tab(), lam->is_external() ? "extern " : "", decl_kw(kind), p_.id(lam));
-    p_.lam_header(os_, chain, kind);
-    os_ << " =\n";
 
     ++p_.tab();
     rets_.emplace_back(kind == LamKind::Fun ? last->has_var() : nullptr);

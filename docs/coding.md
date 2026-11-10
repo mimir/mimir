@@ -116,6 +116,12 @@ cd lit
 
 `test-all` includes them unless `MIM_TEST_ROUNDTRIP=OFF`.
 
+An input opts out with `// UNSUPPORTED: roundtrip`; `// XFAIL: roundtrip-mim` (or `roundtrip-ast`) marks one whose dump is known not to round-trip.
+
+@note Known gap: `mim -o` only prints an instance of a generic `nom` as `I args` if `I` is an annex of a loaded plugin.
+Any other generic `nom` - one of the dumped file itself or of a plain `import` - no longer exists when the dump runs, so each instance is declared as a `nom` of its own.
+Such a dump does not re-read if the instance depends on a function's parameter and occurs in that function's signature; see `lit/nom_generic_roundtrip.mim`.
+
 ### Unit Tests
 
 `test/` holds the [doctest](https://github.com/doctest/doctest) unit tests, built as `mim-test` and `mim-regex-test`.
