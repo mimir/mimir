@@ -46,8 +46,7 @@ namespace mim::plug::mem::phase {
 /// A var that has reached ⊤ for propagation but still awaits GVN bundling is marked with a dedicated Proxy sentinel.
 class SEO : public RWPhase {
 public:
-    /// The subtag core.nat and core.wrap share.
-    enum class Op : sub_t { add, sub, mul };
+    enum class Op { add, sub, mul };
 
     /// `i ↦ i op t` at a call site; `t == nullptr` means `i ↦ i`.
     struct Step {

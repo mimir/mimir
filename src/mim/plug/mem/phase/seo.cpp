@@ -1,5 +1,7 @@
 #include "mim/plug/mem/phase/seo.h"
 
+#include <utility>
+
 #include <mim/lam.h>
 
 #include "mim/plug/mem/mem.h"
@@ -333,28 +335,50 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
 
 // OSR
 
-static_assert(Annex::flags2sub(flags_t(core::nat::mul)) == sub_t(SEO::Op::mul));
-static_assert(Annex::flags2sub(flags_t(core::wrap::mul)) == sub_t(SEO::Op::mul));
-
-/// Matches `x op y` for core.nat and core.wrap.
-static std::optional<std::tuple<SEO::Op, const Def*, const Def*>> isa_op(const Def* def) {
-    auto match = [](auto app) { return std::tuple_cat(std::tuple{SEO::Op(app.sub())}, app->template args<2>()); };
-    if (auto app = Axm::isa<core::nat>(def); app && app.sub() <= sub_t(SEO::Op::mul)) return match(app);
-    if (auto app = Axm::isa<core::wrap>(def); app && app.sub() <= sub_t(SEO::Op::mul)) return match(app);
-    return {};
+/// Matches `x op y` for core.nat and core.wrap; yields null operands if @p def is neither.
+static std::tuple<SEO::Op, const Def*, const Def*> isa_op(const Def* def) {
+    if (auto wrap = Axm::isa<core::wrap>(def)) {
+        auto [a, b] = wrap->args<2>();
+        switch (wrap.id()) {
+            case core::wrap::add: return std::tuple{SEO::Op::add, a, b};
+            case core::wrap::sub: return std::tuple{SEO::Op::sub, a, b};
+            case core::wrap::mul: return std::tuple{SEO::Op::mul, a, b};
+            default: break;
+        }
+    } else if (auto nat = Axm::isa<core::nat>(def)) {
+        auto [a, b] = nat->args<2>();
+        switch (nat.id()) {
+            case core::nat::add: return std::tuple{SEO::Op::add, a, b};
+            case core::nat::sub: return std::tuple{SEO::Op::sub, a, b};
+            case core::nat::mul: return std::tuple{SEO::Op::mul, a, b};
+            default: break;
+        }
+    }
+    return {SEO::Op::add, nullptr, nullptr};
 }
 
 static std::array<const Def*, 2> isa_mul(const Def* def) {
-    if (auto o = isa_op(def)) {
-        auto [op, a, b] = *o;
+    if (auto [op, a, b] = isa_op(def); a) {
         if (op == SEO::Op::mul) return {a, b};
     }
     return {};
 }
 
 static const Def* mk_op(SEO::Op o, const Def* a, const Def* b) {
-    if (a->type()->isa<Nat>()) return core::op(core::nat(Annex::base<core::nat>() | flags_t(o)), a, b);
-    return core::op(core::wrap(Annex::base<core::wrap>() | flags_t(o)), a, b);
+    if (a->type()->isa<Nat>()) {
+        switch (o) {
+            case SEO::Op::add: return core::op(core::nat::add, a, b);
+            case SEO::Op::sub: return core::op(core::nat::sub, a, b);
+            case SEO::Op::mul: return core::op(core::nat::mul, a, b);
+        }
+    } else {
+        switch (o) {
+            case SEO::Op::add: return core::op(core::wrap::add, a, b);
+            case SEO::Op::sub: return core::op(core::wrap::sub, a, b);
+            case SEO::Op::mul: return core::op(core::wrap::mul, a, b);
+        }
+    }
+    std::unreachable();
 }
 
 static bool depends(Lam* lam, const Def* def) {
@@ -381,8 +405,7 @@ template<class F>
 static bool is_affine(Lam* lam, const Def* x, F ok) {
     if (auto i = isa_tvar(lam, x)) return ok(*i);
     if (!depends(lam, x)) return true;
-    if (auto o = isa_op(x)) {
-        auto [op, a, b] = *o;
+    if (auto [op, a, b] = isa_op(x); a) {
         if (op == SEO::Op::mul)
             return (!depends(lam, a) && is_affine(lam, b, ok)) || (!depends(lam, b) && is_affine(lam, a, ok));
         if (op == SEO::Op::sub && x->type()->isa<Nat>()) return false; // saturates
@@ -398,8 +421,7 @@ static bool is_invariant(Lam* lam, const Def* t) {
 
 static std::optional<SEO::Step> isa_step(Lam* lam, const Def* var, const Def* abstr) {
     if (abstr == var) return SEO::Step{SEO::Op::add, nullptr};
-    if (auto o = isa_op(abstr)) {
-        auto [op, x, y] = *o;
+    if (auto [op, x, y] = isa_op(abstr); x) {
         if (op == SEO::Op::mul) return {};
         if (x == var && is_invariant(lam, y)) return SEO::Step{op, y};
         if (op == SEO::Op::add && y == var && is_invariant(lam, x)) return SEO::Step{op, x};
@@ -439,8 +461,7 @@ const Def* SEO::Analysis::mul_of(const Proxy* mulxy, const Def* x) {
     }
 
     // `(y op t) * c = y * c op t * c` - also for a saturating core.nat.sub, as c is no negative Nat.
-    if (auto o = isa_op(x)) {
-        auto [op, y, t] = *o;
+    if (auto [op, y, t] = isa_op(x); y) {
         if (op == Op::mul) return nullptr;
         if (op == Op::add && y->is_closed()) std::swap(y, t);
         auto y_mul = mul_of(mulxy, y);
@@ -1020,7 +1041,7 @@ std::optional<SEO::Step> SEO::delta(Lam* lam, const Def* x, const Steps& steps) 
     }
     if (!depends(lam, x)) return Step{Op::add, nullptr};
 
-    auto [op, a, b] = *isa_op(x);
+    auto [op, a, b] = isa_op(x);
     if (op == Op::mul) {
         auto [y, k] = depends(lam, a) ? std::pair{a, b} : std::pair{b, a};
         auto d      = delta(lam, y, steps);
@@ -1042,7 +1063,7 @@ std::optional<SEO::Step> SEO::delta(Lam* lam, const Def* x, const Steps& steps) 
 const Def* SEO::subst(Lam* lam, const Def* x, Defs old_targs) {
     if (auto i = isa_tvar(lam, x)) return rewrite(old_targs[*i]);
     if (!depends(lam, x)) return rewrite(x);
-    auto [op, a, b] = *isa_op(x);
+    auto [op, a, b] = isa_op(x);
     return mk_op(op, subst(lam, a, old_targs), subst(lam, b, old_targs));
 }
 
