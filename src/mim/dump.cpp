@@ -950,6 +950,14 @@ private:
 
 using Srcs = ankerl::unordered_dense::set<const fe::Src*>;
 
+/// What a block declares at one position: a `let`, a declaration, or - if @p group is set - a `mutual` group.
+struct Item {
+    const Def* def;
+    DefVec group = {};
+};
+
+using Block = fe::Vector<Item>;
+
 /// An annex of the dumped file itself; its name is split into the `mod` it nests in and its own name.
 struct DumpAnnex {
     std::string mod, name;
@@ -987,17 +995,19 @@ public:
         dump_muts(muts);
 
         sep(Prev::Decl);
-        auto noms   = DefVec();
+        auto block  = Block();
         auto names  = DefMap<std::string_view>();
         auto bodies = fe::Vector<Def*>();
-        for (const auto& a : annexes)
-            if (auto nom = a.def->isa<Nom>()) {
-                noms.emplace_back(nom);
-                names[nom] = a.name;
+        for (const auto& a : annexes) {
+            block.emplace_back(a.def);
+            names[a.def] = a.name;
+            if (auto nom = a.def->isa<Nom>())
                 for (auto mut : nom->local_muts())
                     bodies.emplace_back(mut);
-            }
-        if (!bodies.empty()) group_noms(Nest(bodies.front()->world(), bodies, true), noms);
+        }
+        if (!bodies.empty()) group_noms(Nest(bodies.front()->world(), bodies, true), block);
+
+        auto item = block.begin();
         std::string_view curr_mod;
         for (const auto& [mod, name, def] : annexes) {
             if (mod != curr_mod) {
@@ -1006,16 +1016,14 @@ public:
                 curr_mod = mod;
                 p_.mod(mod.empty() ? std::string() : std::string(mod) + ".");
             }
-            if (deferred_.contains(def)) continue;
-            if (auto group = fe::lookup(mutual_, def)) {
-                emit_mutual(*group, [&](const Def* m) { emit_nom("anx nom", names[m], m->as<Nom>()); });
-                continue;
-            }
-            if (auto nom = def->isa<Nom>()) {
+            if (item == block.end() || item->def != def) continue; // prints with a later member of its group
+            if (!item->group.empty())
+                emit_mutual(item->group, [&](const Def* m) { emit_nom("anx nom", names[m], m->as<Nom>()); });
+            else if (auto nom = def->isa<Nom>())
                 emit_nom("anx nom", name, nom);
-                continue;
-            }
-            emit_axm(name, def->as<Axm>());
+            else
+                emit_axm(name, def->as<Axm>());
+            ++item;
         }
         if (!curr_mod.empty()) std::println(os_, "{}end", --p_.tab());
         p_.mod({});
@@ -1051,7 +1059,6 @@ private:
     void emit_top(const auto& roots) {
         for (auto root : roots)
             schedule_(root);
-        bucket();
         emit(nullptr);
     }
 
@@ -1177,7 +1184,7 @@ private:
         }
         note_vars(def);
         schedule_deps(def);
-        if ((let || p_.has_decl(def)) && !p_.is_full(def)) order_.emplace_back(def);
+        if ((let || p_.has_decl(def)) && !p_.is_full(def)) place({def});
     }
 
     void schedule_deps(const Def* def) {
@@ -1199,8 +1206,7 @@ private:
             done_.emplace(m);
         for (auto m : group)
             schedule_body(m);
-        order_.emplace_back(group.front());
-        if (group.size() > 1) mutual_.emplace(group.front(), DefVec(group.begin(), group.end()));
+        place({group.front(), group.size() > 1 ? DefVec(group.begin(), group.end()) : DefVec()});
     }
 
     /// A block only sees what precedes it, so the mutually recursive siblings of @p mut print as one `mutual` group.
@@ -1283,26 +1289,21 @@ private:
         return scope_.contains(node->mut());
     }
 
-    /// Turns the schedule into one list per block.
-    void bucket() {
-        for (auto def : order_) {
-            auto mut = isa_decl(def);
-            auto key = owner(nest_->inest(def));
-            // A Nom is the one immutable with a declaration of its own, so it never inlines.
-            if (def->isa<Nom>()) {
-                while (key && inlines(key))
-                    key = owner((*nest_)[key]->inest());
-                // TODO Without its generic `nom`, an instance over a Lam's Var has no valid place in that Lam's
-                // signature. See lit/nom_generic_roundtrip.mim.
-            }
-            // A binder that prints inline has no block of its own, so what belongs into it is inlined as well.
-            if (key && inlines(key) && !(mut && is_recursive(mut))) {
-                plan().inlined.emplace(def);
-                continue;
-            }
-            (key ? bucket_[key] : top_).emplace_back(def);
+    /// Appends @p item to the block it belongs into.
+    void place(Item item) {
+        auto def = item.def;
+        auto mut = isa_decl(def);
+        auto key = owner(nest_->inest(def));
+        // A Nom is the one immutable with a declaration of its own, so it never inlines.
+        if (def->isa<Nom>()) {
+            while (key && inlines(key))
+                key = owner((*nest_)[key]->inest());
+            // TODO Without its generic `nom`, an instance over a Lam's Var has no valid place in that Lam's
+            // signature. See lit/nom_generic_roundtrip.mim.
         }
-        order_.clear();
+        // A binder that prints inline has no block of its own, so what belongs into it is inlined as well.
+        if (key && inlines(key) && !(mut && is_recursive(mut))) return (void)plan().inlined.emplace(def);
+        (key ? blocks_[key] : top_).emplace_back(std::move(item));
     }
 
     /// Does @p mut print inline - be it one itself, or because it sits inside one that does?
@@ -1327,16 +1328,14 @@ private:
     /// @name emit
     ///@{
     void emit(Def* key) {
-        auto defs = key ? std::move(bucket_[key]) : std::move(top_);
-        group_noms(*nest_, defs);
-        for (auto def : defs) {
-            if (deferred_.contains(def)) continue;
-            auto group = fe::lookup(mutual_, def);
-            sep(group || isa_decl(def) ? Prev::Decl : Prev::Let);
-            if (group)
-                emit_mutual(*group, [this](const Def* m) { emit_item(m); });
-            else
+        auto block = std::exchange(key ? blocks_[key] : top_, {});
+        group_noms(*nest_, block);
+        for (const auto& [def, group] : block) {
+            sep(!group.empty() || isa_decl(def) ? Prev::Decl : Prev::Let);
+            if (group.empty())
                 emit_item(def);
+            else
+                emit_mutual(group, [this](const Def* m) { emit_item(m); });
         }
     }
 
@@ -1357,25 +1356,26 @@ private:
         std::println(os_, "{}{} {} = {};", p_.tab(), kw, name, p_.rhs(p_.op(nom->op())));
     }
 
-    /// Groups the Nom%s among @p defs that lie on a cycle, in the order of @p defs.
+    /// Groups the Nom%s of @p block that lie on a cycle; the group takes the place of its last member.
     /// No immutable refers back to itself, so such a cycle runs through a recursive SCC.
-    /// Everything a cycle needs precedes its last member, so that is where the group goes.
-    void group_noms(const Nest& nest, const DefVec& defs) {
-        auto grouped = DefSet();
-        for (auto def : defs) {
-            auto nom = def->isa<Nom>();
-            if (!nom || grouped.contains(nom)) continue;
+    /// Everything a cycle needs precedes its last member.
+    void group_noms(const Nest& nest, Block& block) {
+        for (size_t i = 0; i < block.size(); ++i) {
+            auto nom = block[i].def->isa<Nom>();
+            if (!nom || !block[i].group.empty()) continue;
             for (auto mut : nom->local_muts()) {
                 auto node = nest[mut];
                 if (!node || !node->is_recursive()) continue;
                 auto on_cycle = scc_noms(nest, node->scc());
                 auto cycle    = DefVec();
-                for (auto d : defs)
-                    if (on_cycle.contains(d)) cycle.emplace_back(d);
+                for (const auto& item : block)
+                    if (on_cycle.contains(item.def)) cycle.emplace_back(item.def);
                 if (cycle.size() > 1) {
-                    grouped.insert(cycle.begin(), cycle.end());
-                    deferred_.insert(cycle.begin(), cycle.end() - 1);
-                    mutual_.emplace(cycle.back(), std::move(cycle));
+                    i = size_t(-1); // start over: the block shrinks
+                    std::erase_if(block, [&](const Item& item) {
+                        return item.def != cycle.back() && on_cycle.contains(item.def);
+                    });
+                    std::ranges::find(block, cycle.back(), &Item::def)->group = std::move(cycle);
                 }
                 break;
             }
@@ -1519,15 +1519,12 @@ private:
     const Nest* nest_ = nullptr; ///< Nests the mutables of the scope being emitted.
     Prev prev_        = Prev::None;
     fe::Vector<const Var*> rets_;
-    DefVec order_; ///< What to emit, in dependency order.
-    DefVec top_;
-    MutMap<DefVec> bucket_;
+    Block top_;             ///< What the top level declares, in dependency order.
+    MutMap<Block> blocks_;  ///< Likewise for the block of each mutable that has one.
     MutMap<Def*> absorbed_; ///< Inner Lam of a curried chain -> the chain's outermost one.
     DefSet done_;
-    DefSet scope_;          ///< The closed mutables Dump::Scope dumps.
-    DefSet pending_;        ///< Def%s whose deps are being scheduled.
-    DefMap<DefVec> mutual_; ///< The member a `mutual` group prints at -> the whole group.
-    DefSet deferred_;       ///< The other members of a `mutual` group, which print with it.
+    DefSet scope_;   ///< The closed mutables Dump::Scope dumps.
+    DefSet pending_; ///< Def%s whose deps are being scheduled.
     Printer p_;
     Srcs srcs_;
     MutSet scheduled_;

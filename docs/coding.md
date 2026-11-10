@@ -329,12 +329,19 @@ You can directly invoke several MimIR dump helpers from within GDB, for example:
 
 ```gdb
 (gdb) call def->dump()
-(gdb) call def->dump(0)
-(gdb) call def->dump(2)
+(gdb) call def->dump(mim::Def::Dump::Scope)
+(gdb) call def->dump(mim::Def::Dump::All)
 (gdb) call world().write("out.mim")
 ```
 
-In particular, note the different output levels of [`mim::Def::dump`](@ref mim::Def::dump).
+In particular, note the different output levels of [`mim::Def::dump`](@ref mim::Def::dump):
+
+- Without an argument, it prints the `Def` on one line and refers to everything that does not inline by name.
+- `Scope` prints it as a declaration with its operands as `let`s and the mutables nested in it; closed mutables it merely refers to appear by name.
+- `All` additionally declares every closed mutable it reaches.
+
+GDB only resolves the call if you spell out the enumerator; an integer such as `def->dump(1)` does not work.
+For a pointer to a subclass, cast first: `call ((const mim::Def*)lam)->dump(mim::Def::Dump::Scope)`.
 
 You can also tweak the output behavior directly from within GDB by changing [`mim::World::flags`](@ref mim::World::flags) or [`mim::World::log`](@ref mim::World::log):
 
