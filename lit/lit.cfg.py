@@ -29,6 +29,8 @@ if roundtrip:
     config.test_exec_root = os.path.join(config.my_obj_root, 'roundtrip', roundtrip)
     # `UNSUPPORTED: roundtrip` opts out an input that only compiles with flags from its RUN lines.
     config.available_features.add('roundtrip')
+    # `XFAIL: roundtrip-mim` marks an input whose dump is known not to round-trip in that mode.
+    config.available_features.add(f'roundtrip-{roundtrip}')
 
 config.substitutions.append(('%mim', config.mim))
 config.substitutions.append(('%FileCheck', '"{}"'.format(config.filecheck)))
