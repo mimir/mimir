@@ -7,6 +7,7 @@ target_sources(libmim
         def.cpp
         dot.cpp
         driver.cpp
+        dump.cpp
         lam.cpp
         manifest.cpp
         nest.cpp
@@ -25,10 +26,6 @@ target_sources(libmim
         ast/parser.cpp
         ast/stream.cpp
         ast/tok.cpp
-        dump/dump.cpp
-        dump/dumper.cpp
-        dump/inst.cpp
-        dump/printer.cpp
         phase/adce.cpp
         phase/lam_spec.cpp
         phase/optimize.cpp
