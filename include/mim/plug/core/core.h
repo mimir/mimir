@@ -93,6 +93,19 @@ inline const Def* op(trait o, const Def* type) {
 }
 ///@}
 
+/// @name core.nat / core.wrap / core.bit2
+///@{
+/// `a id b`; a core.wrap or core.bit2 gets Mode::none, as a rewrite cannot vouch for the original overflow flags.
+template<class Id>
+const Def* op(Id id, const Def* a, const Def* b) {
+    auto& w = a->world();
+    if constexpr (std::is_same_v<Id, nat>)
+        return w.call(id, Defs{a, b});
+    else
+        return w.call(id, Mode::none, Defs{a, b});
+}
+///@}
+
 /// @name core.pe
 ///@{
 inline const Def* op(pe o, const Def* def) {

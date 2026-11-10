@@ -419,7 +419,7 @@ const Def* fold(World& world, const Def* type, const Def*& a) {
 /// (4) (lx op y) op      b    ->  lx op (y op b)
 /// ```
 template<class Id>
-const Def* reassociate(Id id, World& world, const Def* a, const Def* b) {
+const Def* reassociate(Id id, const Def* a, const Def* b) {
     if (!is_associative(id)) return nullptr;
 
     auto xy     = Axm::isa<Id>(id, a);
@@ -430,18 +430,10 @@ const Def* reassociate(Id id, World& world, const Def* a, const Def* b) {
     auto lx     = Lit::isa(x);
     auto lz     = Lit::isa(z);
 
-    // if we reassociate, we have to forget about nsw/nuw
-    auto make_op = [&world, id](const Def* a, const Def* b) {
-        if constexpr (std::is_same_v<Id, nat>)
-            return world.call(id, Defs{a, b});
-        else
-            return world.call(id, Mode::none, Defs{a, b});
-    };
-
-    if (la && lz) return make_op(make_op(a, z), w);             // (1)
-    if (lx && lz) return make_op(make_op(x, z), make_op(y, w)); // (2)
-    if (lz) return make_op(z, make_op(a, w));                   // (3)
-    if (lx) return make_op(x, make_op(y, b));                   // (4)
+    if (la && lz) return op(id, op(id, a, z), w);            // (1)
+    if (lx && lz) return op(id, op(id, x, z), op(id, y, w)); // (2)
+    if (lz) return op(id, z, op(id, a, w));                  // (3)
+    if (lx) return op(id, x, op(id, y, b));                  // (4)
     return nullptr;
 }
 
@@ -546,7 +538,7 @@ const Def* normalize_nat(const Def* type, const Def* callee, const Def* arg) {
         }
     }
 
-    if (auto res = reassociate<nat>(id, world, a, b)) return res;
+    if (auto res = reassociate<nat>(id, a, b)) return res;
 
     return world.raw_app(type, callee, {a, b});
 }
@@ -723,7 +715,7 @@ const Def* normalize_bit2(const Def* type, const Def* c, const Def* arg) {
         }
     }
 
-    if (auto res = reassociate<bit2>(id, world, a, b)) return res;
+    if (auto res = reassociate<bit2>(id, a, b)) return res;
 
     return world.raw_app(type, callee, {a, b});
 }
@@ -823,7 +815,7 @@ const Def* normalize_wrap(const Def* type, const Def* c, const Def* arg) {
     }
     // clang-format on
 
-    if (auto res = reassociate<wrap>(id, world, a, b)) return res;
+    if (auto res = reassociate<wrap>(id, a, b)) return res;
 
     return world.raw_app(type, callee, {a, b});
 }

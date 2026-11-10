@@ -1,0 +1,50 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// A Lemerre-style loop: `i` and `time` are congruent and share one loop param; `inc` folds and all slots promote.
+// OSR turns `i * 8` into a header param that advances by `8`, and the promoted `sum` phi advances by that param.
+
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun test (m: mem.M 0, hi: Nat): [mem.M 0, Nat] =
+    ret (m, pinc)  = mem.slot (Nat, 0) $ m;
+    ret (m, ptime) = mem.slot (Nat, 0) $ m;
+    ret (m, pi)    = mem.slot (Nat, 0) $ m;
+    ret (m, psum)  = mem.slot (Nat, 0) $ m;
+    let m = mem.store (m, pinc, 1);
+    let m = mem.store (m, ptime, 0);
+    let m = mem.store (m, pi, 0);
+    let m = mem.store (m, psum, 0);
+    head m where
+        con head (m: mem.M 0) =
+            let (m, inc)  = mem.load (m, pinc);
+            let (m, time) = mem.load (m, ptime);
+            let (m, i)    = mem.load (m, pi);
+            let (m, sum)  = mem.load (m, psum);
+            let m = mem.store (m, psum, sum + i * 8);
+            (exit, body)#(i < hi) m where
+                con body (m: mem.M 0) =
+                    let m = mem.store (m, pi, i + 1);
+                    let m = mem.store (m, ptime, time + inc);
+                    head m;
+                con exit (m: mem.M 0) =
+                    let (m, sum)  = mem.load (m, psum);
+                    let (m, i)    = mem.load (m, pi);
+                    let (m, time) = mem.load (m, ptime);
+                    return (m, sum + i + time / (3600 * inc));
+            end;
+    end;
+
+// `inc`, `time`, and all slots are gone: only the merged `i`, the `sum` phi, and OSR's product param remain.
+// CHECK-NOT: mem.slot
+// CHECK-NOT: mem.load
+// CHECK-NOT: mem.store
+// CHECK-NOT: core.nat.mul
+// CHECK: con head ({{[_a-z0-9]+}}: core.M 0, {{[_a-z0-9]+}}: Nat, [[PROD:[_a-z0-9]+]]: Nat, [[SUM:[_a-z0-9]+]]: Nat)
+// CHECK: core.nat.div ({{[_a-z0-9]+}}, 3600)
+// CHECK: [[S:[_a-z0-9]+]] = core.nat.add ([[PROD]], [[SUM]]);
+// CHECK: [[NP:[_a-z0-9]+]] = core.nat.add (8, [[PROD]]);
+// CHECK: head ({{[_a-z0-9]+}}, {{[_a-z0-9]+}}, [[NP]], [[S]]);
+// CHECK: head ({{[_a-z0-9]+}}, 0, 0, 0);

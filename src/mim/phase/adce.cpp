@@ -95,7 +95,7 @@ Sieve ADCE::sieve(Lam* lam) {
 }
 
 Lam* ADCE::build_lam(Lam* old_lam) {
-    if (auto new_lam = fe::lookup(lam_old2new_, old_lam)) return new_lam;
+    if (auto new_lam = fe::lookup(lam_old2new_.left(), old_lam)) return new_lam;
 
     invalidate();
     auto keep     = sieve(old_lam);
@@ -104,8 +104,7 @@ Lam* ADCE::build_lam(Lam* old_lam) {
     auto new_lam  = new_world().mut_lam(new_doms, rewrite(old_lam->codom()))->set(old_lam->dbg());
     log().d("{} → {}: {} of {} vars dead", old_lam, new_lam, n - keep.num_new(), n);
     profile_count("adce.vars.eliminated", n - keep.num_new());
-    lam_old2new_[old_lam] = new_lam;
-    lam_new2old_[new_lam] = old_lam;
+    lam_old2new_.insert(old_lam, new_lam);
 
     auto old_vars = old_lam->tvars();
     auto new_vars = DefVec(n, [&](size_t i) -> const Def* {
@@ -123,7 +122,8 @@ const Def* ADCE::rewrite_imm_App(const App* old_app) {
     auto old_lam = old_app->callee()->isa_mut<Lam>();
     // The callee may only fold to a rebuilt Lam in the new World, e.g. a branch whose condition becomes constant.
     if (!old_lam)
-        if (auto new_lam = rewrite(old_app->callee())->isa_mut<Lam>()) old_lam = fe::lookup(lam_new2old_, new_lam);
+        if (auto new_lam = rewrite(old_app->callee())->isa_mut<Lam>())
+            old_lam = fe::lookup(lam_old2new_.right(), new_lam);
 
     if (old_lam)
         if (auto keep = sieve(old_lam); !keep.all()) {
