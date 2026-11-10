@@ -1008,17 +1008,19 @@ const Def* NomDecl::emit_ahead(Emitter& e) const {
     return def_;
 }
 
-void NomDecl::emit_sugar(Emitter& e, Lam* lam) const {
+void NomDecl::emit_sugar(Emitter& e, Lam* lam, Defs args) const {
+    args_ = args;
     // `I dom` then resolves to this very instance as an application of a Lam to its own Var.
     emit_decl(e);
     lam->set_body(emit_ahead(e));
     emit_body(e);
+    args_ = {};
 }
 
 void NomDecl::emit_nom(Emitter& e, const Def* body) const {
     // World::dump finds a file's annexes by their qualified sym.
     auto sym = annex_ ? annex_->qualified(e.driver(), dbg().sym()) : dbg().sym();
-    auto nom = e.world().nom(e.world().next_gid(), body);
+    auto nom = e.world().nom(e.world().next_gid(), body, args_);
     nom->set(sym);
     e.add_nom(nom, this);
     def_ = nom;
@@ -1076,10 +1078,12 @@ void LamDecl::emit_body(Emitter& e) const {
     {
         auto _body = e.world().push(body()->loc());
         auto lam   = doms().back()->lam_;
-        if (auto nom = nom_sugar())
-            nom->emit_sugar(e, lam);
-        else
+        if (auto nom = nom_sugar()) {
+            auto vars = DefVec(doms(), [](const auto& dom) -> const Def* { return dom->lam_->var(); });
+            nom->emit_sugar(e, lam, vars);
+        } else {
             lam->set_body(body()->emit(e));
+        }
     }
 
     // rewrite holes

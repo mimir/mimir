@@ -113,7 +113,7 @@ const Def* Rewriter::rewrite_imm_LSucc  (const LSucc*   d) { return world().lsuc
 const Def* Rewriter::rewrite_imm_LMax   (const LMax*    d) { return world().lmax   (rewrite(d->ops()));                   }
 const Def* Rewriter::rewrite_imm_Single (const Single*  d) { return world().single (rewrite(d->op()));                    }
 const Def* Rewriter::rewrite_imm_Wrap   (const Wrap*    d) { return world().wrap   (rewrite(d->op()));                    }
-const Def* Rewriter::rewrite_imm_Nom    (const Nom*     d) { return world().nom    (d->key(),             rewrite(d->op())); }
+const Def* Rewriter::rewrite_imm_Nom    (const Nom*     d) { auto ops = rewrite(d->ops()); return world().nom(d->key(), ops.front(), ops.view().subspan(1)); }
 const Def* Rewriter::rewrite_imm_Name   (const Name*    d) { return world().name   (rewrite(d->nom()), rewrite(d->op())); }
 const Def* Rewriter::rewrite_imm_Struc  (const Struc*   d) { return world().struc  (rewrite(d->op()));                    }
 const Def* Rewriter::rewrite_imm_Var    (const Var*     d) { return world().var    (rewrite(d->binder())->as_mut());      }

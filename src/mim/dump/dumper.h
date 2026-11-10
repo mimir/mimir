@@ -29,7 +29,7 @@ public:
 
     /// Only @p live Def%s - what the dumped roots reach - count as existing.
     void live(const DefSet& live) { plan().live = &live; }
-    void insts(Insts insts) { plan().insts = std::move(insts); }
+    void generics(Generics generics) { plan().generics = std::move(generics); }
     /// Switches to plain names; @p reserved are names the dump refers to verbatim and hence must not pick.
     void plain(std::span<const std::string> reserved) { p_.namer().plain(reserved); }
 
@@ -79,10 +79,9 @@ private:
     /// The Def%s the dump prints @p def with: a type nobody prints must not drag in a `let` that nothing refers to.
     /// A Lam spells out its Pi, so only the components of that one are referenced.
     void printed_deps(const Def* def, auto f) const {
-        if (auto inst = p_.isa_inst(def)) {
-            for (const auto& [arg, _] : inst->second)
-                for (auto op : arg)
-                    f(op);
+        if (p_.isa_inst(def)) {
+            for (auto arg : def->as<Nom>()->args())
+                f(arg);
             return;
         }
         if (auto lam = def->isa_mut<Lam>()) {
@@ -98,7 +97,8 @@ private:
     }
 
     void note_vars(const Def* def);
-    void schedule_(const Def* def);
+    /// @p let tells whether a `let` binds @p def, should it not print Full.
+    void schedule_(const Def* def, bool let = true);
     void schedule_deps(const Def* def);
     /// A mutable reached through @p def%'s deps may need @p def - and hence all of its deps - before they are done.
     void finish(const Def* def);
@@ -130,6 +130,8 @@ private:
     void emit(Def* key);
     void emit_item(const Def* def);
     void emit_nom(std::string_view kw, std::string_view name, const Nom* nom);
+    /// The right-hand side of a declaration; only a bare variant may refer back to the name it declares.
+    void emit_rhs(Op rhs);
     /// Groups the Nom%s among @p defs that lie on a cycle, in the order of @p defs.
     /// No immutable refers back to itself, so such a cycle runs through a recursive SCC.
     /// Everything a cycle needs precedes its last member, so that is where the group goes.

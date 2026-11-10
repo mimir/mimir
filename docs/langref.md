@@ -584,8 +584,9 @@ A `nom` declaration is the one place where Mim is not structurally typed: two `n
 - `nom I = e` declares `I` as a fresh type that wraps `e`; it is the declaration - not the shape of `e` - that tells two `nom`s apart.
 - If `e` is a sigma, a [variant](@ref variant), or a function type, `I` is already in scope inside `e`, so such a `nom` may be recursive, and a `mutual` block makes a group of them mutually recursive.
 - `anx nom` additionally makes `I` an [annex](@ref annex).
-- `nom I ndom+ = e` declares a type constructor; it is sugar for `lam I ndom+ = nom I = e; I`.
+- `nom I ndom+ = e` declares a type constructor; it works like `lam I ndom+ = nom I = e; I`.
   Each instance is a `nom` of its own, and within `e`, `I` names the type constructor, so a recursive instance refers to itself as `I ndom+`.
+  Unlike that `lam`, an instance remembers its arguments, so `I A` and `I B` differ even if `e` ignores the parameter.
 - `e inj I` wraps a value of the underlying type into `I`, and the prefix `#` unwraps it again, so `#(e inj I)` is `e`.
   Like `I#C`, `e inj I` fills the implicit domains of a type constructor `I` with holes.
 - The named constructors of a `nom` over a [variant](@ref variant) - `I#C` and a `match` arm `| C x` - and the [field names](@ref field) of a `nom` over a sigma - `x#f` and `x#f ← v` - unwrap and, for an update, rewrap the `nom` by themselves; access by index still needs `#`.

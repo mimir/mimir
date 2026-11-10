@@ -175,8 +175,12 @@ std::string Printer::id(const Def* def) {
     return name(def);
 }
 
-const std::pair<Sym, Args>* Printer::isa_inst(const Def* def) const {
-    return def->isa<Nom>() ? fe::lookup(plan_.insts, def) : nullptr;
+const Generic* Printer::isa_inst(const Def* def) const {
+    if (auto nom = def->isa<Nom>())
+        if (auto generic = fe::lookup(plan_.generics, nom->key());
+            generic && nom != generic->nom && nom->args().size() == generic->implicit.size())
+            return generic;
+    return nullptr;
 }
 
 bool Printer::has_decl(const Def* def) const {
@@ -365,15 +369,13 @@ void Printer::lam_header(std::ostream& os, fe::View<Lam*> chain, LamKind kind) {
     lam_codom(os, last, kind);
 }
 
-std::string Printer::ctors(const Variant* variant) {
-    if (variant->num_ops() == 0) return "|";
-    auto res = std::string();
+void Printer::ctors(std::ostream& os, const Variant* variant) {
+    if (variant->num_ops() == 0) return (void)(os << '|');
     for (auto sep = ""; auto i : std::views::iota(size_t(0), variant->num_ops())) {
-        res += std::format("{}| _{}", sep, i);
-        if (has_payload(variant, i)) res += std::format(": {}", op(variant->op(i)));
+        std::print(os, "{}| _{}", sep, i);
+        if (has_payload(variant, i)) std::print(os, ": {}", op(variant->op(i)));
         sep = " ";
     }
-    return res;
 }
 
 /*
@@ -429,44 +431,40 @@ void Printer::print(std::ostream& os, Op d) {
 
 /// A Seq's shape the way the surface syntax spells it: one axis per dimension, `2, 3` for a fused `(2, 3)`.
 /// Falls back to the shape as a whole - also a legal spelling - if an axis does not exist as a Def.
-std::string Printer::shape(const Seq* seq) {
+void Printer::shape(std::ostream& os, const Seq* seq) {
     auto s = seq->shape();
-    auto r = s.rank();
-    if (!r || *r <= 1) return std::format("{}", op(*s));
-
-    auto axes = s->projs(*r);
-    if (std::ranges::any_of(axes, [](auto a) { return !a; })) return std::format("{}", op(*s));
-    return std::format("{}", ops(axes));
+    if (auto r = s.rank(); r && *r > 1)
+        if (auto axes = s->projs(*r); !std::ranges::contains(axes, nullptr)) return (void)(os << ops(axes));
+    os << op(*s);
 }
 
 /// As above but each axis binds its index - `i: 2, j: 3`; a fused Seq binds one Var per axis.
-std::string Printer::shape(const Seq* seq, const Def* var) {
-    if (!var) return shape(seq);
-    auto s = seq->shape();
-    auto r = s.rank();
-    if (!r || *r <= 1) return std::format("{}: {}", op(var), op(*s));
+void Printer::shape(std::ostream& os, const Seq* seq, const Def* var) {
+    if (!var) return shape(os, seq);
+    auto s       = seq->shape();
+    auto r       = s.rank();
+    auto extents = DefVec();
+    if (r && *r > 1)
+        for (auto i : std::views::iota(nat_t(0), *r))
+            extents.emplace_back(s[i]);
+    if (extents.empty() || std::ranges::contains(extents, nullptr)) return std::print(os, "{}: {}", op(var), op(*s));
 
-    auto res = std::string();
     for (auto sep = ""; auto i : std::views::iota(nat_t(0), *r)) {
-        auto axis   = live_proj(var, *r, i);
-        auto extent = s[i];
-        if (!extent) return std::format("{}: {}", op(var), op(*s));
+        os << sep;
         // A projection the body never mentions does not exist as a Def and hence has no name of its own.
-        res += std::format("{}{}: {}", sep, axis ? std::format("{}", op(axis)) : "_"s, op(extent));
+        if (auto axis = live_proj(var, *r, i))
+            os << op(axis);
+        else
+            os << '_';
+        std::print(os, ": {}", op(extents[i]));
         sep = ", ";
     }
-    return res;
 }
 
-void Printer::print_inst(std::ostream& os, Op d, const std::pair<Sym, Args>& inst) {
-    std::print(os, "{}", namer_.annex(inst.first));
-    for (const auto& [arg, implicit] : inst.second) {
-        os << (implicit ? " @ " : " ");
-        if (arg.size() == 1)
-            std::print(os, "{}", d.r(arg.front(), Prec::App));
-        else
-            std::print(os, "({})", ops(arg));
-    }
+void Printer::print_inst(std::ostream& os, Op d, const Generic& generic) {
+    os << namer_.annex(generic.sym);
+    for (size_t i = 0; auto arg : d->as<Nom>()->args())
+        std::print(os, "{}{}", generic.implicit[i++] ? " @ " : " ", d.r(arg, Prec::App));
 }
 
 void Printer::print_lit(std::ostream& os, Op d, const Lit* lit) {
@@ -559,9 +557,9 @@ void Printer::print_sigma(std::ostream& os, Op d, const Sigma* sigma) {
 
 void Printer::print_inj(std::ostream& os, Op d, const Inj* inj) {
     if (auto variant = inj->type()->isa<Variant>()) {
-        auto ctor = std::format("{}#{}", d.l(variant, Prec::Extract), inj->index());
-        if (!has_payload(variant, inj->index())) return std::print(os, "{}", ctor);
-        return std::print(os, "{} {}", ctor, d.r(inj->value(), Prec::App));
+        std::print(os, "{}#{}", d.l(variant, Prec::Extract), inj->index());
+        if (has_payload(variant, inj->index())) std::print(os, " {}", d.r(inj->value(), Prec::App));
+        return;
     }
     std::print(os, "{} inj {}", d.l(inj->value(), Prec::Inj), d.r(inj->type(), Prec::Inj));
 }
@@ -636,13 +634,19 @@ void Printer::print_full(std::ostream& os, Op d) {
     if (auto app = d->isa<App>()) return print_app(os, d, app);
     if (auto sigma = d->isa<Sigma>()) return print_sigma(os, d, sigma);
     if (auto tuple = d->isa<Tuple>()) return std::print(os, "({})", ops(tuple->ops()));
-    if (auto arr = d->isa<Arr>())
-        return std::print(os, "{}{}; {}{}", al, shape(arr, arr->has_var()), d.op(arr->body()), ar);
-    if (auto pack = d->isa<Pack>())
-        return std::print(os, "{}{}; {}{}", pl, shape(pack, pack->has_var()), d.op(pack->body()), pr);
+    if (auto seq = d->isa<Seq>()) {
+        auto arr = seq->isa<Arr>();
+        os << (arr ? al : pl);
+        shape(os, seq, seq->has_var());
+        return std::print(os, "; {}{}", d.op(seq->body()), arr ? ar : pr);
+    }
     if (auto proxy = d->isa<Proxy>()) return std::print(os, "(proxy#{} {})", proxy->tag(), ops(proxy->ops()));
     if (auto join = d->isa<Join>()) return std::print(os, "{}", ops(join->ops(), " ∪ ", Prec::Union));
-    if (auto variant = d->isa<Variant>()) return std::print(os, "({})", ctors(variant));
+    if (auto variant = d->isa<Variant>()) {
+        os << '(';
+        ctors(os, variant);
+        return (void)(os << ')');
+    }
     if (auto inj = d->isa<Inj>()) return print_inj(os, d, inj);
     if (auto name = d->isa<Name>())
         return std::print(os, "{} inj {}", d.l(name->op(), Prec::Inj), d.r(name->nom(), Prec::Inj));

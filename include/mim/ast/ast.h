@@ -1181,7 +1181,8 @@ public:
     /// Emits a `nom` without a mutable body as soon as a sibling refers to it; `nullptr` on a cycle.
     const Def* emit_ahead(Emitter&) const;
     /// Sets @p lam's body to this LamDecl::nom_sugar before emitting the latter's body.
-    void emit_sugar(Emitter&, Lam* lam) const;
+    /// @p args are the Var%s of the LamDecl's curried Lam%s.
+    void emit_sugar(Emitter&, Lam* lam, Defs args) const;
     void stream_(fe::Tab&, std::ostream&) const override;
 
 private:
@@ -1189,6 +1190,7 @@ private:
 
     mutable bool emitting_ = false;
     mutable Vis rep_vis_   = Vis::Pub;
+    mutable Defs args_; ///< Only valid while emit_sugar runs.
 };
 
 /// `tag dbg dom_0 ... dom_n-1: codom = body;` with LamDecl::tag `lam`/`con`/`fun` or anonymous `λ`/`cn`/`fn`.

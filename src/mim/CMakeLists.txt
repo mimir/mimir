@@ -27,7 +27,6 @@ target_sources(libmim
         ast/tok.cpp
         dump/dump.cpp
         dump/dumper.cpp
-        dump/inst.cpp
         dump/printer.cpp
         phase/adce.cpp
         phase/lam_spec.cpp

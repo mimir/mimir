@@ -1,7 +1,5 @@
 #include "dumper.h"
 
-#include <ranges>
-
 using namespace std::literals;
 
 namespace mim::dump {
@@ -140,10 +138,9 @@ void Dumper::note_use(const Def* op, const Match* match) {
 }
 
 void Dumper::note_vars(const Def* def) {
-    if (auto inst = p_.isa_inst(def)) {
-        for (const auto& [arg, _] : inst->second)
-            for (auto op : arg)
-                if (op->isa<Var>()) plan().whole_vars.emplace(op);
+    if (p_.isa_inst(def)) {
+        for (auto arg : def->as<Nom>()->args())
+            if (arg->isa<Var>()) plan().whole_vars.emplace(arg);
         return;
     }
     auto ex = def->isa<Extract>();
@@ -152,7 +149,7 @@ void Dumper::note_vars(const Def* def) {
             plan().whole_vars.emplace(op);
 }
 
-void Dumper::schedule_(const Def* def) {
+void Dumper::schedule_(const Def* def, bool let) {
     if (!def) return;
     if (auto mut = isa_decl(def); mut && !plan().arms.contains(mut)) return schedule_mut(mut);
     if (!done_.emplace(def).second) return finish(def);
@@ -166,7 +163,7 @@ void Dumper::schedule_(const Def* def) {
     }
     note_vars(def);
     schedule_deps(def);
-    if (!p_.is_full(def)) order_.emplace_back(def);
+    if ((let || p_.has_decl(def)) && !p_.is_full(def)) order_.emplace_back(def);
 }
 
 void Dumper::schedule_deps(const Def* def) {
@@ -254,10 +251,7 @@ void Dumper::schedule_inline(const Def* def, DefSet& inline_set) {
 
 void Dumper::schedule_tail(const Def* def) {
     if (def && def->isa<Var>()) plan().whole_vars.emplace(def);
-    if (!def || p_.has_decl(def)) return schedule_(def);
-    if (!done_.emplace(def).second) return finish(def);
-    note_vars(def);
-    schedule_deps(def);
+    schedule_(def, false);
 }
 
 bool Dumper::enter(Def* mut) const {
@@ -321,11 +315,17 @@ void Dumper::emit_item(const Def* def) {
     emit_let(def);
 }
 
-// Only a bare variant may refer back to the `nom`.
 void Dumper::emit_nom(std::string_view kw, std::string_view name, const Nom* nom) {
-    if (auto variant = nom->op()->isa<Variant>())
-        return std::println(os_, "{}{} {} = {};", p_.tab(), kw, name, p_.ctors(variant));
-    std::println(os_, "{}{} {} = {};", p_.tab(), kw, name, p_.op(nom->op()));
+    std::print(os_, "{}{} {} = ", p_.tab(), kw, name);
+    emit_rhs(p_.op(nom->op()));
+}
+
+void Dumper::emit_rhs(Op rhs) {
+    if (auto variant = rhs->isa<Variant>())
+        p_.ctors(os_, variant);
+    else
+        os_ << rhs;
+    os_ << ";\n";
 }
 
 void Dumper::group_noms(const Nest& nest, const DefVec& defs) {
@@ -378,8 +378,9 @@ void Dumper::sep(Prev curr) {
 
 void Dumper::emit_let(const Def* def) {
     if (auto nom = def->isa<Nom>()) return emit_nom("nom", p_.name(nom), nom);
-    auto type = typed_let_ ? std::format(": {}", p_.op(def->type())) : std::string();
-    std::println(os_, "{}let {}{} = {};", p_.tab(), p_.name(def), type, p_.full(def));
+    std::print(os_, "{}let {}", p_.tab(), p_.name(def));
+    if (typed_let_) std::print(os_, ": {}", p_.op(def->type()));
+    std::println(os_, " = {};", p_.full(def));
 }
 
 void Dumper::emit_decl(Def* mut) {
@@ -387,11 +388,8 @@ void Dumper::emit_decl(Def* mut) {
     if (auto rule = mut->isa_mut<Rule>(); rule && rule->is_set()) return emit_rule(rule);
     if (!mut->is_set()) return emit_unset(mut);
     // `rec` binds the name for the body - which only a self-referential mutable needs; `extern` is out either way.
-    auto kw = is_recursive(mut) ? "rec " : "let ";
-    // A `rec` only takes a bare variant.
-    if (auto variant = mut->isa<Variant>())
-        return std::println(os_, "{}{}{} = {};", p_.tab(), kw, p_.id(mut), p_.ctors(variant));
-    std::println(os_, "{}{}{} = {};", p_.tab(), kw, p_.id(mut), p_.full(mut));
+    std::print(os_, "{}{}{} = ", p_.tab(), is_recursive(mut) ? "rec " : "let ", p_.id(mut));
+    emit_rhs(p_.full(mut));
 }
 
 void Dumper::emit_rule(Rule* rule) {
@@ -454,16 +452,15 @@ void Dumper::emit_bodyless(Lam* lam, Lam* last, LamKind kind) {
     auto dom = last->type()->dom();
     std::print(os_, "{}extern {} {}", p_.tab(), decl_kw(kind), p_.id(lam));
     auto num = num_binders(dom);
-    auto con = kind == LamKind::Con;
-    if (kind == LamKind::Fun) {
-        std::println(os_, "[{}]: {};", p_.op(dom->proj(num, 0)), p_.op(last->ret_dom()));
-    } else if (auto [_, var] = dom->isa_binder<Sigma>(); var) {
-        // Flattened, its components would refer to binders nothing prints.
-        std::println(os_, "{}{};", p_.op(dom), con ? std::string() : std::format(": {}", p_.op(last->type()->codom())));
-    } else {
-        std::println(os_, "[{}]{};", p_.ops(dom->projs(num)),
-                     con ? std::string() : std::format(": {}", p_.op(last->type()->codom())));
-    }
+    if (kind == LamKind::Fun) return std::println(os_, "[{}]: {};", p_.op(dom->proj(num, 0)), p_.op(last->ret_dom()));
+
+    // Flattened, the components of a dependent domain would refer to binders nothing prints.
+    if (auto [_, var] = dom->isa_binder<Sigma>(); var)
+        os_ << p_.op(dom);
+    else
+        std::print(os_, "[{}]", p_.ops(dom->projs(num)));
+    if (kind == LamKind::Lam) std::print(os_, ": {}", p_.op(last->type()->codom()));
+    os_ << ";\n";
 }
 
 void Dumper::emit_tail(const Def* def, std::string_view end) {

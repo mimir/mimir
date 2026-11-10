@@ -32,12 +32,15 @@ fe::Vector<Lam*> curry_chain(Lam*);
 /// need not exist as Def%s.
 nat_t num_binders(const Def* type);
 
-/// Each curried argument of an application and whether its Pi is implicit.
-using Args = fe::Vector<std::pair<DefVec, bool>>;
+/// A generic `anx nom` from elsewhere.
+struct Generic {
+    Sym sym;                   ///< The qualified name of its annex Lam.
+    const Def* nom;            ///< The Nom that Lam returns; its Nom::args are the Lam%s' own Var%s.
+    fe::Vector<bool> implicit; ///< Whether each curried parameter is implicit.
+};
 
-/// An instance of a generic `anx nom` from elsewhere: its annex's qualified name and arguments.
-/// Each curried argument holds either the whole argument or the components a re-read dump tuples up again.
-using Insts = DefMap<std::pair<Sym, Args>>;
+/// Keyed by Nom::key, which an instance shares with its generic Nom.
+using Generics = ankerl::unordered_dense::map<flags_t, Generic>;
 
 /// The surface syntax a Lam prints with; a `fun` is sugar for a Lam of the shape `[<params>, Cn <ret>]`.
 enum class LamKind { Lam, Con, Fun };
@@ -107,7 +110,7 @@ struct Plan {
     /// What the dumped roots reach; `nullptr` dumps whatever exists.
     /// A dead projection left behind by normalization must not bind a name a re-read dump would not bind.
     const DefSet* live = nullptr;
-    Insts insts;
+    Generics generics;
 };
 
 class Printer;
@@ -184,7 +187,8 @@ public:
 
     /// @name Queries
     ///@{
-    const std::pair<Sym, Args>* isa_inst(const Def*) const;
+    /// The Generic the Def instantiates, if it is a Nom that does.
+    const Generic* isa_inst(const Def*) const;
     /// Does the Def print by name, bound by a declaration of its own - be it a decl or a `nom`?
     bool has_decl(const Def*) const;
     /// Does the Def always print Full - instead of by name?
@@ -204,7 +208,7 @@ public:
     /// The parameter lists of a curried @p chain and its result type.
     void lam_header(std::ostream&, fe::View<Lam*> chain, LamKind);
     /// The names of the constructors live in the frontend, so each case prints under its index.
-    std::string ctors(const Variant*);
+    void ctors(std::ostream&, const Variant*);
     ///@}
 
 private:
@@ -214,7 +218,7 @@ private:
     bool needs_parens(Op) const;
     void print(std::ostream&, Op);
     void print_full(std::ostream&, Op);
-    void print_inst(std::ostream&, Op, const std::pair<Sym, Args>&);
+    void print_inst(std::ostream&, Op, const Generic&);
     void print_lit(std::ostream&, Op, const Lit*);
     void print_insert(std::ostream&, Op, const Insert*);
     void print_pi(std::ostream&, Op, const Pi*);
@@ -223,8 +227,8 @@ private:
     void print_sigma(std::ostream&, Op, const Sigma*);
     void print_inj(std::ostream&, Op, const Inj*);
     void print_match(std::ostream&, Op, const Match*);
-    std::string shape(const Seq*);
-    std::string shape(const Seq*, const Def* var);
+    void shape(std::ostream&, const Seq*);
+    void shape(std::ostream&, const Seq*, const Def* var);
     ///@}
 
     /// @name Patterns
