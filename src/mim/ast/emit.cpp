@@ -239,10 +239,10 @@ const Def* ErrorPtrn::emit_value(Emitter&, const Def* def) const { return def; }
 static const Def* assign(Emitter& e, const Ptrn* ptrn, const Def* type, const Def* def) {
     if (auto res = Check::coerce(type, def)) return res->set(ptrn->dbg());
 
-    e.error()
-        .e(ptrn->loc(), "value bound to `{}` is not assignable to its annotated type", ptrn->dbg().sym())
-        .n("expected `{}`, got `{}`", type, type_of(def))
-        .bail();
+    auto& err = e.error()
+                    .e(ptrn->loc(), "value bound to `{}` is not assignable to its annotated type", ptrn->dbg().sym())
+                    .n("expected `{}`, got `{}`", type, type_of(def));
+    Nom::tell_apart(err, type, def).bail();
 }
 
 const Def* IdPtrn::emit_value(Emitter& e, const Def* def) const {

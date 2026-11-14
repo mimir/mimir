@@ -23,6 +23,10 @@ public:
 
     flags_t key() const { return flags(); } ///< What tells this Nom apart from one over the same Nom::op.
 
+    /// Two instances of one generic `nom` print alike.
+    /// If @p expected and the type of @p value are such instances, a Note in @p err spells out what each one wraps.
+    static fe::Error& tell_apart(fe::Error& err, const Def* expected, const Def* value);
+
     static constexpr auto Node      = mim::Node::Nom;
     static constexpr size_t Num_Ops = 1;
 

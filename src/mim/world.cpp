@@ -69,8 +69,9 @@ Shape fused_index(const Def* t, Shape is, Shape js) {
 const Def* assign_or_bail(const Def* elem_type, const Def* val) {
     auto res = Check::coerce(elem_type, val);
     if (!res)
-        val->blame("value is not assignable to element type")
-            .n("expected `{}`, got `{}`", elem_type, type_of(val))
+        Nom::tell_apart(
+            val->blame("value is not assignable to element type").n("expected `{}`, got `{}`", elem_type, type_of(val)),
+            elem_type, val)
             .bail();
     return res;
 }
@@ -435,6 +436,7 @@ const Def* World::app(const Def* callee, const Def* arg) {
     if (!new_arg) {
         auto& err = arg->blame("argument is not assignable to callee's domain")
                         .n("expected `{}`, got `{}`", pi->dom(), type_of(arg));
+        Nom::tell_apart(err, pi->dom(), arg);
         if (auto dom_t = pi->dom()->isa_type<Type>(); dom_t && Lit::isa(dom_t->level()) == nat_t(0) && !arg->is_term())
             err.n("`{}` is a type, but the callee expects a term of type `{}`", arg, pi->dom());
         else if (pi->dom()->isa<Type>() && arg->is_term())
@@ -1128,6 +1130,15 @@ const Nom* World::nom(flags_t key, const Def* type) {
     type = type->zonk();
     if (auto t = type->unfold_type()) return unify<Nom>(t, type, key);
     type->blame("`Level` cannot be wrapped in a nominal newtype").bail();
+}
+
+fe::Error& Nom::tell_apart(fe::Error& err, const Def* expected, const Def* value) {
+    if (auto type = value->type())
+        if (auto a = expected->zonk()->isa<Nom>())
+            if (auto b = type->zonk()->isa<Nom>(); b && a != b && a->key() == b->key())
+                err.n("these are distinct instances of one `nom`: the former wraps `{}`, the latter `{}`", a->op(),
+                      b->op());
+    return err;
 }
 
 const Def* World::name(const Def* n, const Def* value) {

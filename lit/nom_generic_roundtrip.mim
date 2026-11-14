@@ -1,0 +1,10 @@
+// RUN: %mim %s
+// XFAIL: roundtrip-mim
+
+// `-o` declares `Box T` as a `nom` inside `id`, although `id`'s signature already refers to it.
+// Only a generic `nom` that is an annex of a loaded plugin prints its instances as `I args`.
+plugin core;
+
+nom Box (T: *) = [x: T, y: T];
+
+extern lam id (T: *) (b: Box T): Box T = b;

@@ -116,6 +116,12 @@ cd lit
 
 `test-all` includes them unless `MIM_TEST_ROUNDTRIP=OFF`.
 
+An input opts out with `// UNSUPPORTED: roundtrip`; `// XFAIL: roundtrip-mim` (or `roundtrip-ast`) marks one whose dump is known not to round-trip.
+
+@note Known gap: `mim -o` only prints an instance of a generic `nom` as `I args` if `I` is an annex of a loaded plugin.
+Any other generic `nom` - one of the dumped file itself or of a plain `import` - no longer exists when the dump runs, so each instance is declared as a `nom` of its own.
+Such a dump does not re-read if the instance depends on a function's parameter and occurs in that function's signature; see `lit/nom_generic_roundtrip.mim`.
+
 ### Unit Tests
 
 `test/` holds the [doctest](https://github.com/doctest/doctest) unit tests, built as `mim-test` and `mim-regex-test`.
@@ -323,12 +329,19 @@ You can directly invoke several MimIR dump helpers from within GDB, for example:
 
 ```gdb
 (gdb) call def->dump()
-(gdb) call def->dump(0)
-(gdb) call def->dump(2)
+(gdb) call def->dump(mim::Def::Dump::Scope)
+(gdb) call def->dump(mim::Def::Dump::All)
 (gdb) call world().write("out.mim")
 ```
 
-In particular, note the different output levels of [`mim::Def::dump`](@ref mim::Def::dump).
+In particular, note the different output levels of [`mim::Def::dump`](@ref mim::Def::dump):
+
+- Without an argument, it prints the `Def` on one line and refers to everything that does not inline by name.
+- `Scope` prints it as a declaration with its operands as `let`s and the mutables nested in it; closed mutables it merely refers to appear by name.
+- `All` additionally declares every closed mutable it reaches.
+
+GDB only resolves the call if you spell out the enumerator; an integer such as `def->dump(1)` does not work.
+For a pointer to a subclass, cast first: `call ((const mim::Def*)lam)->dump(mim::Def::Dump::Scope)`.
 
 You can also tweak the output behavior directly from within GDB by changing [`mim::World::flags`](@ref mim::World::flags) or [`mim::World::log`](@ref mim::World::log):
 
