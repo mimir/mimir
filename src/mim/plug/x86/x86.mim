@@ -1,0 +1,94 @@
+/// # The x86 Plugin {#x86}
+///
+/// @see mim::plug::x86
+///
+/// [TOC]
+///
+/// The native x86-64 backend.
+/// Loading this plugin (`mim foo.mim -p x86`) appends instruction selection and emission to the compilation pipeline.
+/// Instruction selection rewrites `core`, `math`, and `mem` into the axioms below.
+/// Registers, immediates, addressing modes, and the schedule are no concern of these types; register allocation introduces them later.
+///
+/// ## Dependencies
+///
+plugin mem;
+plugin opt;
+import compile;
+///
+/// ## Types
+///
+/// ### Fl
+///
+/// The flags register.
+///
+axm Fl: *;
+///
+/// ### emit
+///
+/// Emits GNU assembler code (Intel syntax) to `<world>.s`.
+///
+axm emit: compile.Phase;
+///
+/// ## Instructions
+///
+/// Instructions are polymorphic in the operand size `s`, which must be the size of `Bool`, `I8`, `I16`, `I32`, or `I64`.
+///
+/// ### load
+///
+/// `mov r, [addr]`.
+///
+axm load: [s: Nat] → {a: Nat} → [mem.M a, I64] → [mem.M a, Idx s];
+///
+/// ### store
+///
+/// `mov [addr], r`.
+///
+axm store: {s a: Nat} → [mem.M a, I64, Idx s] → mem.M a;
+///
+/// ### Arithmetic
+///
+/// Two-address arithmetic `op r, r/imm`.
+///
+axm (add, sub, and, or, xor, imul): {s: Nat} → «2; Idx s» → Idx s;
+///
+/// ### Shifts
+///
+/// Shifts by `cl` or an immediate.
+///
+axm (shl, shr, sar): {s: Nat} → «2; Idx s» → Idx s;
+///
+/// ### Conversions
+///
+/// `movzx`, `movsx`, and truncation to the low bits of the register.
+///
+axm (movzx, movsx, trunc): {s: Nat} → [d: Nat] → Idx s → Idx d;
+///
+/// ### Comparisons
+///
+/// `cmp r, r/imm` and `test r, r/imm`.
+///
+axm (cmp, test): {s: Nat} → «2; Idx s» → Fl;
+///
+/// ## Condition Codes
+///
+/// A condition code `cc` is a Nat in hardware encoding order:
+/// o = 0, no = 1, b = 2, ae = 3, e = 4, ne = 5, be = 6, a = 7, s = 8, ns = 9, p = 10, np = 11, l = 12, ge = 13, le = 14, g = 15.
+///
+/// ### cc
+///
+/// Tests `cc` on the flags: `jcc` as a branch condition, `setcc` otherwise.
+///
+axm cc: [cc: Nat] → Fl → Bool;
+///
+/// ### cmovcc
+///
+axm cmovcc: [cc: Nat] → {s: Nat} → [Fl, Idx s, Idx s] → Idx s;
+///
+/// ## Phases
+///
+/// ### isel
+///
+/// Instruction selection.
+///
+axm isel: compile.Phase;
+///
