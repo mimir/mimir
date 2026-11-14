@@ -1,25 +1,16 @@
 #include "mim/plug/x86/x86.h"
 
-#include <mim/phase.h>
 #include <mim/plugin.h>
 
+#include "mim/plug/x86/emit.h"
 #include "mim/plug/x86/phase/isel.h"
-
-namespace mim::plug::x86 {
-
-class Emit : public Phase {
-public:
-    using Phase::Phase;
-
-    void start() override { world().log().d("x86 backend args: {}", fe::Join(args())); }
-};
-
-} // namespace mim::plug::x86
+#include "mim/plug/x86/phase/schedule.h"
 
 using namespace mim;
 
 static void reg_phases(Flags2Phases& phases) {
     Phase::hook<plug::x86::isel, plug::x86::phase::ISel>(phases);
+    Phase::hook<plug::x86::schedule, plug::x86::phase::Schedule>(phases);
     Phase::hook<plug::x86::emit, plug::x86::Emit>(phases);
 }
 

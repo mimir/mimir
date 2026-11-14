@@ -1,4 +1,4 @@
-import os, subprocess, sys
+import os, platform, subprocess, sys
 sys.path.insert(0, os.path.dirname(__file__))
 from mim_sh_test import MimShTest
 from mim_roundtrip_test import MimRoundTripTest
@@ -63,6 +63,9 @@ if getattr(config, 'fp16', False):
 # operating system is detected using sys.platform (see https://docs.python.org/3/library/sys.html#sys.platform)
 # Tests that only work on e.g. Linux operating systems specify this via `// REQUIRES: system-linux`.
 config.available_features.add(f"system-{sys.platform}")
+# The native x86 backend emits SysV/ELF assembly; tests run its binaries via `%if x86_64-linux %{ ... %}`.
+if sys.platform == 'linux' and platform.machine() == 'x86_64':
+    config.available_features.add('x86_64-linux')
 # CUDA support (needs CUDA toolkit) is detected once by CMake and passed in via
 # lit.site.cfg.py. Tests gate on this via `// REQUIRES: cuda`.
 if getattr(config, 'cuda_can_run_on_device', False):

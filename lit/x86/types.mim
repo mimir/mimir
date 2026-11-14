@@ -1,4 +1,4 @@
-// RUN: %mim %s -o - | FileCheck %s
+// RUN: %mim --no-opt %s -o - | FileCheck %s
 
 plugin mem;
 plugin x86;

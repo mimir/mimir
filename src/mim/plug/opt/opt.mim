@@ -105,5 +105,6 @@ extern lam _default_compile (): compile.Phase =
         compile.named "ll.emit",
         compile.named "nvptx.emit",
         compile.named "x86.isel",
+        compile.named "x86.schedule",
         compile.named "x86.emit",
     );

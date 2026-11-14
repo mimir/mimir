@@ -1,0 +1,8 @@
+// RUN: (! %mim %s -o - 2>&1) | %FileCheck %s
+
+plugin core;
+plugin x86;
+
+extern con f (a b: I32, return: Cn I32) = return (core.wrap.add 0 (a, b));
+
+// CHECK: x86 backend: continuation `f` has no `mem.M` to schedule on

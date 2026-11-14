@@ -11,6 +11,8 @@ public:
     using RWPhase::RWPhase;
 
 private:
+    /// Zero-extends @p x of new_world() to `Idx d`, folding literals.
+    const Def* zext(const Def* d, const Def* x);
     /// Byte offset of `mem.lea (p, index)` into an old_world() @p pointee as an `I64` of new_world().
     const Def* offset(const Def* pointee, const Def* index);
 

@@ -46,16 +46,19 @@ bool is_lowered_plugin(const Axm* axm) {
 
 } // namespace
 
+const Def* ISel::zext(const Def* d, const Def* x) {
+    if (auto l = Lit::isa(x)) return new_world().lit(new_world().type_idx(d), *l);
+    return new_world().call<movzx>(d, x);
+}
+
 const Def* ISel::offset(const Def* pointee, const Def* index) {
     auto& w = new_world();
     if (auto arr = pointee->isa<Arr>()) {
         auto size = trait(core::trait::size, arr->body());
         if (auto i = Lit::isa(index)) return w.lit_i64(*i * size);
 
-        auto n = Idx::isa_lit(index->type());
-        if (!n) index->blame(MIM_X86_BE "index `{}` has no static size", index).bail();
         auto i = rewrite(index);
-        if (*n != 0) i = w.call<movzx>(w.lit_i64(), i);
+        if (auto n = Idx::isa_lit(index->type()); n && *n != 0) i = zext(w.lit_i64(), i);
         return size == 1 ? i : w.call<imul>(Defs{i, w.lit_i64(size)});
     }
 
@@ -76,13 +79,22 @@ const Def* ISel::rewrite_imm_App(const App* app) {
     auto rw = [this](const Def* d) { return rewrite(d); };
 
     if (Axm::isa<core::Ptr>(app)) return w.type_i64();
+    if (Axm::isa<core::M>(app)) return w.call<core::M>(w.lit_nat_0());
+    if (auto size = Idx::isa(app); size && !Lit::isa(size)) return w.type_i64();
 
     if (auto op = Axm::isa<core::wrap>(app)) {
         auto [a, b] = op->args<2>(rw);
         switch (op.id()) {
             case core::wrap::add: return w.call<add>(Defs{a, b});
             case core::wrap::sub: return w.call<sub>(Defs{a, b});
-            case core::wrap::mul: return w.call<imul>(Defs{a, b});
+            case core::wrap::mul: {
+                // The low bits of a product do not depend on how the operands were extended.
+                if (auto s = Idx::isa_lit(app->type()); s && reg_width(*s) < 16) {
+                    auto x = w.call<imul>(Defs{zext(w.lit_i32(), a), zext(w.lit_i32(), b)});
+                    return w.call<trunc>(*s, x);
+                }
+                return w.call<imul>(Defs{a, b});
+            }
             case core::wrap::shl: return w.call<shl>(Defs{a, b});
         }
     } else if (auto op = Axm::isa<core::bit2>(app)) {
@@ -112,14 +124,18 @@ const Def* ISel::rewrite_imm_App(const App* app) {
             if (sw >= dw) return w.call<trunc>(*dst, x);
             return op.id() == core::conv::s ? w.call<movsx>(*dst, x) : w.call<movzx>(*dst, x);
         }
+    } else if (auto op = Axm::isa<core::idx>(app)) {
+        if (auto l = Lit::isa(op->arg()); l && rewrite(app->type()) == w.type_i64()) return w.lit_i64(*l);
+    } else if (auto op = Axm::isa<mem::assume>(app)) {
+        return rewrite(op->arg(2, 0));
     } else if (auto op = Axm::isa<mem::load>(app)) {
         auto [_, T] = app->type()->projs<2>();
-        if (auto s = Idx::isa_lit(T); s && is_reg_size(*s)) {
+        if (auto s = Idx::isa_lit(rewrite(T)); s && is_reg_size(*s)) {
             auto [m, p] = op->args<2>(rw);
             return w.call<load>(*s, Defs{m, p});
         }
     } else if (auto op = Axm::isa<mem::store>(app)) {
-        if (auto s = Idx::isa_lit(op->arg(3, 2)->type()); s && is_reg_size(*s)) {
+        if (auto s = Idx::isa_lit(rewrite(op->arg(3, 2)->type())); s && is_reg_size(*s)) {
             auto [m, p, v] = op->args<3>(rw);
             return w.call<store>(Defs{m, p, v});
         }

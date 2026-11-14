@@ -7,7 +7,8 @@
 /// The native x86-64 backend.
 /// Loading this plugin (`mim foo.mim -p x86`) appends instruction selection and emission to the compilation pipeline.
 /// Instruction selection rewrites `core`, `math`, and `mem` into the axioms below.
-/// Registers, immediates, addressing modes, and the schedule are no concern of these types; register allocation introduces them later.
+/// Registers, immediates, and addressing modes are no concern of these types; register allocation introduces them later.
+/// The schedule is the `mem.M 0` chain: memory instructions sit on it, and scheduling threads all other instructions onto it via `sched`.
 ///
 /// ## Dependencies
 ///
@@ -27,7 +28,7 @@ axm Fl: *;
 ///
 /// ### emit
 ///
-/// Emits GNU assembler code (Intel syntax) to `<world>.s`.
+/// Emits GNU assembler code (AT&T syntax) to `<world>.s`.
 ///
 axm emit: compile.Phase;
 ///
@@ -68,13 +69,13 @@ anx lam logic (s: Nat): Nat =
 ///
 /// `mov r, [addr]`.
 ///
-axm load: [s: Nat] → {a: Nat} → [mem.M a, I64] → [mem.M a, Idx (gpr s)];
+axm load: [s: Nat] → [mem.M 0, I64] → [mem.M 0, Idx (gpr s)];
 ///
 /// ### store
 ///
 /// `mov [addr], r`.
 ///
-axm store: {s a: Nat} → [mem.M a, I64, Idx s] → mem.M a;
+axm store: {s: Nat} → [mem.M 0, I64, Idx s] → mem.M 0;
 ///
 /// ### Arithmetic
 ///
@@ -115,7 +116,18 @@ axm cc: [cc: Nat] → Fl → Bool;
 ///
 /// ### cmovcc
 ///
+/// `cmovcc cc (f, x, y)` yields `y` if `cc` holds on `f`, else `x`, like `(x, y)#cond`.
+///
 axm cmovcc: [cc: Nat] → {s: Nat} → [Fl, Idx s, Idx s] → Idx (gpr16 s);
+///
+/// ## Schedule
+///
+/// ### sched
+///
+/// Places the pure instruction `f x` on the `mem.M 0` chain right after `m`: `let (m, y) = x86.sched x86.add m (a, b)`.
+/// The chain token makes each placement a distinct Def, so copies, spills, and reloads at different points never merge.
+///
+axm sched: {D C: *} → (D → C) → mem.M 0 → D → [mem.M 0, C];
 ///
 /// ## Phases
 ///
@@ -124,4 +136,11 @@ axm cmovcc: [cc: Nat] → {s: Nat} → [Fl, Idx s, Idx s] → Idx (gpr16 s);
 /// Instruction selection.
 ///
 axm isel: compile.Phase;
+///
+/// ### schedule
+///
+/// Threads every instruction of a block onto the block's `mem.M 0` chain.
+/// Expects every continuation to take a `mem.M 0`.
+///
+axm schedule: compile.Phase;
 ///
