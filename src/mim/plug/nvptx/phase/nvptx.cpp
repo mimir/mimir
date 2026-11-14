@@ -127,7 +127,7 @@ void HostEmitter::start() {
         std::println(vars_decls_, "{}{} = private constant [{} x i8] c\"{}\\00\"", kernel_name_prefix, kid,
                      name.size() + 1, name);
     }
-    std::println(vars_decls_, "{} = dso_local global [{} x ptr] zeroinitializer", kernel_array_name_,
+    std::println(vars_decls_, "{} = internal global [{} x ptr] zeroinitializer", kernel_array_name_,
                  kernel_ids_.size());
 
     LamSet gpu_touching;
@@ -207,7 +207,7 @@ void HostEmitter::emit_gpu_setup(ll::BB& bb, const std::string& name) {
     emit_cu_error_handling(bb, dev_get_res);
 
     declare("i32 @{}(ptr, ptr, i32, i32)", Cu_Ctx_Create);
-    if (!cu_globals_declared_) std::println(vars_decls_, "{} = global ptr null", ctx_name_);
+    if (!cu_globals_declared_) std::println(vars_decls_, "{} = internal global ptr null", ctx_name_);
     auto dev     = bb.assign(name + "_dev", "load i32, ptr {}", dev_ptr);
     auto ctx_res = bb.assign(name + "_ctx_res", "call i32 @{}(ptr {}, ptr null, i32 {}, i32 {})", Cu_Ctx_Create,
                              ctx_name_, ctx_flags, dev);
@@ -215,7 +215,7 @@ void HostEmitter::emit_gpu_setup(ll::BB& bb, const std::string& name) {
 
     declare("i32 @{}(ptr, ptr)", Cu_Module_Load_Fatbin);
     if (!cu_globals_declared_) {
-        std::println(vars_decls_, "{} = global ptr null", mod_name_);
+        std::println(vars_decls_, "{} = internal global ptr null", mod_name_);
         if (device_fatbin_file_.has_value()) {
             std::ifstream fatbin_file(device_fatbin_file_.value(), std::ios::binary);
             if (!fatbin_file)
