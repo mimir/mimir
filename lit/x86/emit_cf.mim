@@ -1,0 +1,47 @@
+// REQUIRES: x86_64-linux
+// RUN: %mim %s -p x86 -X x86:o=%t.s
+// RUN: FileCheck %s < %t.s
+// RUN: clang %t.s -o %t
+// RUN: %t ; test $? -eq 34
+// RUN: %t 1 ; test $? -eq 56
+// RUN: %t 1 2 3 ; test $? -eq 150
+plugin core;
+plugin mem;
+
+use core.ops.u.w;
+
+/// Passes `b` on as `a`, so the jump back must read all parameters before overwriting any.
+extern con fib (m: mem.M 0, n: I32, return: Cn [mem.M 0, I32]) =
+    loop (m, 0I32, 0I32, 1I32)
+    where
+        con loop (m: mem.M 0, i a b: I32) =
+            (exit, body)#(i < n) m
+            where
+                con body (m: mem.M 0) = loop (m, i + 1I32, b, a + b);
+                con exit (m: mem.M 0) = return (m, a);
+            end
+    end
+
+con tri (m: mem.M 0, n: I32, return: Cn [mem.M 0, I32]) =
+    (step, done)#(n == 0I32) m
+    where
+        con done (m: mem.M 0) = return (m, 0I32);
+        con step (m: mem.M 0) = tri (m, n - 1I32, add)
+        where
+            con add (m: mem.M 0, r: I32) = return (m, n + r);
+        end
+    end;
+
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char», return: Cn [mem.M 0, I32]) =
+    fib (m, 8I32 + argc, fib_cont)
+    where
+        con fib_cont (m: mem.M 0, x: I32) = tri (m, argc - 1I32, tri_cont)
+        where
+            con tri_cont (m: mem.M 0, y: I32) = return (m, x + y);
+        end
+    end;
+
+// CHECK-DAG: call fib
+// CHECK-DAG: call tri_{{[0-9]+}}
+// CHECK-DAG: .type tri_{{[0-9]+}}, @function
+// CHECK-DAG: jb .L

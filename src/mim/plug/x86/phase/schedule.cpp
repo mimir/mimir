@@ -83,6 +83,8 @@ const Def* Schedule::rewrite_mut_Lam(Lam* old_lam) {
 
     for (auto old_mem : mems)
         map(old_mem, m);
+    // The whole Var may be passed on, so it must carry the end of the chain as well.
+    if (n > 1) map(old_lam->var(), w.tuple(DefVec(n, [&](size_t j) { return j == i ? m : new_lam->var(n, j); })));
 
     auto new_filter = rewrite(old_lam->filter());
     auto new_body   = rewrite(old_lam->body());

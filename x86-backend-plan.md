@@ -64,13 +64,16 @@ Done (on `feature/x86`):
   An instruction reachable only from nested continuations is scheduled in the first one that reaches it; scoped mappings keep siblings from sharing it.
   A continuation without a `mem.M` is an error.
 - `x86.load`/`x86.store` work on `mem.M 0`; isel collapses `mem.M a` to `mem.M 0`.
-- `x86.emit` (`src/mim/plug/x86/emit.cpp`) writes GAS text in AT&T syntax to `<world>.s` (`-X x86:o=<file>`) for single-block functions:
-  it reads the order off the `mem.M` chain backwards from the terminator, keeps every value in its own stack slot with `rax`/`rcx` as scratch, takes up to six SysV integer arguments, and returns in `rax`.
+- `x86.emit` (`src/mim/plug/x86/emit.cpp`) writes GAS text in AT&T syntax to `<world>.s` (`-X x86:o=<file>`):
+  it reads each block's order off the `mem.M` chain backwards from its terminator, keeps every value in its own stack slot with `rax`/`rcx` as scratch, takes up to six SysV integer arguments, and returns in `rax`.
+  A block is a label in the dominator-respecting order of discovery; a jump stores its arguments into the target's parameter slots (through temporaries if it passes the target's own parameters) and a two-way branch on an `x86.cc` becomes `j{cc}`.
+  A call loads the argument registers, stores `rax` into the return continuation's parameter slot, and jumps there; a call through the function's own return continuation is a tail of `call`, `leave`, `ret`.
+  A non-external callee is emitted as a local function `<name>_<gid>`; an external declaration is called by its symbol.
   `cmp`/`test` are rematerialized right before each `cc`/`cmovcc`, so the order of the schedule cannot clobber flags.
   This allocation is a throwaway stand-in inside `emit`; the real allocator will answer "where does `v` live" in the graph.
 - `x86.cmovcc cc (f, x, y)` yields `y` if `cc` holds, like `(x, y)#cond`.
 - `isel` widens 8-bit and `Bool` multiplications to `i32` (`movzx`, `imul`, `trunc`), since `imul` has no 8-bit form.
-- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/sched.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`.
+- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/sched.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`.
 
 Known gaps:
 
@@ -79,20 +82,19 @@ Known gaps:
 - Re-running the full pipeline on backend output is not meaningful (`core.legalize_idx` η-wraps `x86.trunc` to `Idx 4`); round-trip backend dumps with `--no-opt`.
 - `isel` still emits size-check failures for non-register sizes (e.g. `core.wrap.add` on `Idx 5`); these need masking or a clear rejection.
 - `isel` emits a `trunc` → `movzx` pair for array indices that `core.legalize_idx` narrowed; it is a mask (`and x, 2^k - 1`), not a no-op, and should become one `and` in PBQP isel.
-- Calls, `malloc`/`free`, stack slots (`mem.mslot`), `core.rem`/`core.div`, `core.bitcast`, `core.idx` of a non-literal, and `math` are not selected yet.
-- `x86.emit` handles neither control flow, calls, more than six arguments, nor `movsx`/`trunc` to non-power-of-two `Idx` sizes; it does not prefix symbols for Mach-O.
+- `malloc`/`free`, stack slots (`mem.mslot`), `core.rem`/`core.div`, `core.bitcast`, `core.idx` of a non-literal, and `math` are not selected yet.
+- `x86.emit` handles neither switches with more than two targets, indirect calls, more than six arguments, nor `movsx`/`trunc` to non-power-of-two `Idx` sizes; it does not prefix symbols for Mach-O.
+- `x86.emit` jumps to the next block even when it would fall through, and leaves the dead `setcc` of a branch condition in place.
 - Loading `plugin x86` in a source file pulls `x86.emit` into the default pipeline; tests of isel or scheduling alone use a local `_compile` with just those phases.
 - A user-file `axm` with a checked codomain dumped as `… → Idx _1` with `_1` unbound; likely a dumper round-trip bug.
 
 ## Next Steps
 
-Done: straight-line scheduling in topological order, and emission of GAS text (AT&T syntax) for single blocks on a spill-everything stand-in allocator (no encoder or ELF writer for now).
+Done: scheduling in topological order, and emission of GAS text (AT&T syntax) with control flow and SysV calls on a spill-everything stand-in allocator (no encoder or ELF writer for now).
 
-1. **Control flow** on the stand-in allocator: `jcc`, block parameters as stack slots, slot-to-slot moves at jumps, calls via SysV.
-   This unlocks most of the remaining `clang`-run lit tests.
-2. **Isel coverage** for what the sweep hits next: `core.rem`/`core.div` (`rax`/`rdx`), `mem.mslot`, `core.idx` of a non-literal, `core.bitcast`.
-3. **Register allocation** with PBQP, including pressure-aware list scheduling, spilling, the pre-allocation step that picks immediates and folds address modes, and SSA destruction; each piece replaces a stand-in and is checked against the allowlist.
-4. **PBQP instruction selection** replacing the one-to-one translation.
+1. **Isel coverage** for what the sweep hits next: `core.rem`/`core.div` (`rax`/`rdx`), `mem.mslot`, `core.idx` of a non-literal, `core.bitcast`.
+2. **Register allocation** with PBQP, including pressure-aware list scheduling, spilling, the pre-allocation step that picks immediates and folds address modes, and SSA destruction; each piece replaces a stand-in and is checked against the allowlist.
+3. **PBQP instruction selection** replacing the one-to-one translation.
 
 ## Instruction Selection with PBQP
 
@@ -142,7 +144,7 @@ The explosion is in forms (widths, register/memory/immediate operands, VEX/EVEX)
 ## Verification
 
 - Integer-only lit tests that run under `-p ll` should also run under `-p x86` with the same expected output.
-  The allowlist is a set of `%if x86_64-linux %{ … %}` RUN lines in those tests (feature set in `lit/lit.cfg.py`); currently `ret_argc`, `fun_main_argv`, `affine/affine_index`, `affine/affine_index_op_mul`, `mem/alloc_load_store`, `mem/slot_load_store`, `mem/two_fun_mem`, `mem/two_fun_no_mem`.
-  Of the other 54 `clang`-run tests, most need control flow; the rest stop in isel at `core.rem`, `mem.mslot`, `core.idx`, or `core.bitcast`.
+  The allowlist is a set of `%if x86_64-linux %{ … %}` RUN lines in those tests (feature set in `lit/lit.cfg.py`); currently `ret_argc`, `fun_main_argv`, `affine/affine_index`, `affine/affine_index_op_mul`, `mem/alloc_load_store`, `mem/slot_load_store`, `mem/two_fun_mem`, `mem/two_fun_no_mem`, `core/ret_add`, `core/ret_and`, `core/ret_lshr`, `cps/ds_external_cimp`, `cps/ds_external_cimp_translated`, `main_loop`, `mem/seo_known_to_unknown`.
+  Of the other `clang`-run tests, five have a continuation without `mem.M` (`affine/for_*`, `affine/dynamic_for`, `core/pow`); the rest stop in isel, mostly at `core.idx` of a non-literal (the regex tests), `core.rem`, and `mem.mslot`.
 - Unit tests (`mim-x86-test`): register-allocation invariants, and `solve` against `solve_exhaustive` on small instances.
 - The optimizer-dump oracle for any change to the pre-isel pipeline.

@@ -1,6 +1,7 @@
 #include "mim/plug/x86/emit.h"
 
 #include <bit>
+#include <deque>
 #include <print>
 #include <ranges>
 #include <sstream>
@@ -53,12 +54,23 @@ nat_t nat(const Def* def) {
 /// The `f` of `x86.sched f m x`.
 const Def* sched_insn(const App* app) { return app->callee()->as<App>()->callee()->as<App>()->arg(); }
 
+/// Functions still to emit, shared by all Emitter%s.
+struct Funs {
+    std::deque<Lam*> todo;
+    LamSet seen;
+
+    void push(Lam* lam) {
+        if (seen.emplace(lam).second) todo.emplace_back(lam);
+    }
+};
+
 class Emitter {
 public:
-    explicit Emitter(std::ostream& os)
-        : os_(os) {}
+    Emitter(std::ostream& os, Funs& funs)
+        : os_(os)
+        , funs_(funs) {}
 
-    void emit(Lam*);
+    void emit(Lam*, bool global);
 
 private:
     template<class... Args>
@@ -68,16 +80,29 @@ private:
     }
 
     static std::string slot(size_t i) { return std::format("-{}(%rbp)", 8 * (i + 1)); }
+    static std::string label(Lam* lam) { return std::format(".L{}", lam->unique_name()); }
+    std::string symbol(Lam*);
+    size_t slot_of(const Def*);
     const Def* prev_mem(const App*);
     void get(const Reg&, const Def*);
     void put(const Def*, const Reg&);
     void flags(const Def*);
     void step(const App*);
     void insn(const Def* res, const Def* f, const Def* x);
+    void block(Lam*);
+    void schedule(Lam*, const Def* end);
+    Lam* target(const Def*);
+    void jump(Lam*, const Def* arg);
+    void call(Lam* bb, Lam* callee, const Def* arg);
 
     std::ostream& os_;
+    Funs& funs_;
     std::ostringstream body_;
     DefMap<size_t> slots_;
+    size_t num_slots_ = 0;
+    const Def* ret_   = nullptr;
+    std::deque<Lam*> blocks_;
+    LamSet seen_;
 };
 
 void Emitter::get(const Reg& reg, const Def* def) {
@@ -97,11 +122,15 @@ void Emitter::get(const Reg& reg, const Def* def) {
     }
 }
 
+size_t Emitter::slot_of(const Def* def) {
+    auto [i, ins] = slots_.emplace(def, num_slots_);
+    if (ins) ++num_slots_;
+    return i->second;
+}
+
 void Emitter::put(const Def* def, const Reg& reg) {
-    auto w      = width(def->type());
-    auto i      = slots_.size();
-    slots_[def] = i;
-    line("mov{} {}, {}", suffix(w), name(reg, w), slot(i));
+    auto w = width(def->type());
+    line("mov{} {}, {}", suffix(w), name(reg, w), slot(slot_of(def)));
 }
 
 /// Recomputes the flags of a `cmp` or `test` right before their consumer, so nothing in between can clobber them.
@@ -222,38 +251,18 @@ void Emitter::step(const App* app) {
     line("mov{} {}, (%rax)", suffix(w), name(rcx, w));
 }
 
-void Emitter::emit(Lam* lam) {
-    auto n   = lam->num_vars();
-    auto ret = n == 0 ? nullptr : lam->var(n, n - 1);
-    if (!ret || !Pi::isa_cn(ret->type()))
-        lam->blame(MIM_X86_BE "`{}` does not end in a return continuation", lam).bail();
+std::string Emitter::symbol(Lam* lam) {
+    if (lam->is_external() || !lam->is_set()) return lam->sym().str();
+    funs_.push(lam);
+    return lam->unique_name();
+}
 
+void Emitter::schedule(Lam* bb, const Def* end) {
+    auto n         = bb->num_vars();
     const Def* mem = nullptr;
-    size_t a       = 0;
-    for (size_t i = 0; i + 1 < n; ++i) {
-        auto var = lam->var(n, i);
-        if (is_mem(var)) {
-            mem = var;
-        } else {
-            if (a == arg_regs.size()) lam->blame(MIM_X86_BE "more than six arguments are not supported yet").bail();
-            put(var, arg_regs[a++]);
-        }
-    }
-
-    auto term = lam->body()->isa<App>();
-    if (!term || term->callee() != ret) lam->blame(MIM_X86_BE "control flow in `{}` is not supported yet", lam).bail();
-
-    auto arg       = term->arg();
-    auto k         = arg->num_projs();
-    const Def* end = nullptr;
-    auto vals      = DefVec();
-    for (size_t i = 0; i != k; ++i)
-        if (auto d = arg->proj(k, i); is_mem(d))
-            end = d;
-        else
-            vals.emplace_back(d);
-    if (!mem || !end) lam->blame(MIM_X86_BE "`{}` has no `mem.M` chain", lam).bail();
-    if (vals.size() > 1) lam->blame(MIM_X86_BE "`{}` returns more than one value", lam).bail();
+    for (size_t i = 0; i != n && !mem; ++i)
+        if (auto var = bb->var(n, i); is_mem(var)) mem = var;
+    if (!mem || !end) bb->blame(MIM_X86_BE "`{}` has no `mem.M` chain", bb).bail();
 
     auto chain = std::vector<const App*>();
     for (auto m = end; m != mem;) {
@@ -265,14 +274,145 @@ void Emitter::emit(Lam* lam) {
     }
     for (auto app : chain | std::views::reverse)
         step(app);
+}
 
-    if (!vals.empty()) get(rax, vals.front());
-    line("leave");
-    line("ret");
+Lam* Emitter::target(const Def* def) {
+    auto bb = Lam::isa_mut_basicblock(def);
+    if (!bb || !bb->is_set()) def->blame(MIM_X86_BE "`{}` is not a basic block", def).bail();
+    if (seen_.emplace(bb).second) blocks_.emplace_back(bb);
+    return bb;
+}
 
-    auto sym   = lam->sym().str();
-    auto frame = (8 * slots_.size() + 15) / 16 * 16;
-    std::println(os_, "\t.globl {}", sym);
+void Emitter::jump(Lam* bb, const Def* arg) {
+    auto n     = bb->num_vars();
+    auto moves = std::vector<std::pair<const Def*, const Def*>>();
+    for (size_t i = 0; i != n; ++i)
+        if (auto var = bb->var(n, i); !is_mem(var)) moves.emplace_back(var, arg->proj(n, i));
+
+    // A loop may pass its own parameters around, so read all of them before overwriting any.
+    auto own = [bb](auto move) {
+        return move.second->template isa<Var>() && move.second->template as<Var>()->binder() == bb;
+    };
+    auto tmps = std::vector<size_t>();
+    if (std::ranges::any_of(moves, own)) {
+        for (auto [var, val] : moves) {
+            auto w = width(val->type());
+            get(rax, val);
+            tmps.emplace_back(num_slots_++);
+            line("mov{} {}, {}", suffix(w), name(rax, w), slot(tmps.back()));
+        }
+    }
+    for (size_t i = 0; i != moves.size(); ++i) {
+        auto [var, val] = moves[i];
+        if (tmps.empty()) {
+            get(rax, val);
+        } else {
+            auto w = width(val->type());
+            line("mov{} {}, {}", suffix(w), slot(tmps[i]), name(rax, w));
+        }
+        put(var, rax);
+    }
+    line("jmp {}", label(bb));
+}
+
+void Emitter::call(Lam* bb, Lam* callee, const Def* arg) {
+    auto pi = Pi::isa_returning(callee->type());
+    auto n  = pi->num_doms();
+    for (size_t i = 0, a = 0; i + 1 < n; ++i) {
+        if (auto x = arg->proj(n, i); !is_mem(x)) {
+            if (a == arg_regs.size()) bb->blame(MIM_X86_BE "more than six arguments are not supported yet").bail();
+            get(arg_regs[a++], x);
+        }
+    }
+    // A variadic callee reads the number of vector registers used from `al`.
+    line("movl $0, %eax");
+    line("call {}", symbol(callee));
+
+    auto ret = arg->proj(n, n - 1);
+    if (ret == ret_) {
+        line("leave");
+        line("ret");
+        return;
+    }
+
+    auto k = target(ret);
+    auto m = k->num_vars();
+    for (size_t i = 0; i != m; ++i)
+        if (auto var = k->var(m, i); !is_mem(var)) put(var, rax);
+    line("jmp {}", label(k));
+}
+
+void Emitter::block(Lam* bb) {
+    auto term = bb->body()->isa<App>();
+    if (!term) bb->blame(MIM_X86_BE "`{}` does not end in a jump", bb).bail();
+
+    auto arg       = term->arg();
+    auto callee    = term->callee();
+    auto k         = arg->num_projs();
+    const Def* end = nullptr;
+    for (size_t i = 0; i != k; ++i)
+        if (auto d = arg->proj(k, i); is_mem(d)) end = d;
+    schedule(bb, end);
+
+    if (callee == ret_) {
+        auto vals = DefVec();
+        for (size_t i = 0; i != k; ++i)
+            if (auto d = arg->proj(k, i); !is_mem(d)) vals.emplace_back(d);
+        if (vals.size() > 1) bb->blame(MIM_X86_BE "`{}` returns more than one value", bb).bail();
+        if (!vals.empty()) get(rax, vals.front());
+        line("leave");
+        line("ret");
+    } else if (auto f = Lam::isa_mut_returning(callee)) {
+        call(bb, f, arg);
+    } else if (auto ex = callee->isa<Extract>()) {
+        auto targets = ex->tuple();
+        if (targets->num_projs() != 2) bb->blame(MIM_X86_BE "only two-way branches are supported yet").bail();
+        auto [e, t] = targets->projs<2>([this](const Def* d) { return target(d); });
+        auto c      = ex->index();
+        auto app    = c->isa<Extract>() ? c->as<Extract>()->tuple()->isa<App>() : nullptr;
+        auto copy   = std::ranges::any_of(t->vars(), [](const Def* var) { return !is_mem(var); });
+        auto t_lbl  = copy ? label(bb) + ".t" : label(t);
+        if (app && Axm::isa<sched>(app) && sched_insn(app)->as<App>()->axm()->flags() == Annex::Base<x86::cc>) {
+            flags(app->arg());
+            line("j{} {}", ccs[nat(sched_insn(app)->as<App>()->arg())], t_lbl);
+        } else {
+            get(rax, c);
+            line("testb %al, %al");
+            line("jne {}", t_lbl);
+        }
+        jump(e, arg);
+        if (copy) {
+            std::println(body_, "{}:", t_lbl);
+            jump(t, arg);
+        }
+    } else {
+        jump(target(callee), arg);
+    }
+}
+
+void Emitter::emit(Lam* fun, bool global) {
+    auto n = fun->num_vars();
+    ret_   = fun->ret_var();
+    if (!ret_) fun->blame(MIM_X86_BE "`{}` does not end in a return continuation", fun).bail();
+
+    for (size_t i = 0, a = 0; i + 1 < n; ++i) {
+        if (auto var = fun->var(n, i); !is_mem(var)) {
+            if (a == arg_regs.size()) fun->blame(MIM_X86_BE "more than six arguments are not supported yet").bail();
+            put(var, arg_regs[a++]);
+        }
+    }
+
+    block(fun);
+    while (!blocks_.empty()) {
+        auto bb = blocks_.front();
+        blocks_.pop_front();
+        std::println(body_, "{}:", label(bb));
+        block(bb);
+    }
+
+    auto sym   = symbol(fun);
+    auto frame = (8 * num_slots_ + 15) / 16 * 16;
+    if (global) std::println(os_, "\t.globl {}", sym);
     std::println(os_, "\t.type {}, @function", sym);
     std::println(os_, "{}:", sym);
     std::println(os_, "\tpushq %rbp");
@@ -294,11 +434,20 @@ void Emit::start() {
     std::ranges::sort(muts, {}, [](Def* mut) { return mut->sym().str(); });
 
     std::println(os, "\t.text");
-    for (auto mut : muts)
-        if (auto lam = mut->isa<Lam>(); lam && lam->is_set())
-            Emitter(os).emit(lam);
-        else
-            mut->blame(MIM_X86_BE "cannot emit `{}`", mut).bail();
+    auto funs = Funs();
+    for (auto mut : muts) {
+        auto lam = mut->isa<Lam>();
+        if (!lam) mut->blame(MIM_X86_BE "cannot emit `{}`", mut).bail();
+        if (lam->is_set()) {
+            funs.seen.emplace(lam);
+            Emitter(os, funs).emit(lam, true);
+        }
+    }
+    while (!funs.todo.empty()) {
+        auto lam = funs.todo.front();
+        funs.todo.pop_front();
+        Emitter(os, funs).emit(lam, false);
+    }
     std::println(os, "\t.section .note.GNU-stack,\"\",@progbits");
 }
 
