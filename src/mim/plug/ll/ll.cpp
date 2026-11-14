@@ -49,8 +49,7 @@ public:
  * `extern "C"` shims below, looked up with GET_FUN_PTR (see ll.h).
  */
 
-/// An `Idx n` whose `n` is only known at runtime is bounded by a `Nat`, hence an `i64`.
-static nat_t idx_bitwidth(const Def* type) { return Idx::size2bitwidth(Idx::isa(type)).value_or(64); }
+static nat_t idx_bitwidth(const Def* type) { return Idx::size2bitwidth(Idx::isa(type)); }
 
 static std::string fmath_flags(math::Mode mode) {
     if (mode == math::Mode::fast) return " fast";

@@ -1039,14 +1039,13 @@ public:
     static constexpr nat_t bitwidth2size(nat_t n) { assert(n != 0); return n == 64 ? 0 : (1_n << n); }
     static constexpr nat_t size2bitwidth(nat_t n) { return n == 0 ? 64 : std::bit_width(n - 1_n); }
     // clang-format on
-    static std::optional<nat_t> size2bitwidth(const Def* size);
+    /// A size only known at runtime is a `Nat`, which fits in 64 bits.
+    static nat_t size2bitwidth(const Def* size);
 
-    /// Yields the bit width of the `Idx` @p type or bails - instead of yielding std::nullopt or dereferencing
-    /// an unchecked std::optional - if @p type is not an `Idx` of statically known size; see Def::expect.
+    /// Yields the bit width of the `Idx` @p type or bails if @p type is not an `Idx`; see Def::expect.
     template<class... Args>
     static nat_t expect_bitwidth(const Def* type, fe::cite_string<Args...> fmt, Args&&... args) {
-        if (auto size = isa(type))
-            if (auto w = size2bitwidth(size)) return *w;
+        if (auto size = isa(type)) return size2bitwidth(size);
         type->bail_expected(fe::format_cite(fmt, std::forward<Args>(args)...));
     }
     ///@}

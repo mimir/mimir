@@ -976,8 +976,8 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
         return world.lit_nat(id == trait::size ? 0 : 1); // the ll backend drops it
     } else if (Axm::isa<Ptr>(type) || type->isa<Nat>() || type->isa<Pi>()) {
         return world.lit_nat(8); // a Pi gets lowered to a function pointer
-    } else if (auto size = Idx::isa(type)) {
-        if (auto w = Idx::size2bitwidth(size)) return world.lit_nat(std::max(1_n, std::bit_ceil(*w) / 8_n));
+    } else if (auto size = Idx::isa_lit(type)) {
+        return world.lit_nat(std::max(1_n, std::bit_ceil(Idx::size2bitwidth(*size)) / 8_n));
     } else if (auto w = math::isa_f(type)) {
         switch (*w) {
             case 16: return world.lit_nat(2);

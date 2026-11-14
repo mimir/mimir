@@ -114,8 +114,8 @@ const Def* ISel::rewrite_imm_App(const App* app) {
             return w.call<x86::cc>(*c, w.call<cmp>(Defs{a, b}));
         }
     } else if (auto op = Axm::isa<core::conv>(app)) {
-        auto src = Idx::isa_lit(op->arg()->type());
-        auto dst = Idx::isa_lit(app->type());
+        auto src = Idx::isa_lit(rewrite(op->arg()->type()));
+        auto dst = Idx::isa_lit(rewrite(app->type()));
         if (src && dst) {
             auto x = rewrite(op->arg());
             if (*src == *dst) return x;
