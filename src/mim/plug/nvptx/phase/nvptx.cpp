@@ -90,6 +90,16 @@ private:
         return v_ptr;
     }
 
+    std::string emit_libdevice_unary(ll::BB& bb, const std::string& name, const Def* def, const Def* arg, std::string fn) {
+        auto a    = emit(arg);
+        auto type = convert(def->type());
+        fn        = "__nv_" + fn + ll::detail::math_suffix(def->type());
+        declare("{} @{}({})", type, fn, type);
+        uses_libdevice = true;
+        bb.assign(name, "call {} @{}({} {})", type, fn, type, a);
+        return name;
+    }
+
     LamSet kernels_;
 
     bool uses_libdevice = false;
@@ -652,6 +662,21 @@ std::optional<std::string> DeviceEmitter::isa_targetspecific_intrinsic(ll::BB& b
         uses_libdevice = true;
         bb.assign(name, "call {} @{}({} {})", type, libdevice_func_name, type, arg);
         return name;
+    } else if (auto pow = Axm::isa<math::pow>(def)) {
+        // NVPTX cannot select `llvm.pow`.
+        auto [a, b]   = pow->args<2>([this](auto def) { return emit(def); });
+        auto type     = convert(pow->type());
+        auto func_name = "__nv_pow"s + ll::detail::math_suffix(pow->type());
+        declare("{} @{}({}, {})", type, func_name, type, type);
+        uses_libdevice = true;
+        bb.assign(name, "call {} @{}({} {}, {} {})", type, func_name, type, a, type, b);
+        return name;
+    } else if (auto rt = Axm::isa<math::rt>(def); rt && rt.id() == math::rt::cb) {
+        return emit_libdevice_unary(bb, name, def, rt->arg(), "cbrt");
+    } else if (auto er = Axm::isa<math::er>(def)) {
+        return emit_libdevice_unary(bb, name, def, er->arg(), er.id() == math::er::f ? "erf" : "erfc");
+    } else if (auto gamma = Axm::isa<math::gamma>(def)) {
+        return emit_libdevice_unary(bb, name, def, gamma->arg(), gamma.id() == math::gamma::t ? "tgamma" : "lgamma");
     }
     return std::nullopt;
 }
