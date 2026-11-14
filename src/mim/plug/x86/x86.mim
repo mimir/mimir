@@ -11,8 +11,10 @@
 ///
 /// ## Dependencies
 ///
+plugin core;
 plugin mem;
 plugin opt;
+plugin refly;
 import compile;
 ///
 /// ## Types
@@ -29,15 +31,44 @@ axm Fl: *;
 ///
 axm emit: compile.Phase;
 ///
-/// ## Instructions
+/// ## Operand Sizes
 ///
-/// Instructions are polymorphic in the operand size `s`, which must be the size of `Bool`, `I8`, `I16`, `I32`, or `I64`.
+/// Instructions are polymorphic in the operand size `s` and state which sizes they support via `refly.check` in their codomain.
+/// A literal `s` folds the check away; an unsupported one is an error.
+///
+lam is (s n: Nat): Bool = core.ncmp.e (s, n);
+///
+/// ### gpr
+///
+/// `i8`, `i16`, `i32`, or `i64`.
+///
+anx lam gpr (s: Nat): Nat =
+    let ok = core.bit2.or 0 (core.bit2.or 0 (is (s, i8), is (s, i16)), core.bit2.or 0 (is (s, i32), is (s, i64)));
+    refly.check (ok, s, "x86: operand size must be i8, i16, i32, or i64");
+///
+/// ### gpr16
+///
+/// `i16`, `i32`, or `i64`.
+///
+anx lam gpr16 (s: Nat): Nat =
+    let ok = core.bit2.or 0 (is (s, i16), core.bit2.or 0 (is (s, i32), is (s, i64)));
+    refly.check (ok, s, "x86: operand size must be i16, i32, or i64");
+///
+/// ### logic
+///
+/// `Bool` or a gpr size.
+///
+anx lam logic (s: Nat): Nat =
+    let ok = core.bit2.or 0 (is (s, 2), core.bit2.or 0 (core.bit2.or 0 (is (s, i8), is (s, i16)), core.bit2.or 0 (is (s, i32), is (s, i64))));
+    refly.check (ok, s, "x86: operand size must be Bool, i8, i16, i32, or i64");
+///
+/// ## Instructions
 ///
 /// ### load
 ///
 /// `mov r, [addr]`.
 ///
-axm load: [s: Nat] → {a: Nat} → [mem.M a, I64] → [mem.M a, Idx s];
+axm load: [s: Nat] → {a: Nat} → [mem.M a, I64] → [mem.M a, Idx (gpr s)];
 ///
 /// ### store
 ///
@@ -49,13 +80,15 @@ axm store: {s a: Nat} → [mem.M a, I64, Idx s] → mem.M a;
 ///
 /// Two-address arithmetic `op r, r/imm`.
 ///
-axm (add, sub, and, or, xor, imul): {s: Nat} → «2; Idx s» → Idx s;
+axm (add, sub): {s: Nat} → «2; Idx s» → Idx (gpr s);
+axm (and, or, xor): {s: Nat} → «2; Idx s» → Idx (logic s);
+axm imul: {s: Nat} → «2; Idx s» → Idx (gpr16 s);
 ///
 /// ### Shifts
 ///
 /// Shifts by `cl` or an immediate.
 ///
-axm (shl, shr, sar): {s: Nat} → «2; Idx s» → Idx s;
+axm (shl, shr, sar): {s: Nat} → «2; Idx s» → Idx (gpr s);
 ///
 /// ### Conversions
 ///
@@ -82,7 +115,7 @@ axm cc: [cc: Nat] → Fl → Bool;
 ///
 /// ### cmovcc
 ///
-axm cmovcc: [cc: Nat] → {s: Nat} → [Fl, Idx s, Idx s] → Idx s;
+axm cmovcc: [cc: Nat] → {s: Nat} → [Fl, Idx s, Idx s] → Idx (gpr16 s);
 ///
 /// ## Phases
 ///
