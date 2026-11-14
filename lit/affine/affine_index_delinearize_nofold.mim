@@ -3,6 +3,10 @@
 // RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t ; test $? -eq 3
 // RUN: %t a a a ; test $? -eq 12
+// RUN: %if x86_64-linux %{ %mim -p opt %s -p x86 -X x86:o=%t.s %}
+// RUN: %if x86_64-linux %{ clang %t.s -o %t.x86 %}
+// RUN: %if x86_64-linux %{ %t.x86 ; test $? -eq 3 %}
+// RUN: %if x86_64-linux %{ %t.x86 a a a ; test $? -eq 12 %}
 
 // A genuine reshape: indices over «7, 28» read as «14, 14». `L = 28·a + b` with `b ∈ [0, 27]`, so the rest
 // carries into `L floordiv 14` and `affine.lower_index` must keep the divisions.

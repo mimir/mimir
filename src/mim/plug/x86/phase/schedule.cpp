@@ -60,7 +60,7 @@ const Def* Schedule::rewrite_mut_Lam(Lam* old_lam) {
             auto res = w.call<sched>(rewrite(f), m, rewrite(app->arg()));
             m        = res->proj(2, 0);
             map(old_def, res);
-        } else if (Axm::isa<load>(app) || Axm::isa<store>(app)) {
+        } else if (Axm::isa<load>(app) || Axm::isa<store>(app) || Axm::isa<slot>(app)) {
             auto old_arg = app->arg();
             auto k       = old_arg->num_projs();
             auto args    = DefVec(k, [&](size_t j) {

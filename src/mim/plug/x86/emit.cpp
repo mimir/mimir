@@ -24,12 +24,12 @@ using Reg = std::array<std::string_view, 4>;
 
 constexpr Reg rax = {"%al", "%ax", "%eax", "%rax"};
 constexpr Reg rcx = {"%cl", "%cx", "%ecx", "%rcx"};
+constexpr Reg rdx = {"%dl", "%dx", "%edx", "%rdx"};
 
 constexpr std::array<Reg, 6> arg_regs = {
     Reg{"%dil",  "%di", "%edi", "%rdi"},
     Reg{"%sil",  "%si", "%esi", "%rsi"},
-    Reg{ "%dl",  "%dx", "%edx", "%rdx"},
-    rcx,
+    rdx, rcx,
     Reg{"%r8b", "%r8w", "%r8d",  "%r8"},
     Reg{"%r9b", "%r9w", "%r9d",  "%r9"},
 };
@@ -175,6 +175,18 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         line("{}{} %cl, {}", mnemonic, suffix(w), name(rax, w));
         put(res, rax);
     };
+    auto divide = [&](bool sign, const Reg& out) {
+        auto [a, b] = x->projs<2>();
+        auto w      = width(res->type());
+        get(rax, a);
+        get(rcx, b);
+        if (!sign)
+            line("xorl %edx, %edx");
+        else
+            line("{}", w == 64 ? "cqto" : w == 32 ? "cltd" : "cwtd");
+        line("{}div{} {}", sign ? "i" : "", suffix(w), name(rcx, w));
+        put(res, out);
+    };
     auto extend = [&](char kind) {
         auto ws = width(x->type());
         auto wd = width(res->type());
@@ -191,6 +203,10 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
     else if (id == Annex::Base<or_>)   binary("or");
     else if (id == Annex::Base<xor_>)  binary("xor");
     else if (id == Annex::Base<imul>)  binary("imul");
+    else if (id == Annex::Base<div>)   divide(false, rax);
+    else if (id == Annex::Base<rem>)   divide(false, rdx);
+    else if (id == Annex::Base<idiv>)  divide(true, rax);
+    else if (id == Annex::Base<irem>)  divide(true, rdx);
     else if (id == Annex::Base<shl>)   shift("shl");
     else if (id == Annex::Base<shr>)   shift("shr");
     else if (id == Annex::Base<sar>)   shift("sar");
@@ -200,11 +216,17 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
     else if (id == Annex::Base<trunc>) {
         auto w = width(res->type());
         get(rax, x);
-        auto n = *Idx::isa_lit(res->type());
-        if (w == 64 ? n != 0 : n != 1_n << w) {
-            if (!std::has_single_bit(n))
-                res->blame(MIM_X86_BE "truncation to `{}` is not supported", res->type()).bail();
+        auto n    = *Idx::isa_lit(res->type());
+        auto full = w == 64 ? 0 : 1_n << w;
+        if (std::has_single_bit(n) && n != full) {
             line("and{} ${}, {}", suffix(w), n - 1, name(rax, w));
+        } else if (n != 0 && !std::has_single_bit(n)) {
+            auto ws = std::max<nat_t>(width(x->type()), 32);
+            if (auto wx = width(x->type()); wx < 32) line("movz{}l {}, %eax", suffix(wx), name(rax, wx));
+            line("xorl %edx, %edx");
+            line("mov{} ${}, {}", suffix(ws), n, name(rcx, ws));
+            line("div{} {}", suffix(ws), name(rcx, ws));
+            line("movl %edx, %eax");
         }
         put(res, rax);
     } else if (id == Annex::Base<cmp> || id == Annex::Base<test>) {
@@ -228,12 +250,19 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
 
 const Def* Emitter::prev_mem(const App* app) {
     if (Axm::isa<sched>(app)) return app->callee()->as<App>()->arg();
-    if (Axm::isa<load>(app) || Axm::isa<store>(app)) return app->arg()->proj(app->num_args(), 0);
+    if (Axm::isa<load>(app) || Axm::isa<store>(app) || Axm::isa<x86::slot>(app))
+        return app->arg()->proj(app->num_args(), 0);
     app->blame(MIM_X86_BE "unexpected memory producer `{}`", app).bail();
 }
 
 void Emitter::step(const App* app) {
     if (Axm::isa<sched>(app)) return insn(app->proj(2, 1), sched_insn(app), app->arg());
+
+    if (Axm::isa<x86::slot>(app)) {
+        num_slots_ += (nat(app->callee()->as<App>()->arg()) + 7) / 8;
+        line("leaq {}, %rax", slot(num_slots_ - 1));
+        return put(app->proj(2, 1), rax);
+    }
 
     if (Axm::isa<load>(app)) {
         auto [_, p] = app->args<2>();

@@ -77,6 +77,12 @@ axm load: [s: Nat] → [mem.M 0, I64] → [mem.M 0, Idx (gpr s)];
 ///
 axm store: {s: Nat} → [mem.M 0, I64, Idx s] → mem.M 0;
 ///
+/// ### slot
+///
+/// Reserves `n` bytes in the stack frame and yields their address via `lea`.
+///
+axm slot: [n: Nat] → mem.M 0 → [mem.M 0, I64];
+///
 /// ### Arithmetic
 ///
 /// Two-address arithmetic `op r, r/imm`.
@@ -84,6 +90,12 @@ axm store: {s: Nat} → [mem.M 0, I64, Idx s] → mem.M 0;
 axm (add, sub): {s: Nat} → «2; Idx s» → Idx (gpr s);
 axm (and, or, xor): {s: Nat} → «2; Idx s» → Idx (logic s);
 axm imul: {s: Nat} → «2; Idx s» → Idx (gpr16 s);
+///
+/// ### Division
+///
+/// `div`/`idiv` yield the quotient in `rax` (`div`, `idiv`) and the remainder in `rdx` (`rem`, `irem`).
+///
+axm (div, rem, idiv, irem): {s: Nat} → «2; Idx s» → Idx (gpr16 s);
 ///
 /// ### Shifts
 ///

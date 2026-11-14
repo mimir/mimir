@@ -2,6 +2,9 @@
 // RUN: %mim -p opt %s -p ll
 // RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t 3 10 ; test $? -eq 13
+// RUN: %if x86_64-linux %{ %mim -p opt %s -p x86 -X x86:o=%t.s %}
+// RUN: %if x86_64-linux %{ clang %t.s -o %t.x86 %}
+// RUN: %if x86_64-linux %{ %t.x86 3 10 ; test $? -eq 13 %}
 
 plugin core;
 plugin mem;
