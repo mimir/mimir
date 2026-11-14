@@ -29,7 +29,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 - Memory instructions already sit on the chain; pure ones join it via `x86.sched: {D C: *} → (D → C) → mem.M 0 → D → [mem.M 0, C]`, e.g. `let (m, x) = x86.sched x86.add m (a, b)`.
 - After scheduling, no x86 instruction is applied outside `sched` or the chain; this is a checkable invariant.
 - The token makes each placement a distinct Def: copies, spills, reloads, and rematerializations at different points never merge under hash-consing.
-- Every block and function takes an `M`; the scheduler adds one where missing, and every jump and call passes the current one.
+- Every block and function takes an `M`, and every jump and call passes the current one; the backend assumes this on entry and rejects a continuation without one.
 - A post-RA rescheduler would have to recompute memory dependencies; anything but loads, stores, and calls commutes with memory.
 
 ### Operand sizes are side conditions
@@ -49,7 +49,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 ### Straight-line code first
 
 - Scheduling, register allocation, and emission first handle single-block functions only.
-- This defers the open question of where each block's schedule chain starts.
+- Each block's chain starts at its own `M` parameter, so control flow needs no new mechanism for the schedule.
 
 ## Status
 
@@ -77,7 +77,6 @@ Known gaps:
 - The schedule order is plain topological: no register pressure, and nothing keeps a flag-clobbering instruction out of a `cmp` … `jcc`/`setcc` window.
 - `mem.add_mem` cannot provide the `mem.M` the scheduler needs: on already-threaded code it passes a stale memory to branch targets and drops a store on one path.
 - Re-running the full pipeline on backend output is not meaningful (`core.legalize_idx` η-wraps `x86.trunc` to `Idx 4`); round-trip backend dumps with `--no-opt`.
-
 - `isel` still emits size-check failures for non-register sizes (e.g. `core.wrap.add` on `Idx 5`); these need masking or a clear rejection.
 - `isel` emits a `trunc` → `movzx` pair for array indices that `core.legalize_idx` narrowed; it is a mask (`and x, 2^k - 1`), not a no-op, and should become one `and` in PBQP isel.
 - Calls, `malloc`/`free`, stack slots (`mem.mslot`), `core.rem`/`core.div`, `core.bitcast`, `core.idx` of a non-literal, and `math` are not selected yet.
@@ -87,11 +86,13 @@ Known gaps:
 
 ## Next Steps
 
-1. ~~**Straight-line scheduling** of a single block.~~ Topological order done; pressure-aware list scheduling comes with step 2.
-2. **Register allocation** for straight-line code with PBQP on the interval graph, including the pre-allocation step that picks immediates and folds address modes.
-3. ~~**Emission** of GAS text (AT&T syntax)~~ Done for single blocks, on a spill-everything stand-in allocator; no encoder or ELF writer for now.
+Done: straight-line scheduling in topological order, and emission of GAS text (AT&T syntax) for single blocks on a spill-everything stand-in allocator (no encoder or ELF writer for now).
+
+1. **Control flow** on the stand-in allocator: `jcc`, block parameters as stack slots, slot-to-slot moves at jumps, calls via SysV.
+   This unlocks most of the remaining `clang`-run lit tests.
+2. **Isel coverage** for what the sweep hits next: `core.rem`/`core.div` (`rax`/`rdx`), `mem.mslot`, `core.idx` of a non-literal, `core.bitcast`.
+3. **Register allocation** with PBQP, including pressure-aware list scheduling, spilling, the pre-allocation step that picks immediates and folds address modes, and SSA destruction; each piece replaces a stand-in and is checked against the allowlist.
 4. **PBQP instruction selection** replacing the one-to-one translation.
-5. **Control flow**: block-entry tokens, `jcc`, φ copies, SSA destruction.
 
 ## Instruction Selection with PBQP
 
