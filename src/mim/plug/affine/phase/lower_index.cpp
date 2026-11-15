@@ -131,12 +131,8 @@ std::optional<LowerIndex::Range> LowerIndex::range_of(const Def* d) const {
             case core::wrap::add: return bounded(l->lo + r->lo, l->hi + r->hi);
             case core::wrap::sub: return bounded(l->lo - r->hi, l->hi - r->lo);
             case core::wrap::mul: {
-                std::array cands{
-                    std::pair{l->lo, r->lo},
-                    std::pair{l->lo, r->hi},
-                    std::pair{l->hi, r->lo},
-                    std::pair{l->hi, r->hi}
-                };
+                std::array cands{std::pair{l->lo, r->lo}, std::pair{l->lo, r->hi}, std::pair{l->hi, r->lo},
+                                 std::pair{l->hi, r->hi}};
                 for (auto [x, y] : cands)
                     if (x != 0 && std::abs(y) > Limit / std::abs(x)) return {};
                 auto prods = cands | std::views::transform([](auto p) { return p.first * p.second; });

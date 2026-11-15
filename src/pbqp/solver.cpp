@@ -443,10 +443,7 @@ private:
         size_t i                 = 0;
         for (const auto e : nodes_[n].edges)
             new (edges + i++) TrimmedEdge(trim_edge(e, n));
-        return {
-            .costs = {substitution.costs, substitution.num_options},
-            .edges = {             edges,                degree(n)}
-        };
+        return {.costs = {substitution.costs, substitution.num_options}, .edges = {edges, degree(n)}};
     }
 
     /// RI: c'_n(y) = c_n(y) + min_x ( c(x) + M(x, y) )

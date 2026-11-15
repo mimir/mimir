@@ -17,11 +17,8 @@ struct RangeCompare {
 };
 
 inline std::optional<Range> merge_ranges(Range a, Range b) noexcept {
-    if (!(a.second + 1 < b.first || b.second + 1 < a.first)) {
-        return {
-            {std::min(a.first, b.first), std::max(a.second, b.second)}
-        };
-    }
+    if (!(a.second + 1 < b.first || b.second + 1 < a.first))
+        return {{std::min(a.first, b.first), std::max(a.second, b.second)}};
     return {};
 }
 

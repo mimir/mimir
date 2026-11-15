@@ -8,10 +8,7 @@ namespace pbqp {
 
 NodeId Graph::add(fe::View<Cost> costs) {
     assert((!costs.empty()) && "add: a PBQP node needs at least one option");
-    nodes_.emplace_back(Node{
-        .costs = {costs.begin(), costs.end()},
-        .edges = {}
-    });
+    nodes_.emplace_back(Node{.costs = {costs.begin(), costs.end()}, .edges = {}});
     return nodes_.size() - 1;
 }
 

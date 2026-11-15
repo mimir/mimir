@@ -105,10 +105,8 @@ inline const Def* op(pe o, const Def* def) {
 ///@{
 /// Use like this: `a op b = tab[a][b]`
 constexpr std::array<std::array<u64, 2>, 2> make_truth_table(bit2 id) {
-    return {
-        {{sub_t(id) & sub_t(0b0001) ? u64(-1) : 0, sub_t(id) & sub_t(0b0010) ? u64(-1) : 0},
-         {sub_t(id) & sub_t(0b0100) ? u64(-1) : 0, sub_t(id) & sub_t(0b1000) ? u64(-1) : 0}}
-    };
+    return {{{sub_t(id) & sub_t(0b0001) ? u64(-1) : 0, sub_t(id) & sub_t(0b0010) ? u64(-1) : 0},
+             {sub_t(id) & sub_t(0b0100) ? u64(-1) : 0, sub_t(id) & sub_t(0b1000) ? u64(-1) : 0}}};
 }
 ///@}
 

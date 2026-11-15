@@ -121,12 +121,9 @@ void check_random_trees(int min_cost, int max_cost, int forbidden_percent) {
 }
 
 TEST_CASE("heuristic is optimal on random trees") {
-    for (const auto& [min_cost, max_cost, forbidden_percent] : {
-             std::tuple{         0,        10,  0},
-             std::tuple{     -1000,      1000,  0},
-             std::tuple{     -1000,      1000, 20},
-             std::tuple{-1'000'000, 1'000'000, 20}
-    }) {
+    for (const auto& [min_cost, max_cost, forbidden_percent] :
+         {std::tuple{0, 10, 0}, std::tuple{-1000, 1000, 0}, std::tuple{-1000, 1000, 20},
+          std::tuple{-1'000'000, 1'000'000, 20}}) {
         CAPTURE(min_cost);
         CAPTURE(max_cost);
         CAPTURE(forbidden_percent);
@@ -571,10 +568,10 @@ TEST_CASE("shared matrices survive random mutations") {
     std::mt19937_64 random{42};
     std::uniform_int_distribution<int> pick{0, 3};
     const std::array<pbqp::Costs, 4> palette = {
-        pbqp::Costs{              0, 1, 2,               3},
+        pbqp::Costs{0, 1, 2, 3},
         pbqp::Costs{pbqp::kInfinity, 0, 0, pbqp::kInfinity},
-        pbqp::Costs{              0, 0, 0,               0},
-        pbqp::Costs{              3, 2, 1,               0},
+        pbqp::Costs{0, 0, 0, 0},
+        pbqp::Costs{3, 2, 1, 0},
     };
 
     pbqp::Graph graph;
@@ -850,9 +847,9 @@ TEST_CASE("libFirm instances are solved optimally") {
     };
     for (const auto& [file, nodes, edges] : {
              Case{"normalLibfirmGraph.json", 42, 31},
-             Case{ "smallLibfirmGraph.json", 42, 31},
-             Case{       "problematic.json", 45, 69},
-    }) {
+             Case{"smallLibfirmGraph.json", 42, 31},
+             Case{"problematic.json", 45, 69},
+         }) {
         CAPTURE(file);
         std::ifstream in{std::string(PBQP_TEST_DATA) + "/" + file};
         pbqp::Instance instance;

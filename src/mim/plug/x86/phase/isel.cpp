@@ -463,65 +463,30 @@ void match(const ISel& s, const Def* def, Alts& alts) {
     if (auto lea = Axm::isa<mem::lea>(app)) {
         auto [p, i] = lea->args<2>();
         if (offset(app)) {
-            alts.emplace_back(root(lea_off_base, 0,
-                                   {
-                                       {p, Want::Base}
-            }));
-            alts.emplace_back(root(lea_off_index, 0,
-                                   {
-                                       {p, Want::Index}
-            }));
+            alts.emplace_back(root(lea_off_base, 0, {{p, Want::Base}}));
+            alts.emplace_back(root(lea_off_index, 0, {{p, Want::Index}}));
         } else {
             auto size = elem_size(app);
             auto cost = size == 1 || size == 2 || size == 4 || size == 8 ? 0 : 1;
-            alts.emplace_back(root(lea_index, cost,
-                                   {
-                                       {p, Want::Base},
-                                       {i}
-            }));
+            alts.emplace_back(root(lea_index, cost, {{p, Want::Base}, {i}}));
         }
     } else if (auto ld = Axm::isa<mem::load>(app)) {
-        if (xsize(app->type()->proj(2, 1)))
-            alts.emplace_back(root(load_, 1,
-                                   {
-                                       {ld->arg(2, 1), Want::Addr}
-            }));
+        if (xsize(app->type()->proj(2, 1))) alts.emplace_back(root(load_, 1, {{ld->arg(2, 1), Want::Addr}}));
     } else if (auto st = Axm::isa<mem::store>(app)) {
         auto [m, p, x] = st->args<3>();
         if (!xsize(x->type())) return;
-        alts.emplace_back(root(store_, 1,
-                               {
-                                   {p, Want::Addr},
-                                   {x}
-        }));
-        if (ri(x) == Want::Imm)
-            alts.emplace_back(root(store_, 1,
-                                   {
-                                       {p, Want::Addr},
-                                       {x,  Want::Imm}
-            }));
+        alts.emplace_back(root(store_, 1, {{p, Want::Addr}, {x}}));
+        if (ri(x) == Want::Imm) alts.emplace_back(root(store_, 1, {{p, Want::Addr}, {x, Want::Imm}}));
         if (auto u = x->isa<App>(); u && s.uses(u) == 1 && alu_id(u, true) && s.uses(u->arg()) == 1) {
             auto [a, b] = u->args<2>();
-            for (auto [v, other] : {
-                     std::pair{a, b},
-                     std::pair{b, a}
-            }) {
+            for (auto [v, other] : {std::pair{a, b}, std::pair{b, a}}) {
                 if (v == b && !commutes(u)) break;
                 // The load's memory has no other user, so nothing lies between load and store.
                 if (auto ld = s.sole_load(v);
                     ld && v != other && ld->arg(2, 1) == p && ld->proj(2, 0) == m && s.uses(m) == 1) {
                     auto inner = (*alu_id(u, true) << 2) | (v == b ? 2 : 0) | (ri(other) == Want::Imm ? 1 : 0);
-                    auto alt   = root(store_mr, 1,
-                                      {
-                                          {p, Want::Addr},
-                                          {x, Want::Reg, inner}
-                    },
-                                      {ld, other, u});
-                    alt.covers.emplace_back(Cover{
-                        u,
-                        inner,
-                        {{v, Want::Reg, Load}, {other, ri(other)}}
-                    });
+                    auto alt   = root(store_mr, 1, {{p, Want::Addr}, {x, Want::Reg, inner}}, {ld, other, u});
+                    alt.covers.emplace_back(Cover{u, inner, {{v, Want::Reg, Load}, {other, ri(other)}}});
                     alt.covers.emplace_back(Cover{ld, Load, {{p, Want::Addr}}});
                     alts.emplace_back(std::move(alt));
                 }
@@ -534,25 +499,12 @@ void match(const ISel& s, const Def* def, Alts& alts) {
         auto sh     = !b2 && (!w || w.id() == core::wrap::shl);
         alts.emplace_back(root(bin_, 1, {{a}, {b}}, {a, b}));
         if (Lit::isa(b) && (sh || fits_imm(b)))
-            alts.emplace_back(root(bin_, 1,
-                                   {
-                                       {a},
-                                       {b, Want::Imm}
-            },
-                                   {a, b}));
+            alts.emplace_back(root(bin_, 1, {{a}, {b, Want::Imm}}, {a, b}));
         else if (!sh && commutes(app) && ri(a) == Want::Imm)
-            alts.emplace_back(root(bin_, 1,
-                                   {
-                                       {b},
-                                       {a, Want::Imm}
-            },
-                                   {b, a}));
+            alts.emplace_back(root(bin_, 1, {{b}, {a, Want::Imm}}, {b, a}));
 
         if (!alu_id(app, false) || s.uses(app->arg()) != 1) return;
-        for (auto [v, other] : {
-                 std::pair{b, a},
-                 std::pair{a, b}
-        }) {
+        for (auto [v, other] : {std::pair{b, a}, std::pair{a, b}}) {
             if (v == a && !commutes(app)) break;
             auto ld = s.sole_load(v);
             if (!ld || v == other) continue;
@@ -560,12 +512,7 @@ void match(const ISel& s, const Def* def, Alts& alts) {
             auto bb   = chain(ld->arg(2, 0));
             auto done = DefSet();
             if (bb && other->in_scope(bb) && !depends(other, ld, done)) {
-                auto alt = root(bin_rm, 1,
-                                {
-                                    {other},
-                                    {v, Want::Reg, Load}
-                },
-                                {ld, other});
+                auto alt = root(bin_rm, 1, {{other}, {v, Want::Reg, Load}}, {ld, other});
                 alt.covers.emplace_back(Cover{ld, Load, {{ld->arg(2, 1), Want::Addr}}});
                 alts.emplace_back(std::move(alt));
             }
@@ -576,31 +523,15 @@ void match(const ISel& s, const Def* def, Alts& alts) {
         if (!(ic ? cc(ic.id()) : cc(nc.id()))) return;
         auto [a, b] = app->args<2>();
         alts.emplace_back(root(cmp_, 2, {{a}, {b}}, {a, b}));
-        if (ri(b) == Want::Imm)
-            alts.emplace_back(root(cmp_, 2,
-                                   {
-                                       {a},
-                                       {b, Want::Imm}
-            },
-                                   {a, b}));
+        if (ri(b) == Want::Imm) alts.emplace_back(root(cmp_, 2, {{a}, {b, Want::Imm}}, {a, b}));
     } else if (auto op = Axm::isa<core::nat>(app)) {
         auto [a, b] = app->args<2>();
         auto imm    = op.id() == core::nat::add || op.id() == core::nat::mul || op.id() == core::nat::sub;
         alts.emplace_back(root(nat_, 1, {{a}, {b}}, {a, b}));
         if (imm && ri(b) == Want::Imm)
-            alts.emplace_back(root(nat_, 1,
-                                   {
-                                       {a},
-                                       {b, Want::Imm}
-            },
-                                   {a, b}));
+            alts.emplace_back(root(nat_, 1, {{a}, {b, Want::Imm}}, {a, b}));
         else if (imm && op.id() != core::nat::sub && ri(a) == Want::Imm)
-            alts.emplace_back(root(nat_, 1,
-                                   {
-                                       {b},
-                                       {a, Want::Imm}
-            },
-                                   {b, a}));
+            alts.emplace_back(root(nat_, 1, {{b}, {a, Want::Imm}}, {b, a}));
     } else if (Axm::isa<core::conv>(app) || Axm::isa<core::idx>(app) || Axm::isa<core::idx2nat>(app)
                || Axm::isa<core::bitcast>(app) || Axm::isa<core::rem>(app)) {
         alts.emplace_back(root(unary, 1, {{app->arg()}}));

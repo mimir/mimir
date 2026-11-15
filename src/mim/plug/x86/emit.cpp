@@ -27,11 +27,8 @@ constexpr Reg rcx = {"%cl", "%cx", "%ecx", "%rcx"};
 constexpr Reg rdx = {"%dl", "%dx", "%edx", "%rdx"};
 
 constexpr std::array<Reg, 6> arg_regs = {
-    Reg{"%dil",  "%di", "%edi", "%rdi"},
-    Reg{"%sil",  "%si", "%esi", "%rsi"},
-    rdx, rcx,
-    Reg{"%r8b", "%r8w", "%r8d",  "%r8"},
-    Reg{"%r9b", "%r9w", "%r9d",  "%r9"},
+    Reg{"%dil", "%di", "%edi", "%rdi"}, Reg{"%sil", "%si", "%esi", "%rsi"}, rdx, rcx,
+    Reg{"%r8b", "%r8w", "%r8d", "%r8"}, Reg{"%r9b", "%r9w", "%r9d", "%r9"},
 };
 
 constexpr std::array<std::string_view, 16> ccs
