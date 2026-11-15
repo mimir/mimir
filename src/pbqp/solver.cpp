@@ -5,7 +5,6 @@
 #include <cstdint>
 
 #include <algorithm>
-#include <limits>
 #include <numeric>
 #include <optional>
 #include <queue>
@@ -13,8 +12,6 @@
 
 #include <fe/arena.h>
 #include <fe/vector.h>
-
-#include "cost.h"
 
 #if defined(__SANITIZE_THREAD__)
 #    define PBQP_TSAN 1
@@ -99,8 +96,8 @@ class Reducer {
 public:
     Reducer(const Graph& graph, fe::View<size_t> rn_priority)
         : rn_priority_(rn_priority) {
+        nodes_.resize(graph.num_nodes());
         for (const auto n : graph.nodes()) {
-            nodes_.resize(n + 1);
             const auto costs = graph.node_costs(n);
             nodes_[n].costs.assign(costs.begin(), costs.end());
             nodes_[n].original.resize(costs.size());
@@ -668,25 +665,18 @@ Solution solve(const Graph& graph, fe::View<size_t> rn_priority) {
 
 namespace {
 
-/// Mixed-radix layout of the assignment space; digit i belongs to nodes[i].
+/// Mixed-radix layout of the assignment space; digit n belongs to node n.
 struct Enumeration {
-    fe::Vector<NodeId, 16> nodes;
     fe::Vector<size_t, 16> options;
     fe::Vector<size_t, 16> place;
-    size_t slots        = 0;
     size_t combinations = 1;
 };
 
 std::optional<Enumeration> make_enumeration(const Graph& graph, size_t max_combinations) {
     Enumeration enumeration;
-    for (const auto n : graph.nodes()) {
-        enumeration.nodes.emplace_back(n);
+    for (const auto n : graph.nodes())
         enumeration.options.emplace_back(graph.num_options(n));
-    }
-    if (enumeration.nodes.empty()) return enumeration;
-
-    enumeration.slots = std::ranges::max(enumeration.nodes) + 1;
-    enumeration.place.resize(enumeration.nodes.size());
+    enumeration.place.resize(enumeration.options.size());
 
     size_t combinations = 1;
     for (const auto options : enumeration.options) {
@@ -705,9 +695,9 @@ std::optional<Enumeration> make_enumeration(const Graph& graph, size_t max_combi
 
 /// The smallest index wins ties so that the result does not depend on the partitioning.
 Solution search_range(const Graph& graph, const Enumeration& enumeration, size_t begin, size_t end) {
-    Choices choices(enumeration.slots, 0);
-    for (size_t i = 0; i < enumeration.nodes.size(); ++i)
-        choices[enumeration.nodes[i]] = (begin / enumeration.place[i]) % enumeration.options[i];
+    Choices choices(enumeration.options.size(), 0);
+    for (NodeId n = 0; n < choices.size(); ++n)
+        choices[n] = (begin / enumeration.place[n]) % enumeration.options[n];
 
     Solution best{.choices = choices, .cost = kInfiniteSum, .conflicts = {}, .statistics = {}};
     for (size_t index = begin; index < end; ++index) {
@@ -716,9 +706,9 @@ Solution search_range(const Graph& graph, const Enumeration& enumeration, size_t
             best.choices = choices;
             best.cost    = cost;
         }
-        for (size_t i = 0; i < enumeration.nodes.size(); ++i) {
-            if (++choices[enumeration.nodes[i]] < enumeration.options[i]) break;
-            choices[enumeration.nodes[i]] = 0;
+        for (NodeId n = 0; n < choices.size(); ++n) {
+            if (++choices[n] < enumeration.options[n]) break;
+            choices[n] = 0;
         }
     }
     return best;
@@ -730,7 +720,7 @@ std::optional<Solution> solve_exhaustive(const Graph& graph, size_t max_combinat
     const auto made = make_enumeration(graph, max_combinations);
     if (!made) return std::nullopt;
     const Enumeration& enumeration = *made;
-    if (enumeration.nodes.empty()) return Solution{};
+    if (enumeration.options.empty()) return Solution{};
 
     unsigned requested = num_threads;
     if (requested == 0) requested = std::thread::hardware_concurrency();

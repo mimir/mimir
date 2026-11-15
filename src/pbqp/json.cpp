@@ -4,8 +4,6 @@
 #include <charconv>
 #include <cstdint>
 
-#include <algorithm>
-#include <array>
 #include <limits>
 #include <optional>
 #include <print>
@@ -30,7 +28,6 @@ namespace utf8 = fe::utf8;
     m(V_str,       "<string>")   \
     m(V_int,       "<integer>")  \
     m(V_num,       "<number>")   \
-    m(V_inf,       "\"∞\"")      \
 
 #define PBQP_JSON_TOK(m)             \
     m(EoF,         "<end of file>")  \
@@ -193,7 +190,6 @@ private:
 
     /// Escapes stay verbatim; none of the keys or cost spellings needs one.
     Tok lex_string() {
-        if (accept(U'∞') && accept('"')) return {loc_, Tag::V_inf};
         while (true) {
             accept_while_none_of(u8'"', u8'\\');
             if (accept('"')) return {loc_, Tag::V_str, driver_.sym(view().substr(1, view().size() - 2))};
@@ -212,23 +208,15 @@ struct Field {
     size_t value = 0;
 };
 
-struct NodeData {
-    Field index;
-    fe::Loc cost_loc;
-    Costs costs;
-};
-
 struct EdgeData {
     fe::Loc loc;
-    Field source;
-    Field target;
+    Field src;
+    Field dst;
     std::optional<Field> rows;
-    std::optional<Field> columns;
-    fe::Loc cost_loc;
+    std::optional<Field> cols;
+    fe::Loc costs_loc;
     Costs costs;
 };
-
-bool is_infinity(fe::Sym sym) { return sym == "inf" || sym == "INF" || sym == "\\u221e"; }
 
 class Parser : public fe::Parser<Tok, Tag, 1, Parser> {
 public:
@@ -240,18 +228,17 @@ public:
     fe::Driver& driver() { return lexer_.driver(); }
     Lexer& lexer() { return lexer_; }
 
-    Instance parse_instance() {
+    void parse_instance(Instance& instance) {
         parse_object("PBQP instance", [&](fe::Sym key) {
             // clang-format off
-            if      (key == "meta" ) parse_meta();
-            else if (key == "nodes") parse_array("`nodes`", [this] { parse_node(); });
-            else if (key == "edges") parse_array("`edges`", [this] { parse_edge(); });
-            else if (key == "peo"  ) parse_array("`peo`",   [this] { peo_.push_back(parse_index("`peo`")); });
+            if      (key == "nodes"      ) parse_array("`nodes`", [this] { parse_node(); });
+            else if (key == "edges"      ) parse_array("`edges`", [this] { parse_edge(); });
+            else if (key == "rn_priority") parse_rn_priority();
             else parse_value("PBQP instance");
             // clang-format on
         });
         expect(Tag::EoF, "PBQP instance");
-        return error().ok() ? build() : Instance{};
+        if (error().ok()) build(instance);
     }
 
 private:
@@ -312,20 +299,13 @@ private:
 
     Cost parse_cost(fe::Cite ctx) {
         switch (ahead().tag()) {
-            case Tag::V_inf: lex(); return kInfinity;
             case Tag::V_int: {
                 auto tok = lex();
                 return to_cost(tok, tok.i64());
             }
             case Tag::V_str: {
-                auto tok          = lex();
-                const fe::Sym sym = tok.sym();
-                if (is_infinity(sym)) return kInfinity;
-                const auto sv     = sym.view();
-                std::int64_t cost = 0;
-                if (auto [end, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), cost);
-                    ec == std::errc{} && end == sv.data() + sv.size())
-                    return to_cost(tok, cost);
+                auto tok = lex();
+                if (tok.sym() == "inf") return kInfinity;
                 error().e(tok.loc(), "expected a cost, got `{}`", tok);
                 return 0;
             }
@@ -346,90 +326,66 @@ private:
         return track;
     }
 
-    void parse_meta() {
-        parse_object("`meta`", [&](fe::Sym key) {
-            if (key != "version") return parse_value("`meta`");
-            if (auto version = parse_index("`version`"); version.loc && version.value != 1 && version.value != 2)
-                error().e(version.loc, "unsupported version {}", version.value);
-        });
+    void parse_rn_priority() {
+        auto track = tracker();
+        rn_priority_.clear();
+        parse_array("`rn_priority`", [this] { rn_priority_.push_back(parse_index("`rn_priority`").value); });
+        rn_priority_loc_ = track;
     }
 
     void parse_node() {
         auto track = tracker();
-        NodeData node;
-        std::optional<Field> index;
+        Costs costs;
+        fe::Loc costs_loc;
         parse_object("node", [&](fe::Sym key) {
-            if (key == "index")
-                index = parse_index("node `index`");
-            else if (key == "cost")
-                node.cost_loc = parse_costs(node.costs, "node `cost`");
+            if (key == "costs")
+                costs_loc = parse_costs(costs, "node `costs`");
             else
                 parse_value("node");
         });
-        if (!index) return void(error().e(track, "node without `index`"));
-        if (!node.cost_loc) return void(error().e(track, "node without `cost`"));
-        if (node.costs.empty()) error().e(node.cost_loc, "node {} has no options", index->value);
-        node.index = *index;
-        nodes_.push_back(std::move(node));
+        if (!costs_loc) return void(error().e(track, "node without `costs`"));
+        if (costs.empty()) error().e(costs_loc, "node {} has no options", nodes_.size());
+        nodes_.push_back(std::move(costs));
     }
 
     void parse_edge() {
         auto track = tracker();
         EdgeData edge;
-        std::optional<Field> source, target;
+        std::optional<Field> src, dst;
         parse_object("edge", [&](fe::Sym key) {
             // clang-format off
-            if      (key == "source" ) source = parse_index("edge `source`");
-            else if (key == "target" ) target = parse_index("edge `target`");
-            else if (key == "rows"   ) edge.rows     = parse_index("edge `rows`");
-            else if (key == "columns") edge.columns  = parse_index("edge `columns`");
-            else if (key == "cost"   ) edge.cost_loc = parse_costs(edge.costs, "edge `cost`");
+            if      (key == "src"  ) src = parse_index("edge `src`");
+            else if (key == "dst"  ) dst = parse_index("edge `dst`");
+            else if (key == "rows" ) edge.rows      = parse_index("edge `rows`");
+            else if (key == "cols" ) edge.cols      = parse_index("edge `cols`");
+            else if (key == "costs") edge.costs_loc = parse_costs(edge.costs, "edge `costs`");
             else parse_value("edge");
             // clang-format on
         });
         edge.loc = track;
-        if (!source) return void(error().e(edge.loc, "edge without `source`"));
-        if (!target) return void(error().e(edge.loc, "edge without `target`"));
-        if (!edge.cost_loc) return void(error().e(edge.loc, "edge without `cost`"));
-        edge.source = *source;
-        edge.target = *target;
+        if (!src) return void(error().e(edge.loc, "edge without `src`"));
+        if (!dst) return void(error().e(edge.loc, "edge without `dst`"));
+        if (!edge.costs_loc) return void(error().e(edge.loc, "edge without `costs`"));
+        edge.src = *src;
+        edge.dst = *dst;
         edges_.push_back(std::move(edge));
     }
 
-    Instance build() {
-        size_t num_ids = 0;
-        for (const auto& node : nodes_)
-            num_ids = std::max(num_ids, node.index.value + 1);
-
-        fe::Vector<const NodeData*> by_id(num_ids, nullptr);
-        for (const auto& node : nodes_)
-            if (auto& slot = by_id[node.index.value])
-                error()
-                    .e(node.index.loc, "duplicate node {}", node.index.value)
-                    .n(slot->index.loc, "first defined here");
-            else
-                slot = &node;
-
-        Instance instance;
+    void build(Instance& instance) {
         Graph& graph = instance.graph;
-        static constexpr std::array<Cost, 1> kPlaceholder{0};
-        for (NodeId n = 0; n < num_ids; ++n) {
-            [[maybe_unused]] const NodeId id = by_id[n] ? graph.add(by_id[n]->costs) : graph.add(kPlaceholder);
-            assert(id == n);
-        }
-        for (NodeId n = 0; n < num_ids; ++n)
-            if (!by_id[n]) graph.remove(n);
+        for (const auto& costs : nodes_)
+            graph.add(costs);
 
         const auto known = [&](const Field& field) {
-            if (graph.has_node(field.value)) return true;
+            if (field.value < graph.num_nodes()) return true;
             error().e(field.loc, "unknown node {}", field.value);
             return false;
         };
 
         for (const auto& edge : edges_) {
-            if (!known(edge.source) || !known(edge.target)) continue;
-            const NodeId src = edge.source.value;
-            const NodeId dst = edge.target.value;
+            if (!known(edge.src) || !known(edge.dst)) continue;
+            const NodeId src = edge.src.value;
+            const NodeId dst = edge.dst.value;
             if (src == dst) {
                 error().e(edge.loc, "self-edge on node {}", src);
                 continue;
@@ -438,38 +394,28 @@ private:
                 error().e(edge.loc, "duplicate edge between nodes {} and {}", src, dst);
                 continue;
             }
-            const size_t rows    = graph.num_options(src);
-            const size_t columns = graph.num_options(dst);
+            const size_t rows = graph.num_options(src);
+            const size_t cols = graph.num_options(dst);
             if (edge.rows && edge.rows->value != rows)
                 error().e(edge.rows->loc, "`rows` is {}, but node {} has {} options", edge.rows->value, src, rows);
-            else if (edge.columns && edge.columns->value != columns)
-                error().e(edge.columns->loc, "`columns` is {}, but node {} has {} options", edge.columns->value, dst,
-                          columns);
-            else if (edge.costs.size() != rows * columns)
-                error().e(edge.cost_loc, "expected {} × {} costs, got {}", rows, columns, edge.costs.size());
+            else if (edge.cols && edge.cols->value != cols)
+                error().e(edge.cols->loc, "`cols` is {}, but node {} has {} options", edge.cols->value, dst, cols);
+            else if (edge.costs.size() != rows * cols)
+                error().e(edge.costs_loc, "expected {} × {} costs, got {}", rows, cols, edge.costs.size());
             else
                 graph.link(src, dst, edge.costs);
         }
 
-        if (!peo_.empty()) {
-            instance.rn_priority.assign(num_ids, 0);
-            for (size_t i = 0; i < peo_.size(); ++i) {
-                if (!known(peo_[i])) continue;
-                const NodeId n = peo_[i].value;
-                if (instance.rn_priority[n] != 0)
-                    error().e(peo_[i].loc, "node {} occurs twice in `peo`", n);
-                else
-                    // pbqp-papa decides peo[0] first.
-                    instance.rn_priority[n] = peo_.size() - i;
-            }
-        }
-        return instance;
+        if (rn_priority_loc_ && rn_priority_.size() != graph.num_nodes())
+            error().e(rn_priority_loc_, "expected {} priorities, got {}", graph.num_nodes(), rn_priority_.size());
+        instance.rn_priority = std::move(rn_priority_);
     }
 
     Lexer lexer_;
-    fe::Vector<NodeData> nodes_;
+    fe::Vector<Costs> nodes_;
     fe::Vector<EdgeData> edges_;
-    fe::Vector<Field> peo_;
+    fe::Vector<size_t> rn_priority_;
+    fe::Loc rn_priority_loc_;
 };
 
 void write_costs(std::ostream& out, fe::View<Cost> costs) {
@@ -490,26 +436,23 @@ void write_costs(std::ostream& out, fe::View<Cost> costs) {
 
 namespace pbqp {
 
-Instance read_json(std::istream& in, const std::filesystem::path& path) {
+void read_json(std::istream& in, Instance& instance, const std::filesystem::path& path) {
     fe::Driver driver;
     const fe::Src* src = driver.src().add(path, fe::SrcMap::slurp(in)).first;
-    auto instance      = json::Parser(driver, *src).parse_instance();
+    json::Parser(driver, *src).parse_instance(instance);
     driver.error().ack();
-    return instance;
 }
 
 void write_json(std::ostream& out, const Graph& graph, fe::View<size_t> rn_priority) {
-    for ([[maybe_unused]] const auto n : graph.nodes())
-        assert((rn_priority.empty() || n < rn_priority.size()) && "write_json: rn_priority must cover every node id");
+    assert((rn_priority.empty() || rn_priority.size() == graph.num_nodes())
+           && "write_json: rn_priority must have one entry per node");
 
     std::println(out, "{{");
-    std::println(out, R"(  "meta": {{"version": 2, "type": "INF signed int", "nodeCount": {}, "edgeCount": {}}},)",
-                 graph.num_nodes(), graph.num_edges());
 
     std::print(out, R"(  "nodes": [)");
     const char* separator = "\n";
     for (const auto n : graph.nodes()) {
-        std::print(out, R"({}    {{"index": {}, "cost": )", separator, n);
+        std::print(out, R"({}    {{"costs": )", separator);
         json::write_costs(out, graph.node_costs(n));
         out << '}';
         separator = ",\n";
@@ -520,8 +463,8 @@ void write_json(std::ostream& out, const Graph& graph, fe::View<size_t> rn_prior
     separator = "\n";
     for (const auto e : graph.edges()) {
         const auto [src, dst] = graph.edge(e);
-        std::print(out, R"({}    {{"source": {}, "target": {}, "rows": {}, "columns": {}, "cost": )", separator, src,
-                   dst, graph.num_options(src), graph.num_options(dst));
+        std::print(out, R"({}    {{"src": {}, "dst": {}, "rows": {}, "cols": {}, "costs": )", separator, src, dst,
+                   graph.num_options(src), graph.num_options(dst));
         json::write_costs(out, graph.edge_costs(e));
         out << '}';
         separator = ",\n";
@@ -529,12 +472,9 @@ void write_json(std::ostream& out, const Graph& graph, fe::View<size_t> rn_prior
     std::print(out, "\n  ]");
 
     if (!rn_priority.empty()) {
-        auto nodes = graph.nodes();
-        fe::Vector<NodeId> peo(nodes.begin(), nodes.end());
-        std::ranges::stable_sort(peo, std::ranges::greater{}, [&](NodeId n) { return rn_priority[n]; });
-        std::print(out, ",\n  \"peo\": [");
-        for (size_t i = 0; i < peo.size(); ++i)
-            std::print(out, "{}{}", i == 0 ? "" : ", ", peo[i]);
+        std::print(out, ",\n  \"rn_priority\": [");
+        for (size_t i = 0; i < rn_priority.size(); ++i)
+            std::print(out, "{}{}", i == 0 ? "" : ", ", rn_priority[i]);
         out << ']';
     }
     std::println(out, "\n}}");

@@ -18,13 +18,22 @@ struct Instance {
     fe::Vector<size_t> rn_priority;
 };
 
-/// Read the pbqp-papa JSON format, version 1 (costs as strings) or 2 (costs as integers, `"inf"`).
-/// The `index` of a node becomes its id; unused ids are removed nodes.
+/// Read a PBQP instance into the empty `instance`:
+///
+///     {
+///       "nodes": [{"costs": [0, "inf"]}, {"costs": [7, 0, 2]}],
+///       "edges": [{"src": 1, "dst": 0, "rows": 3, "cols": 2, "costs": [1, "inf", -5, 0, 4, 2]}],
+///       "rn_priority": [5, 9]
+///     }
+///
+/// The position of a node in `nodes` is its id.
+/// Edge `costs` are row-major with `src` as the row; `rows` and `cols` are optional and only checked.
+/// `"inf"` is kInfinity, `rn_priority` is optional, and unknown keys are skipped.
 /// Throws `fe::Error::Bail`, a `std::exception`, on malformed input; `path` only names the input in its message.
-[[nodiscard]] Instance read_json(std::istream& in, const std::filesystem::path& path = "<input>");
+void read_json(std::istream& in, Instance& instance, const std::filesystem::path& path = "<input>");
 
-/// Write version 2 of the pbqp-papa JSON format.
-/// Requires `rn_priority` to be empty or to cover every node id.
+/// Write the format that `read_json` reads.
+/// Requires `rn_priority` to be empty or to have one entry per node.
 void write_json(std::ostream& out, const Graph& graph, fe::View<size_t> rn_priority = {});
 
 } // namespace pbqp
