@@ -74,7 +74,128 @@ bool is_lowered_plugin(const Axm* axm) {
         || p == Annex::flags2plugin(Annex::Base<math::F>);
 }
 
+/// The x86 instruction for the `core` operation @p def if it has a memory-operand form (read-modify-write if @p rmw).
+std::optional<flags_t> alu_id(const Def* def, bool rmw) {
+    auto s = Idx::isa_lit(def->type());
+    if (!s || !is_reg_size(*s)) return {};
+    if (auto op = Axm::isa<core::wrap>(def)) {
+        switch (op.id()) {
+            case core::wrap::add: return Annex::Base<add>;
+            case core::wrap::sub: return Annex::Base<sub>;
+            // `imul` has neither an 8-bit nor a read-modify-write form.
+            case core::wrap::mul: return !rmw && reg_width(*s) >= 16 ? std::optional(Annex::Base<imul>) : std::nullopt;
+            default: return {};
+        }
+    } else if (auto op = Axm::isa<core::bit2>(def)) {
+        switch (op.id()) {
+            case core::bit2::and_: return Annex::Base<and_>;
+            case core::bit2::or_: return Annex::Base<or_>;
+            case core::bit2::xor_: return Annex::Base<xor_>;
+            default: return {};
+        }
+    }
+    return {};
+}
+
+bool commutes(const Def* def) {
+    auto op = Axm::isa<core::wrap>(def);
+    return !op || op.id() != core::wrap::sub;
+}
+
+/// The continuation whose `mem.M` chain @p m is on.
+Lam* chain(const Def* m) {
+    for (;;) {
+        if (auto ex = m->isa<Extract>()) m = ex->tuple();
+        if (auto var = m->isa<Var>()) return var->binder()->isa<Lam>();
+        auto app = m->isa<App>();
+        if (!app) return nullptr;
+        auto arg  = app->arg();
+        auto n    = arg->num_projs();
+        auto next = (const Def*)nullptr;
+        for (size_t i = 0; i != n && !next; ++i)
+            if (auto a = arg->proj(n, i); Axm::isa<core::M>(a->type())) next = a;
+        if (!next) return nullptr;
+        m = next;
+    }
+}
+
+/// Does @p def depend on @p target without going through a mutable?
+bool depends(const Def* def, const Def* target, DefSet& done) {
+    if (def == target) return true;
+    if (def->isa_mut() || !done.emplace(def).second) return false;
+    for (auto op : def->ops())
+        if (depends(op, target, done)) return true;
+    return false;
+}
+
 } // namespace
+
+bool ISel::analyze() {
+    for (auto mut : old_world().externals().muts())
+        count(mut);
+
+    // Folding moves the user to the load, so its other operand must be available there.
+    for (auto def : counted_) {
+        auto u = def->isa<App>();
+        if (!u || !alu_id(u, false) || uses(u->arg()) != 1 || rm_users_.contains(u)) continue;
+        auto [a, b] = u->args<2>();
+        for (auto [v, other] : {
+                 std::pair{b, a},
+                 std::pair{a, b}
+        }) {
+            if (v == a && !commutes(u)) break;
+            auto ld = sole_load(v);
+            if (!ld || v == other || rms_.contains(ld)) continue;
+            auto bb   = chain(ld->arg(2, 0));
+            auto done = DefSet();
+            if (bb && other->in_scope(bb) && !depends(other, ld, done)) {
+                rms_[ld]     = {u, other};
+                rm_users_[u] = ld;
+                break;
+            }
+        }
+    }
+    return false;
+}
+
+void ISel::count(const Def* def) {
+    if (!counted_.emplace(def).second) return;
+    for (auto op : def->ops()) {
+        // An external declaration has no body.
+        if (!op) continue;
+        ++uses_[op];
+        count(op);
+    }
+}
+
+const App* ISel::sole_load(const Def* def) const {
+    if (auto ex = def->isa<Extract>(); ex && uses(def) == 1 && Lit::isa(ex->index()) == 1)
+        if (auto ld = ex->tuple()->isa<App>(); ld && Axm::isa<mem::load>(ld) && uses(ld) == 2)
+            if (auto m = ld->proj(2, 0); m && uses(m) != 0) return ld;
+    return nullptr;
+}
+
+const Def* ISel::alu(const Def* def) {
+    auto& w = new_world();
+    return w.app(w.annex(*alu_id(def, false)), w.lit_nat(*Idx::isa_lit(def->type())));
+}
+
+const Def* ISel::fold_mr(const App* st) {
+    auto [m, p, x] = st->args<3>();
+    auto u         = x->isa<App>();
+    if (!u || uses(u) != 1 || !alu_id(u, true) || uses(u->arg()) != 1) return nullptr;
+    auto [a, b] = u->args<2>();
+    for (auto [v, other] : {
+             std::pair{a, b},
+             std::pair{b, a}
+    }) {
+        if (v == b && !commutes(u)) break;
+        // The load's memory has no other user, so nothing lies between load and store.
+        if (auto ld = sole_load(v); ld && v != other && ld->arg(2, 1) == p && ld->proj(2, 0) == m && uses(m) == 1)
+            return new_world().call<mr>(alu(u), Defs{rewrite(ld->arg(2, 0)), addr(address(p)), val(other)});
+    }
+    return nullptr;
+}
 
 const Def* ISel::zext(const Def* d, const Def* x) {
     if (auto l = Lit::isa(x)) return new_world().lit(new_world().type_idx(d), *l);
@@ -166,8 +287,8 @@ ISel::Address ISel::address(const Def* ptr) {
 const Def* ISel::addr(Address a) {
     auto& w = new_world();
     if (!fits_i32(a.disp)) a = {materialize(a)};
-    return w.call<x86::addr>(Defs{w.lit_i2(std::countr_zero(a.scale)), w.lit_i32(u32(a.disp))},
-                             Defs{a.base, a.index ? a.index : w.lit_i64(0)});
+    auto index = a.index ? a.index : w.lit_i64(0);
+    return w.call<x86::addr>(Defs{w.lit_i32(u32(a.disp)), a.base, index, w.lit_i2(std::countr_zero(a.scale))});
 }
 
 const Def* ISel::materialize(Address a) {
@@ -180,6 +301,11 @@ const Def* ISel::materialize(Address a) {
 const Def* ISel::rewrite_imm_App(const App* app) {
     auto& w = new_world();
     auto rw = [this](const Def* d) { return rewrite(d); };
+
+    if (auto ld = rm_users_.find(app); ld != rm_users_.end()) {
+        rewrite(ld->second);
+        return lookup(app);
+    }
 
     if (Axm::isa<core::Ptr>(app)) return w.type_i64();
     if (Axm::isa<core::M>(app)) return w.call<core::M>(w.lit_nat_0());
@@ -276,12 +402,20 @@ const Def* ISel::rewrite_imm_App(const App* app) {
     } else if (auto op = Axm::isa<mem::assume>(app)) {
         return rewrite(op->arg(2, 0));
     } else if (auto op = Axm::isa<mem::load>(app)) {
+        if (auto f = rms_.find(app); f != rms_.end()) {
+            auto [u, other] = f->second;
+            auto [m, p]     = op->args<2>();
+            auto res        = w.call<rm>(alu(u), Defs{rewrite(m), val(other), addr(address(p))});
+            map(u, res->proj(2, 1));
+            return res;
+        }
         auto [_, T] = app->type()->projs<2>();
         if (auto s = Idx::isa_lit(rewrite(T)); s && is_reg_size(*s)) {
             auto [m, p] = op->args<2>();
             return w.call<load>(*s, Defs{rewrite(m), addr(address(p))});
         }
     } else if (auto op = Axm::isa<mem::store>(app)) {
+        if (auto res = fold_mr(app)) return res;
         if (auto s = Idx::isa_lit(rewrite(op->arg(3, 2)->type())); s && is_reg_size(*s)) {
             auto [m, p, v] = op->args<3>();
             return w.call<store>(Defs{rewrite(m), addr(address(p)), rewrite(v)});

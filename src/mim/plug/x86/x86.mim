@@ -74,10 +74,17 @@ anx lam logic (s: Nat): Nat =
 ///
 /// ### addr
 ///
-/// `addr (scale, disp) (base, index)` addresses `base + (index << scale) + disp`.
+/// `addr (disp, base, index, scale)` addresses `disp + base + (index << scale)`, like AT&T's `disp(base, index, scale)`.
 /// A literal `0I64` as `base` or `index` means there is none.
 ///
-axm addr: [scale: I2, disp: I32] → «2; I64» → Addr;
+axm addr: [disp: I32, base: I64, index: I64, scale: I2] → Addr;
+///
+/// These lets name the scales.
+///
+anx let scale_1 = 0I2;
+anx let scale_2 = 1I2;
+anx let scale_4 = 2I2;
+anx let scale_8 = 3I2;
 ///
 /// ### lea
 ///
@@ -98,6 +105,18 @@ axm load: [s: Nat] → [mem.M 0, Addr] → [mem.M 0, Idx (gpr s)];
 /// `mov addr, r`.
 ///
 axm store: {s: Nat} → [mem.M 0, Addr, Idx s] → mem.M 0;
+///
+/// ### rm
+///
+/// `op r, addr`: `rm f (m, a, addr)` is `f (a, b)` with `b` loaded from `addr`.
+///
+axm rm: {s: Nat, C: *} → («2; Idx s» → C) → [mem.M 0, Idx s, Addr] → [mem.M 0, C];
+///
+/// ### mr
+///
+/// `op addr, r`: `mr f (m, addr, b)` stores `f (a, b)` to `addr` with `a` loaded from `addr`.
+///
+axm mr: {s: Nat} → («2; Idx s» → Idx s) → [mem.M 0, Addr, Idx s] → mem.M 0;
 ///
 /// ### slot
 ///

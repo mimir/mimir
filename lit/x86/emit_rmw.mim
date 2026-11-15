@@ -1,0 +1,27 @@
+// REQUIRES: x86_64-linux
+// RUN: %mim -p opt %s -p x86 -X x86:o=%t.s
+// RUN: FileCheck %s < %t.s
+// RUN: clang %t.s -o %t
+// RUN: %t ; test $? -eq 46
+// RUN: %t 1 2 ; test $? -eq 44
+plugin core;
+plugin mem;
+
+use core.ops.u.w;
+
+/// Updates element `argc` of a slot in place twice, then adds a loaded operand that is overwritten before the add.
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
+    ret (m, p) = mem.mslot («4; I32», 0) $ (m, 16);
+    let q      = mem.lea (p, core.conv.u 4 argc);
+    let m      = mem.store (m, q, 40I32);
+    let (m, x) = mem.load (m, q);
+    let m      = mem.store (m, q, x + argc);
+    let (m, y) = mem.load (m, q);
+    let m      = mem.store (m, q, y - (argc + argc));
+    let (m, z) = mem.load (m, q);
+    let m      = mem.store (m, q, 0I32);
+    return (m, z + 7I32);
+
+// CHECK-DAG: addl %ecx, (%rax,%rdx,4)
+// CHECK-DAG: subl %ecx, (%rax,%rdx,4)
+// CHECK-DAG: addl (%rax,%rdx,4), %ecx

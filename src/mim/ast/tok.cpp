@@ -2,9 +2,6 @@
 
 #include <fe/assert.h>
 
-#include "mim/lam.h"
-#include "mim/tuple.h"
-
 namespace mim::ast {
 
 const char* Tok::tag2str(Tok::Tag tag) {
@@ -24,13 +21,5 @@ std::string Tok::str() const {
     oss << *this;
     return oss.str();
 }
-
-/// @name std::ostream operator
-///@{
-std::ostream& operator<<(std::ostream& os, Tok tok) {
-    if (tok.has_sym()) return os << tok.sym();
-    return os << Tok::tag2str(tok.tag());
-}
-///@}
 
 } // namespace mim::ast

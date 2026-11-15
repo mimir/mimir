@@ -358,6 +358,11 @@ private:
             uint64_t size, val;
         } idx_;
     };
+
+    friend std::ostream& operator<<(std::ostream& os, Tok tok) {
+        if (tok.has_sym()) return os << tok.sym();
+        return os << Tok::tag2str(tok.tag());
+    }
 };
 
 } // namespace ast

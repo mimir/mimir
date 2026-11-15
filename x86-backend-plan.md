@@ -57,7 +57,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 Done (on `feature/x86`):
 
 - `x86` plugin (`src/mim/plug/x86/`), with `x86.isel`, `x86.schedule`, and `x86.emit` spliced into the default pipeline in `opt.mim`.
-- `x86.mim`: `Fl`, `Addr`, `addr`, `lea`, `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `imul`, `shl`, `shr`, `sar`, `movzx`, `movsx`, `trunc`, `cmp`, `test`, `cc`, `cmovcc`, plus the size predicates.
+- `x86.mim`: `Fl`, `Addr`, `addr`, `scale_1`/`_2`/`_4`/`_8`, `lea`, `rm`, `mr`, `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `imul`, `shl`, `shr`, `sar`, `movzx`, `movsx`, `trunc`, `cmp`, `test`, `cc`, `cmovcc`, plus the size predicates.
 - `x86.isel` (`src/mim/plug/x86/phase/isel.cpp`): a one-to-one translation of `core.wrap`, `core.bit2` (and/or/xor), `core.shr`, `core.icmp`, `core.conv`, `mem.load`/`mem.store` of integers and pointers, `mem.lea` (array index or constant struct offset), `mem.assume`, `mem.mslot`, `core.idx`, `core.idx2nat`, `core.rem`, `core.div`, `core.nat`, `core.ncmp`, integer `core.bitcast`, and a select `(x, y)#c` (as `cmovcc`).
   An `Idx n` of dynamic size and `Nat` become `I64`, as in `ll`; `Nat` literals stay `Nat` so they still work as type-level arguments, and become `I64` only as values.
   This coverage is a throw-away stand-in until PBQP isel.
@@ -75,9 +75,12 @@ Done (on `feature/x86`):
   This allocation is a throwaway stand-in inside `emit`; the real allocator will answer "where does `v` live" in the graph.
 - `x86.cmovcc cc (f, x, y)` yields `y` if `cc` holds, like `(x, y)#cond`.
 - `isel` folds `mem.lea` chains into `x86.addr`: constant indices and struct offsets into `disp`, one dynamic index with an element size of 1, 2, 4, or 8 into `index`/`scale` (otherwise `imul`), and a second dynamic index or a `disp` beyond `i32` materializes the prefix with `lea` or `add`.
+- `isel` folds a load into its only user as `x86.rm f (m, a, addr)` (`op r, addr`) for `add`/`sub`/`and`/`or`/`xor`/`imul`: the user moves to the load's place in the memory order, so its other operand must be in scope of the load's block and must not depend on the load.
+  A store right behind the load (the load's memory has no other user) of an operation on the loaded value to the same address becomes `x86.mr f (m, addr, b)` (`op addr, r`; not `imul`).
+  The single-use test counts operand occurrences once in `ISel::analyze()`; `cmp`/`test` do not fold since emit rematerializes them per consumer, and `div` does not since `cltd` clobbers the index register.
 - `x86.div`/`rem`/`idiv`/`irem` yield one result each from `rax` or `rdx`; `x86.slot n` reserves `n` frame bytes on the `mem.M` chain; `trunc` to a non-power-of-two size is an unsigned remainder.
 - `isel` widens 8-bit and `Bool` multiplications to `i32` (`movzx`, `imul`, `trunc`), since `imul` has no 8-bit form.
-- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/sched.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`.
+- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/sched.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`.
 
 Known gaps:
 

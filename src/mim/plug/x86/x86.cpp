@@ -14,4 +14,14 @@ static void reg_phases(Flags2Phases& phases) {
     Phase::hook<plug::x86::emit, plug::x86::Emit>(phases);
 }
 
-MIM_PLUGIN_ENTRY(x86) { plugin.register_phases = reg_phases; }
+// clang-format off
+static constexpr PluginArg known_args[] = {
+    {"o=<file>, output=<file>", "Writes the assembly to `<file>` instead of the default `<world>.s`/`a.s`; `<file>` may be `-` for stdout."},
+};
+// clang-format on
+
+MIM_PLUGIN_ENTRY(x86) {
+    plugin.register_phases = reg_phases;
+    plugin.args            = known_args;
+    plugin.num_args        = std::size(known_args);
+}

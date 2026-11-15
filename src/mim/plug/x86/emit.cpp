@@ -43,6 +43,19 @@ char suffix(nat_t w) { return "bwlq"[log_bytes(w)]; }
 
 bool is_mem(const Def* def) { return Axm::isa<core::M>(def->type()); }
 
+/// Mnemonic of a two-address ALU instruction.
+std::string_view alu(flags_t id) {
+    // clang-format off
+    if (id == Annex::Base<add>)  return "add";
+    if (id == Annex::Base<sub>)  return "sub";
+    if (id == Annex::Base<and_>) return "and";
+    if (id == Annex::Base<or_>)  return "or";
+    if (id == Annex::Base<xor_>) return "xor";
+    if (id == Annex::Base<imul>) return "imul";
+    // clang-format on
+    return {};
+}
+
 /// Width of the register holding a value of @p type.
 nat_t width(const Def* type) { return std::bit_ceil(std::max<nat_t>(Idx::expect_bitwidth(type, "an integer"), 8)); }
 
@@ -158,12 +171,10 @@ void Emitter::flags(const Def* fl) {
 
 /// Loads base and index of @p addr into `rax` and `rdx`.
 std::string Emitter::operand(const Def* addr) {
-    auto a             = Axm::as<x86::addr>(addr);
-    auto [scale, disp] = a->decurry()->args<2>(nat);
-    auto [base, index] = a->args<2>();
-    auto d             = std::bit_cast<int32_t>(u32(disp));
-    auto has_base      = Lit::isa(base) != 0;
-    auto has_index     = Lit::isa(index) != 0;
+    auto [disp, base, index, scale] = Axm::as<x86::addr>(addr)->args<4>();
+    auto d                          = std::bit_cast<int32_t>(u32(nat(disp)));
+    auto has_base                   = Lit::isa(base) != 0;
+    auto has_index                  = Lit::isa(index) != 0;
     if (!has_base && !has_index) return std::to_string(d);
 
     auto res = d != 0 ? std::to_string(d) : ""s;
@@ -171,7 +182,7 @@ std::string Emitter::operand(const Def* addr) {
     res += has_base ? "(%rax" : "(";
     if (has_index) {
         get(rdx, index);
-        res += std::format(",%rdx,{}", 1 << scale);
+        res += std::format(",%rdx,{}", 1 << nat(scale));
     }
     return res + ")";
 }
@@ -218,12 +229,7 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
     };
 
     // clang-format off
-    if      (id == Annex::Base<add>)   binary("add");
-    else if (id == Annex::Base<sub>)   binary("sub");
-    else if (id == Annex::Base<and_>)  binary("and");
-    else if (id == Annex::Base<or_>)   binary("or");
-    else if (id == Annex::Base<xor_>)  binary("xor");
-    else if (id == Annex::Base<imul>)  binary("imul");
+    if      (auto mn = alu(id); !mn.empty()) binary(mn);
     else if (id == Annex::Base<div>)   divide(false, rax);
     else if (id == Annex::Base<rem>)   divide(false, rdx);
     else if (id == Annex::Base<idiv>)  divide(true, rax);
@@ -274,7 +280,8 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
 
 const Def* Emitter::prev_mem(const App* app) {
     if (Axm::isa<sched>(app)) return app->callee()->as<App>()->arg();
-    if (Axm::isa<load>(app) || Axm::isa<store>(app) || Axm::isa<x86::slot>(app))
+    if (Axm::isa<load>(app) || Axm::isa<store>(app) || Axm::isa<x86::slot>(app) || Axm::isa<rm>(app)
+        || Axm::isa<mr>(app))
         return app->arg()->proj(app->num_args(), 0);
     app->blame(MIM_X86_BE "unexpected memory producer `{}`", app).bail();
 }
@@ -286,6 +293,25 @@ void Emitter::step(const App* app) {
         num_slots_ += (nat(app->callee()->as<App>()->arg()) + 7) / 8;
         line("leaq {}, %rax", slot(num_slots_ - 1));
         return put(app->proj(2, 1), rax);
+    }
+
+    if (auto op = Axm::isa<rm>(app)) {
+        auto [_, a, addr] = app->args<3>();
+        auto res          = app->proj(2, 1);
+        auto w            = width(a->type());
+        auto mem          = operand(addr);
+        get(rcx, a);
+        line("{}{} {}, {}", alu(op->decurry()->arg()->as<App>()->axm()->flags()), suffix(w), mem, name(rcx, w));
+        return put(res, rcx);
+    }
+
+    if (auto op = Axm::isa<mr>(app)) {
+        auto [_, addr, b] = app->args<3>();
+        auto w            = width(b->type());
+        auto mem          = operand(addr);
+        get(rcx, b);
+        line("{}{} {}, {}", alu(op->decurry()->arg()->as<App>()->axm()->flags()), suffix(w), name(rcx, w), mem);
+        return;
     }
 
     if (Axm::isa<load>(app)) {
