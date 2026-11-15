@@ -109,6 +109,16 @@ nat_t product(const Vector<nat_t>& dims) {
     return std::accumulate(dims.begin(), dims.end(), nat_t(1), std::multiplies<>());
 }
 
+Vector<nat_t> row_major_strides(const Vector<nat_t>& dims) {
+    Vector<nat_t> strides(dims.size());
+    nat_t acc = 1;
+    for (auto i = dims.size(); i-- != 0;) {
+        strides[i] = acc;
+        acc *= dims[i];
+    }
+    return strides;
+}
+
 const Def* add_i64(const Def* a, const Def* b) {
     return a->world().call(core::wrap::add, core::Mode::none, Defs{a, b});
 }
@@ -116,6 +126,14 @@ const Def* add_i64(const Def* a, const Def* b) {
 const Def* mul_i64(const Def* a, nat_t b) {
     auto& w = a->world();
     return w.call(core::wrap::mul, core::Mode::none, Defs{a, w.lit_i64(b)});
+}
+
+/// `{mem', x / c, x mod c}` on the `I64` @p x.
+std::tuple<const Def*, const Def*, const Def*> divmod(const Def* mem, const Def* x, nat_t c) {
+    auto& w      = x->world();
+    auto [m1, q] = w.call(core::div::udiv, Defs{mem, w.tuple({x, w.lit_i64(c)})})->projs<2>();
+    auto [m2, r] = w.call(core::div::urem, Defs{m1, w.tuple({x, w.lit_i64(c)})})->projs<2>();
+    return {m2, q, r};
 }
 
 /// The row-major coordinates of @p flat - an `I64`, i.e. an `Idx 0` - via `affine.delinearize`, which wraps per axis.
@@ -289,6 +307,269 @@ Kernel build_kernel(const Op& op) {
     return k;
 }
 
+/// Whether the access map @p map reads loop position @p pos: it is evaluated on two marker vectors differing only
+/// there.
+bool depends_on_axis(const Def* map, nat_t rn, nat_t pos) {
+    auto& w     = map->world();
+    auto base   = DefVec(rn, [&](size_t i) { return w.call<affine::lit>(w.lit_nat(i + 1)); });
+    auto varied = base;
+    varied[pos] = w.call<affine::lit>(w.lit_nat(rn + 1));
+    return w.app(map, w.tuple(base)) != w.app(map, w.tuple(varied));
+}
+
+/// How two inputs that both read every reduction position split the parallel positions between them.
+struct Split {
+    Vector<nat_t> pos0, pos1; ///< Ascending; together they partition `[0, ro)`.
+};
+
+std::optional<Split> split_parallel(const Op& op) {
+    if (op.ins.size() != 2 || op.rr < 1 || op.ro < 2) return {};
+    auto rn = op.rn();
+    for (auto& in : op.ins)
+        for (nat_t p = op.ro; p != rn; ++p)
+            if (!depends_on_axis(in.map, rn, p)) return {};
+
+    Split split;
+    for (nat_t p = 0; p != op.ro; ++p) {
+        auto d0 = depends_on_axis(op.ins[0].map, rn, p);
+        auto d1 = depends_on_axis(op.ins[1].map, rn, p);
+        if (d0 == d1) return {};
+        (d0 ? split.pos0 : split.pos1).emplace_back(p);
+    }
+    if (split.pos0.empty() || split.pos1.empty()) return {};
+    return split;
+}
+
+/// Thread-block edge length of `build_kernel_gemm`'s shared-memory tiles.
+constexpr nat_t Gemm_Tile = 16;
+
+/// A shared-memory tiled contraction: input 0 owns the rows `split.pos0`, input 1 the columns `split.pos1`.
+/// Each `Gemm_Tile`² thread block covers one output tile and streams the reduction through shared memory a tile at a
+/// time, so the block reads every row and column from global memory once.
+/// All three flattened extents must be multiples of `Gemm_Tile`.
+Kernel build_kernel_gemm(const Op& op, const Split& split, const Vector<nat_t>& k_ext) {
+    auto& w        = op.w;
+    auto& mr       = op.mr;
+    auto global_ty = w.annex<gpu::GlobalM>();
+    auto shared_m  = w.annex<gpu::SharedM>();
+    auto tile      = Gemm_Tile;
+    auto rn        = op.rn();
+
+    Vector<nat_t> m_ext, n_ext;
+    for (auto p : split.pos0)
+        m_ext.emplace_back(op.out_dims[p]);
+    for (auto p : split.pos1)
+        n_ext.emplace_back(op.out_dims[p]);
+    auto n_blocks0 = product(m_ext) / tile;
+    auto n_blocks1 = product(n_ext) / tile;
+
+    // The row stride `tile + 1` staggers same-column accesses across shared-memory banks.
+    auto tile_ty   = [&](const Def* t) { return w.arr(w.lit_nat(tile), w.arr(w.lit_nat(tile + 1), t)); };
+    auto shared_ty = w.sigma({tile_ty(op.ins[0].t), tile_ty(op.ins[1].t)});
+    auto k         = mk_kernel(op, n_blocks0 * n_blocks1, tile * tile, shared_ty, "gemmTiledKernel");
+    auto shared0   = mem::op_lea_unsafe(k.shared_ptr, u64(0));
+    auto shared1   = mem::op_lea_unsafe(k.shared_ptr, u64(1));
+
+    auto [g0, block0, block1] = divmod(k.global, group_i64(k), n_blocks1);
+    auto [g1, ty, tx]         = divmod(g0, item_i64(k), tile);
+    auto [g2, m_coords]       = unflatten_index(w, add_i64(mul_i64(block0, tile), ty), m_ext, g1);
+    auto [entry, n_coords]    = unflatten_index(w, add_i64(mul_i64(block1, tile), tx), n_ext, g2);
+
+    auto ty_idx = w.call(core::conv::u, w.lit_nat(tile), ty);
+    auto tx_idx = w.call(core::conv::u, w.lit_nat(tile), tx);
+    auto ty_pad = w.call(core::conv::u, w.lit_nat(tile + 1), ty);
+    auto tx_pad = w.call(core::conv::u, w.lit_nat(tile + 1), tx);
+
+    // A position the input does not read may hold any in-bounds value.
+    auto iters = [&](const Vector<nat_t>& pos, const DefVec& coords, const DefVec& k_vals) {
+        auto iv = DefVec(rn, [&](size_t p) { return op.zero(p); });
+        for (size_t j = 0; j != pos.size(); ++j)
+            iv[pos[j]] = coords[j];
+        for (nat_t j = 0; j != op.rr; ++j)
+            iv[op.ro + j] = k_vals[j];
+        return w.tuple(iv);
+    };
+
+    // The loops below carry only the shared memory: `affine.lower_for` threads a single memory through a loop.
+    auto write_back          = w.mut_con(Defs{shared_m, mr.To})->set("gemmWriteBack");
+    auto [wb_shared, wb_acc] = write_back->vars<2>();
+    auto par                 = DefVec(op.ro);
+    for (size_t j = 0; j != split.pos0.size(); ++j)
+        par[split.pos0[j]] = m_coords[j];
+    for (size_t j = 0; j != split.pos1.size(); ++j)
+        par[split.pos1[j]] = n_coords[j];
+    emit_epilogue(op, k, write_back, entry, wb_shared, wb_acc, par);
+
+    auto [outer, outer_for] = affine::counting_for(w.lit_i64(product(k_ext) / tile), w.tuple({k.shared, mr.init}),
+                                                   write_back, w.sym("gemmKTile"));
+    k.lam->set(true, outer_for);
+    auto [kt, outer_acc, outer_yield] = outer->vars<3>();
+    auto [s0, acc0]                   = outer_acc->projs<2>();
+    auto k_base                       = mul_i64(kt, tile);
+
+    auto [g3, k0]   = unflatten_index(w, add_i64(k_base, tx), k_ext, entry);
+    auto [g4, val0] = load_at(op.ins[0], k.ins[0], op.n(), mr.Sr, iters(split.pos0, m_coords, k0), g3);
+    auto [g5, k1]   = unflatten_index(w, add_i64(k_base, ty), k_ext, g4);
+    auto [g6, val1] = load_at(op.ins[1], k.ins[1], op.n(), mr.Sr, iters(split.pos1, n_coords, k1), g5);
+
+    auto s1       = w.call<mem::store>(Defs{s0, mem::op_lea_tuple(shared0, w.tuple({ty_idx, tx_pad})), val0});
+    auto s2       = w.call<mem::store>(Defs{s1, mem::op_lea_tuple(shared1, w.tuple({tx_idx, ty_pad})), val1});
+    auto [g7, s3] = w.app(w.annex<gpu::sync_work_items>(), Defs{g6, s2})->projs<2>();
+
+    auto after_inner = w.mut_con(Defs{global_ty, mr.To})->set("gemmAfterInner");
+    auto [inner, inner_for]
+        = affine::counting_for(w.lit_i64(tile), w.tuple({g7, acc0}), after_inner, w.sym("gemmInnerK"));
+    outer->set(true, inner_for);
+    auto [kk, inner_acc, inner_yield] = inner->vars<3>();
+    auto [gi, acci]                   = inner_acc->projs<2>();
+    auto kk_idx                       = w.call(core::conv::u, w.lit_nat(tile + 1), kk);
+
+    auto [r0, v0] = w.call<mem::load>(Defs{s3, mem::op_lea_tuple(shared0, w.tuple({ty_idx, kk_idx}))})->projs<2>();
+    auto [r1, v1] = w.call<mem::load>(Defs{r0, mem::op_lea_tuple(shared1, w.tuple({tx_idx, kk_idx}))})->projs<2>();
+    btensor::app_cps(inner, op.comb, {gi, acci, w.tuple({v0, v1})}, inner_yield);
+
+    // The block must finish reading the tile before the next round overwrites it.
+    auto [ai_mem, ai_acc] = after_inner->vars<2>();
+    auto s4               = w.app(w.annex<gpu::sync_work_items>(), Defs{ai_mem, s3})->proj(2, 1);
+    after_inner->app(true, outer_yield, Defs{s4, ai_acc});
+
+    return k;
+}
+
+/// A CUDA block holds at most 1024 threads.
+constexpr nat_t Conv_Max_Ow = 1024;
+/// Only `ow` threads load the filter per round, so a large filter over a narrow row would load for too long.
+constexpr nat_t Conv_Max_Load_Iters = 8;
+
+/// A convolution-shaped reduction: the weight input reads the parallel positions `weight_pos`, the data input the rest.
+/// A thread block is one output row; it loads its whole filter into shared memory once and every thread reads the
+/// weights from there, while the data input is read along the row with unit stride.
+Kernel build_kernel_conv(const Op& op,
+                         nat_t weight_idx,
+                         const Vector<nat_t>& weight_pos,
+                         const Vector<nat_t>& data_pos,
+                         const Vector<nat_t>& filter_ext) {
+    auto& w        = op.w;
+    auto& mr       = op.mr;
+    auto global_ty = w.annex<gpu::GlobalM>();
+    auto shared_m  = w.annex<gpu::SharedM>();
+    auto data_idx  = 1 - weight_idx;
+    auto& weight   = op.ins[weight_idx];
+
+    // A schedule only splits lower positions, so the last data position is still the fastest-varying one.
+    auto ow_pos = data_pos.back();
+    auto ow     = op.out_dims[ow_pos];
+
+    auto outer_pos = weight_pos;
+    for (auto p : data_pos)
+        if (p != ow_pos) outer_pos.emplace_back(p);
+    std::ranges::sort(outer_pos);
+    Vector<nat_t> outer_ext;
+    for (auto p : outer_pos)
+        outer_ext.emplace_back(op.out_dims[p]);
+
+    auto filter_total   = product(filter_ext);
+    auto filter_strides = row_major_strides(filter_ext);
+    // Padding the cache to whole rounds lets every round load unconditionally; the surplus slots are never read.
+    auto rounds = (filter_total + ow - 1) / ow;
+
+    auto shared_ty = w.arr(w.lit_nat(rounds * ow), weight.t);
+    auto k         = mk_kernel(op, product(outer_ext), ow, shared_ty, "convTiledKernel");
+    auto item      = item_i64(k);
+
+    auto [entry, outer_coords] = unflatten_index(w, group_i64(k), outer_ext, k.global);
+    auto par                   = DefVec(op.ro);
+    for (size_t j = 0; j != outer_pos.size(); ++j)
+        par[outer_pos[j]] = outer_coords[j];
+    par[ow_pos] = w.call(core::conv::u, op.extent(ow_pos), item);
+
+    auto iters = [&](const DefVec& red) {
+        auto iv = par;
+        iv.insert(iv.end(), red.begin(), red.end());
+        return w.tuple(iv);
+    };
+
+    // The load loop carries only the shared memory: `affine.lower_for` threads a single memory through a loop.
+    auto after_load       = w.mut_con(shared_m)->set("convAfterLoad");
+    auto [load, load_for] = affine::counting_for(w.lit_i64(rounds), k.shared, after_load, w.sym("convWeightLoad"));
+    k.lam->set(true, load_for);
+    auto [round, load_shared, load_yield] = load->vars<3>();
+
+    auto load_flat         = add_i64(mul_i64(round, ow), item);
+    auto [lm, load_coords] = unflatten_index(w, load_flat, filter_ext, entry);
+    auto load_val          = load_at(weight, k.ins[weight_idx], op.n(), mr.Sr, iters(load_coords), lm).second;
+    load->app(true, load_yield,
+              w.call<mem::store>(Defs{load_shared, mem::op_lea_unsafe(k.shared_ptr, load_flat), load_val}));
+
+    auto [bar_mem, bar_shared] = w.app(w.annex<gpu::sync_work_items>(), Defs{entry, after_load->var()})->projs<2>();
+
+    auto write_back          = w.mut_con(Defs{global_ty, mr.To})->set("convWriteBack");
+    auto [wb_mem, acc_final] = write_back->vars<2>();
+    emit_epilogue(op, k, write_back, wb_mem, bar_shared, acc_final, par);
+
+    const Def* acc  = w.tuple({bar_mem, mr.init});
+    const Def* cont = write_back;
+    Lam* cur_lam    = after_load;
+    auto red_exts   = mr.Sr->projs(op.rn());
+    auto raw        = affine::counting_nest(cur_lam, cont, acc, Defs(red_exts).subspan(op.ro, op.rr), "convRed");
+    auto red        = btensor::to_idxs(w, Defs(red_exts).subspan(op.ro, op.rr), raw);
+    auto [red_mem, elem_acc] = acc->projs<2>();
+
+    auto [data_mem, data_val] = load_at(op.ins[data_idx], k.ins[data_idx], op.n(), mr.Sr, iters(red), red_mem);
+
+    const Def* weight_flat = w.lit_i64(0);
+    for (nat_t j = 0; j != op.rr; ++j)
+        weight_flat = add_i64(weight_flat, mul_i64(raw[j], filter_strides[j]));
+    auto weight_val = w.call<mem::load>(Defs{bar_shared, mem::op_lea_unsafe(k.shared_ptr, weight_flat)})->proj(2, 1);
+
+    DefVec elems(2);
+    elems[data_idx]   = data_val;
+    elems[weight_idx] = weight_val;
+    btensor::app_cps(cur_lam, op.comb, {data_mem, elem_acc, w.tuple(elems)}, cont);
+
+    return k;
+}
+
+/// Picks the most specific kernel the op's structure allows.
+Kernel select_kernel(const Op& op) {
+    Vector<nat_t> red_ext;
+    for (nat_t j = 0; j != op.rr; ++j)
+        if (auto l = Lit::isa<nat_t>(op.extent(op.ro + j)))
+            red_ext.emplace_back(*l);
+        else
+            return build_kernel(op);
+
+    if (auto split = split_parallel(op)) {
+        auto extent_of = [&](const Vector<nat_t>& pos) {
+            nat_t total = 1;
+            for (auto p : pos)
+                total *= op.out_dims[p];
+            return total;
+        };
+        auto tiles = [](nat_t extent) { return extent != 0 && extent % Gemm_Tile == 0; };
+
+        // Flattening a multi-dim reduction into the tiled K loop is slower than caching the whole filter.
+        if (op.rr == 1 && tiles(extent_of(split->pos0)) && tiles(extent_of(split->pos1)) && tiles(red_ext[0]))
+            return build_kernel_gemm(op, *split, red_ext);
+
+        // A schedule's neutral splits leave size-1 positions behind; the weight reads one real position.
+        auto single = [&](const Vector<nat_t>& pos) {
+            return std::ranges::count_if(pos, [&](nat_t p) { return op.out_dims[p] != 1; }) == 1;
+        };
+        if (op.rr >= 2 && single(split->pos0) != single(split->pos1)) {
+            nat_t weight_idx = single(split->pos0) ? 0 : 1;
+            auto& weight_pos = weight_idx == 0 ? split->pos0 : split->pos1;
+            auto& data_pos   = weight_idx == 0 ? split->pos1 : split->pos0;
+            auto ow          = op.out_dims[data_pos.back()];
+            auto total       = product(red_ext);
+            if (total > 1 && ow <= Conv_Max_Ow && (total + ow - 1) / ow <= Conv_Max_Load_Iters)
+                return build_kernel_conv(op, weight_idx, weight_pos, data_pos, red_ext);
+        }
+    }
+
+    return build_kernel(op);
+}
+
 } // namespace
 
 void LowerMapReduce::start() {
@@ -422,7 +703,7 @@ const Def* LowerMapReduce::emit(const Call& call, Session& s) {
           rebuild_lam_global_mem(call.comb, mr.To, w.sym("combGlobal")),
           rebuild_lam_global_mem(call.post, mr.Tp, w.sym("postGlobal")),
           out_dptr};
-    auto k = build_kernel(op);
+    auto k = select_kernel(op);
 
     DefVec args;
     for (auto& in : op.ins)

@@ -276,6 +276,8 @@ axm split_apply: compile.Phase;
 ///
 /// Lowers `btensor.map_reduce_post` to a kernel launch; skipped if the program already contains an
 /// explicit `init`.
+/// A result that only feeds another lowered call stays on the device, and contraction- and convolution-shaped
+/// reductions get a shared-memory kernel.
 ///
 axm lower_btensor_map_reduce: compile.Phase;
 ///

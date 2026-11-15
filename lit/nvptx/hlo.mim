@@ -4,6 +4,9 @@
 // RUN: %if system-linux && cuda %{ %t %}
 
 // A result that only feeds another map-reduce stays on the device: 22 launches, 18 copies back to the host.
+// The 128x1024 contraction over 1024 runs shared-memory tiled.
 // RUN: %FileCheck %s --input-file=%{s:stem}.ll --check-prefix=COPIES
+// RUN: %FileCheck %s --input-file=%{s:stem}_dev.ll --check-prefix=DEVICE
 // COPIES-COUNT-18: call i32 @cuMemcpyDtoH
 // COPIES-NOT: call i32 @cuMemcpyDtoH
+// DEVICE: define ptx_kernel void @gemmTiledKernel

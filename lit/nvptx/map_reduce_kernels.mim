@@ -1,0 +1,56 @@
+// RUN: rm -f %{s:stem}.ll %{s:stem}_dev.ll %t
+// RUN: %mim -p opt -p gpu %s -p nvptx
+// RUN: %FileCheck %s --input-file=%{s:stem}.ll --check-prefix=HOST
+// RUN: %FileCheck %s --input-file=%{s:stem}_dev.ll --check-prefix=DEVICE
+// RUN: %if system-linux && cuda %{ clang++ -std=c++23 %S/%{s:stem}_aux.cpp %{s:stem}.ll -lcuda -o %t -Wno-override-module %}
+// RUN: %if system-linux && cuda %{ %t %}
+
+// `gpu.lower_btensor_map_reduce` picks a kernel by the op's structure and keeps chained results on the device:
+// * `fc`: a contraction whose extents are all multiples of 16 runs shared-memory tiled; its bias + relu reads the
+//   contraction's result on the device.
+// * `mm`: its strip-mined reduction takes the generic kernel.
+// * `conv_relu`: the convolution caches its filter in shared memory.
+// All three share one GPU session, which is set up once and never torn down.
+// HOST: define internal void @.mimir_gpu_session()
+// HOST: call i32 @cuDevicePrimaryCtxRetain
+// HOST: call i32 @cuModuleLoadFatBinary
+// HOST: call i32 @cuCtxSetCurrent
+// HOST-NOT: call i32 @cuCtxDestroy
+// HOST-COUNT-3: call void @.mimir_gpu_session()
+// HOST-NOT: call i32 @cuDevicePrimaryCtxRetain
+
+// DEVICE-DAG: define ptx_kernel void @gemmTiledKernel
+// DEVICE-DAG: define ptx_kernel void @convTiledKernel
+// DEVICE-DAG: call void @llvm.nvvm.barrier0()
+plugin tensor;
+plugin core;
+plugin math;
+
+use tensor;
+
+let F32  = math.F32;
+let fast = math.mode.fast;
+let Ring = (F32, 0:F32, math.arith.add fast, math.arith.mul fast);
+
+let `+ = binary (math.arith.add fast);
+let `* = product_2d Ring;
+
+lam relu (x: F32): F32 = math.extrema.fmax fast (0:F32, x);
+
+lam linear (n c_in c_out: Nat) (x: tensor.Tensor 2 (n, c_in) F32, w: tensor.Tensor 2 (c_out, c_in) F32, b: tensor.Tensor 1 c_out F32): tensor.Tensor 2 (n, c_out) F32 =
+    let b = broadcast ((1, c_out), (n, c_out), reshape c_out (1, c_out) b);
+    unary relu (x * transpose_2d w + b);
+
+extern fun fc (x: tensor.Tensor 2 (32, 48) F32, w: tensor.Tensor 2 (64, 48) F32, b: tensor.Tensor 1 64 F32): tensor.Tensor 2 (32, 64) F32 =
+    return (linear (32, 48, 64) (x, w, b));
+
+extern fun mm (a: tensor.Tensor 2 (32, 48) F32, b: tensor.Tensor 2 (48, 16) F32): tensor.Tensor 2 (32, 16) F32 =
+    return (a * b);
+
+let same = ((1, 1), (1, 1), (1, 1));
+
+lam conv_epilogue (n c h w: Nat) (t: tensor.Tensor 4 (n, c, h, w) F32, b: tensor.Tensor 1 c F32): tensor.Tensor 4 (n, c, h, w) F32 =
+    unary relu (t + broadcast ((1, c, 1, 1), (n, c, h, w), reshape c (1, c, 1, 1) b));
+
+extern fun conv_relu (x: tensor.Tensor 4 (2, 4, 10, 12) F32, w: tensor.Tensor 4 (8, 4, 3, 3) F32, b: tensor.Tensor 1 8 F32): tensor.Tensor 4 (2, 8, 10, 12) F32 =
+    return (conv_epilogue (2, 8, 10, 12) (conv Ring same (x, w), b));
