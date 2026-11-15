@@ -12,7 +12,13 @@ target_include_directories(pbqp
 )
 target_compile_features(pbqp PUBLIC cxx_std_23)
 find_package(Threads REQUIRED)
-target_link_libraries(pbqp PUBLIC fe Threads::Threads)
+# fe's objects are compiled into libmim, so pbqp resolves fe's symbols there instead of carrying a copy.
+target_link_libraries(pbqp
+    PUBLIC
+        $<BUILD_INTERFACE:fe_usage>
+        $<INSTALL_INTERFACE:fe::fe>
+        Threads::Threads
+)
 
 # A static x86 plugin carries pbqp as a link dependency in the export set.
 if(NOT BUILD_SHARED_LIBS)

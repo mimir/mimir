@@ -1,0 +1,19 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin mem;
+plugin x86;
+
+extern con f (m: mem.M 0, c: Bool, a: I32, return: Cn [mem.M 0, I32]) =
+    let k = x86.mov 7I32;
+    con t (m: mem.M 0) = return (m, x86.add (x86.imul (a, k), k));
+    con e (m: mem.M 0) = return (m, k);
+    (e, t)#c m;
+
+// CHECK-LABEL: con e
+// CHECK-NEXT: (x86.mov @ i32)
+// CHECK-NEXT: return
+// CHECK-LABEL: con t
+// CHECK-NEXT: (x86.mov @ i32)
+// CHECK-NEXT: (x86.imul @ i32)
+// CHECK-NEXT: (x86.mov @ i32)
+// CHECK-NEXT: (x86.add @ i32)

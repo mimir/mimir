@@ -24,21 +24,38 @@ bool is_insn(const Def* def) {
 
 } // namespace
 
-void Schedule::visit(const Def* def) {
-    if (def->isa_mut() || !visited_.emplace(def).second) return;
-    if (is_mem(def)) mems_.emplace_back(def);
-    if (def->isa<Var>()) return;
-    // A closed instruction is placed anew in every continuation: the placement found may be another function's.
-    if (lookup(def) && !(is_insn(def) && def->is_closed())) return;
+void Schedule::place(Lam* curr, const Def* def) {
+    if (def->isa_mut()) return;
+
+    auto insn  = is_insn(def);
+    auto remat = [](const Def* d) { return is_insn(d) && Scheduler::is_remat(d); };
+    if (!remat(def) && !(insn ? fun_->placed : fun_->visited[curr]).emplace(def).second) return;
+    if (is_mem(def)) fun_->mems[fun_->scheduler.early(def)->mut()->as<Lam>()].emplace_back(def);
+    if (insn) curr = fun_->scheduler.smart(curr, def)->mut()->as<Lam>();
 
     for (auto op : def->ops())
-        visit(op);
-    if (is_insn(def)) order_.emplace_back(def);
+        if (!remat(op)) place(curr, op);
+    // Last, so that nothing separates a rematerialized operand from its user.
+    for (auto op : def->ops())
+        if (remat(op)) place(curr, op);
+    if (insn) fun_->insns[curr].emplace_back(def);
 }
 
 const Def* Schedule::rewrite_mut_Lam(Lam* old_lam) {
     if (!old_lam->is_set() || !Lam::isa_cn(old_lam)) return RWPhase::rewrite_mut_Lam(old_lam);
+    if (fun_ && fun_->nest[old_lam]) return thread(old_lam);
 
+    auto fun  = Fun(old_lam);
+    auto prev = std::exchange(fun_, &fun);
+    for (auto mut : fun.nest.muts())
+        if (auto lam = mut->isa<Lam>(); lam && lam->is_set()) place(lam, lam->body());
+
+    auto new_lam = thread(old_lam);
+    fun_         = prev;
+    return new_lam;
+}
+
+const Def* Schedule::thread(Lam* old_lam) {
     auto& w = new_world();
     auto n  = old_lam->num_vars();
     auto i  = n;
@@ -50,10 +67,8 @@ const Def* Schedule::rewrite_mut_Lam(Lam* old_lam) {
     map(old_lam, new_lam);
     push(Vars(old_lam->has_var()), Vars(new_lam->has_var()));
 
-    visited_.clear();
-    visit(old_lam->body());
-    auto order = std::exchange(order_, {});
-    auto mems  = std::exchange(mems_, {});
+    auto order = std::move(fun_->insns[old_lam]);
+    auto mems  = std::move(fun_->mems[old_lam]);
 
     auto m = new_lam->var(n, i);
     for (auto old_def : order) {
