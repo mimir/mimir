@@ -12,7 +12,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: [Debug, Release]
+        include:
+          - build-type: Debug
+            preset: debug
+          - build-type: Release
+            preset: release
     env:
       VCVARS: C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat
 
@@ -75,13 +79,10 @@ jobs:
           rem Setup ccache only warns when choco's feed is down, so build without a launcher then.
           set LAUNCHER=
           where ccache >nul 2>&1 && set LAUNCHER=ccache
-          cmake -B build -G Ninja                         ^
-                -DCMAKE_BUILD_TYPE=${{matrix.build-type}} ^
+          cmake --preset ${{matrix.preset}} -G Ninja      ^
                 -DCMAKE_C_COMPILER_LAUNCHER=%LAUNCHER%    ^
                 -DCMAKE_CXX_COMPILER_LAUNCHER=%LAUNCHER%  ^
                 -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=${{matrix.build-type == 'Debug' && 'Embedded' || ''}} ^
-                -DBUILD_TESTING=ON                        ^
-                -DMIM_BUILD_EXAMPLES=ON                   ^
                 -DMIM_TEST_ROUNDTRIP=${{matrix.build-type == 'Release' && 'ON' || 'OFF'}} ^
                 -DPython_EXECUTABLE=%PYTHON_EXE%          ^
                 -DMIM_LIT_TIMEOUT=300                     ^
@@ -106,11 +107,11 @@ jobs:
         shell: cmd
         run: |
           call "%VCVARS%"
-          cmake --build build -v
+          cmake --build --preset ${{matrix.preset}} -v
 
       - name: Test
         shell: cmd
         run: |
           call "%VCVARS%"
           set PATH=${{github.workspace}}/bin;%PATH%
-          cmake --build build -v --target test-all
+          cmake --build --preset ${{matrix.preset}} -v --target test-all

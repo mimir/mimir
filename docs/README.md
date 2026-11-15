@@ -91,18 +91,18 @@ Or, naturally, you can continue exploring the rest of the [documentation](https:
 ```sh
 git clone --recursive git@github.com:mimir/mimir.git
 cd mimir
-cmake -S . -B build -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON
-cmake --build build -j$(nproc)
+cmake --preset debug
+cmake --build --preset debug
 ```
 
 ### 📦 Install (Optional)
 
 ```sh
-cmake -S . -B build -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON -DCMAKE_INSTALL_PREFIX=/my/local/install/prefix
-cmake --build build -j$(nproc) --target install
+cmake --preset release -DCMAKE_INSTALL_PREFIX=/my/local/install/prefix
+cmake --build --preset release --target install
 ```
 
-See the full [build options](@ref building) in the [Contributing & Debugging](@ref coding) guide.
+See the [presets](@ref presets) and the full [build options](@ref building) in the [Contributing & Debugging](@ref coding) guide.
 
 ## 🔥 Key Innovations
 

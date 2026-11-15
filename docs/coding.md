@@ -17,18 +17,36 @@ git clone --recursive https://github.com/mimir/mimir.git
 For day-to-day development, a good default is:
 
 ```sh
-cmake -S . -B build -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON
-cmake --build build -j$(nproc)
+cmake --preset debug
+cmake --build --preset debug
 ```
 
 Useful follow-up commands are:
 
 ```sh
-cmake --build build --target test-all
-cmake --build build --target lit
-ctest --test-dir build --output-on-failure
+cmake --build --preset debug --target test-all
+cmake --build --preset debug --target lit
+ctest --preset debug
 pre-commit run --all-files
 ```
+
+### Presets {#presets}
+
+`CMakePresets.json` provides a configure, build, and test preset of the same name for each common setup.
+All but `docs` enable `BUILD_TESTING` and `MIM_BUILD_EXAMPLES`.
+
+| Preset    | Build directory | Setup                                                                                        |
+| --------- | --------------- | -------------------------------------------------------------------------------------------- |
+| `debug`   | `build`         | `Debug`                                                                                      |
+| `release` | `build-release` | `Release`                                                                                    |
+| `asan`    | `build-asan`    | `Debug` with AddressSanitizer, UndefinedBehaviorSanitizer, and LeakSanitizer (not on Windows) |
+| `static`  | `build-static`  | `Debug` with `BUILD_SHARED_LIBS=OFF`                                                         |
+| `docs`    | `build-docs`    | Only the documentation; its build preset builds the `docs` target                            |
+
+Further `-D` options and `-G` override a preset, e.g. `cmake --preset release -G Ninja -DMIM_BUILD_PYTHON=OFF`.
+CI configures with these presets as well.
+
+### Build Options
 
 The following CMake switches are available:
 
@@ -118,7 +136,7 @@ cd lit
 
 ### Unit Tests
 
-`test/` holds the [doctest](https://github.com/doctest/doctest) unit tests, built as `mim-test` and `mim-regex-test`.
+`test/` holds the [doctest](https://github.com/doctest/doctest) unit tests, built as `mim-test`, `mim-regex-test`, and `mim-pbqp-test`.
 Run them - and every other CTest test - with:
 
 ```sh
@@ -181,6 +199,7 @@ The artifact a file belongs to - and hence the prefix of its own headers - follo
 | ---------------------------------------------- | ---------------------- | ------------------ |
 | `src/mim/...`, `include/mim/...`               | `libmim`               | `"mim/..."`        |
 | `src/automaton/...`, `include/automaton/...`   | `libautomaton`         | `"automaton/..."`  |
+| `src/pbqp/...`, `include/pbqp/...`             | `libpbqp`              | `"pbqp/..."`       |
 | `src/mim/plug/X/...`, `include/mim/plug/X/...` | plugin `X`             | `"mim/plug/X/..."` |
 | `extra/X/...`                                  | out-of-tree plugin `X` | `"mim/plug/X/..."` |
 | `src/mim/cli/...`                              | the `mim` CLI          | -                  |

@@ -1,0 +1,32 @@
+add_library(pbqp STATIC)
+target_sources(pbqp
+    PRIVATE
+        dot.cpp
+        graph.cpp
+        json.cpp
+        solver.cpp
+)
+target_include_directories(pbqp
+    PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+)
+target_compile_features(pbqp PUBLIC cxx_std_23)
+find_package(Threads REQUIRED)
+target_link_libraries(pbqp PUBLIC fe Threads::Threads)
+if(NOT MSVC)
+    target_compile_options(pbqp
+        PRIVATE
+            -Wpedantic
+            -Wconversion
+            $<IF:$<CXX_COMPILER_ID:GNU>,-Wshadow=local,-Wshadow>
+    )
+endif()
+
+# A static x86 plugin carries pbqp as a link dependency in the export set.
+if(NOT BUILD_SHARED_LIBS)
+    install(
+        TARGETS pbqp
+        EXPORT mim-targets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+endif()

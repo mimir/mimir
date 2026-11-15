@@ -3,7 +3,7 @@
 ## Goal
 
 An SSA-based native x86-64 backend for MimIR.
-Instruction selection and register allocation both use the PBQP solver from `~/projects/pbqp`.
+Instruction selection and register allocation both use the PBQP solver in `src/pbqp` (`libpbqp`).
 SSA destruction happens only very late, during register allocation (Hack style).
 Everything stays in MimIR, libFirm style: no separate machine IR.
 

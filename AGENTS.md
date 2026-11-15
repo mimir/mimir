@@ -12,9 +12,11 @@ Complementary instruction sources — don't duplicate them here:
 Assume a `build/` tree configured Debug with testing enabled (Debug builds use `-Og` and enable expensive `MIM_ENABLE_CHECKS` by default):
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON
-cmake --build build -j$(nproc)   # binaries land in build/bin (mim, mim-test, mim-regex-test, ...)
+cmake --preset debug             # = -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON
+cmake --build build -j$(nproc)   # binaries land in build/bin (mim, mim-test, mim-regex-test, mim-pbqp-test, ...)
 ```
+
+`CMakePresets.json` also has `release`, `asan`, `static`, and `docs`, each in `build-<preset>/` (see `docs/coding.md`).
 
 | Task | Command |
 | ---- | ------- |
@@ -41,7 +43,7 @@ cmake --build build -j$(nproc)   # binaries land in build/bin (mim, mim-test, mi
 
 ## Architecture quick facts
 
-- `libmim` (`src/mim/`, headers in `include/mim/`) is the core library: IR (`Def`, `World`), the Mim AST frontend (`ast/`), rewriting, phases, checks, dumping, and utilities. `src/automaton/` backs the regex subsystem as a separate static library.
+- `libmim` (`src/mim/`, headers in `include/mim/`) is the core library: IR (`Def`, `World`), the Mim AST frontend (`ast/`), rewriting, phases, checks, dumping, and utilities. `src/automaton/` backs the regex subsystem and `src/pbqp/` is the PBQP solver for the x86 backend, each a separate static library.
 - `Driver` is the central runtime object: it owns `Flags`, `Log`, the current `World`, plugin search paths and handles, and the normalizer/stage/backend registries. Plugins, imports, and backend runtimes have three separate lookups (`Driver::plugin_paths`/`import_paths`/`rt_paths`): `-P`/`-I` add plain directories, while `--prefix-path`, the install prefix, and the tree `libmim` came from add prefix roots deriving `<root>/<libdir>/mim`, `<root>/<datadir>/mim`, and `<root>/<libdir>/mim/rt`.
 - The `mim` CLI (`src/mim/cli/main.cpp`) is thin glue around `Driver`: parse Mim → compile into the `World` → `optimize(World&)` → emit whatever `--output-*` asks for. Plugins load on demand via `plugin` directives or `-p`/`--plugin`; `--output-h`/`--output-py` bootstrap plugin headers and exit before compilation. A `plugin` directive takes its `.mim` from the directory the library was loaded from, so both halves always pair up.
 - A plugin is two halves that must stay in sync under one name: `<plugin>.mim` (public annex surface) and `libmim_<plugin>` (exports `mim_get_plugin` to register normalizers, stages, and backends). Names: letters/digits/underscores, max 8 chars.
