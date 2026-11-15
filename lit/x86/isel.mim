@@ -1,5 +1,5 @@
 // RUN: %mim %s -o %t.mim
-// RUN: %mim --no-opt %t.mim -o - | FileCheck %s
+// RUN: %mim --no-opt %t.mim -o - | %FileCheck %s
 
 plugin core;
 plugin mem;

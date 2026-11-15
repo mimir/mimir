@@ -1,5 +1,5 @@
 // RUN: %mim %s -o %t.mim
-// RUN: %mim %t.mim -o - | FileCheck %s
+// RUN: %mim %t.mim -o - | %FileCheck %s
 
 plugin mem;
 plugin x86;

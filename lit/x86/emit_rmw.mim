@@ -1,6 +1,6 @@
 // REQUIRES: x86_64-linux
 // RUN: %mim -p opt %s -p x86 -X x86:o=%t.s
-// RUN: FileCheck %s < %t.s
+// RUN: %FileCheck %s < %t.s
 // RUN: clang %t.s -o %t
 // RUN: %t ; test $? -eq 46
 // RUN: %t 1 2 ; test $? -eq 44

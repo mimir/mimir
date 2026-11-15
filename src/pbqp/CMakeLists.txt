@@ -13,14 +13,6 @@ target_include_directories(pbqp
 target_compile_features(pbqp PUBLIC cxx_std_23)
 find_package(Threads REQUIRED)
 target_link_libraries(pbqp PUBLIC fe Threads::Threads)
-if(NOT MSVC)
-    target_compile_options(pbqp
-        PRIVATE
-            -Wpedantic
-            -Wconversion
-            $<IF:$<CXX_COMPILER_ID:GNU>,-Wshadow=local,-Wshadow>
-    )
-endif()
 
 # A static x86 plugin carries pbqp as a link dependency in the export set.
 if(NOT BUILD_SHARED_LIBS)
