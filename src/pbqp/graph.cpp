@@ -93,7 +93,7 @@ fe::View<Cost> Graph::node_costs(NodeId n) const { return checked_node(n).costs;
 
 fe::View<EdgeId> Graph::incident_edges(NodeId n) const { return checked_node(n).edges; }
 
-Graph::Endpoints Graph::edge(EdgeId e) const {
+Graph::Ends Graph::edge(EdgeId e) const {
     const Edge& edge = checked_edge(e);
     return {.src = edge.src, .dst = edge.dst};
 }
@@ -112,7 +112,7 @@ void Graph::set_edge_costs(EdgeId e, fe::View<Cost> costs) {
     release(old);
 }
 
-Cost Graph::edge_cost(EdgeId e, OptionIndex src_option, OptionIndex dst_option) const {
+Cost Graph::edge_cost(EdgeId e, OptionId src_option, OptionId dst_option) const {
     const Edge& edge = checked_edge(e);
     return matrices_[edge.matrix].costs[src_option * num_options(edge.dst) + dst_option];
 }

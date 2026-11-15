@@ -19,7 +19,7 @@ void print_cell(std::ostream& out, Cost cost, bool chosen) {
 
 } // namespace
 
-void write_dot(std::ostream& out, const Graph& graph, fe::View<OptionIndex> choices) {
+void write_dot(std::ostream& out, const Graph& graph, fe::View<OptionId> choices) {
     const bool highlight = !choices.empty();
     for ([[maybe_unused]] const auto n : graph.nodes())
         assert((!highlight || n < choices.size()) && "write_dot: choices must cover every node id");
@@ -34,7 +34,7 @@ void write_dot(std::ostream& out, const Graph& graph, fe::View<OptionIndex> choi
             out,
             R"(    n{} [label=<<table border="0" cellborder="1" cellspacing="0"><tr><td colspan="{}"><b>n{}</b></td></tr><tr>)",
             n, costs.size(), n);
-        for (OptionIndex i = 0; i < costs.size(); ++i)
+        for (OptionId i = 0; i < costs.size(); ++i)
             print_cell(out, costs[i], highlight && choices[n] == i);
         std::println(out, "</tr></table>>];");
     }
@@ -46,9 +46,9 @@ void write_dot(std::ostream& out, const Graph& graph, fe::View<OptionIndex> choi
             out,
             R"(    n{} -- n{} [label=<<table border="0" cellborder="1" cellspacing="0"><tr><td colspan="{}">n{} &#215; n{}</td></tr>)",
             src, dst, columns, src, dst);
-        for (OptionIndex i = 0; i < graph.num_options(src); ++i) {
+        for (OptionId i = 0; i < graph.num_options(src); ++i) {
             std::print(out, "<tr>");
-            for (OptionIndex j = 0; j < columns; ++j)
+            for (OptionId j = 0; j < columns; ++j)
                 print_cell(out, graph.edge_cost(e, i, j), highlight && choices[src] == i && choices[dst] == j);
             std::print(out, "</tr>");
         }

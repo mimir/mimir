@@ -77,21 +77,21 @@ struct Reduction {
 
 /// What back-substitution needs of an edge; dead edges are never written, so their matrices stay as reduced.
 struct Link {
-    NodeId neighbour                     = 0;
-    EdgeId edge                          = 0;
-    size_t neighbour_options             = 0;
-    const OptionIndex* neighbour_working = nullptr; // original -> working option or npos; null if none was deleted
-    bool is_src                          = false;
+    NodeId neighbour                  = 0;
+    EdgeId edge                       = 0;
+    size_t neighbour_options          = 0;
+    const OptionId* neighbour_working = nullptr; // original -> working option or npos; null if none was deleted
+    bool is_src                       = false;
 };
 
 /// A reduced node in working option order.
 struct Substitution {
-    NodeId node                 = 0;
-    size_t num_options          = 0;
-    size_t num_links            = 0;
-    const Cost* costs           = nullptr;
-    const OptionIndex* original = nullptr; // original[working option]; null if no option was deleted
-    const Link* links           = nullptr;
+    NodeId node              = 0;
+    size_t num_options       = 0;
+    size_t num_links         = 0;
+    const Cost* costs        = nullptr;
+    const OptionId* original = nullptr; // original[working option]; null if no option was deleted
+    const Link* links        = nullptr;
 };
 
 /// Normalized working copy of a Graph with worklists for exact and RN reductions.
@@ -105,7 +105,7 @@ public:
             nodes_[n].costs.assign(costs.begin(), costs.end());
             nodes_[n].original.resize(costs.size());
             nodes_[n].original_options = costs.size();
-            std::ranges::iota(nodes_[n].original, OptionIndex{0});
+            std::ranges::iota(nodes_[n].original, OptionId{0});
             nodes_[n].alive = true;
         }
         assert((rn_priority.empty() || rn_priority.size() >= nodes_.size())
@@ -181,18 +181,18 @@ public:
     }
 
     /// Exact for degree <= 2 nodes; RN nodes may still improve on their RN choice here.
-    [[nodiscard]] OptionIndex choose(const Substitution& substitution, const Choices& choices) const {
-        const auto original = [&](OptionIndex x) { return substitution.original ? substitution.original[x] : x; };
+    [[nodiscard]] OptionId choose(const Substitution& substitution, const Choices& choices) const {
+        const auto original = [&](OptionId x) { return substitution.original ? substitution.original[x] : x; };
         const size_t own    = substitution.num_options;
 
-        OptionIndex best   = original(0);
+        OptionId best      = original(0);
         CostSum best_total = kInfiniteSum;
-        for (OptionIndex x = 0; x < own; ++x) {
+        for (OptionId x = 0; x < own; ++x) {
             CostSum total = widen(substitution.costs[x]);
             for (size_t l = 0; l < substitution.num_links && total != kInfiniteSum; ++l) {
-                const Link& link         = substitution.links[l];
-                const OptionIndex chosen = choices[link.neighbour];
-                const OptionIndex y      = link.neighbour_working ? link.neighbour_working[chosen] : chosen;
+                const Link& link      = substitution.links[l];
+                const OptionId chosen = choices[link.neighbour];
+                const OptionId y      = link.neighbour_working ? link.neighbour_working[chosen] : chosen;
                 assert(y != Graph::npos && "choose: a neighbour picked an option it had already lost");
                 const Cost* const matrix = data(link.edge);
                 total = add_sums(total,
@@ -209,8 +209,8 @@ public:
 private:
     struct Node {
         Costs costs;
-        fe::Vector<OptionIndex, 4> original;  // original[working option]
-        const OptionIndex* working = nullptr; // inverse of original once an option was deleted, built on demand
+        fe::Vector<OptionId, 4> original;  // original[working option]
+        const OptionId* working = nullptr; // inverse of original once an option was deleted, built on demand
         Edges edges;
         size_t original_options = 0;
         size_t version          = 0;
@@ -324,7 +324,7 @@ private:
         return edges_[e].src == n ? edges_[e].dst : edges_[e].src;
     }
 
-    void erase_option(NodeId n, OptionIndex a) {
+    void erase_option(NodeId n, OptionId a) {
         Node& node       = nodes_[n];
         const size_t own = options(n);
         for (const auto e : node.edges) {
@@ -347,7 +347,7 @@ private:
     /// Deletes forbidden options, always keeping at least one.
     void prune(NodeId n) {
         bool changed = false;
-        for (OptionIndex a = 0; a < options(n) && options(n) > 1;) {
+        for (OptionId a = 0; a < options(n) && options(n) > 1;) {
             if (nodes_[n].costs[a] == kInfinity) {
                 erase_option(n, a);
                 ++statistics_.forbidden_options;
@@ -369,12 +369,12 @@ private:
         }
     }
 
-    [[nodiscard]] const OptionIndex* working_options(NodeId n) {
+    [[nodiscard]] const OptionId* working_options(NodeId n) {
         Node& node = nodes_[n];
         if (node.original.size() == node.original_options || node.working != nullptr) return node.working;
-        OptionIndex* const working = arena_.allocate<OptionIndex>(node.original_options);
+        OptionId* const working = arena_.allocate<OptionId>(node.original_options);
         std::fill_n(working, node.original_options, Graph::npos);
-        for (OptionIndex x = 0; x < node.original.size(); ++x)
+        for (OptionId x = 0; x < node.original.size(); ++x)
             working[node.original[x]] = x;
         return node.working = working;
     }
@@ -510,14 +510,14 @@ private:
     }
 
     /// The option of `m` that each option of `n` forces, or null if some option of `n` leaves `m` a choice.
-    [[nodiscard]] const OptionIndex* implied_options(EdgeId e, NodeId n) {
-        const TrimmedEdge edge     = trim_edge(e, n);
-        const Costs& m_costs       = nodes_[edge.neighbour].costs;
-        OptionIndex* const implied = scratch_.allocate<OptionIndex>(options(n));
+    [[nodiscard]] const OptionId* implied_options(EdgeId e, NodeId n) {
+        const TrimmedEdge edge  = trim_edge(e, n);
+        const Costs& m_costs    = nodes_[edge.neighbour].costs;
+        OptionId* const implied = scratch_.allocate<OptionId>(options(n));
         std::fill_n(implied, options(n), Graph::npos);
-        for (OptionIndex i = 0; i < options(n); ++i) {
+        for (OptionId i = 0; i < options(n); ++i) {
             if (nodes_[n].costs[i] == kInfinity) continue;
-            for (OptionIndex j = 0; j < edge.neighbour_options; ++j) {
+            for (OptionId j = 0; j < edge.neighbour_options; ++j) {
                 if (add_costs(edge.matrix[i * edge.neighbour_options + j], m_costs[j]) == kInfinity) continue;
                 if (implied[i] != Graph::npos) return nullptr;
                 implied[i] = j;
@@ -531,8 +531,8 @@ private:
         for (const auto e : nodes_[n].edges) {
             const NodeId m = other_end(e, n);
             if (degree(m) < 2) continue;
-            const auto mark                  = scratch_.state();
-            const OptionIndex* const implied = implied_options(e, n);
+            const auto mark               = scratch_.state();
+            const OptionId* const implied = implied_options(e, n);
             if (implied == nullptr) {
                 scratch_.deallocate(mark);
                 continue;
@@ -550,9 +550,9 @@ private:
                 const auto state  = arena_.state();
                 Cost* const delta = arena_.allocate<Cost>(n_options * w_options);
                 std::fill_n(delta, n_options * w_options, 0);
-                for (OptionIndex i = 0; i < n_options; ++i) {
+                for (OptionId i = 0; i < n_options; ++i) {
                     if (implied[i] == Graph::npos) continue;
-                    for (OptionIndex j = 0; j < w_options; ++j)
+                    for (OptionId j = 0; j < w_options; ++j)
                         delta[flip ? j * n_options + i : i * w_options + j] = to_w.matrix[implied[i] * w_options + j];
                 }
                 erase(nodes_[m].edges, f);
@@ -573,9 +573,9 @@ private:
 
     /// RN: commit to the locally best option and charge its matrix rows to the neighbours.
     void fold_locally_best_option(const Reduction& reduction) {
-        OptionIndex best_option = 0;
-        CostSum best_total      = kInfiniteSum;
-        for (OptionIndex x = 0; x < reduction.costs.size(); ++x) {
+        OptionId best_option = 0;
+        CostSum best_total   = kInfiniteSum;
+        for (OptionId x = 0; x < reduction.costs.size(); ++x) {
             CostSum total = widen(reduction.costs[x]);
             for (const auto& edge : reduction.edges) {
                 const Costs& neighbour_costs = nodes_[edge.neighbour].costs;
@@ -610,7 +610,7 @@ private:
 
 } // namespace
 
-CostSum evaluate(const Graph& graph, fe::View<OptionIndex> choices) {
+CostSum evaluate(const Graph& graph, fe::View<OptionId> choices) {
     CostSum total = 0;
 
     for (const auto n : graph.nodes()) {
@@ -626,7 +626,7 @@ CostSum evaluate(const Graph& graph, fe::View<OptionIndex> choices) {
     return total;
 }
 
-fe::Bitset conflicts(const Graph& graph, fe::View<OptionIndex> choices) {
+fe::Bitset conflicts(const Graph& graph, fe::View<OptionId> choices) {
     fe::Bitset result;
     for (const auto n : graph.nodes()) {
         assert(n < choices.size() && "conflicts: choices is too short");

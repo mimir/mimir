@@ -12,26 +12,31 @@
 
 namespace pbqp {
 
-/// Identifier of a node in a Graph. Ids are stable for the lifetime of the graph.
-using NodeId = size_t;
-/// Identifier of an edge in a Graph.
-using EdgeId = size_t;
-/// Index of an option within a node's cost vector.
-using OptionIndex = size_t;
+/// @name Ids
+/// Node and edge ids are stable for the lifetime of the graph.
+///@{
+using NodeId   = size_t; ///< Identifier of a node in a Graph.
+using EdgeId   = size_t; ///< Identifier of an edge in a Graph.
+using OptionId = size_t; ///< Index of an option within a node's cost vector.
+///@}
 
+/// @name Costs
 /// Compiler PBQP costs are small integers; totals use CostSum.
+///@{
 using Cost    = std::int32_t;
 using CostSum = std::int64_t;
-
 /// Forbids an option or option pair; every total that contains it is kInfiniteSum.
 inline constexpr Cost kInfinity       = std::numeric_limits<Cost>::max();
 inline constexpr CostSum kInfiniteSum = std::numeric_limits<CostSum>::max();
+///@}
 
+/// @name PBQP Vectors & Matrices
 /// PBQP vectors and matrices are small, so they live inline.
-using Costs = fe::Vector<Cost, 4>;
-using Edges = fe::Vector<EdgeId, 4>;
-/// One option per live node, indexed by node id.
-using Choices = fe::Vector<OptionIndex, 8>;
+///@{
+using Costs   = fe::Vector<Cost, 4>;
+using Edges   = fe::Vector<EdgeId, 4>;
+using Choices = fe::Vector<OptionId, 8>; ///< One option per live node, indexed by node id.
+///@}
 
 /// A PBQP problem graph.
 ///
@@ -50,9 +55,17 @@ using Choices = fe::Vector<OptionIndex, 8>;
 /// matrices first.
 class Graph {
 public:
+    struct Ends {
+        NodeId src = 0;
+        NodeId dst = 0;
+    };
+
     static constexpr EdgeId npos = static_cast<EdgeId>(-1);
 
-    /// Add a node with the given cost vector. The vector must not be empty.
+    /// @name Add/Remove Nodes, Edges, and Costs
+    ///@{
+    /// Add a node with the given cost vector.
+    /// The vector must not be empty.
     NodeId add(fe::View<Cost> costs);
 
     /// Link `m` and `n` with a row-major num_options(m) x num_options(n) matrix.
@@ -65,41 +78,33 @@ public:
     void unlink(EdgeId e);
     void remove(NodeId n);
 
+    void set_node_costs(NodeId n, fe::View<Cost> costs); ///< Replace a cost vector; the option count must not change.
+    void set_edge_costs(EdgeId e, fe::View<Cost> costs); ///< Replace a cost matrix; the size must not change.
+    ///@}
+
+    /// @name Getters
+    ///@{
     [[nodiscard]] bool has_node(NodeId n) const;
     [[nodiscard]] bool has_edge(EdgeId e) const;
 
     [[nodiscard]] fe::View<Cost> node_costs(NodeId n) const;
-    [[nodiscard]] fe::View<EdgeId> incident_edges(NodeId n) const;
+    [[nodiscard]] fe::View<Cost> edge_costs(EdgeId e) const; ///< Row-major with the src option as the row.
+    /// Matrix entry of `e`, addressed as (src option, dst option).
+    [[nodiscard]] Cost edge_cost(EdgeId e, OptionId src_option, OptionId dst_option) const;
     [[nodiscard]] size_t num_options(NodeId n) const { return node_costs(n).size(); }
 
-    struct Endpoints {
-        NodeId src = 0;
-        NodeId dst = 0;
-    };
+    [[nodiscard]] fe::View<EdgeId> incident_edges(NodeId n) const; ///< Live edges at `n` in insertion order.
+    [[nodiscard]] Ends edge(EdgeId e) const;
+    [[nodiscard]] EdgeId edge(NodeId m, NodeId n) const; ///< The edge between `m` and `n`, or npos.
 
-    [[nodiscard]] Endpoints edge(EdgeId e) const;
-    /// Row-major with the src option as the row.
-    [[nodiscard]] fe::View<Cost> edge_costs(EdgeId e) const;
-
-    /// Replace a cost vector; the option count must not change.
-    void set_node_costs(NodeId n, fe::View<Cost> costs);
-    /// Replace a cost matrix; the size must not change.
-    void set_edge_costs(EdgeId e, fe::View<Cost> costs);
-
-    /// Matrix entry of `e`, addressed as (src option, dst option).
-    [[nodiscard]] Cost edge_cost(EdgeId e, OptionIndex src_option, OptionIndex dst_option) const;
-
-    /// The edge between `m` and `n`, or npos.
-    [[nodiscard]] EdgeId edge(NodeId m, NodeId n) const;
-
-    /// Ids of live nodes and edges in ascending order.
-    [[nodiscard]] const fe::Bitset& nodes() const { return node_mask_; }
-    [[nodiscard]] const fe::Bitset& edges() const { return edge_mask_; }
+    [[nodiscard]] const fe::Bitset& nodes() const { return node_mask_; } ///< Ids of live nodes in ascending order.
+    [[nodiscard]] const fe::Bitset& edges() const { return edge_mask_; } ///< Ids of live edges in ascending order.
 
     [[nodiscard]] size_t num_nodes() const { return node_mask_.count(); }
     [[nodiscard]] size_t num_edges() const { return edge_mask_.count(); }
     /// Number of distinct edge matrices; edges with equal matrices share one copy.
     [[nodiscard]] size_t num_matrices() const { return num_matrices_; }
+    ///@}
 
 private:
     using MatrixId = size_t;
