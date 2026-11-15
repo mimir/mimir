@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include <algorithm>
+#include <iosfwd>
 #include <limits>
 #include <ranges>
 
@@ -21,22 +23,37 @@ using EdgeId   = size_t; ///< Identifier of an edge in a Graph.
 using OptionId = size_t; ///< Index of an option within a node's cost vector.
 ///@}
 
-/// @name Costs
-/// Compiler PBQP costs are small integers; totals use CostSum.
-///@{
-using Cost    = int32_t;
-using CostSum = int64_t;
-/// Forbids an option or option pair; every total that contains it is kInfiniteSum.
-inline constexpr Cost kInfinity       = std::numeric_limits<Cost>::max();
-inline constexpr CostSum kInfiniteSum = std::numeric_limits<CostSum>::max();
+/// A saturating cost; Cost::inf forbids an option or option pair.
+class Cost {
+public:
+    using Rep = int32_t;
 
-/// Any sign; kInfinity absorbs.
-inline Cost add_signed(Cost lhs, Cost rhs) {
-    if (lhs == kInfinity || rhs == kInfinity) return kInfinity;
-    const CostSum sum = CostSum{lhs} + rhs;
-    return static_cast<Cost>(std::clamp<CostSum>(sum, std::numeric_limits<Cost>::min(), kInfinity));
-}
-///@}
+    constexpr Cost() = default;
+    constexpr Cost(Rep value)
+        : value_(value) {}
+
+    [[nodiscard]] static constexpr Cost inf() { return std::numeric_limits<Rep>::max(); }
+    [[nodiscard]] static constexpr Cost min() { return std::numeric_limits<Rep>::min(); }
+
+    [[nodiscard]] constexpr Rep value() const { return value_; }
+    [[nodiscard]] constexpr bool is_inf() const { return value_ == std::numeric_limits<Rep>::max(); }
+    constexpr explicit operator Rep() const { return value_; }
+
+    friend constexpr auto operator<=>(Cost, Cost) = default;
+
+    /// Any sign; saturates and Cost::inf absorbs.
+    friend constexpr Cost operator+(Cost lhs, Cost rhs) {
+        if (lhs.is_inf() || rhs.is_inf()) return inf();
+        const auto sum = int64_t{lhs.value_} + rhs.value_;
+        return static_cast<Rep>(std::clamp<int64_t>(sum, min().value_, inf().value_));
+    }
+    constexpr Cost& operator+=(Cost rhs) { return *this = *this + rhs; }
+
+    friend std::ostream& operator<<(std::ostream&, Cost); ///< Prints Cost::inf as `inf`.
+
+private:
+    Rep value_ = 0;
+};
 
 /// @name PBQP Vectors & Matrices
 /// PBQP vectors and matrices are small, so they live inline.
@@ -82,7 +99,7 @@ public:
     EdgeId link(NodeId m, NodeId n, fe::View<Cost> costs);
 
     /// Like link, but sums `costs` onto an existing edge between `m` and `n`, whichever way it points.
-    /// Sums saturate and kInfinity absorbs.
+    /// Sums saturate and Cost::inf absorbs.
     EdgeId add_edge_costs(NodeId m, NodeId n, fe::View<Cost> costs);
 
     void set_node_costs(NodeId n, fe::View<Cost> costs); ///< Replace a cost vector; the option count must not change.

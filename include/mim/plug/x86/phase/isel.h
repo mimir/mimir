@@ -81,8 +81,8 @@ public:
     struct Address {
         const Def* base;
         const Def* index = nullptr;
-        nat_t scale      = 1;
-        nat_t disp       = 0;
+        u8 scale         = 1;
+        s64 disp         = 0;
     };
 
     /// @name For Rules

@@ -1,7 +1,5 @@
 #include "mim/plug/x86/phase/isel.h"
 
-#include <iterator>
-
 #include <pbqp/solver.h>
 
 #include <mim/plug/core/core.h>
@@ -19,10 +17,7 @@ namespace {
 /// Width of the register holding an `Idx size`.
 nat_t reg_width(nat_t size) { return std::bit_ceil(std::max<nat_t>(Idx::size2bitwidth(size), 8)); }
 
-bool fits_i32(nat_t disp) {
-    auto d = std::bit_cast<int64_t>(disp);
-    return INT32_MIN <= d && d <= INT32_MAX;
-}
+bool fits_i32(s64 disp) { return INT32_MIN <= disp && disp <= INT32_MAX; }
 
 bool is_reg_size(nat_t size) { return size == 2 || size == Idx::bitwidth2size(reg_width(size)); }
 
@@ -216,15 +211,13 @@ const Def* wide(ISel& s,
  * Costs
  */
 
-pbqp::Cost plus(pbqp::Cost a, pbqp::Cost b) { return pbqp::add_signed(a, b); }
-
 /// Cost of converting a replacement of type @p from into a hole of type @p want.
 pbqp::Cost conv(Ty from, Want want) {
     switch (want) {
         case Want::Reg: return from == Ty::Reg ? 0 : 1;
-        case Want::Imm: return pbqp::kInfinity;
+        case Want::Imm: return pbqp::Cost::inf();
         case Want::Base: return from == Ty::Index ? 1 : 0;
-        case Want::Index: return from == Ty::Index ? 0 : pbqp::kInfinity;
+        case Want::Index: return from == Ty::Index ? 0 : pbqp::Cost::inf();
         case Want::Addr: return 0;
     }
     std::unreachable();
@@ -234,7 +227,7 @@ pbqp::Cost conv(Ty from, Want want) {
 /// part of an address needs a `mov`.
 pbqp::Cost leaf(const Def* def, Want want) {
     if (!Lit::isa(def)) return conv(Ty::Reg, want);
-    return want == Want::Reg ? 1 : want == Want::Index ? pbqp::kInfinity : 0;
+    return want == Want::Reg ? 1 : want == Want::Index ? pbqp::Cost::inf() : 0;
 }
 
 /*
@@ -270,7 +263,7 @@ const Def* build_lea_idx(ISel& s, const Def* root, const Alt& alt) {
     auto size = elem_size(root->as<App>());
     auto x    = s.hole(i);
     if (auto n = Idx::isa_lit(i->type()); n && *n != 0) x = s.zext(w.lit_i64(), x);
-    if (size == 1 || size == 2 || size == 4 || size == 8) return s.addr({a.base, x, size, a.disp});
+    if (size == 1 || size == 2 || size == 4 || size == 8) return s.addr({a.base, x, u8(size), a.disp});
     return s.addr({a.base, bin<imul>(w, x, w.lit_i64(size)), 1, a.disp});
 }
 
@@ -589,7 +582,7 @@ bool ISel::analyze() {
         for (const auto& alt : alts_[def]) {
             auto c = alt.cost;
             for (const auto& d : alt.demands)
-                if (!alts_.contains(key(d.def))) c = plus(c, d.inner ? pbqp::kInfinity : leaf(d.def, d.want));
+                if (!alts_.contains(key(d.def))) c += d.inner ? pbqp::Cost::inf() : leaf(d.def, d.want);
             costs.emplace_back(c);
         }
         ids[def] = graph.add(costs);
@@ -610,9 +603,9 @@ bool ISel::analyze() {
                     for (const auto& d : alt.demands) {
                         if (key(d.def) != op) continue;
                         if (d.inner)
-                            c = plus(c, !o.rule && o.inner == d.inner ? 0 : pbqp::kInfinity);
+                            c += !o.rule && o.inner == d.inner ? 0 : pbqp::Cost::inf();
                         else
-                            c = plus(c, o.rule ? conv(o.rule->type, d.want) : pbqp::kInfinity);
+                            c += o.rule ? conv(o.rule->type, d.want) : pbqp::Cost::inf();
                     }
                     costs.emplace_back(c);
                 }
@@ -622,9 +615,10 @@ bool ISel::analyze() {
     }
 
     auto atomic = pbqp::Choices(graph.num_nodes(), 0);
-    assert(pbqp::evaluate(graph, atomic) != pbqp::kInfiniteSum && "the atomic rules must cover the program");
+    assert(!pbqp::evaluate(graph, atomic).is_inf() && "the atomic rules must cover the program");
     auto sol = pbqp::solve(graph);
-    old_world().log().d("x86 isel: {} nodes, {} edges, cost {}", graph.num_nodes(), graph.num_edges(), sol.cost);
+    old_world().log().d("x86 isel: {} nodes, {} edges, cost {}", graph.num_nodes(), graph.num_edges(),
+                        sol.cost.value());
     // RN is a heuristic, but the atomic rules always remain a valid cover.
     const auto& picked = sol.feasible() ? sol.choices : atomic;
     for (auto def : nodes) {
@@ -713,7 +707,7 @@ const Def* ISel::val(const Def* def) {
 ISel::Address ISel::split(const Def* addr) {
     auto ix           = Axm::isa<index>(addr);
     auto [disp, base] = Axm::as<x86::addr>(ix ? ix->decurry()->arg() : addr)->args<2>();
-    auto a            = Address{base, nullptr, 1, nat_t(std::bit_cast<int32_t>(u32(*Lit::isa(disp))))};
+    auto a            = Address{base, nullptr, 1, Lit::as<s32>(disp)};
     if (ix) {
         auto [i, scale] = ix->args<2>();
         a.index         = i;

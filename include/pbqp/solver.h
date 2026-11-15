@@ -28,21 +28,21 @@ struct Solution {
     /// choices[n] is the option chosen for node `n`.
     Choices choices;
     /// Total cost of the assignment under the original graph.
-    CostSum cost = 0;
-    /// Nodes whose choice hits a kInfinity entry, see `conflicts`; empty iff feasible.
+    Cost cost = 0;
+    /// Nodes whose choice hits a Cost::inf entry, see `conflicts`; empty iff feasible.
     fe::Bitset conflicts;
     Statistics statistics;
 
-    [[nodiscard]] bool feasible() const { return cost != kInfiniteSum; }
+    [[nodiscard]] bool feasible() const { return !cost.is_inf(); }
 };
 
 /// All solver functions are safe to call concurrently on a graph that nobody mutates meanwhile.
 ///
-/// Cost of `choices` under `graph`, or kInfiniteSum if it picks a kInfinity entry.
+/// Cost of `choices` under `graph`; Cost::inf if it picks a Cost::inf entry or the total saturates.
 /// Requires a valid option for every node.
-[[nodiscard]] CostSum evaluate(const Graph& graph, fe::View<OptionId> choices);
+[[nodiscard]] Cost evaluate(const Graph& graph, fe::View<OptionId> choices);
 
-/// Nodes whose choice is kInfinity in their cost vector or, given the neighbour's choice, in an incident matrix.
+/// Nodes whose choice is Cost::inf in their cost vector or, given the neighbour's choice, in an incident matrix.
 /// These are the candidates to spill or split when an assignment is infeasible.
 /// Requires a valid option for every node.
 [[nodiscard]] fe::Bitset conflicts(const Graph& graph, fe::View<OptionId> choices);
@@ -50,7 +50,7 @@ struct Solution {
 /// Heuristic PBQP solver.
 ///
 /// Reduces degree 0, 1 (RI) and 2 (RII) nodes exactly and higher-degree nodes with the RN heuristic.
-/// Normalization keeps intermediate costs relative, so they saturate only where option costs differ by kInfinity.
+/// Normalization keeps intermediate costs relative, so they saturate only where option costs differ by Cost::inf.
 /// Short of that, the result is optimal whenever no RN step is needed, e.g. on trees.
 /// RN decides the node with the highest `rn_priority[n]` first; ties go to the highest degree, then the widest cost
 /// spread. SSA-based register allocation passes PEO positions, so coloring cannot fail (Buchwald et al. 2011). Requires

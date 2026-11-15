@@ -31,23 +31,20 @@
 namespace pbqp {
 namespace {
 
-CostSum widen(Cost cost) { return cost == kInfinity ? kInfiniteSum : cost; }
-
-CostSum add_sums(CostSum lhs, CostSum rhs) {
-    return lhs == kInfiniteSum || rhs == kInfiniteSum ? kInfiniteSum : lhs + rhs;
-}
+/// By value, as GCC fails to vectorize `std::min` over references to a class.
+Cost min(Cost lhs, Cost rhs) { return lhs.value() < rhs.value() ? lhs : rhs; }
 
 /// Only valid for normalized, hence non-negative, costs: their sum fits into 32 unsigned bits.
 Cost add_costs(Cost lhs, Cost rhs) {
-    const auto sum = static_cast<std::uint32_t>(lhs) + static_cast<std::uint32_t>(rhs);
-    return static_cast<Cost>(std::min(sum, static_cast<std::uint32_t>(kInfinity)));
+    const auto sum = static_cast<std::uint32_t>(lhs.value()) + static_cast<std::uint32_t>(rhs.value());
+    return static_cast<Cost::Rep>(std::min(sum, static_cast<std::uint32_t>(Cost::inf().value())));
 }
 
 /// Removes `minimum` from `value`; an infinite minimum means the whole row was moved elsewhere.
 Cost subtract(Cost value, Cost minimum) {
-    if (minimum == kInfinity) return 0;
-    if (value == kInfinity) return kInfinity;
-    return static_cast<Cost>(std::min<CostSum>(CostSum{value} - minimum, kInfinity));
+    if (minimum.is_inf()) return 0;
+    if (value.is_inf()) return Cost::inf();
+    return static_cast<Cost::Rep>(std::min<int64_t>(int64_t{value.value()} - minimum.value(), Cost::inf().value()));
 }
 
 PBQP_DISPATCH void add_into(Cost* __restrict dst, const Cost* __restrict src, size_t count) {
@@ -57,7 +54,7 @@ PBQP_DISPATCH void add_into(Cost* __restrict dst, const Cost* __restrict src, si
 
 PBQP_DISPATCH void fold_row(Cost* __restrict dst, const Cost* __restrict row, Cost cost, size_t count) {
     for (size_t i = 0; i < count; ++i)
-        dst[i] = std::min(dst[i], add_costs(cost, row[i]));
+        dst[i] = min(dst[i], add_costs(cost, row[i]));
 }
 
 /// Matrix of an edge oriented (reduced option, neighbour option).
@@ -82,7 +79,7 @@ struct Link {
 };
 
 /// A reduced node in working option order.
-struct Substitution {
+struct Subst {
     NodeId node              = 0;
     size_t num_options       = 0;
     size_t num_links         = 0;
@@ -144,7 +141,7 @@ public:
         return Graph::npos;
     }
 
-    void reduce(NodeId n, fe::Vector<Substitution>& stack) {
+    void reduce(NodeId n, fe::Vector<Subst>& stack) {
         if (degree(n) > 2 && options(n) > 1) {
             bool merged = false;
             while (merge_neighbour(n, stack))
@@ -178,22 +175,21 @@ public:
     }
 
     /// Exact for degree <= 2 nodes; RN nodes may still improve on their RN choice here.
-    [[nodiscard]] OptionId choose(const Substitution& substitution, const Choices& choices) const {
-        const auto original = [&](OptionId x) { return substitution.original ? substitution.original[x] : x; };
-        const size_t own    = substitution.num_options;
+    [[nodiscard]] OptionId choose(const Subst& subst, const Choices& choices) const {
+        const auto original = [&](OptionId x) { return subst.original ? subst.original[x] : x; };
+        const size_t own    = subst.num_options;
 
-        OptionId best      = original(0);
-        CostSum best_total = kInfiniteSum;
+        OptionId best   = original(0);
+        Cost best_total = Cost::inf();
         for (OptionId x = 0; x < own; ++x) {
-            CostSum total = widen(substitution.costs[x]);
-            for (size_t l = 0; l < substitution.num_links && total != kInfiniteSum; ++l) {
-                const Link& link      = substitution.links[l];
+            Cost total = subst.costs[x];
+            for (size_t l = 0; l < subst.num_links && !total.is_inf(); ++l) {
+                const Link& link      = subst.links[l];
                 const OptionId chosen = choices[link.neighbour];
                 const OptionId y      = link.neighbour_working ? link.neighbour_working[chosen] : chosen;
                 assert(y != Graph::npos && "choose: a neighbour picked an option it had already lost");
                 const Cost* const matrix = data(link.edge);
-                total = add_sums(total,
-                                 widen(link.is_src ? matrix[x * link.neighbour_options + y] : matrix[y * own + x]));
+                total += link.is_src ? matrix[x * link.neighbour_options + y] : matrix[y * own + x];
             }
             if (total < best_total) {
                 best_total = total;
@@ -252,7 +248,7 @@ private:
     /// Cost spread per incident edge: what a wrong RN decision is likely to cost.
     [[nodiscard]] double rn_score(NodeId n) const {
         const auto [low, high] = std::ranges::minmax(nodes_[n].costs);
-        return static_cast<double>(high - low) / static_cast<double>(std::max<size_t>(1, degree(n)));
+        return static_cast<double>(high.value() - low.value()) / static_cast<double>(std::max<size_t>(1, degree(n)));
     }
 
     /// Single-option nodes are reduced exactly at any degree, so they belong on the low worklist.
@@ -275,8 +271,8 @@ private:
 
     void normalize_node(NodeId n) {
         Costs& costs       = nodes_[n].costs;
-        const Cost minimum = std::ranges::min(costs);
-        if (minimum == 0 || minimum == kInfinity) return;
+        const Cost minimum = std::accumulate(costs.begin(), costs.end(), Cost::inf(), min);
+        if (minimum == 0 || minimum.is_inf()) return;
         for (auto& cost : costs)
             cost = subtract(cost, minimum);
     }
@@ -292,20 +288,20 @@ private:
 
         for (size_t r = 0; r < rows; ++r) {
             const Cost* const row = data(e) + r * cols;
-            const Cost minimum    = *std::min_element(row, row + cols);
+            const Cost minimum    = std::accumulate(row, row + cols, Cost::inf(), min);
             if (minimum == 0) continue;
-            src_costs[r]       = add_signed(src_costs[r], minimum);
+            src_costs[r] += minimum;
             Cost* const matrix = writable(e);
             for (size_t c = 0; c < cols; ++c)
                 matrix[r * cols + c] = subtract(matrix[r * cols + c], minimum);
         }
         for (size_t c = 0; c < cols; ++c) {
             const Cost* const matrix = data(e);
-            Cost minimum             = kInfinity;
+            Cost minimum             = Cost::inf();
             for (size_t r = 0; r < rows; ++r)
-                minimum = std::min(minimum, matrix[r * cols + c]);
+                minimum = min(minimum, matrix[r * cols + c]);
             if (minimum == 0) continue;
-            dst_costs[c]       = add_signed(dst_costs[c], minimum);
+            dst_costs[c] += minimum;
             Cost* const writes = writable(e);
             for (size_t r = 0; r < rows; ++r)
                 writes[r * cols + c] = subtract(writes[r * cols + c], minimum);
@@ -345,7 +341,7 @@ private:
     void prune(NodeId n) {
         bool changed = false;
         for (OptionId a = 0; a < options(n) && options(n) > 1;) {
-            if (nodes_[n].costs[a] == kInfinity) {
+            if (nodes_[n].costs[a].is_inf()) {
                 erase_option(n, a);
                 ++statistics_.forbidden_options;
                 changed = true;
@@ -376,7 +372,7 @@ private:
         return node.working = working;
     }
 
-    [[nodiscard]] Substitution record(NodeId n) {
+    [[nodiscard]] Subst record(NodeId n) {
         const Node& node  = nodes_[n];
         Link* const links = arena_.allocate<Link>(degree(n));
         size_t l          = 0;
@@ -389,12 +385,12 @@ private:
                                    .is_src            = edges_[e].src == n};
         }
         const bool deleted = node.original.size() != node.original_options;
-        return Substitution{.node        = n,
-                            .num_options = options(n),
-                            .num_links   = degree(n),
-                            .costs       = arena_.copy(node.costs).data(),
-                            .original    = deleted ? arena_.copy(node.original).data() : nullptr,
-                            .links       = links};
+        return Subst{.node        = n,
+                     .num_options = options(n),
+                     .num_links   = degree(n),
+                     .costs       = arena_.copy(node.costs).data(),
+                     .original    = deleted ? arena_.copy(node.original).data() : nullptr,
+                     .links       = links};
     }
 
     void link(NodeId m, NodeId n, const Cost* shared, Cost* owned) {
@@ -438,12 +434,12 @@ private:
         return trimmed;
     }
 
-    [[nodiscard]] Reduction snapshot(NodeId n, const Substitution& substitution) {
+    [[nodiscard]] Reduction snapshot(NodeId n, const Subst& subst) {
         TrimmedEdge* const edges = scratch_.allocate<TrimmedEdge>(degree(n));
         size_t i                 = 0;
         for (const auto e : nodes_[n].edges)
             new (edges + i++) TrimmedEdge(trim_edge(e, n));
-        return {.costs = {substitution.costs, substitution.num_options}, .edges = {edges, degree(n)}};
+        return {.costs = {subst.costs, subst.num_options}, .edges = {edges, degree(n)}};
     }
 
     /// RI: c'_n(y) = c_n(y) + min_x ( c(x) + M(x, y) )
@@ -452,7 +448,7 @@ private:
         const size_t y_dim      = edge.neighbour_options;
 
         Cost* const best = scratch_.allocate<Cost>(y_dim);
-        std::fill_n(best, y_dim, kInfinity);
+        std::fill_n(best, y_dim, Cost::inf());
         for (size_t x = 0; x < reduction.costs.size(); ++x)
             fold_row(best, edge.matrix + x * y_dim, reduction.costs[x], y_dim);
         add_into(nodes_[edge.neighbour].costs.data(), best, y_dim);
@@ -475,7 +471,7 @@ private:
 
         const auto state   = arena_.state();
         Cost* const merged = arena_.allocate<Cost>(m_dim * n_dim);
-        std::fill_n(merged, m_dim * n_dim, kInfinity);
+        std::fill_n(merged, m_dim * n_dim, Cost::inf());
         for (size_t x = 0; x < reduction.costs.size(); ++x) {
             const Cost* const n_row = to_n->matrix + x * n_dim;
             for (size_t i = 0; i < m_dim; ++i)
@@ -510,9 +506,9 @@ private:
         OptionId* const implied = scratch_.allocate<OptionId>(options(n));
         std::fill_n(implied, options(n), Graph::npos);
         for (OptionId i = 0; i < options(n); ++i) {
-            if (nodes_[n].costs[i] == kInfinity) continue;
+            if (nodes_[n].costs[i].is_inf()) continue;
             for (OptionId j = 0; j < edge.neighbour_options; ++j) {
-                if (add_costs(edge.matrix[i * edge.neighbour_options + j], m_costs[j]) == kInfinity) continue;
+                if (add_costs(edge.matrix[i * edge.neighbour_options + j], m_costs[j]).is_inf()) continue;
                 if (implied[i] != Graph::npos) return nullptr;
                 implied[i] = j;
             }
@@ -521,7 +517,7 @@ private:
     }
 
     /// RM (Buchwald et al. 2011): moves the other edges of a neighbour whose option `n` determines onto `n`.
-    bool merge_neighbour(NodeId n, fe::Vector<Substitution>& stack) {
+    bool merge_neighbour(NodeId n, fe::Vector<Subst>& stack) {
         for (const auto e : nodes_[n].edges) {
             const NodeId m = other_end(e, n);
             if (degree(m) < 2) continue;
@@ -568,16 +564,15 @@ private:
     /// RN: commit to the locally best option and charge its matrix rows to the neighbours.
     void fold_locally_best_option(const Reduction& reduction) {
         OptionId best_option = 0;
-        CostSum best_total   = kInfiniteSum;
+        Cost best_total      = Cost::inf();
         for (OptionId x = 0; x < reduction.costs.size(); ++x) {
-            CostSum total = widen(reduction.costs[x]);
+            Cost total = reduction.costs[x];
             for (const auto& edge : reduction.edges) {
                 const Costs& neighbour_costs = nodes_[edge.neighbour].costs;
-                CostSum cheapest             = kInfiniteSum;
+                Cost cheapest                = Cost::inf();
                 for (size_t y = 0; y < edge.neighbour_options; ++y)
-                    cheapest = std::min(cheapest, add_sums(widen(neighbour_costs[y]),
-                                                           widen(edge.matrix[x * edge.neighbour_options + y])));
-                total = add_sums(total, cheapest);
+                    cheapest = min(cheapest, neighbour_costs[y] + edge.matrix[x * edge.neighbour_options + y]);
+                total += cheapest;
             }
             if (total < best_total) {
                 best_total  = total;
@@ -604,18 +599,18 @@ private:
 
 } // namespace
 
-CostSum evaluate(const Graph& graph, fe::View<OptionId> choices) {
-    CostSum total = 0;
+Cost evaluate(const Graph& graph, fe::View<OptionId> choices) {
+    Cost total = 0;
 
     for (const auto n : graph.nodes()) {
         assert(n < choices.size() && "evaluate: choices is too short");
         const auto costs = graph.node_costs(n);
         assert(choices[n] < costs.size() && "evaluate: option index out of range");
-        total = add_sums(total, widen(costs[choices[n]]));
+        total += costs[choices[n]];
     }
     for (const auto e : graph.edges()) {
         const auto [src, dst] = graph.edge(e);
-        total = add_sums(total, widen(graph.edge_costs(e)[choices[src] * graph.num_options(dst) + choices[dst]]));
+        total += graph.edge_costs(e)[choices[src] * graph.num_options(dst) + choices[dst]];
     }
     return total;
 }
@@ -624,11 +619,11 @@ fe::Bitset conflicts(const Graph& graph, fe::View<OptionId> choices) {
     fe::Bitset result;
     for (const auto n : graph.nodes()) {
         assert(n < choices.size() && "conflicts: choices is too short");
-        if (graph.node_costs(n)[choices[n]] == kInfinity) result.set(n);
+        if (graph.node_costs(n)[choices[n]].is_inf()) result.set(n);
     }
     for (const auto e : graph.edges()) {
         const auto [src, dst] = graph.edge(e);
-        if (graph.edge_cost(e, choices[src], choices[dst]) == kInfinity) result.set(src).set(dst);
+        if (graph.edge_cost(e, choices[src], choices[dst]).is_inf()) result.set(src).set(dst);
     }
     return result;
 }
@@ -644,7 +639,7 @@ Solution finish(const Graph& graph, Solution solution) {
 
 Solution solve(const Graph& graph, fe::View<size_t> rn_priority) {
     Reducer reducer{graph, rn_priority};
-    fe::Vector<Substitution> stack;
+    fe::Vector<Subst> stack;
     stack.reserve(graph.num_nodes());
 
     for (NodeId n = reducer.next(); n != Graph::npos; n = reducer.next())
@@ -654,7 +649,7 @@ Solution solve(const Graph& graph, fe::View<size_t> rn_priority) {
     for (auto it = stack.rbegin(); it != stack.rend(); ++it)
         choices[it->node] = reducer.choose(*it, choices);
 
-    const CostSum cost = evaluate(graph, choices);
+    const Cost cost = evaluate(graph, choices);
     return finish(
         graph,
         Solution{.choices = std::move(choices), .cost = cost, .conflicts = {}, .statistics = reducer.statistics()});
@@ -696,9 +691,9 @@ Solution search_range(const Graph& graph, const Enumeration& enumeration, size_t
     for (NodeId n = 0; n < choices.size(); ++n)
         choices[n] = (begin / enumeration.place[n]) % enumeration.options[n];
 
-    Solution best{.choices = choices, .cost = kInfiniteSum, .conflicts = {}, .statistics = {}};
+    Solution best{.choices = choices, .cost = Cost::inf(), .conflicts = {}, .statistics = {}};
     for (size_t index = begin; index < end; ++index) {
-        const CostSum cost = evaluate(graph, choices);
+        const Cost cost = evaluate(graph, choices);
         if (cost < best.cost) {
             best.choices = choices;
             best.cost    = cost;

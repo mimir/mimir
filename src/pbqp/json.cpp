@@ -290,11 +290,11 @@ private:
     }
 
     Cost to_cost(Tok tok, std::int64_t value) {
-        if (value < std::numeric_limits<Cost>::min() || kInfinity <= value) {
+        if (value < Cost::min().value() || Cost::inf().value() <= value) {
             error().e(tok.loc(), "cost `{}` is out of range", tok);
             return 0;
         }
-        return static_cast<Cost>(value);
+        return static_cast<Cost::Rep>(value);
     }
 
     Cost parse_cost(fe::Cite ctx) {
@@ -305,7 +305,7 @@ private:
             }
             case Tag::V_str: {
                 auto tok = lex();
-                if (tok.sym() == "inf") return kInfinity;
+                if (tok.sym() == "inf") return Cost::inf();
                 error().e(tok.loc(), "expected a cost, got `{}`", tok);
                 return 0;
             }
@@ -422,10 +422,10 @@ void write_costs(std::ostream& out, fe::View<Cost> costs) {
     out << '[';
     for (size_t i = 0; i < costs.size(); ++i) {
         if (i != 0) out << ", ";
-        if (costs[i] == kInfinity)
+        if (costs[i].is_inf())
             out << R"("inf")";
         else
-            std::print(out, "{}", costs[i]);
+            std::print(out, "{}", costs[i].value());
     }
     out << ']';
 }

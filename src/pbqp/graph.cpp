@@ -1,10 +1,13 @@
 #include "pbqp/graph.h"
 
 #include <algorithm>
+#include <ostream>
 #include <string_view>
 #include <utility>
 
 namespace pbqp {
+
+std::ostream& operator<<(std::ostream& out, Cost cost) { return cost.is_inf() ? out << "inf" : out << cost.value(); }
 
 NodeId Graph::add(fe::View<Cost> costs) {
     assert((!costs.empty()) && "add: a PBQP node needs at least one option");
@@ -35,10 +38,8 @@ EdgeId Graph::add_edge_costs(NodeId m, NodeId n, fe::View<Cost> costs) {
     const bool same_way = edges_[e].src == m;
     Costs sum(edge_costs(e).begin(), edge_costs(e).end());
     for (size_t r = 0; r < rows; ++r)
-        for (size_t c = 0; c < cols; ++c) {
-            Cost& entry = sum[same_way ? r * cols + c : c * rows + r];
-            entry       = add_signed(entry, costs[r * cols + c]);
-        }
+        for (size_t c = 0; c < cols; ++c)
+            sum[same_way ? r * cols + c : c * rows + r] += costs[r * cols + c];
     set_edge_costs(e, sum);
     return e;
 }

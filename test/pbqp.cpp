@@ -90,8 +90,9 @@ void check_random_trees(int min_cost, int max_cost, int forbidden_percent) {
     std::uniform_int_distribution<int> cost{min_cost, max_cost};
     std::uniform_int_distribution<int> percent{0, 99};
     std::uniform_int_distribution<size_t> num_options{1, 4};
-    const auto next_cost
-        = [&] { return percent(random) < forbidden_percent ? pbqp::kInfinity : static_cast<pbqp::Cost>(cost(random)); };
+    const auto next_cost = [&] {
+        return percent(random) < forbidden_percent ? pbqp::Cost::inf() : static_cast<pbqp::Cost>(cost(random));
+    };
 
     for (int trial = 0; trial < 200; ++trial) {
         const size_t num_nodes = 2 + static_cast<size_t>(trial % 7);
@@ -221,7 +222,7 @@ TEST_CASE("negative costs reward coalescing") {
 }
 
 TEST_CASE("infinity forbids same option") {
-    constexpr auto infinity = std::numeric_limits<pbqp::Cost>::max();
+    constexpr auto infinity = pbqp::Cost::inf();
 
     pbqp::Graph graph;
     const pbqp::NodeId a = graph.add({0, 0});
@@ -241,7 +242,7 @@ TEST_CASE("infinity forbids same option") {
 }
 
 TEST_CASE("infinite sums do not wrap") {
-    constexpr auto infinity = std::numeric_limits<pbqp::Cost>::max();
+    constexpr auto infinity = pbqp::Cost::inf();
 
     // Three nodes and two colours make one monochromatic edge unavoidable, so the reduction sums several infinities.
     pbqp::Graph graph;
@@ -261,7 +262,7 @@ TEST_CASE("infinite sums do not wrap") {
     const pbqp::Solution heuristic = pbqp::solve(graph);
     const pbqp::Solution optimal   = *pbqp::solve_exhaustive(graph);
     CHECK(heuristic.cost == optimal.cost);
-    CHECK(heuristic.cost == pbqp::kInfiniteSum);
+    CHECK(heuristic.cost == pbqp::Cost::inf());
     CHECK(heuristic.cost == pbqp::evaluate(graph, heuristic.choices));
 }
 
@@ -277,7 +278,7 @@ void pruned_complete_graph(pbqp::Graph& graph, std::mt19937_64& random, size_t n
         if (i >= free_nodes) {
             const size_t kept = std::uniform_int_distribution<size_t>{0, values.size() - 1}(random);
             for (size_t x = 0; x < values.size(); ++x)
-                if (x != kept) values[x] = pbqp::kInfinity;
+                if (x != kept) values[x] = pbqp::Cost::inf();
         }
         graph.add(values);
     }
@@ -307,7 +308,7 @@ TEST_CASE("heuristic handles forbidden options on dense graphs") {
     std::uniform_int_distribution<int> percent{0, 99};
     std::uniform_int_distribution<size_t> num_options{1, 4};
     const auto next_cost
-        = [&] { return percent(random) < 25 ? pbqp::kInfinity : static_cast<pbqp::Cost>(cost(random)); };
+        = [&] { return percent(random) < 25 ? pbqp::Cost::inf() : static_cast<pbqp::Cost>(cost(random)); };
 
     for (int trial = 0; trial < 200; ++trial) {
         const size_t num_nodes = 4 + static_cast<size_t>(trial % 4);
@@ -369,7 +370,7 @@ void random_interval_instance(IntervalInstance& instance, std::mt19937_64& rando
             const pbqp::Cost copy = affinity ? static_cast<pbqp::Cost>(weight(random)) : 0;
             pbqp::Costs matrix(registers * registers, copy);
             for (size_t r = 0; r < registers; ++r)
-                matrix[r * registers + r] = interferes(m, n) ? pbqp::kInfinity : 0;
+                matrix[r * registers + r] = interferes(m, n) ? pbqp::Cost::inf() : 0;
             instance.graph.link(m, n, matrix);
         }
     }
@@ -415,7 +416,7 @@ TEST_CASE("infeasible instances are reported") {
     pbqp::Graph graph;
     for (int i = 0; i < 3; ++i)
         graph.add({0, 0});
-    const pbqp::Costs interference = {pbqp::kInfinity, 0, 0, pbqp::kInfinity};
+    const pbqp::Costs interference = {pbqp::Cost::inf(), 0, 0, pbqp::Cost::inf()};
     for (pbqp::NodeId n = 0; n < 3; ++n)
         graph.link(n, (n + 1) % 3, interference);
     const pbqp::Solution solution = pbqp::solve(graph);
@@ -432,10 +433,10 @@ TEST_CASE("infeasible instances are reported") {
 TEST_CASE("conflicts name the forbidden nodes") {
     pbqp::Graph graph;
     const pbqp::NodeId a = graph.add({0, 0});
-    const pbqp::NodeId b = graph.add({0, pbqp::kInfinity});
+    const pbqp::NodeId b = graph.add({0, pbqp::Cost::inf()});
     const pbqp::NodeId c = graph.add({0, 0});
     const pbqp::NodeId d = graph.add({0, 0});
-    graph.link(c, d, {pbqp::kInfinity, 0, 0, 0});
+    graph.link(c, d, {pbqp::Cost::inf(), 0, 0, 0});
 
     const pbqp::Choices choices = {0, 1, 0, 0};
     const fe::Bitset expected   = {b, c, d};
@@ -452,22 +453,22 @@ TEST_CASE("add_edge_costs accumulates in either direction") {
 
     const pbqp::EdgeId e = graph.add_edge_costs(m, n, {1, 2, 3, 4, 5, 6});
     CHECK(graph.edge(m, n) == e);
-    CHECK(graph.add_edge_costs(m, n, {10, 0, 0, 0, 0, pbqp::kInfinity}) == e);
+    CHECK(graph.add_edge_costs(m, n, {10, 0, 0, 0, 0, pbqp::Cost::inf()}) == e);
     CHECK(graph.add_edge_costs(n, m, {0, 100, -2, 0, 0, 0}) == e);
     CHECK(graph.num_edges() == 1);
 
-    const pbqp::Costs expected = {11, 0, 3, 104, 5, pbqp::kInfinity};
+    const pbqp::Costs expected = {11, 0, 3, 104, 5, pbqp::Cost::inf()};
     CHECK(std::ranges::equal(graph.edge_costs(e), expected));
 
-    graph.add_edge_costs(m, n, {pbqp::kInfinity - 1, -5, 0, 0, 0, -1});
-    CHECK(graph.edge_cost(e, 0, 0) == pbqp::kInfinity);
+    graph.add_edge_costs(m, n, {pbqp::Cost::inf().value() - 1, -5, 0, 0, 0, -1});
+    CHECK(graph.edge_cost(e, 0, 0) == pbqp::Cost::inf());
     CHECK(graph.edge_cost(e, 0, 1) == -5);
-    CHECK(graph.edge_cost(e, 1, 2) == pbqp::kInfinity);
+    CHECK(graph.edge_cost(e, 1, 2) == pbqp::Cost::inf());
 }
 
 TEST_CASE("rm merges implied neighbour") {
     // Figure 2 of Buchwald et al. 2011: coloring U implies V, and merging V into U leaves only exact reductions.
-    constexpr auto inf = pbqp::kInfinity;
+    constexpr auto inf = pbqp::Cost::inf();
     pbqp::Graph graph;
     const pbqp::NodeId u             = graph.add({0, 0});
     const pbqp::NodeId v             = graph.add({0, 0});
@@ -541,7 +542,7 @@ TEST_CASE("equal matrices are shared") {
     fe::Vector<pbqp::NodeId> nodes;
     for (int i = 0; i < 4; ++i)
         nodes.emplace_back(graph.add({0, 0}));
-    const pbqp::Costs interference = {pbqp::kInfinity, 0, 0, pbqp::kInfinity};
+    const pbqp::Costs interference = {pbqp::Cost::inf(), 0, 0, pbqp::Cost::inf()};
 
     const pbqp::EdgeId ab = graph.link(nodes[0], nodes[1], interference);
     const pbqp::EdgeId bc = graph.link(nodes[1], nodes[2], interference);
@@ -569,7 +570,7 @@ TEST_CASE("shared matrices survive random mutations") {
     std::uniform_int_distribution<int> pick{0, 3};
     const std::array<pbqp::Costs, 4> palette = {
         pbqp::Costs{0, 1, 2, 3},
-        pbqp::Costs{pbqp::kInfinity, 0, 0, pbqp::kInfinity},
+        pbqp::Costs{pbqp::Cost::inf(), 0, 0, pbqp::Cost::inf()},
         pbqp::Costs{0, 0, 0, 0},
         pbqp::Costs{3, 2, 1, 0},
     };
@@ -606,7 +607,7 @@ TEST_CASE("shared matrices survive random mutations") {
                         for (size_t c = 0; c < 2; ++c) {
                             pbqp::Cost& entry    = shadow[e][same_way ? r * 2 + c : c * 2 + r];
                             const pbqp::Cost add = costs[r * 2 + c];
-                            entry = entry == pbqp::kInfinity || add == pbqp::kInfinity ? pbqp::kInfinity : entry + add;
+                            entry += add;
                         }
                 }
                 break;
@@ -733,7 +734,7 @@ TEST_CASE("dot shows costs and choices") {
     pbqp::Graph graph;
     const pbqp::NodeId a = graph.add({3, 4});
     const pbqp::NodeId b = graph.add({7});
-    graph.link(a, b, {pbqp::kInfinity, 5});
+    graph.link(a, b, {pbqp::Cost::inf(), 5});
 
     std::ostringstream plain;
     pbqp::write_dot(plain, graph);
@@ -763,9 +764,9 @@ std::string write_json(const pbqp::Graph& graph, fe::View<size_t> rn_priority = 
 
 TEST_CASE("json round trips ids infinity and priorities") {
     pbqp::Graph graph;
-    const pbqp::NodeId a = graph.add({-3, pbqp::kInfinity});
+    const pbqp::NodeId a = graph.add({-3, pbqp::Cost::inf()});
     const pbqp::NodeId c = graph.add({7, 0, 2});
-    graph.link(c, a, {1, pbqp::kInfinity, -5, 0, 4, 2});
+    graph.link(c, a, {1, pbqp::Cost::inf(), -5, 0, 4, 2});
     const std::array<size_t, 2> priority{5, 9};
 
     const std::string text = write_json(graph, priority);
@@ -801,7 +802,8 @@ TEST_CASE("json skips unknown keys and optional fields") {
     const pbqp::EdgeId e = graph.edge(0, 1);
     REQUIRE(e != pbqp::Graph::npos);
     CHECK(graph.edge(e).src == 1);
-    CHECK(std::ranges::equal(graph.edge_costs(e), std::array<pbqp::Cost, 4>{pbqp::kInfinity, 0, 0, pbqp::kInfinity}));
+    CHECK(
+        std::ranges::equal(graph.edge_costs(e), std::array<pbqp::Cost, 4>{pbqp::Cost::inf(), 0, 0, pbqp::Cost::inf()}));
     CHECK(instance.rn_priority.empty());
     CHECK(pbqp::solve(graph).cost == 2);
 }

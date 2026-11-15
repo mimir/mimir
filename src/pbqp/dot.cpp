@@ -11,10 +11,10 @@ namespace {
 constexpr const char* kChosen = R"( bgcolor="palegreen")";
 
 void print_cell(std::ostream& out, Cost cost, bool chosen) {
-    if (cost == kInfinity)
+    if (cost.is_inf())
         std::print(out, "<td{}>&#8734;</td>", chosen ? kChosen : "");
     else
-        std::print(out, "<td{}>{}</td>", chosen ? kChosen : "", cost);
+        std::print(out, "<td{}>{}</td>", chosen ? kChosen : "", cost.value());
 }
 
 } // namespace

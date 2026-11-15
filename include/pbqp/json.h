@@ -28,7 +28,7 @@ struct Instance {
 ///
 /// The position of a node in `nodes` is its id.
 /// Edge `costs` are row-major with `src` as the row; `rows` and `cols` are optional and only checked.
-/// `"inf"` is kInfinity, `rn_priority` is optional, and unknown keys are skipped.
+/// `"inf"` is Cost::inf, `rn_priority` is optional, and unknown keys are skipped.
 /// Throws `fe::Error::Bail`, a `std::exception`, on malformed input; `path` only names the input in its message.
 void read_json(std::istream& in, Instance& instance, const std::filesystem::path& path = "<input>");
 
