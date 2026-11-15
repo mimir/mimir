@@ -87,6 +87,7 @@ private:
     void get(const Reg&, const Def*);
     void put(const Def*, const Reg&);
     void flags(const Def*);
+    std::string operand(const Def* addr);
     void step(const App*);
     void insn(const Def* res, const Def* f, const Def* x);
     void block(Lam*);
@@ -155,8 +156,28 @@ void Emitter::flags(const Def* fl) {
     fl->blame(MIM_X86_BE "flags `{}` do not come from a scheduled `cmp` or `test`", fl).bail();
 }
 
+/// Loads base and index of @p addr into `rax` and `rdx`.
+std::string Emitter::operand(const Def* addr) {
+    auto a             = Axm::as<x86::addr>(addr);
+    auto [scale, disp] = a->decurry()->args<2>(nat);
+    auto [base, index] = a->args<2>();
+    auto d             = std::bit_cast<int32_t>(u32(disp));
+    auto has_base      = Lit::isa(base) != 0;
+    auto has_index     = Lit::isa(index) != 0;
+    if (!has_base && !has_index) return std::to_string(d);
+
+    auto res = d != 0 ? std::to_string(d) : ""s;
+    if (has_base) get(rax, base);
+    res += has_base ? "(%rax" : "(";
+    if (has_index) {
+        get(rdx, index);
+        res += std::format(",%rdx,{}", 1 << scale);
+    }
+    return res + ")";
+}
+
 void Emitter::insn(const Def* res, const Def* f, const Def* x) {
-    auto axm = f->as<App>()->axm();
+    auto axm = f->isa<Axm>() ? f->as<Axm>() : f->as<App>()->axm();
     auto id  = axm->flags();
 
     auto binary = [&](std::string_view mnemonic) {
@@ -213,7 +234,10 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
     else if (id == Annex::Base<movzx>) extend('z');
     else if (id == Annex::Base<movsx>) extend('s');
     // clang-format on
-    else if (id == Annex::Base<trunc>) {
+    else if (id == Annex::Base<lea>) {
+        line("leaq {}, %rax", operand(x));
+        put(res, rax);
+    } else if (id == Annex::Base<trunc>) {
         auto w = width(res->type());
         get(rax, x);
         auto n    = *Idx::isa_lit(res->type());
@@ -268,16 +292,15 @@ void Emitter::step(const App* app) {
         auto [_, p] = app->args<2>();
         auto res    = app->proj(2, 1);
         auto w      = width(res->type());
-        get(rax, p);
-        line("mov{} (%rax), {}", suffix(w), name(rcx, w));
+        line("mov{} {}, {}", suffix(w), operand(p), name(rcx, w));
         return put(res, rcx);
     }
 
     auto [_, p, v] = app->args<3>();
     auto w         = width(v->type());
-    get(rax, p);
+    auto a         = operand(p);
     get(rcx, v);
-    line("mov{} {}, (%rax)", suffix(w), name(rcx, w));
+    line("mov{} {}, {}", suffix(w), name(rcx, w), a);
 }
 
 std::string Emitter::symbol(Lam* lam) {

@@ -77,10 +77,12 @@ constexpr bool should_reduce(Prec curr, Prec op) { return is_rassoc(op) ? curr >
     m(K_Cn,     "Cn"    )             \
     m(K_Fn,     "Fn"    )             \
     m(K_I1,     "I1"    )             \
+    m(K_I2,     "I2"    )             \
+    m(K_I4,     "I4"    )             \
+    m(K_I8,     "I8"    )             \
     m(K_I16,    "I16"   )             \
     m(K_I32,    "I32"   )             \
     m(K_I64,    "I64"   )             \
-    m(K_I8,     "I8"    )             \
     m(K_Idx,    "Idx"   )             \
     m(K_Nat,    "Nat"   )             \
     m(K_Type,   "Type"  )             \
@@ -96,10 +98,12 @@ constexpr bool should_reduce(Prec curr, Prec op) { return is_rassoc(op) ? curr >
     m(K_fn,     "fn"    )             \
     m(K_fun,    "fun"   )             \
     m(K_i1,     "i1"    )             \
+    m(K_i2,     "i2"    )             \
+    m(K_i4,     "i4"    )             \
+    m(K_i8,     "i8"    )             \
     m(K_i16,    "i16"   )             \
     m(K_i32,    "i32"   )             \
     m(K_i64,    "i64"   )             \
-    m(K_i8,     "i8"    )             \
     m(K_import, "import")             \
     m(K_inj,    "inj"   )             \
     m(K_lam,    "lam"   )             \

@@ -18,10 +18,11 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 ### Instruction types are plain integers
 
 - x86 instructions are axioms typed over `Idx s`, e.g. `x86.add: {s: Nat} → «2; Idx s» → Idx (gpr s)`.
-- Registers, immediates, addressing modes, and the schedule are no concern of these types.
-- Whether an operand becomes an immediate or a memory operand (`[b + i*s + d]`) is decided right before register allocation, because it is a register-pressure question.
-- `lea` is a register-allocation trick (three-address `add`/`shl` that saves a copy), so it is not an isel-level instruction either.
-- `load`/`store` take the address as a plain `I64`; `mem.Ptr` becomes `I64` during isel.
+- Registers, immediates, and the schedule are no concern of these types.
+- Whether an operand becomes an immediate is decided right before register allocation, because it is a register-pressure question.
+- An address is an operand of type `x86.Addr`, built by `x86.addr (scale, disp) (base, index)`; it is no value, so it is not scheduled and occupies no register of its own.
+  `Addr` is the address nonterminal of the PBQP grammar, so isel folds address arithmetic into it; RA may still unfold it into `x86.lea` under pressure.
+- `x86.lea: Addr → I64` materializes an address that is used as a value; `mem.Ptr` becomes `I64` during isel.
 
 ### The schedule is the `mem.M 0` chain
 
@@ -56,7 +57,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 Done (on `feature/x86`):
 
 - `x86` plugin (`src/mim/plug/x86/`), with `x86.isel`, `x86.schedule`, and `x86.emit` spliced into the default pipeline in `opt.mim`.
-- `x86.mim`: `Fl`, `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `imul`, `shl`, `shr`, `sar`, `movzx`, `movsx`, `trunc`, `cmp`, `test`, `cc`, `cmovcc`, plus the size predicates.
+- `x86.mim`: `Fl`, `Addr`, `addr`, `lea`, `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `imul`, `shl`, `shr`, `sar`, `movzx`, `movsx`, `trunc`, `cmp`, `test`, `cc`, `cmovcc`, plus the size predicates.
 - `x86.isel` (`src/mim/plug/x86/phase/isel.cpp`): a one-to-one translation of `core.wrap`, `core.bit2` (and/or/xor), `core.shr`, `core.icmp`, `core.conv`, `mem.load`/`mem.store` of integers and pointers, `mem.lea` (array index or constant struct offset), `mem.assume`, `mem.mslot`, `core.idx`, `core.idx2nat`, `core.rem`, `core.div`, `core.nat`, `core.ncmp`, integer `core.bitcast`, and a select `(x, y)#c` (as `cmovcc`).
   An `Idx n` of dynamic size and `Nat` become `I64`, as in `ll`; `Nat` literals stay `Nat` so they still work as type-level arguments, and become `I64` only as values.
   This coverage is a throw-away stand-in until PBQP isel.
@@ -73,9 +74,10 @@ Done (on `feature/x86`):
   `cmp`/`test` are rematerialized right before each `cc`/`cmovcc`, so the order of the schedule cannot clobber flags.
   This allocation is a throwaway stand-in inside `emit`; the real allocator will answer "where does `v` live" in the graph.
 - `x86.cmovcc cc (f, x, y)` yields `y` if `cc` holds, like `(x, y)#cond`.
+- `isel` folds `mem.lea` chains into `x86.addr`: constant indices and struct offsets into `disp`, one dynamic index with an element size of 1, 2, 4, or 8 into `index`/`scale` (otherwise `imul`), and a second dynamic index or a `disp` beyond `i32` materializes the prefix with `lea` or `add`.
 - `x86.div`/`rem`/`idiv`/`irem` yield one result each from `rax` or `rdx`; `x86.slot n` reserves `n` frame bytes on the `mem.M` chain; `trunc` to a non-power-of-two size is an unsigned remainder.
 - `isel` widens 8-bit and `Bool` multiplications to `i32` (`movzx`, `imul`, `trunc`), since `imul` has no 8-bit form.
-- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/sched.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`.
+- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/sched.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`.
 
 Known gaps:
 
@@ -94,8 +96,8 @@ Known gaps:
 
 Done: scheduling in topological order, emission of GAS text (AT&T syntax) with control flow and SysV calls on a spill-everything stand-in allocator (no encoder or ELF writer for now), and enough one-to-one isel to run 43 of the `clang`-run lit tests.
 
-1. **Register allocation** with PBQP, including pressure-aware list scheduling, spilling, the pre-allocation step that picks immediates and folds address modes, and SSA destruction; each piece replaces a stand-in and is checked against the allowlist.
-2. **PBQP instruction selection** replacing the one-to-one translation.
+1. **PBQP instruction selection** replacing the one-to-one translation; register allocation consumes its output (two-address forms, fixed registers, folded operands), and it builds and exercises the PBQP solver on a problem without interference.
+2. **Register allocation** with PBQP, including pressure-aware list scheduling, spilling, and SSA destruction; each piece replaces a stand-in and is checked against the allowlist.
 
 ## Instruction Selection with PBQP
 

@@ -13,9 +13,20 @@ public:
 private:
     /// Zero-extends @p x of new_world() to `Idx d`, folding literals.
     const Def* zext(const Def* d, const Def* x);
-    /// Byte offset of `mem.lea (p, index)` into an old_world() @p pointee, yielding a pointer to @p elem, as an `I64`
-    /// of new_world().
-    const Def* offset(const Def* pointee, const Def* elem, const Def* index);
+    /// `base + index * scale + disp` in new_world(); a missing `index` is `nullptr`.
+    struct Address {
+        const Def* base;
+        const Def* index = nullptr;
+        nat_t scale      = 1;
+        nat_t disp       = 0;
+    };
+
+    /// Folds the `mem.lea` chain of the old_world() pointer @p ptr.
+    Address address(const Def* ptr);
+    /// The `x86.addr` of @p a.
+    const Def* addr(Address a);
+    /// @p a as a value.
+    const Def* materialize(Address a);
 
     /// The rewritten @p def with a `Nat` literal as `I64`, for value operands.
     const Def* val(const Def* def);

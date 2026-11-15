@@ -11,7 +11,7 @@ extern lam f (a b: I32): I32 =
 // CHECK: x86.cmovcc 12
 
 extern lam g (m: mem.M 0, p i: I64): [mem.M 0, I32] =
-    let a = x86.add (p, x86.shl (i, 2I64));
+    let a = x86.addr (2I2, 0I32) (p, i);
     let (m, x) = x86.load 4294967296 (m, a);
     (x86.store (m, a, x86.add (x, 1I32)), x);
 

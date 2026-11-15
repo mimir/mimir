@@ -17,7 +17,8 @@ bool is_mem(const Def* def) {
 
 bool is_insn(const Def* def) {
     if (auto app = def->isa<App>())
-        if (auto axm = app->axm()) return axm->plugin() == Plugin_Id && !app->type()->isa<Pi>();
+        if (auto axm = app->axm())
+            return axm->plugin() == Plugin_Id && !app->type()->isa<Pi>() && !Axm::isa<Addr>(app->type());
     return false;
 }
 

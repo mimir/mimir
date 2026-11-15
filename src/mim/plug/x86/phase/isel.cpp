@@ -1,5 +1,7 @@
 #include "mim/plug/x86/phase/isel.h"
 
+#include <iterator>
+
 #include <mim/plug/core/core.h>
 #include <mim/plug/mem/mem.h>
 
@@ -14,6 +16,11 @@ namespace {
 
 /// Width of the register holding an `Idx size`.
 nat_t reg_width(nat_t size) { return std::bit_ceil(std::max<nat_t>(Idx::size2bitwidth(size), 8)); }
+
+bool fits_i32(nat_t disp) {
+    auto d = std::bit_cast<int64_t>(disp);
+    return INT32_MIN <= d && d <= INT32_MAX;
+}
 
 bool is_reg_size(nat_t size) { return size == 2 || size == Idx::bitwidth2size(reg_width(size)); }
 
@@ -120,27 +127,54 @@ const Def* ISel::rewrite_imm_Extract(const Extract* ex) {
     return w.call<cmovcc>(code, Defs{fl, x, y});
 }
 
-const Def* ISel::offset(const Def* pointee, const Def* elem, const Def* index) {
-    auto& w = new_world();
-    if (pointee->isa<Arr>()) {
-        auto size = trait(core::trait::size, elem);
-        if (auto i = Lit::isa(index)) return w.lit_i64(*i * size);
+ISel::Address ISel::address(const Def* ptr) {
+    auto& w  = new_world();
+    auto lea = Axm::isa<mem::lea>(ptr);
+    if (!lea) return {rewrite(ptr)};
 
-        auto i = rewrite(index);
-        if (auto n = Idx::isa_lit(index->type()); n && *n != 0) i = zext(w.lit_i64(), i);
-        return size == 1 ? i : w.call<imul>(Defs{i, w.lit_i64(size)});
+    auto [p, i]       = lea->args<2>();
+    auto a            = address(p);
+    auto [pointee, _] = Axm::as<core::Ptr>(p->type())->args<2>();
+    if (pointee->isa<Arr>()) {
+        auto [elem, _2] = Axm::as<core::Ptr>(lea->type())->args<2>();
+        auto size       = trait(core::trait::size, elem);
+        if (auto l = Lit::isa(i)) {
+            a.disp += *l * size;
+            return a;
+        }
+
+        auto x = rewrite(i);
+        if (auto n = Idx::isa_lit(i->type()); n && *n != 0) x = zext(w.lit_i64(), x);
+        if (a.index) a = {materialize(a)};
+        if (size == 1 || size == 2 || size == 4 || size == 8) return {a.base, x, size, a.disp};
+        return {a.base, w.call<imul>(Defs{x, w.lit_i64(size)}), 1, a.disp};
     }
 
-    auto i = Lit::isa(index);
-    if (!i) index->blame(MIM_X86_BE "index `{}` into `{}` must be a literal", index, pointee).bail();
-    nat_t res = 0;
-    for (nat_t j = 0; j <= *i; ++j) {
+    auto l = Lit::isa(i);
+    if (!l) i->blame(MIM_X86_BE "index `{}` into `{}` must be a literal", i, pointee).bail();
+    nat_t off = 0;
+    for (nat_t j = 0; j <= *l; ++j) {
         auto field = pointee->proj(pointee->num_projs(), j);
         auto align = trait(core::trait::align, field);
-        res        = (res + align - 1) / align * align;
-        if (j != *i) res += trait(core::trait::size, field);
+        off        = (off + align - 1) / align * align;
+        if (j != *l) off += trait(core::trait::size, field);
     }
-    return w.lit_i64(res);
+    a.disp += off;
+    return a;
+}
+
+const Def* ISel::addr(Address a) {
+    auto& w = new_world();
+    if (!fits_i32(a.disp)) a = {materialize(a)};
+    return w.call<x86::addr>(Defs{w.lit_i2(std::countr_zero(a.scale)), w.lit_i32(u32(a.disp))},
+                             Defs{a.base, a.index ? a.index : w.lit_i64(0)});
+}
+
+const Def* ISel::materialize(Address a) {
+    auto& w = new_world();
+    if (!fits_i32(a.disp)) a = {w.call<add>(Defs{a.base, w.lit_i64(a.disp)}), a.index, a.scale};
+    if (!a.index && a.disp == 0) return a.base;
+    return w.call<lea>(addr(a));
 }
 
 const Def* ISel::rewrite_imm_App(const App* app) {
@@ -230,6 +264,7 @@ const Def* ISel::rewrite_imm_App(const App* app) {
             case core::div::urem: res = wide(bin<rem>, type, false, x, y); break;
             case core::div::sdiv: res = wide(bin<idiv>, type, true, x, y); break;
             case core::div::srem: res = wide(bin<irem>, type, true, x, y); break;
+            default: std::unreachable();
         }
         return w.tuple({rewrite(m), res});
     } else if (auto op = Axm::isa<mem::mslot>(app)) {
@@ -243,19 +278,16 @@ const Def* ISel::rewrite_imm_App(const App* app) {
     } else if (auto op = Axm::isa<mem::load>(app)) {
         auto [_, T] = app->type()->projs<2>();
         if (auto s = Idx::isa_lit(rewrite(T)); s && is_reg_size(*s)) {
-            auto [m, p] = op->args<2>(rw);
-            return w.call<load>(*s, Defs{m, p});
+            auto [m, p] = op->args<2>();
+            return w.call<load>(*s, Defs{rewrite(m), addr(address(p))});
         }
     } else if (auto op = Axm::isa<mem::store>(app)) {
         if (auto s = Idx::isa_lit(rewrite(op->arg(3, 2)->type())); s && is_reg_size(*s)) {
-            auto [m, p, v] = op->args<3>(rw);
-            return w.call<store>(Defs{m, p, v});
+            auto [m, p, v] = op->args<3>();
+            return w.call<store>(Defs{rewrite(m), addr(address(p)), rewrite(v)});
         }
-    } else if (auto op = Axm::isa<mem::lea>(app)) {
-        auto [p, i]       = op->args<2>();
-        auto [pointee, _] = Axm::as<core::Ptr>(p->type())->args<2>();
-        auto [elem, _2]   = Axm::as<core::Ptr>(app->type())->args<2>();
-        return w.call<add>(Defs{rewrite(p), offset(pointee, elem, i)});
+    } else if (Axm::isa<mem::lea>(app)) {
+        return materialize(address(app));
     }
 
     if (auto axm = app->axm(); axm && is_lowered_plugin(axm) && !app->type()->isa<Pi>() && !Axm::isa<core::M>(app)

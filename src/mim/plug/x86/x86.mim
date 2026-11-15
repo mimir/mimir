@@ -7,7 +7,7 @@
 /// The native x86-64 backend.
 /// Loading this plugin (`mim foo.mim -p x86`) appends instruction selection and emission to the compilation pipeline.
 /// Instruction selection rewrites `core`, `math`, and `mem` into the axioms below.
-/// Registers, immediates, and addressing modes are no concern of these types; register allocation introduces them later.
+/// Registers and immediates are no concern of these types; register allocation introduces them later.
 /// The schedule is the `mem.M 0` chain: memory instructions sit on it, and scheduling threads all other instructions onto it via `sched`.
 ///
 /// ## Dependencies
@@ -25,6 +25,13 @@ import compile;
 /// The flags register.
 ///
 axm Fl: *;
+///
+/// ### Addr
+///
+/// A memory operand `disp(base, index, scale)`.
+/// It is no value and occupies no register of its own; only memory instructions and `lea` take one.
+///
+axm Addr: *;
 ///
 /// ### emit
 ///
@@ -63,19 +70,34 @@ anx lam logic (s: Nat): Nat =
     let ok = core.bit2.or 0 (is (s, 2), core.bit2.or 0 (core.bit2.or 0 (is (s, i8), is (s, i16)), core.bit2.or 0 (is (s, i32), is (s, i64))));
     refly.check (ok, s, "x86: operand size must be Bool, i8, i16, i32, or i64");
 ///
+/// ## Addressing
+///
+/// ### addr
+///
+/// `addr (scale, disp) (base, index)` addresses `base + (index << scale) + disp`.
+/// A literal `0I64` as `base` or `index` means there is none.
+///
+axm addr: [scale: I2, disp: I32] → «2; I64» → Addr;
+///
+/// ### lea
+///
+/// `lea r, addr` materializes an address as a value.
+///
+axm lea: Addr → I64;
+///
 /// ## Instructions
 ///
 /// ### load
 ///
-/// `mov r, [addr]`.
+/// `mov r, addr`.
 ///
-axm load: [s: Nat] → [mem.M 0, I64] → [mem.M 0, Idx (gpr s)];
+axm load: [s: Nat] → [mem.M 0, Addr] → [mem.M 0, Idx (gpr s)];
 ///
 /// ### store
 ///
-/// `mov [addr], r`.
+/// `mov addr, r`.
 ///
-axm store: {s: Nat} → [mem.M 0, I64, Idx s] → mem.M 0;
+axm store: {s: Nat} → [mem.M 0, Addr, Idx s] → mem.M 0;
 ///
 /// ### slot
 ///
