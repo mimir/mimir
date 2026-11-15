@@ -4,4 +4,6 @@ add_mim_plugin(x86
         emit.cpp
         phase/isel.cpp
         phase/schedule.cpp
+    PRIVATE
+        pbqp
 )

@@ -98,6 +98,10 @@ private:
     size_t slot_of(const Def*);
     const Def* prev_mem(const App*);
     void get(const Reg&, const Def*);
+    /// Like get, but for an instruction operand that has to be in a register.
+    void use(const Reg&, const Def*);
+    /// An instruction operand that is a register or an immediate.
+    std::string src(const Reg&, const Def*);
     void put(const Def*, const Reg&);
     void flags(const Def*);
     std::string operand(const Def* addr);
@@ -136,6 +140,22 @@ void Emitter::get(const Reg& reg, const Def* def) {
     }
 }
 
+void Emitter::use(const Reg& reg, const Def* def) {
+    if (Lit::isa(def)) def->blame(MIM_X86_BE "literal `{}` needs an `x86.mov` here", def).bail();
+    get(reg, def);
+}
+
+std::string Emitter::src(const Reg& reg, const Def* def) {
+    auto w = width(def->type());
+    if (auto l = Lit::isa(def)) {
+        auto s = std::bit_cast<int64_t>(*l << (64 - w)) >> (64 - w);
+        if (s < INT32_MIN || s > INT32_MAX) def->blame(MIM_X86_BE "literal `{}` does not fit an immediate", def).bail();
+        return std::format("${}", s);
+    }
+    get(reg, def);
+    return std::string(name(reg, w));
+}
+
 size_t Emitter::slot_of(const Def* def) {
     auto [i, ins] = slots_.emplace(def, num_slots_);
     if (ins) ++num_slots_;
@@ -159,9 +179,8 @@ void Emitter::flags(const Def* fl) {
                 if (*mnemonic) {
                     auto [a, b] = app->arg()->projs<2>();
                     auto w      = width(a->type());
-                    get(rax, a);
-                    get(rcx, b);
-                    line("{}{} {}, {}", mnemonic, suffix(w), name(rcx, w), name(rax, w));
+                    use(rax, a);
+                    line("{}{} {}, {}", mnemonic, suffix(w), src(rcx, b), name(rax, w));
                     return;
                 }
             }
@@ -171,17 +190,19 @@ void Emitter::flags(const Def* fl) {
 
 /// Loads base and index of @p addr into `rax` and `rdx`.
 std::string Emitter::operand(const Def* addr) {
-    auto [disp, base, index, scale] = Axm::as<x86::addr>(addr)->args<4>();
-    auto d                          = std::bit_cast<int32_t>(u32(nat(disp)));
-    auto has_base                   = Lit::isa(base) != 0;
-    auto has_index                  = Lit::isa(index) != 0;
+    auto ix           = Axm::isa<x86::index>(addr);
+    auto [disp, base] = Axm::as<x86::addr>(ix ? ix->decurry()->arg() : addr)->args<2>();
+    auto d            = std::bit_cast<int32_t>(u32(nat(disp)));
+    auto has_base     = Lit::isa(base) != 0;
+    auto has_index    = bool(ix);
     if (!has_base && !has_index) return std::to_string(d);
 
     auto res = d != 0 ? std::to_string(d) : ""s;
-    if (has_base) get(rax, base);
+    if (has_base) use(rax, base);
     res += has_base ? "(%rax" : "(";
     if (has_index) {
-        get(rdx, index);
+        auto [index, scale] = ix->args<2>();
+        use(rdx, index);
         res += std::format(",%rdx,{}", 1 << nat(scale));
     }
     return res + ")";
@@ -194,35 +215,40 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
     auto binary = [&](std::string_view mnemonic) {
         auto [a, b] = x->projs<2>();
         auto w      = width(res->type());
-        get(rax, a);
-        get(rcx, b);
-        line("{}{} {}, {}", mnemonic, suffix(w), name(rcx, w), name(rax, w));
+        use(rax, a);
+        line("{}{} {}, {}", mnemonic, suffix(w), src(rcx, b), name(rax, w));
         put(res, rax);
     };
     auto shift = [&](std::string_view mnemonic) {
         auto [a, b] = x->projs<2>();
         auto w      = width(res->type());
-        get(rax, a);
-        get(rcx, b);
-        line("{}{} %cl, {}", mnemonic, suffix(w), name(rax, w));
+        use(rax, a);
+        if (auto l = Lit::isa(b)) {
+            line("{}{} ${}, {}", mnemonic, suffix(w), *l % w, name(rax, w));
+        } else {
+            get(rcx, b);
+            line("{}{} %cl, {}", mnemonic, suffix(w), name(rax, w));
+        }
         put(res, rax);
     };
-    auto divide = [&](bool sign, const Reg& out) {
+    auto divide = [&](bool sign) {
         auto [a, b] = x->projs<2>();
-        auto w      = width(res->type());
-        get(rax, a);
-        get(rcx, b);
+        auto [q, r] = res->projs<2>();
+        auto w      = width(q->type());
+        use(rax, a);
+        use(rcx, b);
         if (!sign)
             line("xorl %edx, %edx");
         else
             line("{}", w == 64 ? "cqto" : w == 32 ? "cltd" : "cwtd");
         line("{}div{} {}", sign ? "i" : "", suffix(w), name(rcx, w));
-        put(res, out);
+        put(q, rax);
+        put(r, rdx);
     };
     auto extend = [&](char kind) {
         auto ws = width(x->type());
         auto wd = width(res->type());
-        get(rax, x);
+        use(rax, x);
         if (ws < wd && !(kind == 'z' && ws == 32))
             line("mov{}{}{} {}, {}", kind, suffix(ws), suffix(wd), name(rax, ws), name(rax, wd));
         put(res, rax);
@@ -230,22 +256,23 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
 
     // clang-format off
     if      (auto mn = alu(id); !mn.empty()) binary(mn);
-    else if (id == Annex::Base<div>)   divide(false, rax);
-    else if (id == Annex::Base<rem>)   divide(false, rdx);
-    else if (id == Annex::Base<idiv>)  divide(true, rax);
-    else if (id == Annex::Base<irem>)  divide(true, rdx);
+    else if (id == Annex::Base<div>)   divide(false);
+    else if (id == Annex::Base<idiv>)  divide(true);
     else if (id == Annex::Base<shl>)   shift("shl");
     else if (id == Annex::Base<shr>)   shift("shr");
     else if (id == Annex::Base<sar>)   shift("sar");
     else if (id == Annex::Base<movzx>) extend('z');
     else if (id == Annex::Base<movsx>) extend('s');
     // clang-format on
-    else if (id == Annex::Base<lea>) {
+    else if (id == Annex::Base<mov>) {
+        get(rax, x);
+        put(res, rax);
+    } else if (id == Annex::Base<lea>) {
         line("leaq {}, %rax", operand(x));
         put(res, rax);
     } else if (id == Annex::Base<trunc>) {
         auto w = width(res->type());
-        get(rax, x);
+        use(rax, x);
         auto n    = *Idx::isa_lit(res->type());
         auto full = w == 64 ? 0 : 1_n << w;
         if (std::has_single_bit(n) && n != full) {
@@ -269,8 +296,8 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         auto [fl, a, b] = x->projs<3>();
         auto w          = width(res->type());
         flags(fl);
-        get(rax, a);
-        get(rcx, b);
+        use(rax, a);
+        use(rcx, b);
         line("cmov{} {}, {}", ccs[nat(f->as<App>()->callee()->as<App>()->arg())], name(rcx, w), name(rax, w));
         put(res, rax);
     } else {
@@ -300,7 +327,7 @@ void Emitter::step(const App* app) {
         auto res          = app->proj(2, 1);
         auto w            = width(a->type());
         auto mem          = operand(addr);
-        get(rcx, a);
+        use(rcx, a);
         line("{}{} {}, {}", alu(op->decurry()->arg()->as<App>()->axm()->flags()), suffix(w), mem, name(rcx, w));
         return put(res, rcx);
     }
@@ -309,8 +336,7 @@ void Emitter::step(const App* app) {
         auto [_, addr, b] = app->args<3>();
         auto w            = width(b->type());
         auto mem          = operand(addr);
-        get(rcx, b);
-        line("{}{} {}, {}", alu(op->decurry()->arg()->as<App>()->axm()->flags()), suffix(w), name(rcx, w), mem);
+        line("{}{} {}, {}", alu(op->decurry()->arg()->as<App>()->axm()->flags()), suffix(w), src(rcx, b), mem);
         return;
     }
 
@@ -325,8 +351,7 @@ void Emitter::step(const App* app) {
     auto [_, p, v] = app->args<3>();
     auto w         = width(v->type());
     auto a         = operand(p);
-    get(rcx, v);
-    line("mov{} {}, {}", suffix(w), name(rcx, w), a);
+    line("mov{} {}, {}", suffix(w), src(rcx, v), a);
 }
 
 std::string Emitter::symbol(Lam* lam) {

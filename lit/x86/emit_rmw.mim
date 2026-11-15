@@ -2,8 +2,8 @@
 // RUN: %mim -p opt %s -p x86 -X x86:o=%t.s
 // RUN: %FileCheck %s < %t.s
 // RUN: clang %t.s -o %t
-// RUN: %t ; test $? -eq 46
-// RUN: %t 1 2 ; test $? -eq 44
+// RUN: %t ; test $? -eq 41
+// RUN: %t 1 2 ; test $? -eq 43
 plugin core;
 plugin mem;
 
@@ -20,8 +20,10 @@ extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.P
     let m      = mem.store (m, q, y - (argc + argc));
     let (m, z) = mem.load (m, q);
     let m      = mem.store (m, q, 0I32);
-    return (m, z + 7I32);
+    return (m, z + argc + argc);
 
+// CHECK-DAG: movl $40, (%rax,%rdx,4)
 // CHECK-DAG: addl %ecx, (%rax,%rdx,4)
 // CHECK-DAG: subl %ecx, (%rax,%rdx,4)
 // CHECK-DAG: addl (%rax,%rdx,4), %ecx
+// CHECK-DAG: movl $0, (%rax,%rdx,4)

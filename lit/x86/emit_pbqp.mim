@@ -1,0 +1,33 @@
+// REQUIRES: x86_64-linux
+// RUN: %mim -p opt %s -p x86 -X x86:o=%t.s
+// RUN: FileCheck %s < %t.s
+// RUN: clang %t.s -o %t
+// RUN: %t ; test $? -eq 30
+// RUN: %t 1 2 ; test $? -eq 32
+plugin core;
+plugin mem;
+
+use core.ops.u.w;
+
+/// Both operands of the add are loads of their own, so only one of them can be its memory operand.
+/// An immediate updates element `argc` in place.
+/// The address of element `argc` is both stored as a value and used to load from.
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
+    ret (m, p) = mem.mslot («4; I32», 0) $ (m, 16);
+    ret (m, h) = mem.mslot (mem.Ptr0 I32, 0) $ (m, 8);
+    let q      = mem.lea (p, core.conv.u 4 argc);
+    let r      = mem.lea (p, core.conv.u 4 (argc + 1I32));
+    let m      = mem.store (m, q, 7I32);
+    let m      = mem.store (m, r, 9I32);
+    let m      = mem.store (m, h, q);
+    let (m, t) = mem.load (m, q);
+    let m      = mem.store (m, q, t + 3I32);
+    let (m, x) = mem.load (m, q);
+    let (m, y) = mem.load (m, r);
+    let (m, s) = mem.load (m, h);
+    let (m, z) = mem.load (m, s);
+    return (m, x + y + z + argc);
+
+// CHECK:     addl $3, (%rax,%rdx,4)
+// CHECK:     addl {{[0-9]*}}(%rax,%rdx,4), %ecx
+// CHECK-NOT: addl {{[0-9]*}}(%rax,%rdx,4), %ecx

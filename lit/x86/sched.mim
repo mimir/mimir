@@ -6,11 +6,11 @@ plugin x86;
 
 extern con f (m: mem.M 0, p: I64, a b: I32, return: Cn [mem.M 0, I32]) =
     let (m, x) = x86.sched x86.add m (a, b);
-    let (m, y) = x86.load i32 (m, x86.addr (0I32, p, 0I64, x86.scale_1));
+    let (m, y) = x86.load i32 (m, x86.addr (0I32, p));
     let (m, z) = x86.sched x86.imul m (x, y);
-    return (x86.store (m, x86.addr (0I32, p, 0I64, x86.scale_1), z), z);
+    return (x86.store (m, x86.addr (0I32, p), z), z);
 
 // CHECK: x86.sched @ («2; I32», I32) (x86.add @ i32)
 // CHECK: x86.load i32
 // CHECK: x86.sched @ («2; I32», I32) (x86.imul @ i32)
-// CHECK: x86.store @ i32
+// CHECK: x86.store @ (i32, ff)

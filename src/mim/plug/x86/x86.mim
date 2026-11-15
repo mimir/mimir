@@ -7,7 +7,8 @@
 /// The native x86-64 backend.
 /// Loading this plugin (`mim foo.mim -p x86`) appends instruction selection and emission to the compilation pipeline.
 /// Instruction selection rewrites `core`, `math`, and `mem` into the axioms below.
-/// Registers and immediates are no concern of these types; register allocation introduces them later.
+/// A literal operand of an instruction is an immediate and has to fit its encoding; `mov` puts any other constant into a register.
+/// Registers are no concern of these types; register allocation introduces them later.
 /// The schedule is the `mem.M 0` chain: memory instructions sit on it, and scheduling threads all other instructions onto it via `sched`.
 ///
 /// ## Dependencies
@@ -28,10 +29,22 @@ axm Fl: *;
 ///
 /// ### Addr
 ///
-/// A memory operand `disp(base, index, scale)`.
+/// A memory operand `disp(base, index, scale)`; the `Bool` states whether it has an index.
 /// It is no value and occupies no register of its own; only memory instructions and `lea` take one.
 ///
-axm Addr: *;
+axm Addr: Bool → *;
+///
+/// ### Base
+///
+/// An address `disp(base)` without an index.
+///
+anx let Base = Addr ff;
+///
+/// ### Index
+///
+/// An address `disp(base, index, scale)`.
+///
+anx let Index = Addr tt;
 ///
 /// ### emit
 ///
@@ -74,10 +87,17 @@ anx lam logic (s: Nat): Nat =
 ///
 /// ### addr
 ///
-/// `addr (disp, base, index, scale)` addresses `disp + base + (index << scale)`, like AT&T's `disp(base, index, scale)`.
-/// A literal `0I64` as `base` or `index` means there is none.
+/// `addr (disp, base)` addresses `disp + base`, like AT&T's `disp(base)`.
+/// A literal `0I64` as `base` means there is none.
 ///
-axm addr: [disp: I32, base: I64, index: I64, scale: I2] → Addr;
+axm addr: [disp: I32, base: I64] → Base;
+///
+/// ### index
+///
+/// `index a (i, scale)` addresses `a + (i << scale)`, like AT&T's `disp(base, index, scale)`.
+/// An address has at most one index.
+///
+axm index: Base → [index: I64, scale: I2] → Index;
 ///
 /// These lets name the scales.
 ///
@@ -90,33 +110,39 @@ anx let scale_8 = 3I2;
 ///
 /// `lea r, addr` materializes an address as a value.
 ///
-axm lea: Addr → I64;
+axm lea: {i: Bool} → Addr i → I64;
 ///
 /// ## Instructions
+///
+/// ### mov
+///
+/// `mov r, imm` materializes a constant.
+///
+axm mov: {s: Nat} → Idx s → Idx (logic s);
 ///
 /// ### load
 ///
 /// `mov r, addr`.
 ///
-axm load: [s: Nat] → [mem.M 0, Addr] → [mem.M 0, Idx (gpr s)];
+axm load: [s: Nat] → {i: Bool} → [mem.M 0, Addr i] → [mem.M 0, Idx (gpr s)];
 ///
 /// ### store
 ///
 /// `mov addr, r`.
 ///
-axm store: {s: Nat} → [mem.M 0, Addr, Idx s] → mem.M 0;
+axm store: {s: Nat, i: Bool} → [mem.M 0, Addr i, Idx s] → mem.M 0;
 ///
 /// ### rm
 ///
 /// `op r, addr`: `rm f (m, a, addr)` is `f (a, b)` with `b` loaded from `addr`.
 ///
-axm rm: {s: Nat, C: *} → («2; Idx s» → C) → [mem.M 0, Idx s, Addr] → [mem.M 0, C];
+axm rm: {s: Nat, C: *, i: Bool} → («2; Idx s» → C) → [mem.M 0, Idx s, Addr i] → [mem.M 0, C];
 ///
 /// ### mr
 ///
 /// `op addr, r`: `mr f (m, addr, b)` stores `f (a, b)` to `addr` with `a` loaded from `addr`.
 ///
-axm mr: {s: Nat} → («2; Idx s» → Idx s) → [mem.M 0, Addr, Idx s] → mem.M 0;
+axm mr: {s: Nat, i: Bool} → («2; Idx s» → Idx s) → [mem.M 0, Addr i, Idx s] → mem.M 0;
 ///
 /// ### slot
 ///
@@ -134,9 +160,9 @@ axm imul: {s: Nat} → «2; Idx s» → Idx (gpr16 s);
 ///
 /// ### Division
 ///
-/// `div`/`idiv` yield the quotient in `rax` (`div`, `idiv`) and the remainder in `rdx` (`rem`, `irem`).
+/// `div`/`idiv` yield the quotient (`rax`) and the remainder (`rdx`).
 ///
-axm (div, rem, idiv, irem): {s: Nat} → «2; Idx s» → Idx (gpr16 s);
+axm (div, idiv): {s: Nat} → «2; Idx s» → «2; Idx (gpr16 s)»;
 ///
 /// ### Shifts
 ///

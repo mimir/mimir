@@ -27,7 +27,9 @@ bool is_insn(const Def* def) {
 void Schedule::visit(const Def* def) {
     if (def->isa_mut() || !visited_.emplace(def).second) return;
     if (is_mem(def)) mems_.emplace_back(def);
-    if (def->isa<Var>() || lookup(def)) return;
+    if (def->isa<Var>()) return;
+    // A closed instruction is placed anew in every continuation: the placement found may be another function's.
+    if (lookup(def) && !(is_insn(def) && def->is_closed())) return;
 
     for (auto op : def->ops())
         visit(op);
