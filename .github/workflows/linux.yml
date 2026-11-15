@@ -73,6 +73,7 @@ jobs:
       - name: Test
         run: cmake --build --preset ${{matrix.preset}} -v --target ${{matrix.test-target}}
 
+      # `-T memcheck` reads DartConfiguration.tcl from the cwd, which `--preset` does not change.
       - name: Test with Valgrind
         if: matrix.build-type == 'Release'
-        run: ctest --preset ${{matrix.preset}} --verbose -T memcheck
+        run: ctest --preset ${{matrix.preset}} --test-dir build-${{matrix.preset}} --verbose -T memcheck
