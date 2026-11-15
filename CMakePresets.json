@@ -68,6 +68,21 @@
         "MIM_BUILD_DOCS": "ON",
         "MIM_BUILD_PYTHON": "OFF"
       }
+    },
+    {
+      "name": "wasm",
+      "displayName": "WebAssembly playground (Emscripten)",
+      "inherits": "base",
+      "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_SHARED_LIBS": "OFF",
+        "BUILD_TESTING": "OFF",
+        "MIM_BUILD_EXAMPLES": "OFF",
+        "MIM_BUILD_PYTHON": "OFF",
+        "MIM_VERIFY_PLUGINS": "OFF",
+        "MIM_NATIVE_MIM": "${sourceDir}/build/bin/mim"
+      }
     }
   ],
   "buildPresets": [
@@ -75,7 +90,8 @@
     { "name": "release", "configurePreset": "release" },
     { "name": "asan",    "configurePreset": "asan" },
     { "name": "static",  "configurePreset": "static" },
-    { "name": "docs",    "configurePreset": "docs", "targets": ["docs"] }
+    { "name": "docs",    "configurePreset": "docs", "targets": ["docs"] },
+    { "name": "wasm",    "configurePreset": "wasm", "targets": ["mim_playground"] }
   ],
   "testPresets": [
     { "name": "debug",   "configurePreset": "debug",   "output": { "outputOnFailure": true } },

@@ -38,7 +38,7 @@ source ~/emsdk/emsdk_env.sh
 
 ### A native `mim` first
 
-A cross build cannot run the `mim` it just built, but bootstrapping a plugin needs one, so point `MIM_NATIVE_MIM` at a native binary — an ordinary `build/bin/mim` does.
+A cross build cannot run the `mim` it just built, but bootstrapping a plugin needs one, so `MIM_NATIVE_MIM` points at a native binary — the `wasm` preset uses an ordinary `build/bin/mim`.
 Bring it up to date first:
 
 ```sh
@@ -53,15 +53,11 @@ Rebuild the native tree and try again.
 
 ```sh
 source ~/emsdk/emsdk_env.sh
-emcmake cmake -B build-wasm                     \
-    -DCMAKE_BUILD_TYPE=Release                  \
-    -DBUILD_SHARED_LIBS=OFF                     \
-    -DBUILD_TESTING=OFF                         \
-    -DMIM_BUILD_PYTHON=OFF                      \
-    -DMIM_VERIFY_PLUGINS=OFF                    \
-    -DMIM_NATIVE_MIM=$PWD/build/bin/mim
-cmake --build build-wasm --target mim_playground -j16
+cmake --preset wasm
+cmake --build --preset wasm -j16
 ```
+
+The preset takes the toolchain file from `$EMSDK`, disables what a cross build cannot use, and needs no `emcmake`; see [Presets](@ref presets) for what it sets and how to override it.
 
 `mim_playground` also stages the page, so a change to it alone is a second's rebuild — no need to touch the compiler.
 

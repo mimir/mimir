@@ -33,7 +33,7 @@ pre-commit run --all-files
 ### Presets {#presets}
 
 `CMakePresets.json` provides a configure, build, and test preset of the same name for each common setup.
-All but `docs` enable `BUILD_TESTING` and `MIM_BUILD_EXAMPLES`.
+All but `docs` and `wasm` enable `BUILD_TESTING` and `MIM_BUILD_EXAMPLES`.
 
 | Preset    | Build directory | Setup                                                                                        |
 | --------- | --------------- | -------------------------------------------------------------------------------------------- |
@@ -42,6 +42,7 @@ All but `docs` enable `BUILD_TESTING` and `MIM_BUILD_EXAMPLES`.
 | `asan`    | `build-asan`    | `Debug` with AddressSanitizer, UndefinedBehaviorSanitizer, and LeakSanitizer (not on Windows) |
 | `static`  | `build-static`  | `Debug` with `BUILD_SHARED_LIBS=OFF`                                                         |
 | `docs`    | `build-docs`    | Only the documentation; its build preset builds the `docs` target                            |
+| `wasm`    | `build-wasm`    | The [playground](@ref playground) via Emscripten; builds the `mim_playground` target         |
 
 Further `-D` options and `-G` override a preset, e.g. `cmake --preset release -G Ninja -DMIM_BUILD_PYTHON=OFF`.
 CI configures with these presets as well.
