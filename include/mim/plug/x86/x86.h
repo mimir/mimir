@@ -21,7 +21,7 @@ constexpr std::array<size_t, 6> Arg_Regs          = {Rdi, Rsi, Rdx, Rcx, R8, R9}
 constexpr std::array<bool, Num_Regs> Caller_Saved = {1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0};
 constexpr bool reserved(size_t r) { return r == Rsp || r == Rbp; }
 constexpr size_t Num_Caller_Saved = std::ranges::count(Caller_Saved, true);
-constexpr size_t Num_Allocatable  = Num_Regs - std::ranges::count_if(std::views::iota(0uz, +Num_Regs), reserved);
+constexpr size_t Num_Allocatable = Num_Regs - size_t(std::ranges::count_if(std::views::iota(0uz, +Num_Regs), reserved));
 
 inline bool is_mem(const Def* def) {
     auto type = def->type(); // Level has no type
