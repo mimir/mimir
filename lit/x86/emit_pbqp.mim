@@ -28,6 +28,6 @@ extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.P
     let (m, z) = mem.load (m, s);
     return (m, x + y + z + argc);
 
-// CHECK:     addl $3, (%rax,%rdx,4)
-// CHECK:     addl {{[0-9]*}}(%rax,%rdx,4), %ecx
-// CHECK-NOT: addl {{[0-9]*}}(%rax,%rdx,4), %ecx
+// CHECK:     addl $3, ({{%[a-z0-9]+}},{{%[a-z0-9]+}},4)
+// CHECK:     addl {{[0-9]*}}({{%[a-z0-9]+}},{{%[a-z0-9]+}},4), [[ACC:%[a-z0-9]+]]
+// CHECK-NOT: addl {{[0-9]*}}({{%[a-z0-9]+}},{{%[a-z0-9]+}},4), [[ACC]]

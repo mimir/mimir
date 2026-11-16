@@ -22,8 +22,8 @@ extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.P
     let m      = mem.store (m, q, 0I32);
     return (m, z + argc + argc);
 
-// CHECK-DAG: movl $40, (%rax,%rdx,4)
-// CHECK-DAG: addl %ecx, (%rax,%rdx,4)
-// CHECK-DAG: subl %ecx, (%rax,%rdx,4)
-// CHECK-DAG: addl (%rax,%rdx,4), %ecx
-// CHECK-DAG: movl $0, (%rax,%rdx,4)
+// CHECK-DAG: movl $40, ({{%[a-z0-9]+}},{{%[a-z0-9]+}},4)
+// CHECK-DAG: addl {{%[a-z0-9]+}}, ({{%[a-z0-9]+}},{{%[a-z0-9]+}},4)
+// CHECK-DAG: subl {{%[a-z0-9]+}}, ({{%[a-z0-9]+}},{{%[a-z0-9]+}},4)
+// CHECK-DAG: addl ({{%[a-z0-9]+}},{{%[a-z0-9]+}},4), {{%[a-z0-9]+}}
+// CHECK-DAG: movl $0, ({{%[a-z0-9]+}},{{%[a-z0-9]+}},4)

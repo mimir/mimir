@@ -102,6 +102,13 @@ void Schedule::chain(Lam* lam, size_t i) {
     auto order = std::move(insns_[lam]);
     auto mems  = std::move(mems_[lam]);
 
+    // Instructions hoisted into lam come after the condition of its branch, so the branch gets a fresh one at the end.
+    if (auto ex = lam->body()->as<App>()->callee()->isa<Extract>(); ex && is_remat(ex->index())) {
+        auto cc = ex->index()->as<App>();
+        if (is_remat(cc->arg())) order.emplace_back(cc->arg());
+        order.emplace_back(cc);
+    }
+
     for (auto old_def : order) {
         auto app = old_def->as<App>();
         if (Axm::isa<sched>(app)) {

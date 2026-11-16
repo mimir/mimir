@@ -627,7 +627,7 @@ void Spiller::build(size_t b) {
             for (auto target : t->callee()->as<Extract>()->tuple()->projs())
                 if (auto lam = target->isa_mut<Lam>(); lam && new_lams_.contains(lam))
                     lam->blame(MIM_X86_BE "branch target `{}` would need new parameters", lam).bail();
-        body = subst(t);
+        body = Subst(world_, cur, m_, &new_lams_).rewrite_jump(t);
     }
 
     auto filter = old->filter();

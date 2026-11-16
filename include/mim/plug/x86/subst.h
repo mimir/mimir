@@ -26,6 +26,13 @@ public:
         return Rewriter::rewrite(def);
     }
 
+    /// Rewrites @p term per argument, so an instruction passed as the whole argument gets the new memory.
+    const Def* rewrite_jump(const App* term) {
+        auto n    = term->num_args();
+        auto args = DefVec(n, [&](size_t i) { return rewrite(term->arg(n, i)); });
+        return world().app(rewrite(term->callee()), world().tuple(args));
+    }
+
 private:
     const Def2Def& map_;
     const LamMap<Lam*>* lams_;

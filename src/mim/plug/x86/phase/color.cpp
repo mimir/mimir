@@ -26,9 +26,6 @@ constexpr pbqp::Cost Callee_Saved = 1;
 bool reserved(size_t r) { return r == 4 || r == 5; }
 size_t phys(const Def* r) { return *Lit::isa(r); }
 
-/// The register of `x86.in r v`.
-size_t phys_in(const Def* in) { return phys(in->as<App>()->callee()->as<App>()->callee()->as<App>()->arg()); }
-
 const Def* strip(const Def* def) {
     if (auto in = Axm::isa<x86::in>(def)) return in->arg();
     return def;
@@ -123,8 +120,10 @@ void prune(Lam* fun) {
     for (bool todo = true; todo;) {
         todo = false;
         for (const auto& block : live.blocks()) {
+            auto ex   = block.lam->body()->as<App>()->callee()->isa<Extract>();
+            auto cond = ex ? isa_sched_cc(ex->index()) : nullptr;
             for (auto insn : block.insns | std::views::reverse) {
-                if (dead.contains(insn) || is_sched_cc(insn)) continue;
+                if (dead.contains(insn) || insn == cond) continue;
                 if (!Axm::isa<sched>(insn) && !Axm::isa<load>(insn) && !Axm::isa<rm>(insn) && !Axm::isa<slot>(insn))
                     continue;
                 auto ds = live.defs(insn);
@@ -395,7 +394,7 @@ void Checker::walk(const Def* def, const Def* at) {
     if (def->isa_mut() || def->is_closed() || is_mem(def)) return;
     if (auto in = Axm::isa<x86::in>(def)) {
         auto v        = in->arg();
-        auto r        = phys_in(def);
+        auto r        = in_reg(def);
         auto [i, ins] = regs_.emplace(v, r);
         if (!live_.local(v) || !is_gpr(v)) fail(at, std::format("`{}` is no value", v));
         if (reserved(r)) fail(at, std::format("`{}` is in a reserved register", v));
@@ -407,6 +406,7 @@ void Checker::walk(const Def* def, const Def* at) {
             if (is_gpr(d)) fail(at, std::format("`{}` is used without a register", d));
         return;
     }
+    if (auto app = def->isa<App>(); app && prev_mem(app)) fail(at, std::format("`{}` is off the chain", app));
     for (auto op : def->ops())
         walk(op, at);
 }
@@ -435,7 +435,7 @@ void Checker::run() {
                     fail(insn, std::format("`{}` is not in its fixed register", d));
             }
             for (auto [j, r] : c.fixed)
-                if (!Axm::isa<x86::in>(c.ops[j]) || phys_in(c.ops[j]) != phys(r))
+                if (!Axm::isa<x86::in>(c.ops[j]) || in_reg(c.ops[j]) != phys(r))
                     fail(insn, std::format("operand `{}` is not in its fixed register", c.ops[j]));
             if (c.tied && reg(c.ops[*c.tied]) != reg(result(insn, 0)))
                 fail(insn, std::format("`{}` is not in the register of operand `{}`", result(insn, 0), c.ops[*c.tied]));

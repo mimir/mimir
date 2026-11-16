@@ -118,7 +118,7 @@ void Constrain::visit(Lam* fun) {
                     map[result(insn, j)] = next->var(n, ++k);
             }
         }
-        finish(Subst(w, map, m).rewrite(term));
+        finish(Subst(w, map, m).rewrite_jump(term));
     }
 }
 

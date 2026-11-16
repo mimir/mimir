@@ -15,6 +15,11 @@ inline bool is_mem(const Def* def) {
     return type && Axm::isa<core::M>(type);
 }
 
+/// The register `r` of `x86.in r v` in hardware encoding order.
+inline size_t in_reg(const Def* in) {
+    return *Lit::isa(in->as<App>()->callee()->as<App>()->callee()->as<App>()->arg());
+}
+
 /// The `f` of `x86.sched f m x`.
 inline const Def* sched_insn(const App* app) { return app->callee()->as<App>()->callee()->as<App>()->arg(); }
 

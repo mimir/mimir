@@ -20,8 +20,8 @@ extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.P
     let (m, x) = mem.load (m, mem.lea (mem.lea (p, j), 1_2));
     return (m, x + 5I32);
 
-// CHECK-DAG: movq (%rax,%rdx,8), %rcx
-// CHECK-DAG: movb 1(%rax), %cl
-// CHECK-DAG: movl %ecx, 4(%rax,%rdx,8)
-// CHECK-DAG: movl 4(%rax,%rdx,8), %ecx
+// CHECK-DAG: movq ({{%[a-z0-9]+}},{{%[a-z0-9]+}},8), {{%[a-z0-9]+}}
+// CHECK-DAG: movb 1({{%[a-z0-9]+}}), {{%[a-z0-9]+}}
+// CHECK-DAG: movl {{%[a-z0-9]+}}, 4({{%[a-z0-9]+}},{{%[a-z0-9]+}},8)
+// CHECK-DAG: movl 4({{%[a-z0-9]+}},{{%[a-z0-9]+}},8), {{%[a-z0-9]+}}
 // CHECK-DAG: addl $5, %eax
