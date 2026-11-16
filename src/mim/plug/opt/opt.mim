@@ -109,5 +109,6 @@ extern lam _default_compile (): compile.Phase =
         compile.named "x86.isel",
         compile.named "x86.schedule",
         compile.named "x86.spilling",
+        compile.named "x86.constrain",
         compile.named "x86.emit",
     );

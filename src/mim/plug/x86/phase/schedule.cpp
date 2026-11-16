@@ -13,7 +13,8 @@ namespace {
 bool is_insn(const Def* def) {
     if (auto app = def->isa<App>())
         if (auto axm = app->axm())
-            return axm->plugin() == Plugin_Id && !app->type()->isa<Pi>() && !Axm::isa<Addr>(app->type());
+            return axm->plugin() == Plugin_Id && !app->type()->isa<Pi>() && !Axm::isa<Addr>(app->type())
+                && !Axm::isa<in>(app);
     return false;
 }
 

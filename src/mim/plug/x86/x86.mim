@@ -227,6 +227,35 @@ axm spill: {s: Nat} → Idx s → Spill s;
 ///
 axm reload: {s: Nat} → Spill s → Idx s;
 ///
+/// ## Registers
+///
+/// ### in
+///
+/// `in r v` is `v`, which lives in register `r`; the operand size `s` selects the subregister.
+/// Register allocation wraps every use of a value, so all uses of `v` share one `in r v`.
+/// It is no instruction: it is neither scheduled nor on the chain.
+///
+axm in: [r: I4] → {s: Nat} → Idx s → Idx s;
+///
+/// These lets name the registers in hardware encoding order.
+///
+anx let rax = 0I4;
+anx let rcx = 1I4;
+anx let rdx = 2I4;
+anx let rbx = 3I4;
+anx let rsp = 4I4;
+anx let rbp = 5I4;
+anx let rsi = 6I4;
+anx let rdi = 7I4;
+anx let r8  = 8I4;
+anx let r9  = 9I4;
+anx let r10 = 10I4;
+anx let r11 = 11I4;
+anx let r12 = 12I4;
+anx let r13 = 13I4;
+anx let r14 = 14I4;
+anx let r15 = 15I4;
+///
 /// ## Phases
 ///
 /// ### isel
@@ -248,6 +277,14 @@ axm schedule: compile.Phase;
 /// `k` is 14 by default and `-X x86:k=<n>` overrides it.
 ///
 axm spilling: compile.Phase;
+///
+/// ### constrain
+///
+/// Moves the operands that an instruction needs in a fixed register, and a two-address operand that stays live, into a fresh continuation right before it.
+/// The jump is the copy, so the copies' live ranges end at the instruction and the interference graph stays chordal.
+/// The fixed operands are wrapped in `in`.
+///
+axm constrain: compile.Phase;
 ///
 /// ### live
 ///

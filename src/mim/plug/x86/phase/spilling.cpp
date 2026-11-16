@@ -4,9 +4,10 @@
 #include <ranges>
 
 #include <mim/driver.h>
-#include <mim/rewrite.h>
 
+#include "mim/plug/x86/constraint.h"
 #include "mim/plug/x86/liveness.h"
+#include "mim/plug/x86/subst.h"
 #include "mim/plug/x86/x86.h"
 
 namespace mim::plug::x86::phase {
@@ -48,41 +49,6 @@ bool is_remat(const Def* value) {
         return sched_insn(app)->is_closed() && app->arg()->is_closed();
     return false;
 }
-
-/// Registers an instruction needs beyond its operands and results.
-size_t extra(const App* insn) {
-    if (Axm::isa<sched>(insn))
-        if (auto f = sched_insn(insn)->isa<App>(); f && f->axm())
-            if (auto id = f->axm()->flags(); id == Annex::Base<div> || id == Annex::Base<idiv>) return 1; // rdx
-    return 0;
-}
-
-class Subst : public Rewriter {
-public:
-    Subst(World& world, const Def2Def& cur, const LamMap<Lam*>& lams, const Def* m)
-        : Rewriter(world)
-        , cur_(cur)
-        , lams_(lams)
-        , m_(m) {}
-
-    const Def* rewrite(const Def* def) final {
-        if (is_mem(def)) return m_;
-        if (auto new_def = fe::lookup(cur_, def)) return new_def;
-        if (auto lam = def->isa_mut<Lam>()) {
-            if (auto new_lam = fe::lookup(lams_, lam)) return new_lam;
-            return lam;
-        }
-        if (def->isa_mut() || def->is_closed()) return def;
-        if (auto app = def->isa<App>(); app && prev_mem(app))
-            def->blame(MIM_X86_BE "instruction `{}` is not available here", def).bail();
-        return Rewriter::rewrite(def);
-    }
-
-private:
-    const Def2Def& cur_;
-    const LamMap<Lam*>& lams_;
-    const Def* m_;
-};
 
 class Spiller {
 public:
@@ -402,7 +368,18 @@ void Spiller::walk(size_t b) {
 
     for (size_t i = 0; i != n; ++i) {
         auto insn = block(b).insns[i];
-        use(gpr(live_.uses(insn)), i, extra(insn), insn);
+        auto us   = gpr(live_.uses(insn));
+        auto c    = constraint(insn);
+        auto live = [&](const Def* v) { return next_use(b, v, i + 1) != Inf; };
+        auto cp   = DefVec();
+        for (auto [j, _] : copies(c, live))
+            if (live(c.ops[j])) cp.emplace_back(c.ops[j]);
+        // If the copies of live operands do not fit, these operands leave their registers at the instruction instead.
+        auto evict = us.size() + c.clobbers.size() + cp.size() > k_;
+        use(us, i, c.clobbers.size() + (evict ? 0 : cp.size()), insn);
+        if (evict)
+            for (auto v : cp)
+                w.erase(v);
         auto ds = gpr(live_.defs(insn));
         if (is_sched_cc(insn)) std::erase_if(ds, [&](const Def* d) { return next_use(b, d, i + 1) == Inf; });
         if (ds.size() > k_) insn->blame(MIM_X86_BE "`{}` defines more than {} registers", insn, k_).bail();
@@ -588,7 +565,7 @@ void Spiller::build(size_t b) {
     for (auto x : old->vars())
         if (spill_.contains(x)) stack_[x] = spill(cur[x]);
 
-    auto subst   = [&](const Def* def) { return Subst(world_, cur, new_lams_, m_).rewrite(def); };
+    auto subst   = [&](const Def* def) { return Subst(world_, cur, m_, &new_lams_).rewrite(def); };
     auto reloads = [&](size_t pos) {
         for (auto [v, ver] : reloads_[b][pos]) {
             const Def* val;
@@ -609,7 +586,7 @@ void Spiller::build(size_t b) {
     for (size_t i = 0, e = size(b); i != e; ++i) {
         reloads(i);
         auto insn    = block(b).insns[i];
-        auto new_app = Subst(world_, cur, new_lams_, m_).Rewriter::rewrite(insn);
+        auto new_app = Subst(world_, cur, m_, &new_lams_).Rewriter::rewrite(insn);
         m_           = is_mem(new_app) ? new_app : new_app->proj(2, 0);
         cur[insn]    = new_app;
         for (auto d : live_.defs(insn)) {

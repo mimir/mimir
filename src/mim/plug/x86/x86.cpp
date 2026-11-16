@@ -3,6 +3,7 @@
 #include <mim/plugin.h>
 
 #include "mim/plug/x86/emit.h"
+#include "mim/plug/x86/phase/constrain.h"
 #include "mim/plug/x86/phase/isel.h"
 #include "mim/plug/x86/phase/live.h"
 #include "mim/plug/x86/phase/schedule.h"
@@ -14,6 +15,7 @@ static void reg_phases(Flags2Phases& phases) {
     Phase::hook<plug::x86::isel, plug::x86::phase::ISel>(phases);
     Phase::hook<plug::x86::schedule, plug::x86::phase::Schedule>(phases);
     Phase::hook<plug::x86::spilling, plug::x86::phase::Spilling>(phases);
+    Phase::hook<plug::x86::constrain, plug::x86::phase::Constrain>(phases);
     Phase::hook<plug::x86::live, plug::x86::phase::Live>(phases);
     Phase::hook<plug::x86::emit, plug::x86::Emit>(phases);
 }

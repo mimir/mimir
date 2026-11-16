@@ -1,8 +1,10 @@
 add_mim_plugin(x86
     SOURCES
         x86.cpp
+        constraint.cpp
         emit.cpp
         liveness.cpp
+        phase/constrain.cpp
         phase/isel.cpp
         phase/live.cpp
         phase/schedule.cpp

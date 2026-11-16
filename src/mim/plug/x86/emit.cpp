@@ -57,6 +57,12 @@ nat_t width(const Def* type) {
     return std::bit_ceil(std::max<nat_t>(Idx::expect_bitwidth(type, "an integer"), 8));
 }
 
+/// Every value lives in its own slot, so the register an `x86.in` names is irrelevant.
+const Def* strip(const Def* def) {
+    if (auto in = Axm::isa<x86::in>(def)) return in->arg();
+    return def;
+}
+
 nat_t nat(const Def* def) {
     if (auto l = Lit::isa(def)) return *l;
     def->blame(MIM_X86_BE "expected a literal, got `{}`", def).bail();
@@ -118,6 +124,7 @@ private:
 };
 
 void Emitter::get(const Reg& reg, const Def* def) {
+    def    = strip(def);
     auto w = width(def->type());
     if (auto l = Lit::isa(def)) {
         auto s = std::bit_cast<int64_t>(*l);
@@ -377,7 +384,7 @@ void Emitter::jump(Lam* bb, const Def* arg) {
     auto n     = bb->num_vars();
     auto moves = std::vector<std::pair<const Def*, const Def*>>();
     for (size_t i = 0; i != n; ++i)
-        if (auto var = bb->var(n, i); !is_mem(var)) moves.emplace_back(var, arg->proj(n, i));
+        if (auto var = bb->var(n, i); !is_mem(var)) moves.emplace_back(var, strip(arg->proj(n, i)));
 
     // A loop may pass its own parameters around, so read all of them before overwriting any.
     auto own = [bb](auto move) {

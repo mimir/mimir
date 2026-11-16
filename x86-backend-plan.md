@@ -55,7 +55,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 Done (on `feature/x86`):
 
 - `x86` plugin (`src/mim/plug/x86/`), with `mem.add_mem` (if `x86` is loaded), `x86.isel`, `x86.schedule`, `x86.spilling`, and `x86.emit` at the end of the default pipeline in `opt.mim`; by then no axiom pins a continuation's type, so every continuation has its `mem.M`.
-- `x86.mim`: `Fl`, `Addr` (`Base`, `Index`), `Spill`, `addr`, `scale_1`/`_2`/`_4`/`_8`, `index`, `lea`, `mov`, `rm`, `mr`, `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `imul`, `shl`, `shr`, `sar`, `movzx`, `movsx`, `trunc`, `cmp`, `test`, `cc`, `cmovcc`, `spill`, `reload`, plus the size predicates.
+- `x86.mim`: `Fl`, `Addr` (`Base`, `Index`), `Spill`, `addr`, `scale_1`/`_2`/`_4`/`_8`, `index`, `lea`, `mov`, `rm`, `mr`, `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `imul`, `shl`, `shr`, `sar`, `movzx`, `movsx`, `trunc`, `cmp`, `test`, `cc`, `cmovcc`, `spill`, `reload`, `in` with the register lets `rax` … `r15`, plus the size predicates.
 - `x86.isel` (`src/mim/plug/x86/phase/isel.cpp`) covers `core.wrap`, `core.bit2` (and/or/xor), `core.shr`, `core.icmp`, `core.conv`, `mem.load`/`mem.store` of integers and pointers, `mem.lea` (array index or constant struct offset), `mem.assume`, `mem.mslot`, `core.idx`, `core.idx2nat`, `core.rem`, `core.div`, `core.nat`, `core.ncmp`, integer `core.bitcast`, and a select `(x, y)#c` (as `cmovcc`).
   An `Idx n` of dynamic size and `Nat` become `I64`, as in `ll`; `Nat` literals stay `Nat` so they still work as type-level arguments, and become `I64` only as values.
   The loop hints `ll.vec`/`ll.novec` are dropped.
@@ -80,6 +80,10 @@ Done (on `feature/x86`):
     EtaConv does not quite rule out critical edges: a hash-consed branch tuple can share one wrapper among several branches, so `x86.spilling` first gives each branch to such a target a fresh wrapper.
   - Reloads give a value several definitions; SSA reconstruction (Braun et al., CC 2013, every block sealed, union-find for trivial φ removal) runs symbolically first, so each block whose signature changes is rebuilt as a new Lam exactly once with its memory φs and new φ parameters appended.
   - `spill`/`reload` are pure instructions on the chain via `sched`; `x86.emit` treats them as copies between stack slots.
+- `x86.constrain` (`src/mim/plug/x86/phase/constrain.cpp`) runs after `x86.spilling`: right before an instruction with a fixed operand (`div`'s dividend in `rax`, a shift count in `rcx`) or a two-address operand that stays live, the block jumps to a fresh continuation that takes these operands; the fixed copies are wrapped in `x86.in`.
+  The table of fixed operands, tied operands, and fixed results is `constraint()` (`src/mim/plug/x86/constraint.cpp`), shared with the spiller.
+  `x86.spilling` counts these copies as `extra` registers; if an instruction would then need more than `k`, the operands to copy leave their registers at it instead and are reloaded at their next use.
+  `x86.emit` ignores `x86.in`.
 - `x86.load`/`x86.store` work on `mem.M 0`; isel collapses `mem.M a` to `mem.M 0`.
 - `x86.emit` (`src/mim/plug/x86/emit.cpp`) writes GAS text in AT&T syntax to `<world>.s` (`-X x86:o=<file>`):
   it reads each block's order off the `mem.M` chain backwards from its terminator, keeps every value in its own stack slot with `rax`/`rcx` as scratch, takes up to six SysV integer arguments, and returns in `rax`.
@@ -102,7 +106,7 @@ Done (on `feature/x86`):
   `cmp`/`test` do not fold since emit rematerializes them per consumer, and `div` does not since `cltd` clobbers the index register.
 - `x86.div`/`idiv` yield quotient and remainder as a pair, so a quotient and a remainder of the same operands share one instruction; `x86.slot n` reserves `n` frame bytes on the `mem.M` chain; `trunc` to a non-power-of-two size is an unsigned remainder.
 - `isel` widens 8-bit and `Bool` multiplications to `i32` (`movzx`, `imul`, `trunc`), since `imul` has no 8-bit form.
-- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/emit_pbqp.mim` (competing folds), `lit/x86/sched.mim`, `lit/x86/sched_join.mim` (one placement in the dominator), `lit/x86/sched_loop.mim` (hoisting), `lit/x86/sched_remat.mim`, `lit/x86/sched_closed_tuple.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/sched_no_chain.mim`, `lit/x86/live_loop.mim`, `lit/x86/live_call.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`, `lit/x86/spill_loop.mim` (live-through values spilled outside the loop), `lit/x86/spill_phi.mim` (memory φ), `lit/x86/spill_ssa.mim` (new φ for a reloaded value), `lit/x86/spill_call.mim` (callee-saved limit); `lit/x86/emit_cf.mim` also runs at `k = 3`.
+- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/emit_pbqp.mim` (competing folds), `lit/x86/sched.mim`, `lit/x86/sched_join.mim` (one placement in the dominator), `lit/x86/sched_loop.mim` (hoisting), `lit/x86/sched_remat.mim`, `lit/x86/sched_closed_tuple.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/sched_no_chain.mim`, `lit/x86/live_loop.mim`, `lit/x86/live_call.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`, `lit/x86/spill_loop.mim` (live-through values spilled outside the loop), `lit/x86/spill_phi.mim` (memory φ), `lit/x86/spill_ssa.mim` (new φ for a reloaded value), `lit/x86/spill_call.mim` (callee-saved limit), `lit/x86/constrain.mim` (also at `k = 3`); `lit/x86/emit_cf.mim` also runs at `k = 3`.
 
 Known gaps:
 
@@ -118,7 +122,7 @@ Known gaps:
 - `x86.emit` does not use `Liveness` or the spill decisions yet; it still gives every value its own slot.
 - Spill placement is "right after the definition", so a value defined in a loop and reloaded after it is spilled on every iteration; no spill-slot coloring or memory-φ coalescing yet (each `Spill` value is a slot of its own in emit).
 - Rematerialization covers closed instructions only; a `reload` is never folded into a memory operand (`x86.rm`).
-- The `extra` registers of an instruction are only modeled for `div`/`idiv`; a `trunc` to a non-power-of-two size (a `div` in emit) and shifts by `cl` are not.
+- A `trunc` to a non-power-of-two size (a `div` in emit) has no constraint and no `extra` registers.
 - Calls are modeled only as "at most `k − 9` values live across"; all arguments must be in registers at the call, and nothing reloads an argument directly into its argument register.
 - More register arguments or operands than `k` at a function entry, a return continuation, a call, or an instruction is an error, not a fallback: at `k < 6`, a function or call with six arguments fails.
 - Every parameter of a branch target stays in a register, since both targets share one argument tuple; so the branch forces all its arguments into registers.
@@ -143,7 +147,7 @@ Known gaps:
 ## Next Steps
 
 1. **PBQP instruction selection**: rules are single objects with typed holes now (see *Staging*); next is rules as data with the solvability checks over the rule set, and only then rules in bulk (`cc` for flags consumed by branches and `cmov`, scaled indices from `shl`/`mul`, three-operand `add` via `lea`, the `and` mask for `trunc` → `movzx`).
-2. **Register allocation**: spilling is done; next is PBQP coloring of the spilled program, then SSA destruction, then pressure-aware list scheduling; each piece replaces a stand-in and is checked against the allowlist, also at small `k`.
+2. **Register allocation**: spilling and `x86.constrain` are done; next is `x86.color` with the `x86.in` representation, then `emit` on real registers (which subsumes SSA destruction), then pressure-aware list scheduling (see *Register Assignment*); each piece replaces a stand-in and is checked against the allowlist, also at small `k`.
 
 ## Instruction Selection with PBQP
 
@@ -232,13 +236,72 @@ SSA-based allocation (Hack/Braun) with PBQP coloring, each step a phase on the W
 - Pressure-aware list scheduling.
 - Spill first until MaxLive ≤ k (Braun & Hack, *Register Spilling and Live-Range Splitting for SSA-Form Programs*, CC 2009): done as `x86.spilling`, see *Status*.
 - PBQP coloring with `rn_priority` set to PEO positions, so RN never fails on chordal SSA graphs (Buchwald, Zwinkau, Bersch, *SSA-based Register Allocation with PBQP*, CC 2011); `pbqp::solve` already supports this.
-- Fixed-register instructions (`div` with rax/rdx, shifts by `cl`, calls, `ret`) get a parallel copy right before them, so the graph stays chordal.
-- Two-address forms: if operand 0 is still live after the instruction, insert a copy first, then add a tied edge between result and operand.
+- Fixed-register instructions (`div` with rax/rdx, shifts by `cl`, calls, `ret`) are isolated by live-range splits right before and after them, so the graph stays chordal.
+- Two-address forms: if operand 0 is still live after the instruction, split it first, then add a tied edge between result and operand.
 - φ copies become negative-cost affinity edges in the same PBQP instead of a separate coalescer.
-- Subregisters (al/ax/eax/rax): one option set per class, aliasing constraints in the matrices.
-- SSA destruction at the end: block params stay as the φs; insert parallel copies before jumps so argument and parameter registers agree, then sequentialize them (`xchg` for cycles, else a scratch register).
+- SSA destruction: block params stay as the φs; every jump is a parallel copy from its argument registers to the parameter registers, which `emit` sequentializes (`xchg` for cycles).
 
 Copies, spills, and reloads at different program points stay distinct Defs because each takes its chain token (see *The schedule is the `mem.M 0` chain*).
+
+### Register Assignment
+
+The result of coloring lives in the graph: every use of a value is wrapped in
+
+```
+axm in: [r: I4] → {s: Nat} → Idx s → Idx s;
+```
+
+- `x86.in r v` is `v`, which lives in register `r` in hardware encoding order (rax = 0, rcx = 1, rdx = 2, rbx = 3, rsp = 4, rbp = 5, rsi = 6, rdi = 7, r8 = 8, …, r15 = 15), with lets `x86.rax = 0I4` etc. like the scales.
+- `I4` makes "a general-purpose register" a typing fact; the width comes from `s`, so al/ax/eax/rax need no names, and since one value occupies a whole physical register, subregisters cannot alias.
+- `in` is no instruction: it is not scheduled and sits on no chain, like `x86.addr`.
+- Not wrapped: literals (immediates), `mem.M`, `Fl` (one flags register), `Spill s` (slots, later), `Addr` itself (its base and index are wrapped inside it), and the `Bool` of a `cc` that only a branch consumes.
+- `Liveness::values` already looks through non-instruction Defs, so `in r v` counts as a use of `v` without changes.
+
+Use-wrapping is def-annotation:
+
+- A value has one register for its whole live range; live ranges split only at jumps.
+- Each value is a distinct Def (its chain token), so all its uses share one hash-consed `in r v`; wrapping the uses is the substitution `v ↦ in r v` over the function body, in place per block and without type changes.
+- The output register of an instruction is recorded only there, as is the register of a block parameter; "where does `v` live" is a per-function map collected from the `in` nodes, and the graph stays the source of truth.
+- A result nobody uses has no record of its register, so dead pure instructions are dropped before coloring; a dead result of a fixed-register instruction (`div`'s remainder) is a clobber known from the instruction itself.
+
+Parallel copies are jumps:
+
+- A jump `k (m, a, b)` to a block `k (m, a', b')` is the parallel copy `reg(a) → reg(a')`, `reg(b) → reg(b')`, as a call already does when it passes its arguments and receives its result in the return continuation's parameter.
+- So there is no copy instruction: every live-range split is a fresh continuation whose parameters are the copies; live-through values stay free in it (it is dominated by the splitting block) and keep their registers.
+- SSA destruction needs no graph rewrite; `emit` sequentializes each jump's moves.
+- Branch targets share one argument tuple; where their parameters' registers disagree, the η-wrapper (one predecessor after `x86.spilling`'s edge splitting) jumps on with its own parameters and so holds the copy.
+- A split continuation has one predecessor and follows it directly, so `emit` should fall through to it.
+
+Example (SysV: `a` in rdi, `b` in rsi, the result in rax):
+
+```
+con f (m: mem.M 0, a b: I64, ret: Cn [mem.M 0, I64]) =
+    let (m, x) = x86.sched x86.add m (x86.in 7I4 a, x86.in 6I4 b);
+    let (m, y) = x86.sched x86.imul m (x86.in 7I4 x, 3I64);
+    ret (m, x86.in 7I4 y)
+```
+
+`add` writes `x` into rdi, which only `x86.in 7I4 x` states; the jump to `ret` is the copy rdi → rax.
+A `div` is isolated as `pre (m, a)` into `con pre (m: mem.M 0, a: I64)`, which divides `x86.in 0I4 a`.
+
+Invariants after coloring, checked by `x86.check_ra` over `Liveness`:
+
+1. Every use of a register-class value is `in r v`, and all `in · v` agree on `r`.
+2. Values live at the same point have distinct registers.
+3. Two-address: `reg(result) = reg(operand 0)`.
+4. Fixed registers: operands and results of `div`/`idiv`, shifts by `cl`, call arguments and results, entry parameters, and `ret`.
+5. Every result whose register its instruction does not imply has a use.
+
+Phases:
+
+- `x86.constrain` splits live ranges right before fixed-register operands and two-address operands that stay live, and emits `in` for the precolored copies only.
+  Fixed *definitions* need no split: `div`'s results, entry parameters, and a return continuation's parameter are precolored where they are defined, and their register is free there because every value live across the definition has ∞ on it (clobbers, caller-saved registers).
+  Call arguments and returned values need none either: the jump is the parallel copy into the callee's parameter registers.
+  An operand that is split off and stays live occupies two registers at the jump, so `x86.spilling` has to count it in `extra`; shifts by `cl` need it, too.
+- `x86.color` builds one PBQP per function over the general-purpose class (16 options, rsp and rbp ∞): an existing `in` is precolored; interference edges are ∞ on the diagonal, tie edges ∞ off it, jump-argument–parameter affinities negative on it; clobbers go into the cost vectors (rax/rdx across `div`, caller-saved registers across a call); `rn_priority` is the position of the definition in dominator-tree order.
+- `x86.emit` reads the registers from the `in` map, sequentializes each jump's moves, saves the callee-saved registers it uses, and falls through to a block with one predecessor; the per-value stack slots and the rax/rcx scratch scheme go away.
+
+Each stage dumps and round-trips, so lit tests check `x86.in` directly.
 
 ## Pattern Database
 
