@@ -38,8 +38,6 @@ size_t log_bytes(nat_t w) { return std::countr_zero(w / 8); }
 std::string_view name(const Reg& reg, nat_t w) { return reg[log_bytes(w)]; }
 char suffix(nat_t w) { return "bwlq"[log_bytes(w)]; }
 
-bool is_mem(const Def* def) { return Axm::isa<core::M>(def->type()); }
-
 /// Mnemonic of a two-address ALU instruction.
 std::string_view alu(flags_t id) {
     // clang-format off
@@ -93,7 +91,6 @@ private:
     static std::string label(Lam* lam) { return std::format(".L{}", lam->unique_name()); }
     std::string symbol(Lam*);
     size_t slot_of(const Def*);
-    const Def* prev_mem(const App*);
     void get(const Reg&, const Def*);
     /// Like get, but for an instruction operand that has to be in a register.
     void use(const Reg&, const Def*);
@@ -302,14 +299,6 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
     }
 }
 
-const Def* Emitter::prev_mem(const App* app) {
-    if (Axm::isa<sched>(app)) return app->callee()->as<App>()->arg();
-    if (Axm::isa<load>(app) || Axm::isa<store>(app) || Axm::isa<x86::slot>(app) || Axm::isa<rm>(app)
-        || Axm::isa<mr>(app))
-        return app->arg()->proj(app->num_args(), 0);
-    app->blame(MIM_X86_BE "unexpected memory producer `{}`", app).bail();
-}
-
 void Emitter::step(const App* app) {
     if (Axm::isa<sched>(app)) return insn(app->proj(2, 1), sched_insn(app), app->arg());
 
@@ -371,6 +360,7 @@ void Emitter::schedule(Lam* bb, const Def* end) {
         if (!app) m->blame(MIM_X86_BE "unexpected memory `{}`", m).bail();
         chain.emplace_back(app);
         m = prev_mem(app);
+        if (!m) app->blame(MIM_X86_BE "unexpected memory producer `{}`", app).bail();
     }
     for (auto app : chain | std::views::reverse)
         step(app);

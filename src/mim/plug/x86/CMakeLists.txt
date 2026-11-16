@@ -2,7 +2,9 @@ add_mim_plugin(x86
     SOURCES
         x86.cpp
         emit.cpp
+        liveness.cpp
         phase/isel.cpp
+        phase/live.cpp
         phase/schedule.cpp
     PRIVATE
         pbqp

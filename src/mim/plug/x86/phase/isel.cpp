@@ -3,6 +3,7 @@
 #include <pbqp/solver.h>
 
 #include <mim/plug/core/core.h>
+#include <mim/plug/ll/autogen.h>
 #include <mim/plug/mem/mem.h>
 
 #include "mim/plug/x86/x86.h"
@@ -756,6 +757,8 @@ const Def* ISel::rewrite_imm_App(const App* app) {
     if (Axm::isa<core::M>(app)) return w.call<core::M>(w.lit_nat_0());
     if (auto size = Idx::isa(app); size && !Lit::isa(size)) return w.type_i64();
     if (auto res = selected(app)) return res;
+    // Loop hints for LLVM.
+    if (Axm::isa<ll::vec>(app) || Axm::isa<ll::novec>(app)) return rewrite(app->arg());
 
     if (auto axm = app->axm(); axm && is_lowered_plugin(axm) && !app->type()->isa<Pi>() && !Axm::isa<core::M>(app)
                                && !app->type()->isa<Type>() && !app->type()->isa<Nat>())

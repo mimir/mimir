@@ -223,3 +223,9 @@ axm isel: compile.Phase;
 ///
 axm schedule: compile.Phase;
 ///
+/// ### live
+///
+/// Prints the liveness of every scheduled function to stdout, or to `-X x86:live=<file>`: per block the live-in and live-out values and the maximum number of live values (general-purpose registers, flags).
+///
+axm live: compile.Phase;
+///
