@@ -1,0 +1,36 @@
+// RUN: %mim %s -X x86:k=5 -X x86:live=%t.live -o %t.mim
+// RUN: %FileCheck %s --check-prefix=ENTRY < %t.mim
+// RUN: %FileCheck %s --check-prefix=BODY < %t.mim
+// RUN: %FileCheck %s --check-prefix=EXIT < %t.mim
+// RUN: %FileCheck %s --check-prefix=LIVE < %t.live
+
+plugin compile;
+plugin mem;
+plugin x86;
+
+/// `a`, `b`, and `c` are only used after the loop, `n` and `x` inside.
+extern con f (m: mem.M 0, a b c n x: I32, return: Cn [mem.M 0, I32]) =
+    con head (m: mem.M 0, i acc: I32) =
+        con body (m: mem.M 0) = head (m, x86.add (i, 1I32), x86.add (acc, x));
+        con exit (m: mem.M 0) = return (m, x86.add (x86.add (x86.add (acc, a), b), c));
+        (exit, body)#(x86.cc 12 (x86.cmp (i, n))) m;
+    head (m, 0I32, 0I32);
+
+extern lam _compile (): compile.Phase = compile.phases ff (x86.schedule, x86.spilling, x86.live);
+
+// `b` and `c` are used last, so they are spilled at the entry and reloaded only after the loop.
+// ENTRY:      extern con f
+// ENTRY-NEXT: (x86.spill @ i32) m b;
+// ENTRY-NEXT: (x86.spill @ i32) {{.*}} c;
+// BODY:       con body
+// BODY-NEXT:  (x86.add @ i32)
+// BODY-NEXT:  (x86.add @ i32)
+// BODY-NEXT:  head
+// EXIT:       con exit
+// EXIT-NEXT:  (x86.add @ i32) {{.*}} (acc, a);
+// EXIT-NEXT:  (x86.reload @ i32)
+// EXIT-NEXT:  (x86.add @ i32)
+// EXIT-NEXT:  (x86.reload @ i32)
+// EXIT-NEXT:  (x86.add @ i32)
+// LIVE:       fun f
+// LIVE-NOT:   max {{([6-9]|[1-9][0-9]+)}} flags

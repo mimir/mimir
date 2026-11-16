@@ -10,9 +10,10 @@ namespace mim::plug::x86 {
 /// Liveness of the values of one scheduled function, as a side table.
 /// A *value* is a non-memory result of an instruction on a `mem.M 0` chain or a non-memory parameter.
 /// A parameter is defined at the entry of its block and a jump uses its arguments, so a parameter is never live-in.
+/// A branch on an `x86.cc` uses its flags; the `Bool` is a value only if something else uses it.
 class Liveness {
 public:
-    enum Class : size_t { Gpr, Flags, Num_Classes };
+    enum Class : size_t { Gpr, Flags, Stack, Num_Classes };
     using Pressure = std::array<size_t, Num_Classes>;
 
     struct Block {
@@ -20,7 +21,7 @@ public:
         fe::Vector<const App*> insns; ///< The `mem.M 0` chain in execution order.
         fe::Vector<size_t> preds, succs;
         DefSet live_in, live_out;
-        Pressure max_live = {}; ///< Maximum over all program points, per Class.
+        Pressure max_live = {}; ///< Maximum over all program points, per Class; Stack is unbounded.
     };
 
     explicit Liveness(Lam* fun);

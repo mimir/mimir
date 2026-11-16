@@ -17,22 +17,35 @@ bool is_insn(const Def* def) {
     return false;
 }
 
+/// Flags are no register value, so each consumer recomputes them right before itself.
+bool is_flags(const Def* def) {
+    if (Axm::isa<Fl>(def->type())) return true;
+    if (auto app = def->isa<App>(); app && app->axm()) return app->axm()->flags() == Annex::Base<cc>;
+    return false;
+}
+
+/// An instruction without a place of its own: a fresh copy goes right before each use.
+bool is_remat(const Def* def) { return is_insn(def) && (Scheduler::is_remat(def) || is_flags(def)); }
+
 } // namespace
 
 void Schedule::place(Lam* curr, const Def* def) {
     if (def->isa_mut()) return;
 
     auto insn  = is_insn(def);
-    auto remat = [](const Def* d) { return is_insn(d) && Scheduler::is_remat(d); };
-    if (!remat(def) && !(insn ? placed_ : visited_[curr]).emplace(def).second) return;
+    auto remat = is_remat(def);
+    if (!remat && !(insn ? placed_ : visited_[curr]).emplace(def).second) return;
     if (is_mem(def)) mems_[scheduler_->early(def)->mut()->as<Lam>()].emplace_back(def);
-    if (auto node = insn ? scheduler_->smart(curr, def) : nullptr) curr = node->mut()->as<Lam>();
+    if (auto node = insn && !remat ? scheduler_->smart(curr, def) : nullptr) curr = node->mut()->as<Lam>();
 
-    for (auto op : def->ops())
-        if (!remat(op)) place(curr, op);
+    auto ops = DefVec(def->ops().begin(), def->ops().end());
+    // A terminator branches on its condition last.
+    if (auto app = def->isa<App>(); app && def == curr->body()) ops = {app->arg(), app->callee()};
+    for (auto op : ops)
+        if (!is_remat(op)) place(curr, op);
     // Last, so that nothing separates a rematerialized operand from its user.
-    for (auto op : def->ops())
-        if (remat(op)) place(curr, op);
+    for (auto op : ops)
+        if (is_remat(op)) place(curr, op);
     if (insn) insns_[curr].emplace_back(def);
 }
 

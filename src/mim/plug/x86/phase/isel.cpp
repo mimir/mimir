@@ -28,31 +28,35 @@ nat_t trait(core::trait t, const Def* type) {
 }
 
 std::optional<nat_t> cc(core::icmp id) {
+    // clang-format off
     switch (id) {
-        case core::icmp::e: return 4;
-        case core::icmp::ne: return 5;
-        case core::icmp::ul: return 2;
-        case core::icmp::uge: return 3;
+        case core::icmp::  e: return 4;
+        case core::icmp:: ne: return 5;
+        case core::icmp::ul : return 2;
         case core::icmp::ule: return 6;
-        case core::icmp::ug: return 7;
-        case core::icmp::sl: return 12;
-        case core::icmp::sge: return 13;
+        case core::icmp::ug : return 7;
+        case core::icmp::uge: return 3;
+        case core::icmp::sl : return 12;
         case core::icmp::sle: return 14;
-        case core::icmp::sg: return 15;
+        case core::icmp::sg : return 15;
+        case core::icmp::sge: return 13;
         default: return {};
     }
+    // clang-format on
 }
 
 std::optional<nat_t> cc(core::ncmp id) {
+    // clang-format off
     switch (id) {
-        case core::ncmp::e: return 4;
+        case core::ncmp:: e: return 4;
         case core::ncmp::ne: return 5;
-        case core::ncmp::l: return 2;
-        case core::ncmp::ge: return 3;
+        case core::ncmp::l : return 2;
         case core::ncmp::le: return 6;
-        case core::ncmp::g: return 7;
+        case core::ncmp::g : return 7;
+        case core::ncmp::ge: return 3;
         default: return {};
     }
+    // clang-format on
 }
 
 /// Does the old_world() or new_world() literal @p lit fit a sign-extended 32-bit immediate?

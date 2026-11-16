@@ -6,6 +6,7 @@ add_mim_plugin(x86
         phase/isel.cpp
         phase/live.cpp
         phase/schedule.cpp
+        phase/spilling.cpp
     PRIVATE
         pbqp
 )

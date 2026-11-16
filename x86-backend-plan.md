@@ -11,7 +11,8 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 
 ### Everything stays in MimIR
 
-- Isel, scheduling, spilling, register allocation, and SSA destruction are all `RWPhase`s on the World.
+- Isel, scheduling, spilling, register allocation, and SSA destruction are all phases on the World.
+  Isel changes types and is an `RWPhase`; scheduling and spilling rewrite each function in place, and spilling creates a new Lam only for a block whose signature changes.
 - Dumping, `-o` round-trip, lit tests, and the type checker work at every backend stage.
 - The schedule becomes an explicit edge in the graph (libFirm keeps it as a side list in the node info instead, which would not survive `-o`).
 
@@ -53,8 +54,8 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 
 Done (on `feature/x86`):
 
-- `x86` plugin (`src/mim/plug/x86/`), with `mem.add_mem` (if `x86` is loaded), `x86.isel`, `x86.schedule`, and `x86.emit` at the end of the default pipeline in `opt.mim`; by then no axiom pins a continuation's type, so every continuation has its `mem.M`.
-- `x86.mim`: `Fl`, `Addr` (`Base`, `Index`), `addr`, `scale_1`/`_2`/`_4`/`_8`, `index`, `lea`, `mov`, `rm`, `mr`, `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `imul`, `shl`, `shr`, `sar`, `movzx`, `movsx`, `trunc`, `cmp`, `test`, `cc`, `cmovcc`, plus the size predicates.
+- `x86` plugin (`src/mim/plug/x86/`), with `mem.add_mem` (if `x86` is loaded), `x86.isel`, `x86.schedule`, `x86.spilling`, and `x86.emit` at the end of the default pipeline in `opt.mim`; by then no axiom pins a continuation's type, so every continuation has its `mem.M`.
+- `x86.mim`: `Fl`, `Addr` (`Base`, `Index`), `Spill`, `addr`, `scale_1`/`_2`/`_4`/`_8`, `index`, `lea`, `mov`, `rm`, `mr`, `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `imul`, `shl`, `shr`, `sar`, `movzx`, `movsx`, `trunc`, `cmp`, `test`, `cc`, `cmovcc`, `spill`, `reload`, plus the size predicates.
 - `x86.isel` (`src/mim/plug/x86/phase/isel.cpp`) covers `core.wrap`, `core.bit2` (and/or/xor), `core.shr`, `core.icmp`, `core.conv`, `mem.load`/`mem.store` of integers and pointers, `mem.lea` (array index or constant struct offset), `mem.assume`, `mem.mslot`, `core.idx`, `core.idx2nat`, `core.rem`, `core.div`, `core.nat`, `core.ncmp`, integer `core.bitcast`, and a select `(x, y)#c` (as `cmovcc`).
   An `Idx n` of dynamic size and `Nat` become `I64`, as in `ll`; `Nat` literals stay `Nat` so they still work as type-level arguments, and become `I64` only as values.
   The loop hints `ll.vec`/`ll.novec` are dropped.
@@ -62,17 +63,30 @@ Done (on `feature/x86`):
 - `x86.schedule` (`src/mim/plug/x86/phase/schedule.cpp`) is a `NestPhase` that rewrites each function in place (it changes no types): it places every instruction of a function once with `Scheduler::smart` (as late as possible, but out of loops) and threads each continuation's instructions onto its `mem.M 0` chain in topological order.
   Memory instructions are rethreaded, existing `sched`s re-placed (so the phase is idempotent), all others wrapped in `x86.sched`; every other use of a memory token gets the end of the chain.
   A closed instruction has no place of its own (`Scheduler::is_remat`): it gets a fresh copy right before each use.
+  So do `cmp`/`test` and `cc`, since flags are no register value: each consumer recomputes them right before itself, and a terminator places its condition last, so at most one flags value is live and nothing clobbers it before its consumer.
   A continuation without a `mem.M` is an error.
-- `Liveness` (`src/mim/plug/x86/liveness.cpp`) is a side table over one scheduled function: blocks with their chains, predecessors and successors, live-in and live-out sets (path exploration per use), and MaxLive per register class (general-purpose, flags).
+- `Liveness` (`src/mim/plug/x86/liveness.cpp`) is a side table over one scheduled function: blocks with their chains, predecessors and successors, live-in and live-out sets (path exploration per use), and MaxLive per register class (general-purpose, flags; spill slots are class `Stack` and unbounded).
   A value is a non-memory result of a chain instruction or a non-memory parameter; a parameter is defined at block entry and a jump uses its arguments, so a parameter is never live-in.
+  A branch on an `x86.cc` uses its flags; the `Bool` is a value only if something else uses it.
   `x86.live` prints it (`-X x86:live=<file>`) and is not part of the default pipeline.
+- `x86.spilling` (`src/mim/plug/x86/phase/spilling.cpp`) brings MaxLive of the general-purpose class down to `k` (14 by default, `-X x86:k=<n>`), per function and in place (Braun & Hack, CC 2009):
+  - Global next-use distances by a fixpoint over the CFG, plus `2^20` across an edge into a smaller loop depth; loops are natural loops over the dominator tree (Cooper, Harvey, Kennedy) of the block graph, since `Nest` misses closed blocks.
+  - `W_entry`: at a block whose predecessors are all processed, the candidates in a register at the end of all predecessors first, then those of some, by next use; otherwise (loop header) the candidates used in the loop first, then live-through ones only as far as the loop's MaxLive leaves room.
+  - Per instruction: reload missing operands, `limit(W, k − extra)` (`div`/`idiv` need `rdx`), `limit(W, k − #defs)` after it; a call keeps at most `k − 9` values across it (five callee-saved registers at `k = 14`).
+  - A parameter of the entry, a return continuation, or a branch target, and a dead parameter, is always in a register; any other parameter outside `W_entry` becomes a memory φ of type `x86.Spill s`.
+  - A value is spilled right after its definition (or at its block's entry), and only if it is reloaded or flows into a memory φ; a literal flowing into a memory φ is spilled at the end of the predecessor.
+  - A closed instruction is recomputed instead of reloaded.
+  - Coupling reloads go to the end of the predecessor.
+    EtaConv does not quite rule out critical edges: a hash-consed branch tuple can share one wrapper among several branches, so `x86.spilling` first gives each branch to such a target a fresh wrapper.
+  - Reloads give a value several definitions; SSA reconstruction (Braun et al., CC 2013, every block sealed, union-find for trivial φ removal) runs symbolically first, so each block whose signature changes is rebuilt as a new Lam exactly once with its memory φs and new φ parameters appended.
+  - `spill`/`reload` are pure instructions on the chain via `sched`; `x86.emit` treats them as copies between stack slots.
 - `x86.load`/`x86.store` work on `mem.M 0`; isel collapses `mem.M a` to `mem.M 0`.
 - `x86.emit` (`src/mim/plug/x86/emit.cpp`) writes GAS text in AT&T syntax to `<world>.s` (`-X x86:o=<file>`):
   it reads each block's order off the `mem.M` chain backwards from its terminator, keeps every value in its own stack slot with `rax`/`rcx` as scratch, takes up to six SysV integer arguments, and returns in `rax`.
   A block is a label in the dominator-respecting order of discovery; a jump stores its arguments into the target's parameter slots (through temporaries if it passes the target's own parameters) and a two-way branch on an `x86.cc` becomes `j{cc}`.
   A call loads the argument registers, stores `rax` into the return continuation's parameter slot, and jumps there; a call through the function's own return continuation is a tail of `call`, `leave`, `ret`.
   A non-external callee is emitted as a local function `<name>_<gid>`; an external declaration is called by its symbol.
-  `cmp`/`test` are rematerialized right before each `cc`/`cmovcc`, so the order of the schedule cannot clobber flags.
+  `cmp`/`test` are recomputed right before each `cc`/`cmovcc` and `jcc` (now redundant with `x86.schedule`, which already places a fresh copy there).
   This allocation is a throwaway stand-in inside `emit`; the real allocator will answer "where does `v` live" in the graph.
 - `x86.cmovcc cc (f, x, y)` yields `y` if `cc` holds, like `(x, y)#cond`.
 - `x86.isel` follows *Instruction Selection with PBQP*: a `Rule` is one object (name, type of its replacement, builder), and one `match` function appends a node's matches as `Alt`s with typed `Demand`s on the operands and the inner nodes they cover (`Cover`).
@@ -88,7 +102,7 @@ Done (on `feature/x86`):
   `cmp`/`test` do not fold since emit rematerializes them per consumer, and `div` does not since `cltd` clobbers the index register.
 - `x86.div`/`idiv` yield quotient and remainder as a pair, so a quotient and a remainder of the same operands share one instruction; `x86.slot n` reserves `n` frame bytes on the `mem.M` chain; `trunc` to a non-power-of-two size is an unsigned remainder.
 - `isel` widens 8-bit and `Bool` multiplications to `i32` (`movzx`, `imul`, `trunc`), since `imul` has no 8-bit form.
-- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/emit_pbqp.mim` (competing folds), `lit/x86/sched.mim`, `lit/x86/sched_join.mim` (one placement in the dominator), `lit/x86/sched_loop.mim` (hoisting), `lit/x86/sched_remat.mim`, `lit/x86/sched_closed_tuple.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/sched_no_chain.mim`, `lit/x86/live_loop.mim`, `lit/x86/live_call.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`.
+- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/emit_pbqp.mim` (competing folds), `lit/x86/sched.mim`, `lit/x86/sched_join.mim` (one placement in the dominator), `lit/x86/sched_loop.mim` (hoisting), `lit/x86/sched_remat.mim`, `lit/x86/sched_closed_tuple.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/sched_no_chain.mim`, `lit/x86/live_loop.mim`, `lit/x86/live_call.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`, `lit/x86/spill_loop.mim` (live-through values spilled outside the loop), `lit/x86/spill_phi.mim` (memory φ), `lit/x86/spill_ssa.mim` (new φ for a reloaded value), `lit/x86/spill_call.mim` (callee-saved limit); `lit/x86/emit_cf.mim` also runs at `k = 3`.
 
 Known gaps:
 
@@ -96,7 +110,27 @@ Known gaps:
 - A closed instruction below a shared non-instruction Def (a tuple, an `x86.addr`) is rematerialized once per continuation only, and a copy can end up unused on the chain.
 - `mem.add_mem` places a memory operation with `Scheduler::late`, so sibling continuations share it; a closed one (a placeholder memory and constant operands) has no registered uses and still goes to its first user only.
   Run before `affine.For` is lowered, a continuation that an unpinned caller passes to a pinned function gains a `mem.M` the callee's type does not have.
-- `Liveness` counts the `Bool` of an `x86.cc` as a general-purpose value even where a branch consumes the flags directly, and `x86.emit` does not use it yet.
+- Rematerializing flags per consumer keeps the operands of a `cmp`/`test` live up to its last consumer.
+  Two `cmovcc`s that differ only in the condition code share their operand tuple, and with it one copy of the `cmp`, so flags can still be live across another instruction there (the same memoization as for closed instructions).
+- EtaConv does not rule out critical edges: a hash-consed branch tuple used by several branches shares its η-wrappers, so such a wrapper has several predecessors (`lit/regex/match_mail.mim`).
+  Rewriting the shared tuple is memoized, so EtaConv would have to rebuild branch tuples per App.
+  Until then, `x86.spilling` splits these edges itself; any other phase that assumes no critical edges has to do the same.
+- `x86.emit` does not use `Liveness` or the spill decisions yet; it still gives every value its own slot.
+- Spill placement is "right after the definition", so a value defined in a loop and reloaded after it is spilled on every iteration; no spill-slot coloring or memory-φ coalescing yet (each `Spill` value is a slot of its own in emit).
+- Rematerialization covers closed instructions only; a `reload` is never folded into a memory operand (`x86.rm`).
+- The `extra` registers of an instruction are only modeled for `div`/`idiv`; a `trunc` to a non-power-of-two size (a `div` in emit) and shifts by `cl` are not.
+- Calls are modeled only as "at most `k − 9` values live across"; all arguments must be in registers at the call, and nothing reloads an argument directly into its argument register.
+- More register arguments or operands than `k` at a function entry, a return continuation, a call, or an instruction is an error, not a fallback: at `k < 6`, a function or call with six arguments fails.
+- Every parameter of a branch target stays in a register, since both targets share one argument tuple; so the branch forces all its arguments into registers.
+- A dead parameter takes a register at its block's entry; if its argument is not in a register, the jump passes a literal `0`.
+- A literal flowing into a memory φ is spilled as an immediate store; a 64-bit literal beyond `i32` needs a `mov` first, which nothing inserts yet.
+- Loop exits are detected by comparing loop depths, so an edge between two sibling loops of equal depth gets no penalty.
+- An irreducible block is initialized like a loop header without a loop body, so it admits live-through values up to `k`.
+- Admitting live-through values at a loop header uses the loop's MaxLive before spilling, which can still force a reload at the end of the latch.
+- The spiller computes its own dominators and natural loops because `Nest` misses closed blocks; these should eventually come from one place.
+- Efficiency: one `Rewriter` per instruction, a linear scan per eviction, and loop bodies as vectors with linear membership tests.
+- Re-running `x86.spilling` on its own output is untested.
+- Only `emit_cf.mim` runs at a small `k` in lit; the sweep of the whole allowlist at `k = 3` and `k = 6` was manual (lowering the default), so it needs a lit parameter or a CI job to stay checked.
 - Re-running the full pipeline on backend output is not meaningful (`core.legalize_idx` η-wraps `x86.trunc` to `Idx 4`); round-trip backend dumps with `--no-opt`.
 - `isel` still emits size-check failures for non-register sizes (e.g. `core.wrap.add` on `Idx 5`); these need masking or a clear rejection.
 - `isel` emits a `trunc` → `movzx` pair for array indices that `core.legalize_idx` narrowed; it is a mask (`and x, 2^k - 1`), not a no-op, and should become one `and` in PBQP isel.
@@ -109,7 +143,7 @@ Known gaps:
 ## Next Steps
 
 1. **PBQP instruction selection**: rules are single objects with typed holes now (see *Staging*); next is rules as data with the solvability checks over the rule set, and only then rules in bulk (`cc` for flags consumed by branches and `cmov`, scaled indices from `shl`/`mul`, three-operand `add` via `lea`, the `and` mask for `trunc` → `movzx`).
-2. **Register allocation** with PBQP, including pressure-aware list scheduling, spilling, and SSA destruction; each piece replaces a stand-in and is checked against the allowlist.
+2. **Register allocation**: spilling is done; next is PBQP coloring of the spilled program, then SSA destruction, then pressure-aware list scheduling; each piece replaces a stand-in and is checked against the allowlist, also at small `k`.
 
 ## Instruction Selection with PBQP
 
@@ -193,10 +227,10 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 
 ## Register Allocation
 
-SSA-based allocation (Hack/Braun) with PBQP coloring, each step an `RWPhase`:
+SSA-based allocation (Hack/Braun) with PBQP coloring, each step a phase on the World:
 
 - Pressure-aware list scheduling.
-- Spill first until MaxLive ≤ k (Braun & Hack, *Register Spilling and Live-Range Splitting for SSA-Form Programs*, CC 2009).
+- Spill first until MaxLive ≤ k (Braun & Hack, *Register Spilling and Live-Range Splitting for SSA-Form Programs*, CC 2009): done as `x86.spilling`, see *Status*.
 - PBQP coloring with `rn_priority` set to PEO positions, so RN never fails on chordal SSA graphs (Buchwald, Zwinkau, Bersch, *SSA-based Register Allocation with PBQP*, CC 2011); `pbqp::solve` already supports this.
 - Fixed-register instructions (`div` with rax/rdx, shifts by `cl`, calls, `ret`) get a parallel copy right before them, so the graph stays chordal.
 - Two-address forms: if operand 0 is still live after the instruction, insert a copy first, then add a tied edge between result and operand.

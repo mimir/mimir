@@ -6,12 +6,14 @@
 #include "mim/plug/x86/phase/isel.h"
 #include "mim/plug/x86/phase/live.h"
 #include "mim/plug/x86/phase/schedule.h"
+#include "mim/plug/x86/phase/spilling.h"
 
 using namespace mim;
 
 static void reg_phases(Flags2Phases& phases) {
     Phase::hook<plug::x86::isel, plug::x86::phase::ISel>(phases);
     Phase::hook<plug::x86::schedule, plug::x86::phase::Schedule>(phases);
+    Phase::hook<plug::x86::spilling, plug::x86::phase::Spilling>(phases);
     Phase::hook<plug::x86::live, plug::x86::phase::Live>(phases);
     Phase::hook<plug::x86::emit, plug::x86::Emit>(phases);
 }
@@ -20,6 +22,7 @@ static void reg_phases(Flags2Phases& phases) {
 static constexpr PluginArg known_args[] = {
     {"o=<file>, output=<file>", "Writes the assembly to `<file>` instead of the default `<world>.s`/`a.s`; `<file>` may be `-` for stdout."},
     {"live=<file>", "Writes the output of `x86.live` to `<file>` instead of stdout."},
+    {"k=<n>", "Lets `x86.spilling` keep at most `<n>` general-purpose values in registers instead of 14."},
 };
 // clang-format on
 

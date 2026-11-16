@@ -5,6 +5,11 @@
 // RUN: %t ; test $? -eq 34
 // RUN: %t 1 ; test $? -eq 56
 // RUN: %t 1 2 3 ; test $? -eq 150
+// RUN: %mim %s -p x86 -X x86:k=3 -X x86:o=%t.k3.s
+// RUN: clang %t.k3.s -o %t.k3
+// RUN: %t.k3 ; test $? -eq 34
+// RUN: %t.k3 1 ; test $? -eq 56
+// RUN: %t.k3 1 2 3 ; test $? -eq 150
 plugin core;
 plugin mem;
 

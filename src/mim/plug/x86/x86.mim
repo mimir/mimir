@@ -46,6 +46,13 @@ anx let Base = Addr ff;
 ///
 anx let Index = Addr tt;
 ///
+/// ### Spill
+///
+/// A spill slot holding a value of type `Idx s`.
+/// It is no register value; slot assignment gives it a place in the stack frame.
+///
+axm Spill: Nat → *;
+///
 /// ### emit
 ///
 /// Emits GNU assembler code (AT&T syntax) to `<world>.s`.
@@ -208,6 +215,18 @@ axm cmovcc: [cc: Nat] → {s: Nat} → [Fl, Idx s, Idx s] → Idx (gpr16 s);
 ///
 axm sched: {D C: *} → (D → C) → mem.M 0 → D → [mem.M 0, C];
 ///
+/// ### spill
+///
+/// `spill x` stores `x` into a spill slot; it is placed on the chain via `sched` like any other pure instruction.
+///
+axm spill: {s: Nat} → Idx s → Spill s;
+///
+/// ### reload
+///
+/// `reload x` loads `x` from its spill slot.
+///
+axm reload: {s: Nat} → Spill s → Idx s;
+///
 /// ## Phases
 ///
 /// ### isel
@@ -222,6 +241,13 @@ axm isel: compile.Phase;
 /// Expects every continuation to take a `mem.M 0`.
 ///
 axm schedule: compile.Phase;
+///
+/// ### spilling
+///
+/// Spills and reloads until at most `k` general-purpose values are live at every point (Braun & Hack, CC 2009).
+/// `k` is 14 by default and `-X x86:k=<n>` overrides it.
+///
+axm spilling: compile.Phase;
 ///
 /// ### live
 ///

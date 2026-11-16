@@ -67,7 +67,10 @@ void Liveness::chain(size_t b) {
         succ(arg);
 }
 
-Liveness::Class Liveness::cls(const Def* value) { return Axm::isa<Fl>(value->type()) ? Flags : Gpr; }
+Liveness::Class Liveness::cls(const Def* value) {
+    auto type = value->type();
+    return Axm::isa<Fl>(type) ? Flags : Axm::isa<Spill>(type) ? Stack : Gpr;
+}
 
 void Liveness::values(const Def* def, DefVec& res, DefSet& done) const {
     if (def->isa_mut() || !done.emplace(def).second) return;
@@ -117,7 +120,16 @@ DefVec Liveness::uses(const App* insn) const {
 DefVec Liveness::term_uses(const Block& block) const {
     auto res  = DefVec();
     auto done = DefSet();
-    values(block.lam->body(), res, done);
+    auto term = block.lam->body()->as<App>();
+    if (auto ex = term->callee()->isa<Extract>()) {
+        if (auto cc = isa_sched_cc(ex->index())) {
+            values(cc->arg(), res, done);
+            values(ex->tuple(), res, done);
+            values(term->arg(), res, done);
+            return res;
+        }
+    }
+    values(term, res, done);
     return res;
 }
 
@@ -161,7 +173,8 @@ void Liveness::sweep(Block& block) {
     gen(term_uses(block));
     for (auto insn : block.insns | std::views::reverse) {
         auto ds = defs(insn);
-        gen(ds); // a dead result occupies a register nonetheless
+        // A dead result occupies a register nonetheless, unless it is a condition that only a branch consumes.
+        if (!is_sched_cc(insn)) gen(ds);
         kill(ds);
         gen(uses(insn));
     }

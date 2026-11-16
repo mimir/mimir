@@ -51,16 +51,16 @@ std::string_view alu(flags_t id) {
     return {};
 }
 
-/// Width of the register holding a value of @p type.
-nat_t width(const Def* type) { return std::bit_ceil(std::max<nat_t>(Idx::expect_bitwidth(type, "an integer"), 8)); }
+/// Width of the register holding a value of @p type; a spill slot is as wide as its value.
+nat_t width(const Def* type) {
+    if (auto spill = Axm::isa<Spill>(type)) type = type->world().type_idx(spill->arg());
+    return std::bit_ceil(std::max<nat_t>(Idx::expect_bitwidth(type, "an integer"), 8));
+}
 
 nat_t nat(const Def* def) {
     if (auto l = Lit::isa(def)) return *l;
     def->blame(MIM_X86_BE "expected a literal, got `{}`", def).bail();
 }
-
-/// The `f` of `x86.sched f m x`.
-const Def* sched_insn(const App* app) { return app->callee()->as<App>()->callee()->as<App>()->arg(); }
 
 /// Functions still to emit, shared by all Emitter%s.
 struct Funs {
@@ -258,7 +258,7 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
     else if (id == Annex::Base<movzx>) extend('z');
     else if (id == Annex::Base<movsx>) extend('s');
     // clang-format on
-    else if (id == Annex::Base<mov>) {
+    else if (id == Annex::Base<mov> || id == Annex::Base<x86::spill> || id == Annex::Base<reload>) {
         get(rax, x);
         put(res, rax);
     } else if (id == Annex::Base<lea>) {
@@ -459,10 +459,9 @@ void Emitter::block(Lam* bb) {
         if (targets->num_projs() != 2) bb->blame(MIM_X86_BE "only two-way branches are supported yet").bail();
         auto [e, t] = targets->projs<2>([this](const Def* d) { return target(d); });
         auto c      = ex->index();
-        auto app    = c->isa<Extract>() ? c->as<Extract>()->tuple()->isa<App>() : nullptr;
         auto copy   = std::ranges::any_of(t->vars(), [](const Def* var) { return !is_mem(var); });
         auto t_lbl  = copy ? label(bb) + ".t" : label(t);
-        if (app && Axm::isa<sched>(app) && sched_insn(app)->as<App>()->axm()->flags() == Annex::Base<x86::cc>) {
+        if (auto app = isa_sched_cc(c)) {
             flags(app->arg());
             line("j{} {}", ccs[nat(sched_insn(app)->as<App>()->arg())], t_lbl);
         } else {
