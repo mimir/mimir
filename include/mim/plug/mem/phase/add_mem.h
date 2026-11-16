@@ -14,6 +14,8 @@ namespace mim::plug::mem::phase {
 /// As operands are rewritten before their users, memory operations are chained in dependency order.
 /// A memory operation joins the chain of the continuation Scheduler::late yields - the innermost one that nests all
 /// its users - even if a nested continuation asks for it first; so all users share it.
+/// A memory operation without free variables joins the chain of the function that uses it.
+/// An operation on a placeholder must be pure as a whole, as AddMem shares and hoists it.
 ///
 /// Direct-style functions keep their signature.
 /// So does everything reachable from an Axm's Lam arguments, as the Axm pins their type.

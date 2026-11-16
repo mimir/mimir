@@ -26,7 +26,7 @@ void Schedule::place(Lam* curr, const Def* def) {
     auto remat = [](const Def* d) { return is_insn(d) && Scheduler::is_remat(d); };
     if (!remat(def) && !(insn ? placed_ : visited_[curr]).emplace(def).second) return;
     if (is_mem(def)) mems_[scheduler_->early(def)->mut()->as<Lam>()].emplace_back(def);
-    if (insn) curr = scheduler_->smart(curr, def)->mut()->as<Lam>();
+    if (auto node = insn ? scheduler_->smart(curr, def) : nullptr) curr = node->mut()->as<Lam>();
 
     for (auto op : def->ops())
         if (!remat(op)) place(curr, op);

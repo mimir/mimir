@@ -116,11 +116,22 @@ const Def* AddMem::rewrite_mut_Lam(Lam* old_lam) {
 
     if (scheduler_ && scheduler_->nest()[old_lam]) return thread(old_lam, new_lam);
 
+    // What hangs off the memory of one function is out of scope in another.
+    auto scopes = std::move(scopes_);
+    scopes_.clear();
+    scopes_.emplace_back(std::move(scopes.front()));
+    push();
+    bind_new(new_lam->has_var());
+
     auto nest      = Nest(old_lam);
     auto scheduler = Scheduler(nest);
     auto outer     = std::exchange(scheduler_, &scheduler);
     thread(old_lam, new_lam);
     scheduler_ = outer;
+
+    pop();
+    scopes.front() = std::move(scopes_.front());
+    scopes_        = std::move(scopes);
     return new_lam;
 }
 
@@ -147,7 +158,8 @@ void AddMem::activate(size_t frame) {
 }
 
 size_t AddMem::owner(const App* app) {
-    auto lam = scheduler_->late(frames_[active_].old_lam, app)->mut();
+    auto node = scheduler_->late(frames_[active_].old_lam, app);
+    auto lam  = node ? node->mut() : scheduler_->root(); // one copy per function
     for (size_t i = frames_.size(); i-- != 0;)
         if (frames_[i].old_lam == lam) return i == active_ || frames_[i].mem ? i : active_;
     return active_;

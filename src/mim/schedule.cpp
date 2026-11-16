@@ -53,7 +53,7 @@ const Nest::Node* Scheduler::early(const Def* def) {
 }
 
 const Nest::Node* Scheduler::late(Def* curr_mut, const Def* def) {
-    if (is_remat(def)) return nest()[curr_mut];
+    if (is_remat(def)) return nullptr;
     if (auto n = fe::lookup(late_, def)) return n;
     if (!nest().contains(def)) return late_[def] = nest().root();
 
@@ -75,7 +75,7 @@ const Nest::Node* Scheduler::late(Def* curr_mut, const Def* def) {
 }
 
 const Nest::Node* Scheduler::smart(Def* curr_mut, const Def* def) {
-    if (is_remat(def)) return late(curr_mut, def);
+    if (is_remat(def)) return nullptr;
     if (auto n = fe::lookup(smart_, def)) return n;
 
     auto e = early(def);
