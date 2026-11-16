@@ -1,0 +1,17 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+plugin core;
+plugin tensor;
+plugin compile;
+
+extern lam reader (n: Nat, finish: Cn I32)@ff: Cn [tensor.Tensor 1 n I32] =
+    con inner (a: tensor.Tensor 1 n I32) = finish (tensor.get (a, core.idx 0 n 0));
+    inner;
+
+extern con dispatch (n: Nat, a: tensor.Tensor 1 n I32, choice: Bool, return: Cn I32) =
+    con other (a: tensor.Tensor 1 n I32) = return 0I32;
+    (reader (n, return), other)#choice a;
+
+extern lam _compile (): compile.Phase = tensor.lower_to_mem;
+
+// CHECK: error: cannot bufferize: partially applied shape-polymorphic function

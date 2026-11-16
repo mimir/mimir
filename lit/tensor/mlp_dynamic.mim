@@ -1,0 +1,26 @@
+// RUN: %mim -p opt -p ll %s -X ll:o=%t.ll
+// RUN: clang++ -std=c++23 %S/mlp_dynamic_aux.cpp %t.ll -o %t -Wno-override-module
+// RUN: %t | %FileCheck %s
+
+plugin core;
+plugin math;
+plugin tensor;
+use tensor;
+
+let F32 = math.F32;
+let fast = math.mode.fast;
+let Ring = (F32, 0:F32, math.arith.add fast, math.arith.mul fast);
+let `+ = binary (math.arith.add fast);
+let `* = product_2d Ring;
+
+lam relu (x: F32): F32 = math.extrema.fmax fast (0:F32, x);
+
+// Runtime extents are explicit ABI arguments alongside the data pointers.
+extern fun mlp_dynamic {batch c_in hidden c_out: Nat}
+    (x: Tensor 2 (batch, c_in) F32,
+     w1: Tensor 2 (hidden, c_in) F32, b1: Tensor 1 hidden F32,
+     w2: Tensor 2 (c_out, hidden) F32, b2: Tensor 1 c_out F32): Tensor 2 (batch, c_out) F32 =
+    let h = unary relu (x * transpose_2d w1 + broadcast ((1, hidden), (batch, hidden), reshape hidden (1, hidden) b1));
+    return (h * transpose_2d w2 + broadcast ((1, c_out), (batch, c_out), reshape c_out (1, c_out) b2));
+
+// CHECK: dynamic MLP: 56 shape combinations passed

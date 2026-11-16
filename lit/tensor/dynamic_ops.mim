@@ -1,0 +1,84 @@
+// RUN: %mim -p opt -p ll %s -X ll:o=%t.ll
+// RUN: clang %t.ll %S/dynamic_ops_aux.c -o %t -Wno-override-module
+// RUN: %t | %FileCheck %s
+
+plugin core;
+plugin tensor;
+
+extern fun splat_matrix {rows cols: Nat} (value: I32): tensor.Tensor 2 (rows, cols) I32 =
+    return (tensor.splat ((rows, cols), value));
+
+extern fun generate_matrix {rows cols: Nat} (seed: I32): tensor.Tensor 2 (rows, cols) I32 =
+    lam cell (i j: I64): I32 = core.wrap.add 0 (seed, core.select (core.icmp.e (i, j), 5I32, 2I32));
+    return (tensor.generate (rows, cols) cell);
+
+extern fun broadcast_rows {rows cols: Nat} (a: tensor.Tensor 2 (1, cols) I32): tensor.Tensor 2 (rows, cols) I32 =
+    return (tensor.broadcast ((1, cols), (rows, cols), a));
+
+extern fun broadcast_singleton {rows cols: Nat} (a: tensor.Tensor 2 (rows, cols) I32): tensor.Tensor 2 (3, 3) I32 =
+    return (tensor.broadcast ((rows, cols), (3, 3), a));
+
+extern fun flip_matrix {rows cols: Nat} (a: tensor.Tensor 2 (rows, cols) I32): tensor.Tensor 2 (rows, cols) I32 =
+    return (tensor.flip (rows, cols) a);
+
+extern fun flatten_matrix {rows cols: Nat} (a: tensor.Tensor 2 (rows, cols) I32)
+    : tensor.Tensor 1 (core.nat.mul (rows, cols)) I32 =
+    return (tensor.reshape (rows, cols) (core.nat.mul (rows, cols)) a);
+
+extern fun transpose_matrix {rows cols: Nat} (a: tensor.Tensor 2 (rows, cols) I32): tensor.Tensor 2 (cols, rows) I32 =
+    return (tensor.transpose_2d a);
+
+extern fun reduce_columns {rows cols: Nat} (a: tensor.Tensor 2 (rows, cols) I32): tensor.Tensor 1 rows I32 =
+    return (tensor.reduce (core.wrap.add 0, 0I32) 1₂ a);
+
+extern fun set_last {rows cols: Nat} (a: tensor.Tensor 2 (rows, cols) I32): tensor.Tensor 2 (rows, cols) I32 =
+    return (tensor.set (a, (core.idx 0 rows (core.nat.sub (rows, 1)), core.idx 0 cols (core.nat.sub (cols, 1))), 37I32));
+
+extern fun recursive_read {rows cols: Nat} (count: Nat, acc: I32, a: tensor.Tensor 2 (rows, cols) I32): I32 =
+    con done () = return (core.wrap.add 0 (tensor.get (a, (core.idx 0 rows 0, core.idx 0 cols 0)), acc));
+    con again () =
+        recursive_read @(rows, cols) ((core.nat.sub (count, 1), core.wrap.add 0 (acc, 1I32), a), return);
+    (again, done)#(core.ncmp.e (count, 0)) ();
+
+extern fun slice_columns {rows cols: Nat} (a: tensor.Tensor 2 (rows, core.nat.mul (cols, 2)) I32)
+    : tensor.Tensor 2 (rows, cols) I32 =
+    return (tensor.slice (rows, core.nat.mul (cols, 2)) ((0, 0), (1, 2), (rows, cols)) a);
+
+extern fun repeat_matrix {rows cols: Nat} (a: tensor.Tensor 2 (rows, cols) I32)
+    : tensor.Tensor 2 (core.nat.mul (rows, 2), core.nat.mul (cols, 3)) I32 =
+    return (tensor.repeat (rows, cols) (core.nat.mul (rows, 2), core.nat.mul (cols, 3)) a);
+
+extern fun concat_columns {rows: Nat} (a: tensor.Tensor 2 (rows, 2) I32, b: tensor.Tensor 2 (rows, 3) I32)
+    : tensor.Tensor 2 (rows, 5) I32 =
+    return (tensor.concat 1₂ (a, b));
+
+extern fun gather_columns {rows cols: Nat}
+    (a: tensor.Tensor 2 (rows, cols) I32, index: tensor.Tensor 2 (rows, cols) (Idx cols))
+    : tensor.Tensor 2 (rows, cols) I32 =
+    return (tensor.gather ((rows, cols), (rows, cols)) 1₂ (a, index));
+
+extern fun scatter_columns {rows cols: Nat}
+    (a: tensor.Tensor 2 (rows, cols) I32, index: tensor.Tensor 2 (rows, cols) (Idx cols), updates: tensor.Tensor 2 (rows, cols) I32)
+    : tensor.Tensor 2 (rows, cols) I32 =
+    return (tensor.scatter ((rows, cols), (rows, cols), (rows, cols)) 1₂ (a, index, updates));
+
+extern fun gather_rows {rows cols: Nat}
+    (a: tensor.Tensor 2 (rows, cols) I32, index: tensor.Tensor 2 (rows, cols) (Idx rows))
+    : tensor.Tensor 2 (rows, cols) I32 =
+    return (tensor.gather ((rows, cols), (rows, cols)) 0₂ (a, index));
+
+extern fun scatter_rows {rows cols: Nat}
+    (a: tensor.Tensor 2 (rows, cols) I32, index: tensor.Tensor 2 (rows, cols) (Idx rows), updates: tensor.Tensor 2 (rows, cols) I32)
+    : tensor.Tensor 2 (rows, cols) I32 =
+    return (tensor.scatter ((rows, cols), (rows, cols), (rows, cols)) 0₂ (a, index, updates));
+
+extern fun scatter_some_rows {rows cols count: Nat}
+    (a: tensor.Tensor 2 (rows, cols) I32, index: tensor.Tensor 2 (count, cols) (Idx rows), updates: tensor.Tensor 2 (count, cols) I32)
+    : tensor.Tensor 2 (rows, cols) I32 =
+    return (tensor.scatter ((rows, cols), (count, cols), (count, cols)) 0₂ (a, index, updates));
+
+extern fun replicate_matrix {rows cols: Nat} (a: tensor.Tensor 2 (rows, cols) I32)
+    : tensor.Tensor 2 (core.nat.add (rows, 2), core.nat.add (cols, 2)) I32 =
+    return (tensor.pad (rows, cols) (1, (1, 1), (1, 1)) (a, 0I32));
+
+// CHECK: dynamic operators: 16 shapes passed

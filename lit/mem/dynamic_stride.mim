@@ -1,0 +1,30 @@
+// RUN: %mim -p opt -p ll %s -X ll:o=%t.ll
+// RUN: clang %t.ll %S/dynamic_stride_aux.c -o %t -Wno-override-module
+// RUN: %t | %FileCheck %s
+
+plugin core;
+plugin mem;
+
+extern con read_fixed_rows (m: mem.M 0, cols: Nat, a: mem.Ptr («3, cols; I32», 0), return: Cn [mem.M 0, I32]) =
+    return (mem.load (m, mem.lea (mem.lea (a, 2₃), core.idx 0 cols (core.nat.sub (cols, 1)))));
+
+extern con update_matrix (m: mem.M 0, rows cols: Nat, a: mem.Ptr («rows, cols; I32», 0), value: I32, return: Cn [mem.M 0, I32]) =
+    let i = core.idx 0 rows (core.nat.sub (rows, 1));
+    let j = core.idx 0 cols (core.nat.sub (cols, 1));
+    let p = mem.lea (mem.lea (a, i), j);
+    let (m, old) = mem.load (m, p);
+    let m = mem.store (m, p, value);
+    return (m, old);
+
+extern con read_cube (m: mem.M 0, rows cols depth: Nat, a: mem.Ptr («rows, cols, depth; I32», 0), return: Cn [mem.M 0, I32]) =
+    let i = core.idx 0 rows (core.nat.sub (rows, 1));
+    let j = core.idx 0 cols (core.nat.sub (cols, 1));
+    let k = core.idx 0 depth (core.nat.sub (depth, 1));
+    return (mem.load (m, mem.lea (mem.lea (mem.lea (a, i), j), k)));
+
+extern con read_record (m: mem.M 0, rows cols: Nat, a: mem.Ptr («rows, cols; [I8, I32]», 0), return: Cn [mem.M 0, I32]) =
+    let i = core.idx 0 rows (core.nat.sub (rows, 1));
+    let j = core.idx 0 cols (core.nat.sub (cols, 1));
+    return (mem.load (m, mem.lea (mem.lea (mem.lea (a, i), j), 1₂)));
+
+// CHECK: dependent pointer strides: 27 shapes passed

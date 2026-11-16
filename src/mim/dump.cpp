@@ -755,11 +755,12 @@ std::ostream& operator<<(std::ostream& os, Full d) {
  */
 
 /// The Lam%s a curried declaration folds into one: `lam f (a) (b) = e`.
+/// A non-`tt` filter ends the chain, as `(a)@(f) (b)` would re-read as the application `f (b)`.
 fe::Vector<Lam*> curry_chain(Lam* lam) {
     auto chain = fe::Vector<Lam*>();
     for (auto* curr = lam;;) {
         chain.emplace_back(curr);
-        if (auto body = curr->body())
+        if (auto body = curr->body(); body && curr->filter() == lam->world().lit_tt())
             if (auto next = body->isa_mut<Lam>(); next && !next->is_external()) {
                 curr = next;
                 continue;
