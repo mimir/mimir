@@ -45,6 +45,13 @@ const Def* Schedule::rewrite_mut_Lam(Lam* old_lam) {
     if (!old_lam->is_set() || !Lam::isa_cn(old_lam)) return RWPhase::rewrite_mut_Lam(old_lam);
     if (fun_ && fun_->nest[old_lam]) return thread(old_lam);
 
+    // A closed Def that contains an instruction is mapped per function, so the enclosing scopes must not answer.
+    auto outer = fe::Vector<Scope>();
+    if (old_lam->is_closed()) {
+        std::ranges::move(scopes_ | std::views::drop(1), std::back_inserter(outer));
+        scopes_.resize(1);
+    }
+
     auto fun  = Fun(old_lam);
     auto prev = std::exchange(fun_, &fun);
     for (auto mut : fun.nest.muts())
@@ -52,7 +59,15 @@ const Def* Schedule::rewrite_mut_Lam(Lam* old_lam) {
 
     auto new_lam = thread(old_lam);
     fun_         = prev;
+    std::ranges::move(outer, std::back_inserter(scopes_));
     return new_lam;
+}
+
+const Def* Schedule::rewrite_imm_App(const App* app) {
+    // thread() maps every instruction it places, so this one escaped all schedules.
+    if (is_insn(app))
+        app->blame(MIM_X86_BE "instruction `{}` is not on the `mem.M` chain of a continuation", app).bail();
+    return RWPhase::rewrite_imm_App(app);
 }
 
 const Def* Schedule::thread(Lam* old_lam) {
@@ -65,12 +80,12 @@ const Def* Schedule::thread(Lam* old_lam) {
 
     auto new_lam = w.mut_lam(rewrite(old_lam->type())->as<Pi>());
     map(old_lam, new_lam);
+    auto m = new_lam->var(n, i); // creates the Var the scope is keyed on
     push(Vars(old_lam->has_var()), Vars(new_lam->has_var()));
 
     auto order = std::move(fun_->insns[old_lam]);
     auto mems  = std::move(fun_->mems[old_lam]);
 
-    auto m = new_lam->var(n, i);
     for (auto old_def : order) {
         auto app = old_def->as<App>();
         if (Axm::isa<sched>(app)) {

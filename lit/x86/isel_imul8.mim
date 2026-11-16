@@ -4,7 +4,7 @@ plugin core;
 plugin x86;
 import compile;
 
-extern lam _compile (): compile.Phase = compile.phases ff (compile.named "x86.isel", compile.named "x86.schedule");
+extern lam _compile (): compile.Phase = compile.phases ff (compile.named "x86.isel");
 
 extern lam f (a b: I8): I8 = core.wrap.mul 0 (a, b);
 extern lam g (a: I8): I8 = core.wrap.mul 0 (a, 3I8);

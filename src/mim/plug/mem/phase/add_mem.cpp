@@ -56,7 +56,18 @@ const Def* AddMem::rewrite(const Def* old_def) {
         if (auto tuple = old_def->isa<Tuple>(); tuple && std::ranges::any_of(tuple->ops(), is_mem))
             return rewrite_imm_Tuple(tuple);
         auto new_def = Rewriter::rewrite(old_def); // may advance curr_mem_
-        return is_mem(old_def) && new_def->type() == curr_mem_->type() ? curr_mem_ : new_def;
+        auto splice  = [this](const Def* def) { return is_mem(def) && def->type() == curr_mem_->type(); };
+        if (is_mem(old_def)) return splice(new_def) ? curr_mem_ : new_def;
+
+        // An η-reduced result of a memory operation carries its memory along.
+        if (auto type = old_def->type(); type && type->isa<Sigma>() && has_mem_ty(type)) {
+            auto n = new_def->num_projs();
+            return new_world().tuple(DefVec(n, [&](size_t i) {
+                auto proj = new_def->proj(n, i);
+                return splice(proj) ? curr_mem_ : proj;
+            }));
+        }
+        return new_def;
     }
     return Rewriter::rewrite(old_def);
 }
@@ -103,20 +114,68 @@ const Def* AddMem::rewrite_mut_Lam(Lam* old_lam) {
 
     if (!old_lam->is_set()) return new_lam;
 
-    auto _ = fe::Restore(curr_mem_, mem_var(new_lam));
-    return new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
+    if (scheduler_ && scheduler_->nest()[old_lam]) return thread(old_lam, new_lam);
+
+    auto nest      = Nest(old_lam);
+    auto scheduler = Scheduler(nest);
+    auto outer     = std::exchange(scheduler_, &scheduler);
+    thread(old_lam, new_lam);
+    scheduler_ = outer;
+    return new_lam;
+}
+
+Lam* AddMem::thread(Lam* old_lam, Lam* new_lam) {
+    auto outer = active_;
+    if (!frames_.empty()) frames_[active_].mem = curr_mem_;
+    frames_.emplace_back(old_lam, nullptr);
+    active_   = frames_.size() - 1;
+    curr_mem_ = mem_var(new_lam);
+
+    new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
+
+    // A nested continuation may have advanced the chain of an outer one.
+    frames_.pop_back();
+    active_   = outer;
+    curr_mem_ = frames_.empty() ? nullptr : frames_[active_].mem;
+    return new_lam;
+}
+
+void AddMem::activate(size_t frame) {
+    frames_[active_].mem = curr_mem_;
+    active_              = frame;
+    curr_mem_            = frames_[frame].mem;
+}
+
+size_t AddMem::owner(const App* app) {
+    auto lam = scheduler_->late(frames_[active_].old_lam, app)->mut();
+    for (size_t i = frames_.size(); i-- != 0;)
+        if (frames_[i].old_lam == lam) return i == active_ || frames_[i].mem ? i : active_;
+    return active_;
 }
 
 const Def* AddMem::rewrite_imm_App(const App* app) {
     if (!curr_mem_) return Rewriter::rewrite_imm_App(app);
 
-    auto& w = new_world();
-    if (Axm::isa<mem::fresh>(app)) return w.app(rewrite(app->arg(2, 1)), curr_mem_);
+    if (Axm::isa<mem::fresh>(app)) return new_world().app(rewrite(app->arg(2, 1)), curr_mem_);
 
-    // The memory effects of the argument precede the call.
+    if (auto i = has_mem_ty(app->type()) ? owner(app) : active_; i != active_) {
+        auto user = active_;
+        activate(i);
+        auto new_app = thread(app);
+        activate(user);
+        return new_app;
+    }
+
+    return thread(app);
+}
+
+const Def* AddMem::thread(const App* app) {
+    auto& w = new_world();
+
+    // The memory effects of callee and argument precede the call.
+    auto new_callee = rewrite(app->callee());
     auto new_arg    = rewrite(app->arg());
     auto mem        = curr_mem_;
-    auto new_callee = rewrite(app->callee());
 
     if (auto old_pi = app->callee()->type()->isa<Pi>())
         if (auto new_pi = new_callee->type()->isa<Pi>(); new_pi && new_pi->num_doms() == old_pi->num_doms() + 1)
@@ -141,6 +200,10 @@ const Def* AddMem::rewrite_imm_Tuple(const Tuple* tuple) {
     for (int r = 0; r != 3; ++r)
         for (size_t i = 0; i != n; ++i)
             if (rank(tuple->op(i)) == r) new_ops[i] = rewrite(tuple->op(i));
+
+    // A continuation may have advanced the chain after the memory operands were rewritten.
+    for (size_t i = 0; i != n; ++i)
+        if (rank(tuple->op(i)) == 1 && new_ops[i]->type() == curr_mem_->type()) new_ops[i] = curr_mem_;
     return new_world().tuple(rewrite(tuple->type()), new_ops);
 }
 

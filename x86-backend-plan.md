@@ -30,7 +30,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 
 - Scheduling makes the `mem.M 0` chain total over all instructions; x86 has one address space, so isel collapses `mem.M a` to `mem.M 0`.
 - Memory instructions already sit on the chain; pure ones join it via `x86.sched: {D C: *} → (D → C) → mem.M 0 → D → [mem.M 0, C]`, e.g. `let (m, x) = x86.sched x86.add m (a, b)`.
-- After scheduling, no x86 instruction is applied outside `sched` or the chain; this is a checkable invariant.
+- After scheduling, no x86 instruction is applied outside `sched` or the chain; `x86.schedule` rejects an instruction it did not place.
 - The token makes each placement a distinct Def: copies, spills, reloads, and rematerializations at different points never merge under hash-consing.
 - Every block and function takes an `M`, and every jump and call passes the current one; the backend assumes this on entry and rejects a continuation without one.
 - A post-RA rescheduler would have to recompute memory dependencies; anything but loads, stores, and calls commutes with memory.
@@ -53,7 +53,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 
 Done (on `feature/x86`):
 
-- `x86` plugin (`src/mim/plug/x86/`), with `x86.isel`, `x86.schedule`, and `x86.emit` spliced into the default pipeline in `opt.mim`.
+- `x86` plugin (`src/mim/plug/x86/`), with `mem.add_mem` (if `x86` is loaded), `x86.isel`, `x86.schedule`, and `x86.emit` at the end of the default pipeline in `opt.mim`; by then no axiom pins a continuation's type, so every continuation has its `mem.M`.
 - `x86.mim`: `Fl`, `Addr` (`Base`, `Index`), `addr`, `scale_1`/`_2`/`_4`/`_8`, `index`, `lea`, `mov`, `rm`, `mr`, `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `imul`, `shl`, `shr`, `sar`, `movzx`, `movsx`, `trunc`, `cmp`, `test`, `cc`, `cmovcc`, plus the size predicates.
 - `x86.isel` (`src/mim/plug/x86/phase/isel.cpp`) covers `core.wrap`, `core.bit2` (and/or/xor), `core.shr`, `core.icmp`, `core.conv`, `mem.load`/`mem.store` of integers and pointers, `mem.lea` (array index or constant struct offset), `mem.assume`, `mem.mslot`, `core.idx`, `core.idx2nat`, `core.rem`, `core.div`, `core.nat`, `core.ncmp`, integer `core.bitcast`, and a select `(x, y)#c` (as `cmovcc`).
   An `Idx n` of dynamic size and `Nat` become `I64`, as in `ll`; `Nat` literals stay `Nat` so they still work as type-level arguments, and become `I64` only as values.
@@ -84,14 +84,14 @@ Done (on `feature/x86`):
   `cmp`/`test` do not fold since emit rematerializes them per consumer, and `div` does not since `cltd` clobbers the index register.
 - `x86.div`/`idiv` yield quotient and remainder as a pair, so a quotient and a remainder of the same operands share one instruction; `x86.slot n` reserves `n` frame bytes on the `mem.M` chain; `trunc` to a non-power-of-two size is an unsigned remainder.
 - `isel` widens 8-bit and `Bool` multiplications to `i32` (`movzx`, `imul`, `trunc`), since `imul` has no 8-bit form.
-- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/emit_pbqp.mim` (competing folds), `lit/x86/sched.mim`, `lit/x86/sched_join.mim` (one placement in the dominator), `lit/x86/sched_loop.mim` (hoisting), `lit/x86/sched_remat.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`.
+- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/emit_pbqp.mim` (competing folds), `lit/x86/sched.mim`, `lit/x86/sched_join.mim` (one placement in the dominator), `lit/x86/sched_loop.mim` (hoisting), `lit/x86/sched_remat.mim`, `lit/x86/sched_closed_tuple.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/sched_no_chain.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`.
 
 Known gaps:
 
 - Placement and order ignore register pressure: hoisting lengthens live ranges, the order within a block is plain topological, and nothing keeps a flag-clobbering instruction out of a `cmp` … `jcc`/`setcc` window.
 - A closed instruction below a shared non-instruction Def (a tuple, an `x86.addr`) is rematerialized once per continuation only, and a copy can end up unused on the chain.
-- A closed non-instruction Def that contains an instruction is mapped in the first function that rewrites it; a function rewritten on demand inside that one would pick up the foreign copy.
-- `mem.add_mem` cannot provide the `mem.M` the scheduler needs: on already-threaded code it passes a stale memory to branch targets and drops a store on one path.
+- `mem.add_mem` places a memory operation with `Scheduler::late`, so sibling continuations share it; a closed one (a placeholder memory and constant operands) has no registered uses and still goes to its first user only.
+  Run before `affine.For` is lowered, a continuation that an unpinned caller passes to a pinned function gains a `mem.M` the callee's type does not have.
 - Re-running the full pipeline on backend output is not meaningful (`core.legalize_idx` η-wraps `x86.trunc` to `Idx 4`); round-trip backend dumps with `--no-opt`.
 - `isel` still emits size-check failures for non-register sizes (e.g. `core.wrap.add` on `Idx 5`); these need masking or a clear rejection.
 - `isel` emits a `trunc` → `movzx` pair for array indices that `core.legalize_idx` narrowed; it is a mask (`and x, 2^k - 1`), not a no-op, and should become one `and` in PBQP isel.
@@ -222,7 +222,7 @@ The explosion is in forms (widths, register/memory/immediate operands, VEX/EVEX)
 ## Verification
 
 - Integer-only lit tests that run under `-p ll` should also run under `-p x86` with the same expected output.
-  The allowlist is a set of `%if x86_64-linux %{ … %}` RUN lines in those tests (feature set in `lit/lit.cfg.py`): every test that `-p opt … -p x86` compiles and runs correctly, 43 in total.
-  The others need `mem.M` in every continuation (`affine/for_*`, `affine/dynamic_for`, `core/pow`, `variant_niche_ll`), calls to `malloc`/`free`, aggregate memory operations, unions, or `math`.
+  The allowlist is a set of `%if x86_64-linux %{ … %}` RUN lines in those tests (feature set in `lit/lit.cfg.py`): every test that `-p opt … -p x86` compiles and runs correctly, 48 in total.
+  The others need calls to `malloc`/`free`, aggregate memory operations, unions, `math`, or the `ll` loop hints (`affine/for_vec_hint`, `affine/for_novec_hint`: `value … is not available here`).
 - Unit tests (`mim-x86-test`): register-allocation invariants, and `solve` against `solve_exhaustive` on small instances.
 - The optimizer-dump oracle for any change to the pre-isel pipeline.

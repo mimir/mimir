@@ -29,6 +29,7 @@ private:
     };
 
     const Def* rewrite_mut_Lam(Lam*) final;
+    const Def* rewrite_imm_App(const App*) final;
     const Def* thread(Lam*);
 
     /// Places the instructions and memory tokens @p def depends on, stopping at mutables.
