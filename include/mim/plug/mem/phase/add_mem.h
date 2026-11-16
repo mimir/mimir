@@ -4,31 +4,16 @@
 
 namespace mim::plug::mem::phase {
 
-/// Threads the `mem.M` memory monad through the world:
-/// mem-extends continuations and rewires every memory operand to the *current* memory at that program point.
-/// It's primarily to be used as preparation for other phases that rely on all continuations having a mem.
-/// It also splices the `⊥ : mem.M 0` memory placeholders of freshly emitted memory operations into the
-/// global memory chain and resolves `mem.fresh (a, k)` requests by jumping to `k` with the current memory
-/// (see mim::plug::tensor::phase::LowerToMem, which emits both and schedules this phase right behind itself).
+/// Threads `mem.M 0` through the World.
+/// A continuation whose domain carries no `mem.M 0` gains a leading one; hence, a second run changes nothing.
+/// While rewriting a continuation's body, AddMem::curr_mem_ is the one live memory:
+/// it starts as the continuation's memory parameter, each memory operation advances it, and every memory operand -
+/// including a `⊥`/`⊤` placeholder - is rewired to it.
+/// `mem.fresh (a, k)` jumps to `k` with it.
+/// As operands are rewritten before their users, memory operations are chained in dependency order.
 ///
-/// The rewrite is a plain RWPhase.
-/// Memory is a linear resource, so at any program point exactly one memory token is live - the *current* memory.
-/// We track it in AddMem::curr_mem_ while rewriting a continuation's body:
-/// - it starts out as the continuation's (leading or grouped) mem parameter,
-/// - a rewritten memory operation advances it to the operation's result mem, and
-/// - every memory-typed *operand* is rewritten to the current memory.
-///
-/// Because the Rewriter visits operands before their users, the current memory naturally threads through the
-/// data-dependency order - no separate schedule is required.
-/// Independent `⊥`/`⊤` placeholder chains are thereby linearized into one chain in encounter order.
-///
-/// Three rules keep the rewrite type-correct in the presence of axiom-pinned ABIs:
-/// - Only continuations (Pi::isa_cn) are mem-extended; direct-style functions (e.g. the affine index
-///   mappings passed to `btensor.map_reduce_post`) keep their signature.
-/// - A pi whose leading parameter carries the memory *grouped* (the `Fn [mem.M 0, To, ins] → …` shape of
-///   a mem-threaded combiner) counts as already mem-threaded.
-/// - Lams reachable from axm-app arguments are preserved untouched: axioms pin their arguments' ABI
-///   (e.g. the combiner slot of `btensor.map_reduce_post`), so mem-extending them would be ill-typed.
+/// Direct-style functions keep their signature.
+/// So does everything reachable from an Axm's Lam arguments, as the Axm pins their type.
 class AddMem : public RWPhase {
 public:
     using RWPhase::RWPhase;
@@ -41,15 +26,9 @@ private:
     const Def* rewrite_imm_Tuple(const Tuple*) override;
     const Def* rewrite_imm_Pi(const Pi*) override;
 
-    /// Advances AddMem::curr_mem_ if @p def produces a memory (a bare `mem.M` or a `[mem.M, …]` tuple).
-    void advance_mem(const Def* def);
-
-    /// The current memory token in the continuation being rewritten (new world), or `nullptr` outside any mem context.
-    const Def* curr_mem_ = nullptr;
-    /// `true` while rewriting a pinned-ABI subtree (an axm-app argument): no memory is threaded or added there.
-    bool preserving_ = false;
-    /// Lams (transitively) reachable from axm-app arguments: their ABI is pinned by the axiom.
-    LamSet preserved_;
+    const Def* curr_mem_ = nullptr; ///< The live memory in the new World, if any.
+    bool pinned_         = false;   ///< Are we below a Lam of AddMem::pins_?
+    LamSet pins_;
 };
 
 } // namespace mim::plug::mem::phase

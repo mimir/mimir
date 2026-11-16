@@ -21,7 +21,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 - Registers and the schedule are no concern of these types.
 - Constants are explicit: a literal operand of an instruction is an immediate and must fit its encoding (a sign-extended `i32`, any shift count), and `x86.mov c` (`mov r, imm`) puts any other constant into a register.
   Isel decides this per use, as part of the cover (Buchwald & Zwinkau, *Instruction Selection by Graph Transformation*, CASES 2010: `Add+Const` versus atomic `Const`).
-  A literal is no PBQP node: it is hash-consed across the whole world and free to rematerialize, so each using option prices it locally (immediate 0, `mov` 1) and scheduling places a closed instruction anew in every continuation.
+  A literal is no PBQP node: it is hash-consed across the whole world and free to rematerialize, so each using option prices it locally (immediate 0, `mov` 1) and scheduling rematerializes a closed instruction right before each use.
 - An address is an operand of type `x86.Addr i`, built by `x86.addr (disp, base)` and `x86.index a (index, scale)`; it is no value, so it is not scheduled and occupies no register of its own.
   Isel folds address arithmetic into it; RA may still unfold it into `x86.lea` under pressure.
 - `x86.lea: Addr i → I64` materializes an address that is used as a value; `mem.Ptr` becomes `I64` during isel.
@@ -49,23 +49,18 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 - `x86.cc cc: Fl → Bool` is `setcc` as a value and `jcc` as a branch condition.
 - `core.icmp` maps onto `x86.cc c (x86.cmp (a, b))` for `e`, `ne`, `sl`, `sle`, `sg`, `sge`, `ul`, `ule`, `ug`, `uge`; the other predicates are rejected for now.
 
-### Straight-line code first
-
-- Scheduling, register allocation, and emission first handle single-block functions only.
-- Each block's chain starts at its own `M` parameter, so control flow needs no new mechanism for the schedule.
-
 ## Status
 
 Done (on `feature/x86`):
 
 - `x86` plugin (`src/mim/plug/x86/`), with `x86.isel`, `x86.schedule`, and `x86.emit` spliced into the default pipeline in `opt.mim`.
 - `x86.mim`: `Fl`, `Addr` (`Base`, `Index`), `addr`, `scale_1`/`_2`/`_4`/`_8`, `index`, `lea`, `mov`, `rm`, `mr`, `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `imul`, `shl`, `shr`, `sar`, `movzx`, `movsx`, `trunc`, `cmp`, `test`, `cc`, `cmovcc`, plus the size predicates.
-- `x86.isel` (`src/mim/plug/x86/phase/isel.cpp`): a one-to-one translation of `core.wrap`, `core.bit2` (and/or/xor), `core.shr`, `core.icmp`, `core.conv`, `mem.load`/`mem.store` of integers and pointers, `mem.lea` (array index or constant struct offset), `mem.assume`, `mem.mslot`, `core.idx`, `core.idx2nat`, `core.rem`, `core.div`, `core.nat`, `core.ncmp`, integer `core.bitcast`, and a select `(x, y)#c` (as `cmovcc`).
+- `x86.isel` (`src/mim/plug/x86/phase/isel.cpp`) covers `core.wrap`, `core.bit2` (and/or/xor), `core.shr`, `core.icmp`, `core.conv`, `mem.load`/`mem.store` of integers and pointers, `mem.lea` (array index or constant struct offset), `mem.assume`, `mem.mslot`, `core.idx`, `core.idx2nat`, `core.rem`, `core.div`, `core.nat`, `core.ncmp`, integer `core.bitcast`, and a select `(x, y)#c` (as `cmovcc`).
   An `Idx n` of dynamic size and `Nat` become `I64`, as in `ll`; `Nat` literals stay `Nat` so they still work as type-level arguments, and become `I64` only as values.
-  This coverage is a throw-away stand-in until PBQP isel.
   Any other `core`/`mem`/`math` operation left in the selected world is an error naming the axiom.
-- `x86.schedule` (`src/mim/plug/x86/phase/schedule.cpp`) puts each continuation's instructions on its `mem.M 0` chain in DFS post-order: memory instructions are rethreaded, existing `sched`s re-placed (so the phase is idempotent), all others wrapped in `x86.sched`; every other use of a memory token gets the end of the chain.
-  An instruction reachable only from nested continuations is scheduled in the first one that reaches it; scoped mappings keep siblings from sharing it.
+- `x86.schedule` (`src/mim/plug/x86/phase/schedule.cpp`) places every instruction of a function once with `Scheduler::smart` (as late as possible, but out of loops) and threads each continuation's instructions onto its `mem.M 0` chain in topological order.
+  Memory instructions are rethreaded, existing `sched`s re-placed (so the phase is idempotent), all others wrapped in `x86.sched`; every other use of a memory token gets the end of the chain.
+  A closed instruction has no place of its own (`Scheduler::is_remat`): it gets a fresh copy right before each use.
   A continuation without a `mem.M` is an error.
 - `x86.load`/`x86.store` work on `mem.M 0`; isel collapses `mem.M a` to `mem.M 0`.
 - `x86.emit` (`src/mim/plug/x86/emit.cpp`) writes GAS text in AT&T syntax to `<world>.s` (`-X x86:o=<file>`):
@@ -80,23 +75,22 @@ Done (on `feature/x86`):
   `ISel::analyze()` builds the PBQP generically from that: every operation with a match is a node, inner alternatives are derived from the covers, edges price `conv` between rule type and hole type, and all-zero edges are left out.
   The rewrite is generic too: a root alternative's rule builds the replacement, `hole` converts operands to the hole's type, and an inner node defers to the root of its match.
   The first alternative of every node is atomic (asserted, as is that the atomic cover is valid), and it is the fallback should RN end infeasible.
-- Rules: `lea_off_base`/`lea_off_index` (constant offset, polymorphic in the index) and `lea_index` (dynamic index onto a `Base`; a second index or a `disp` beyond `i32` materializes the prefix), `load`, `store` (register or immediate), `bin` (`core.wrap`/`core.bit2`/`core.shr`, register or immediate), `bin_rm`, `store_mr`, `cmp`, `nat`, `unary` (conversions), `div`, `slot`, `assume`, `select`.
-- `bin_rm` folds a sole load into `add`/`sub`/`and`/`or`/`xor`/`imul` as `x86.rm f (m, a, addr)` (`op r, addr`): the replacement sits at the load, so the other operand must be in scope of the load's block and must not depend on the load.
-  `store_mr` folds a store right behind the load (the load's memory has no other user) of an operation on the loaded value to the same address into `x86.mr f (m, addr, b)` (`op addr, r/imm`; not `imul`).
-  `cmp`/`test` do not fold since emit rematerializes them per consumer.
+- Rules: `lea_off_base`/`lea_off_index` (polymorphic in the index), `lea_index` (onto a `Base`), `load`, `store` (register or immediate), `bin` (`core.wrap`/`core.bit2`/`core.shr`, register or immediate), `bin_rm`, `store_mr`, `cmp`, `nat`, `unary` (conversions), `div`, `slot`, `assume`, `select`.
 - Not yet as designed: matchers are C++ code with their conditions inline, so atomic completeness and composability are asserted per program instead of checked over the rule set; this comes with rules as data.
 - `x86.emit` prints a literal operand as `$c` and rejects one where the instruction needs a register.
 - Address rules: constant indices and struct offsets go into `disp`, one dynamic index with an element size of 1, 2, 4, or 8 into `index`/`scale` (otherwise `imul`), and a second dynamic index or a `disp` beyond `i32` materializes the prefix with `lea` or `add`.
-- `rm` rules fold a sole load into `add`/`sub`/`and`/`or`/`xor`/`imul` as `x86.rm f (m, a, addr)` (`op r, addr`): the user moves to the load's place in the memory order, so its other operand must be in scope of the load's block and must not depend on the load.
-  `mr` rules fold a store right behind the load (the load's memory has no other user) of an operation on the loaded value to the same address into `x86.mr f (m, addr, b)` (`op addr, r`; not `imul`).
+- `bin_rm` folds a sole load into `add`/`sub`/`and`/`or`/`xor`/`imul` as `x86.rm f (m, a, addr)` (`op r, addr`): the user moves to the load's place in the memory order, so its other operand must be in scope of the load's block and must not depend on the load.
+  `store_mr` folds a store right behind the load (the load's memory has no other user) of an operation on the loaded value to the same address into `x86.mr f (m, addr, b)` (`op addr, r/imm`; not `imul`).
   `cmp`/`test` do not fold since emit rematerializes them per consumer, and `div` does not since `cltd` clobbers the index register.
 - `x86.div`/`idiv` yield quotient and remainder as a pair, so a quotient and a remainder of the same operands share one instruction; `x86.slot n` reserves `n` frame bytes on the `mem.M` chain; `trunc` to a non-power-of-two size is an unsigned remainder.
 - `isel` widens 8-bit and `Bool` multiplications to `i32` (`movzx`, `imul`, `trunc`), since `imul` has no 8-bit form.
-- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/emit_pbqp.mim` (competing folds), `lit/x86/sched.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`.
+- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/emit_pbqp.mim` (competing folds), `lit/x86/sched.mim`, `lit/x86/sched_join.mim` (one placement in the dominator), `lit/x86/sched_loop.mim` (hoisting), `lit/x86/sched_remat.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`.
 
 Known gaps:
 
-- The schedule order is plain topological: no register pressure, and nothing keeps a flag-clobbering instruction out of a `cmp` … `jcc`/`setcc` window.
+- Placement and order ignore register pressure: hoisting lengthens live ranges, the order within a block is plain topological, and nothing keeps a flag-clobbering instruction out of a `cmp` … `jcc`/`setcc` window.
+- A closed instruction below a shared non-instruction Def (a tuple, an `x86.addr`) is rematerialized once per continuation only, and a copy can end up unused on the chain.
+- A closed non-instruction Def that contains an instruction is mapped in the first function that rewrites it; a function rewritten on demand inside that one would pick up the foreign copy.
 - `mem.add_mem` cannot provide the `mem.M` the scheduler needs: on already-threaded code it passes a stale memory to branch targets and drops a store on one path.
 - Re-running the full pipeline on backend output is not meaningful (`core.legalize_idx` η-wraps `x86.trunc` to `Idx 4`); round-trip backend dumps with `--no-opt`.
 - `isel` still emits size-check failures for non-register sizes (e.g. `core.wrap.add` on `Idx 5`); these need masking or a clear rejection.
@@ -108,8 +102,6 @@ Known gaps:
 - A user-file `axm` with a checked codomain dumped as `… → Idx _1` with `_1` unbound; likely a dumper round-trip bug.
 
 ## Next Steps
-
-Done: scheduling in topological order, emission of GAS text (AT&T syntax) with control flow and SysV calls on a spill-everything stand-in allocator (no encoder or ELF writer for now), and enough one-to-one isel to run 43 of the `clang`-run lit tests.
 
 1. **PBQP instruction selection**: rules are single objects with typed holes now (see *Staging*); next is rules as data with the solvability checks over the rule set, and only then rules in bulk (`cc` for flags consumed by branches and `cmov`, scaled indices from `shl`/`mul`, three-operand `add` via `lea`, the `and` mask for `trunc` → `movzx`).
 2. **Register allocation** with PBQP, including pressure-aware list scheduling, spilling, and SSA destruction; each piece replaces a stand-in and is checked against the allowlist.
@@ -184,9 +176,8 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 
 ### Staging
 
-- First, each rule is one C++ object: pattern matcher, hole types, conditions, cost, and replacement builder.
-  The PBQP construction, the solvability checks, and the rewrite are generic over the rule list.
-  The current rules (addresses, `rm`, `mr`, immediates) and the one-to-one translations are ported onto it.
+- Now, each rule is one C++ object: pattern matcher, hole types, conditions, cost, and replacement builder.
+  The PBQP construction and the rewrite are generic over the rule list; the solvability checks are still asserted per program.
 - Later, the rule list is generated from Mim rules (*Pattern Database*); nothing else changes.
 
 ### Open points
