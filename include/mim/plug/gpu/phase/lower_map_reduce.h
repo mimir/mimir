@@ -31,8 +31,11 @@ private:
 
     /// The lowerable call whose buffer result is @p def, if only the reading call consumes it.
     const App* chainable(const Def* def);
-    /// `nullptr` unless @p app has lowering-time known ranks, grid shape, combiner and epilogue.
+    /// `nullptr` unless @p app can become a kernel (see the `plan_*` below) taking fewer than
+    /// Flags::scalarize_threshold arguments.
     Call* plan(const App* app, std::deque<Call>&);
+    /// `nullptr` unless @p app has lowering-time known ranks, grid shape, combiner and epilogue.
+    Call* plan_map_reduce(const App* app, std::deque<Call>&);
     /// `nullptr` unless @p app has lowering-time known input count, rank, axis and shapes.
     Call* plan_concat(const App* app, std::deque<Call>&);
     /// `nullptr` unless @p app is constant-mode with lowering-time known rank, shapes and a literal fill value.

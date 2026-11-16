@@ -767,9 +767,20 @@ LowerMapReduce::Call* LowerMapReduce::plan_pad(const App* app, std::deque<Call>&
 }
 
 LowerMapReduce::Call* LowerMapReduce::plan(const App* app, std::deque<Call>& calls) {
-    if (Axm::isa<btensor::concat>(app)) return plan_concat(app, calls);
-    if (Axm::isa<btensor::pad>(app)) return plan_pad(app, calls);
+    auto call = Axm::isa<btensor::concat>(app) ? plan_concat(app, calls)
+              : Axm::isa<btensor::pad>(app)    ? plan_pad(app, calls)
+                                               : plan_map_reduce(app, calls);
+    // `gpu.launch` types the kernel arguments as `«i: n; Ts#i»`. From Flags::scalarize_threshold on, that Seq is
+    // not unrolled, and Scalarize cannot coerce the flattened kernel to it. The planned producers stay unused.
+    auto n_args = call ? call->ins.size() + call->posts.size() + 1 : 0;
+    if (n_args >= new_world().flags().scalarize_threshold) {
+        log().w("{} would launch a kernel with {} arguments; keeping it on the host", app, n_args);
+        return nullptr;
+    }
+    return call;
+}
 
+LowerMapReduce::Call* LowerMapReduce::plan_map_reduce(const App* app, std::deque<Call>& calls) {
     auto mr    = btensor::MapRedPost::of(rewrite(app->callee())->as<App>());
     auto ranks = mr.ranks();
     if (!ranks) {
