@@ -10,13 +10,17 @@ Liveness::Liveness(Lam* fun) {
     add(fun);
     for (size_t i = 0; i != blocks_.size(); ++i)
         chain(i);
+    for (auto& block : blocks_)
+        values(block);
 
     for (size_t i = 0, e = blocks_.size(); i != e; ++i) {
-        auto used = term_uses(blocks_[i]);
-        for (auto insn : blocks_[i].insns)
-            std::ranges::copy(uses(insn), std::back_inserter(used));
-        for (auto value : used)
-            if (&def_block(value) != &blocks_[i]) live_in(i, value);
+        auto gen = [&](const DefVec& used) {
+            for (auto value : used)
+                if (&def_block(value) != &blocks_[i]) live_in(i, value);
+        };
+        gen(blocks_[i].term_uses);
+        for (const auto& used : blocks_[i].uses)
+            gen(used);
     }
 
     for (auto& block : blocks_)
@@ -46,25 +50,18 @@ void Liveness::chain(size_t b) {
         auto prev = app ? prev_mem(app) : nullptr;
         if (!prev) m->blame(MIM_X86_BE "unexpected memory `{}` in `{}`", m, lam).bail();
         insns.emplace_back(app);
-        insn2block_.emplace(app, b);
         m = prev;
     }
     std::ranges::reverse(insns);
+    for (size_t i = 0; i != insns.size(); ++i)
+        insn2block_.emplace(insns[i], std::pair(b, i));
     blocks_[b].insns = std::move(insns);
 
-    auto succ = [&](const Def* def) {
-        if (auto bb = Lam::isa_mut_basicblock(def); bb && bb->is_set()) {
-            auto s = add(bb);
-            blocks_[b].succs.emplace_back(s);
-            blocks_[s].preds.emplace_back(b);
-        }
-    };
-    succ(term->callee());
-    if (auto ex = term->callee()->isa<Extract>())
-        for (auto target : ex->tuple()->projs())
-            succ(target);
-    for (auto arg : term->args())
-        succ(arg);
+    for_each_succ(term, [&](Lam* bb) {
+        auto s = add(bb);
+        blocks_[b].succs.emplace_back(s);
+        blocks_[s].preds.emplace_back(b);
+    });
 }
 
 Liveness::Class Liveness::cls(const Def* value) {
@@ -98,42 +95,25 @@ void Liveness::values(const Def* def, DefVec& res, DefSet& done) const {
     }
 }
 
-DefVec Liveness::params(const Block& block) const {
-    auto res  = DefVec();
-    auto done = DefSet();
-    values(block.lam->var(), res, done);
-    return res;
-}
+void Liveness::values(Block& block) {
+    auto run = [this](auto... defs) {
+        auto res  = DefVec();
+        auto done = DefSet();
+        (values(defs, res, done), ...);
+        return res;
+    };
 
-DefVec Liveness::defs(const App* insn) const {
-    auto res  = DefVec();
-    auto done = DefSet();
-    values(insn, res, done);
-    return res;
-}
-
-DefVec Liveness::uses(const App* insn) const {
-    auto res  = DefVec();
-    auto done = DefSet();
-    values(insn->callee(), res, done);
-    values(insn->arg(), res, done);
-    return res;
-}
-
-DefVec Liveness::term_uses(const Block& block) const {
-    auto res  = DefVec();
-    auto done = DefSet();
-    auto term = block.lam->body()->as<App>();
-    if (auto ex = term->callee()->isa<Extract>()) {
-        if (auto cc = isa_sched_cc(ex->index())) {
-            values(cc->arg(), res, done);
-            values(ex->tuple(), res, done);
-            values(term->arg(), res, done);
-            return res;
-        }
+    block.params = run(block.lam->var());
+    for (auto insn : block.insns) {
+        block.defs.emplace_back(run(insn));
+        block.uses.emplace_back(run(insn->callee(), insn->arg()));
     }
-    values(term, res, done);
-    return res;
+    auto term = block.lam->body()->as<App>();
+    auto ex   = term->callee()->isa<Extract>();
+    if (auto cc = ex ? isa_sched_cc(ex->index()) : nullptr)
+        block.term_uses = run(cc->arg(), ex->tuple(), term->arg());
+    else
+        block.term_uses = run(term);
 }
 
 const Liveness::Block& Liveness::def_block(const Def* value) const {
@@ -141,7 +121,7 @@ const Liveness::Block& Liveness::def_block(const Def* value) const {
     while (auto ex = root->isa<Extract>())
         root = ex->tuple();
     if (auto var = root->isa<Var>()) return blocks_[lam2block_.find(var->binder()->as<Lam>())->second];
-    return blocks_[insn2block_.find(root)->second];
+    return blocks_[insn2block_.find(root)->second.first];
 }
 
 void Liveness::live_in(size_t b, const Def* value) {
@@ -173,15 +153,15 @@ void Liveness::sweep(Block& block) {
             if (live.erase(value)) --count[cls(value)];
     };
 
-    gen(term_uses(block));
-    for (auto insn : block.insns | std::views::reverse) {
-        auto ds = defs(insn);
+    gen(block.term_uses);
+    for (size_t i = block.insns.size(); i-- != 0;) {
+        const auto& ds = block.defs[i];
         // A dead result occupies a register nonetheless, unless it is a condition that only a branch consumes.
-        if (!is_sched_cc(insn)) gen(ds);
+        if (!is_sched_cc(block.insns[i])) gen(ds);
         kill(ds);
-        gen(uses(insn));
+        gen(block.uses[i]);
     }
-    gen(params(block));
+    gen(block.params);
 }
 
 } // namespace mim::plug::x86

@@ -14,21 +14,31 @@ namespace mim::plug::x86::phase {
 
 namespace {
 
-constexpr size_t Num_Regs                = 16;
-constexpr size_t Rax                     = 0;
-constexpr std::array<size_t, 6> Arg_Regs = {7, 6, 2, 1, 8, 9};
-// rax, rcx, rdx, rsi, rdi, r8-r11; rsp and rbp are reserved.
-constexpr std::array<bool, Num_Regs> Caller_Saved = {1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0};
-constexpr pbqp::Cost Move                         = 4;
+constexpr pbqp::Cost Move = 4;
 // A callee-saved register costs a save and a restore once per function, not per value.
 constexpr pbqp::Cost Callee_Saved = 1;
 
-bool reserved(size_t r) { return r == 4 || r == 5; }
 size_t phys(const Def* r) { return *Lit::isa(r); }
 
-const Def* strip(const Def* def) {
-    if (auto in = Axm::isa<x86::in>(def)) return in->arg();
-    return def;
+/// Rewrites the filter and body of each block of @p live in place.
+void rewrite_blocks(const Liveness& live, Rewriter& rw) {
+    for (const auto& block : live.blocks()) {
+        auto lam    = block.lam;
+        auto filter = rw.rewrite(lam->filter());
+        auto body   = rw.rewrite(lam->body());
+        lam->unset()->set(filter, body);
+    }
+}
+
+/// Calls @p f for each use of a value in @p live.
+void for_each_use(const Liveness& live, auto f) {
+    for (const auto& block : live.blocks()) {
+        for (const auto& uses : block.uses)
+            for (auto u : uses)
+                f(u);
+        for (auto u : block.term_uses)
+            f(u);
+    }
 }
 
 pbqp::Costs matrix(auto f) {
@@ -104,13 +114,7 @@ void prune(Lam* fun) {
     }
 
     auto count = DefMap<size_t>();
-    for (const auto& block : live.blocks()) {
-        for (auto insn : block.insns)
-            for (auto u : live.uses(insn))
-                ++count[u];
-        for (auto u : live.term_uses(block))
-            ++count[u];
-    }
+    for_each_use(live, [&](const Def* u) { ++count[u]; });
 
     auto unused = [&](const Def* d) {
         auto n = fe::lookup(count, d);
@@ -138,12 +142,7 @@ void prune(Lam* fun) {
     if (dead.empty()) return;
 
     auto prune = Prune(fun->world(), dead);
-    for (const auto& block : live.blocks()) {
-        auto lam    = block.lam;
-        auto filter = prune.rewrite(lam->filter());
-        auto body   = prune.rewrite(lam->body());
-        lam->unset()->set(filter, body);
-    }
+    rewrite_blocks(live, prune);
 }
 
 /// Wraps every use of a value in `x86.in`.
@@ -204,7 +203,8 @@ public:
         constraints();
         copies();
         solve();
-        assign();
+        auto assign = Assign(fun_->world(), live_, regs_);
+        rewrite_blocks(live_, assign);
     }
 
 private:
@@ -212,7 +212,6 @@ private:
     void constraints();
     void copies();
     void solve();
-    void assign();
 
     void add(const Def* v);
     pbqp::Costs* costs(const Def* v) {
@@ -253,28 +252,22 @@ private:
     const pbqp::Costs interfere_ = matrix([](size_t i, size_t j) { return i == j ? pbqp::Cost::inf() : 0; });
     const pbqp::Costs tie_       = matrix([](size_t i, size_t j) { return i == j ? 0 : pbqp::Cost::inf(); });
     const pbqp::Costs move_      = matrix([](size_t i, size_t j) { return i == j ? 0 : Move; });
+    const pbqp::Costs base_      = pbqp::Costs(Num_Regs, [](size_t r) {
+        return reserved(r) ? pbqp::Cost::inf() : Caller_Saved[r] ? pbqp::Cost(0) : Callee_Saved;
+    });
     DefMap<size_t> regs_;
 };
 
 void Colorer::add(const Def* v) {
-    auto cs = pbqp::Costs();
-    for (size_t r = 0; r != Num_Regs; ++r)
-        cs.emplace_back(reserved(r) ? pbqp::Cost::inf() : Caller_Saved[r] ? pbqp::Cost(0) : Callee_Saved);
-    ids_[v] = graph_.add(cs);
+    ids_[v] = graph_.add(base_);
     values_.emplace_back(v);
-    costs_.emplace_back(cs);
+    costs_.emplace_back(base_);
 }
 
 /// Values are added in an order that respects dominance, so their ids are the PEO for RN.
 void Colorer::nodes() {
     auto used = DefSet();
-    for (const auto& block : live_.blocks()) {
-        for (auto insn : block.insns)
-            for (auto u : live_.uses(insn))
-                used.emplace(u);
-        for (auto u : live_.term_uses(block))
-            used.emplace(u);
-    }
+    for_each_use(live_, [&](const Def* u) { used.emplace(u); });
 
     for (const auto& block : live_.blocks()) {
         for (auto x : live_.params(block))
@@ -298,8 +291,9 @@ void Colorer::constraints() {
             for (auto [j, r] : c.results)
                 fix(result(insn, j), phys(r));
             if (c.tied) link(c.ops[*c.tied], result(insn, 0), tie_);
+            const auto& uses = live_.uses(insn);
             for (auto r : c.clobbers)
-                for (auto u : live_.uses(insn))
+                for (auto u : uses)
                     forbid(u, phys(r));
         }
     }
@@ -327,8 +321,9 @@ void Colorer::copies() {
                 if (auto x = term->arg(m, i); !is_mem(x) && a < Arg_Regs.size()) prefer(x, Arg_Regs[a++]);
             if (auto k = call_cont(live_, fun_, block)) {
                 for (auto v : k->live_in)
-                    for (size_t r = 0; r != Num_Regs; ++r)
-                        if (Caller_Saved[r]) forbid(v, r);
+                    if (auto cs = costs(v))
+                        for (size_t r = 0; r != Num_Regs; ++r)
+                            if (Caller_Saved[r]) (*cs)[r] = pbqp::Cost::inf();
                 for (auto x : live_.params(*k))
                     if (!is_mem(x)) prefer(x, Rax);
             }
@@ -340,10 +335,8 @@ void Colorer::solve() {
     for (size_t i = 0; i != values_.size(); ++i)
         graph_.set_node_costs(i, costs_[i]);
 
-    auto priority = fe::Vector<size_t>();
-    for (size_t i = 0; i != values_.size(); ++i)
-        priority.emplace_back(i);
-    auto sol = pbqp::solve(graph_, priority);
+    auto priority = fe::Vector<size_t>(values_.size(), [](size_t i) { return i; });
+    auto sol      = pbqp::solve(graph_, priority);
     if (!sol.feasible()) {
         auto conflicts = DefVec();
         for (size_t i = 0; i != values_.size(); ++i)
@@ -354,16 +347,6 @@ void Colorer::solve() {
     }
     for (size_t i = 0; i != values_.size(); ++i)
         regs_[values_[i]] = sol.choices[i];
-}
-
-void Colorer::assign() {
-    auto assign = Assign(fun_->world(), live_, regs_);
-    for (const auto& block : live_.blocks()) {
-        auto lam    = block.lam;
-        auto filter = assign.rewrite(lam->filter());
-        auto body   = assign.rewrite(lam->body());
-        lam->unset()->set(filter, body);
-    }
 }
 
 /// Checks the invariants of an assignment over a fresh Liveness of @p fun.

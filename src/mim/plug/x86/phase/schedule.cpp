@@ -1,12 +1,8 @@
 #include "mim/plug/x86/phase/schedule.h"
 
-#include <mim/plug/core/core.h>
-
 #include "mim/plug/x86/x86.h"
 
 namespace mim::plug::x86::phase {
-
-namespace core = mim::plug::core;
 
 namespace {
 
@@ -112,8 +108,7 @@ void Schedule::chain(Lam* lam, size_t i) {
     for (auto old_def : order) {
         auto app = old_def->as<App>();
         if (Axm::isa<sched>(app)) {
-            auto f   = app->callee()->as<App>()->callee()->as<App>()->arg();
-            auto res = w.call<sched>(rewrite(f), m, rewrite(app->arg()));
+            auto res = w.call<sched>(rewrite(sched_insn(app)), m, rewrite(app->arg()));
             m        = res->proj(2, 0);
             map(old_def, res);
         } else if (prev_mem(app)) {

@@ -51,7 +51,6 @@ struct Alt {
     pbqp::Cost cost  = 0;
     fe::Vector<Demand> demands;
     fe::Vector<Cover> covers;
-    std::array<const Def*, 3> bind{}; ///< What the matcher bound for Rule::build.
 };
 
 using Alts = fe::Vector<Alt>;
@@ -87,7 +86,10 @@ public:
 
     /// @name For Rules
     ///@{
-    size_t uses(const Def* def) const { return uses_.contains(def) ? uses_.at(def) : 0; }
+    size_t uses(const Def* def) const {
+        auto n = fe::lookup(uses_, def);
+        return n ? *n : 0;
+    }
     /// The `mem.load` of old_world() that @p def is the value of, if nothing else uses this value.
     const App* sole_load(const Def* def) const;
     /// The old_world() operand @p def as @p want in new_world().

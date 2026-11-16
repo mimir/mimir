@@ -4,6 +4,7 @@
 
 #include <mim/plug/core/core.h>
 #include <mim/plug/ll/autogen.h>
+#include <mim/plug/math/math.h>
 #include <mim/plug/mem/mem.h>
 
 #include "mim/plug/x86/x86.h"
@@ -85,7 +86,7 @@ const Def* rr(World& w, const Def* a, const Def* b) {
 /// Result @p I of `div r` or `idiv r`: quotient or remainder.
 template<class Id, size_t I>
 const Def* divrem(World& w, const Def* a, const Def* b) {
-    return w.call<Id>(Defs{reg(w, a), reg(w, b)})->proj(2, I);
+    return rr<Id>(w, a, b)->proj(2, I);
 }
 
 /// A shift by `cl` or an immediate.
@@ -102,8 +103,7 @@ const Def* ones(World& w, const Def* type) {
 
 bool is_lowered_plugin(const Axm* axm) {
     auto p = axm->plugin();
-    return p == Annex::flags2plugin(Annex::Base<core::M>) || p == Annex::flags2plugin(Annex::Base<mem::load>)
-        || p == Annex::flags2plugin(Annex::Base<math::F>);
+    return p == core::Plugin_Id || p == mem::Plugin_Id || p == math::Plugin_Id;
 }
 
 /// The x86 instruction for the `core` operation @p def if it has a memory-operand form (read-modify-write if @p rmw).
@@ -241,15 +241,11 @@ pbqp::Cost leaf(const Def* def, Want want) {
 
 constexpr u64 Load = 1; ///< The inner node `mem.load (m, p: Addr i)`.
 
-Alt root(const Rule& rule,
-         pbqp::Cost cost,
-         std::initializer_list<Demand> demands,
-         std::array<const Def*, 3> bind = {}) {
+Alt root(const Rule& rule, pbqp::Cost cost, std::initializer_list<Demand> demands) {
     auto alt    = Alt();
     alt.rule    = &rule;
     alt.cost    = cost;
     alt.demands = demands;
-    alt.bind    = bind;
     return alt;
 }
 
@@ -284,18 +280,19 @@ const Def* build_store(ISel& s, const Def* root, const Alt& alt) {
 }
 
 const Def* build_store_mr(ISel& s, const Def* root, const Alt& alt) {
-    auto& w             = s.new_world();
-    auto [_, p, u]      = root->as<App>()->args<3>();
-    auto [ld, other, x] = alt.bind;
-    auto b              = s.hole(other, alt.covers[0].demands[1].want);
+    auto& w        = s.new_world();
+    auto [_, p, u] = root->as<App>()->args<3>();
+    auto ld        = alt.covers[1].def;
+    auto other     = alt.covers[0].demands[1];
+    auto b         = s.hole(other.def, other.want);
     return w.call<mr>(alu(w, u), Defs{s.rewrite(ld->as<App>()->arg(2, 0)), s.hole(p, Want::Addr), b});
 }
 
 const Def* build_bin(ISel& s, const Def* root, const Alt& alt) {
     auto& w  = s.new_world();
     auto app = root->as<App>();
-    auto a   = s.hole(alt.bind[0], alt.demands[0].want);
-    auto b   = s.hole(alt.bind[1], alt.demands[1].want);
+    auto a   = s.hole(alt.demands[0].def, alt.demands[0].want);
+    auto b   = s.hole(alt.demands[1].def, alt.demands[1].want);
     if (auto op = Axm::isa<core::wrap>(app)) {
         switch (op.id()) {
             case core::wrap::add: return bin<add>(w, a, b);
@@ -321,17 +318,17 @@ const Def* build_bin(ISel& s, const Def* root, const Alt& alt) {
 
 const Def* build_bin_rm(ISel& s, const Def* root, const Alt& alt) {
     auto& w     = s.new_world();
-    auto ld     = alt.bind[0]->as<App>();
+    auto ld     = alt.covers[0].def->as<App>();
     auto [m, p] = ld->args<2>();
-    auto res    = w.call<rm>(alu(w, root), Defs{s.rewrite(m), s.hole(alt.bind[1]), s.hole(p, Want::Addr)});
+    auto res    = w.call<rm>(alu(w, root), Defs{s.rewrite(m), s.hole(alt.demands[0].def), s.hole(p, Want::Addr)});
     s.map(ld, res);
     return res->proj(2, 1);
 }
 
 const Def* build_cmp(ISel& s, const Def* root, const Alt& alt) {
     auto& w   = s.new_world();
-    auto a    = s.hole(alt.bind[0]);
-    auto b    = s.hole(alt.bind[1], alt.demands[1].want);
+    auto a    = s.hole(alt.demands[0].def);
+    auto b    = s.hole(alt.demands[1].def, alt.demands[1].want);
     auto op   = Axm::isa<core::icmp>(root);
     auto code = op ? cc(op.id()) : cc(Axm::as<core::ncmp>(root).id());
     return w.call<x86::cc>(*code, bin<cmp>(w, a, b));
@@ -339,8 +336,8 @@ const Def* build_cmp(ISel& s, const Def* root, const Alt& alt) {
 
 const Def* build_nat(ISel& s, const Def* root, const Alt& alt) {
     auto& w = s.new_world();
-    auto a  = s.hole(alt.bind[0]);
-    auto b  = s.hole(alt.bind[1], alt.demands[1].want);
+    auto a  = s.hole(alt.demands[0].def);
+    auto b  = s.hole(alt.demands[1].def, alt.demands[1].want);
     switch (Axm::as<core::nat>(root).id()) {
         case core::nat::add: return bin<add>(w, a, b);
         case core::nat::mul: return bin<imul>(w, a, b);
@@ -381,8 +378,8 @@ const Def* build_unary(ISel& s, const Def* root, const Alt& alt) {
 const Def* build_div(ISel& s, const Def* root, const Alt& alt) {
     auto& w   = s.new_world();
     auto op   = Axm::as<core::div>(root);
-    auto x    = s.hole(alt.bind[0]);
-    auto y    = s.hole(alt.bind[1]);
+    auto x    = s.hole(alt.demands[0].def);
+    auto y    = s.hole(alt.demands[1].def);
     auto type = x->type();
     const Def* res;
     switch (op.id()) {
@@ -410,9 +407,9 @@ const Def* build_assume(ISel& s, const Def* root, const Alt&) { return s.rewrite
 const Def* build_select(ISel& s, const Def* root, const Alt& alt) {
     auto& w   = s.new_world();
     auto size = *xsize(root->type());
-    auto x    = s.hole(alt.bind[0]);
-    auto y    = s.hole(alt.bind[1]);
-    auto c    = s.hole(alt.bind[2]);
+    auto x    = s.hole(alt.demands[0].def);
+    auto y    = s.hole(alt.demands[1].def);
+    auto c    = s.hole(alt.demands[2].def);
     auto code = 5_n;
     auto fl   = rr<test>(w, c, c);
     if (auto app = c->isa<App>(); app && app->axm() && app->axm()->flags() == Annex::Base<x86::cc>)
@@ -450,7 +447,7 @@ void match(const ISel& s, const Def* def, Alts& alts) {
         if (xsize(ex->type()) && Idx::isa_lit(index->type()) == 2 && !Lit::isa(index)
             && ex->tuple()->num_projs() == 2) {
             auto [x, y] = ex->tuple()->projs<2>();
-            alts.emplace_back(root(select_, 1, {{x}, {y}, {index}}, {x, y, index}));
+            alts.emplace_back(root(select_, 1, {{x}, {y}, {index}}));
         }
         return;
     }
@@ -483,7 +480,7 @@ void match(const ISel& s, const Def* def, Alts& alts) {
                 if (auto ld = s.sole_load(v);
                     ld && v != other && ld->arg(2, 1) == p && ld->proj(2, 0) == m && s.uses(m) == 1) {
                     auto inner = (*alu_id(u, true) << 2) | (v == b ? 2 : 0) | (ri(other) == Want::Imm ? 1 : 0);
-                    auto alt   = root(store_mr, 1, {{p, Want::Addr}, {x, Want::Reg, inner}}, {ld, other, u});
+                    auto alt   = root(store_mr, 1, {{p, Want::Addr}, {x, Want::Reg, inner}});
                     alt.covers.emplace_back(Cover{u, inner, {{v, Want::Reg, Load}, {other, ri(other)}}});
                     alt.covers.emplace_back(Cover{ld, Load, {{p, Want::Addr}}});
                     alts.emplace_back(std::move(alt));
@@ -495,11 +492,11 @@ void match(const ISel& s, const Def* def, Alts& alts) {
         auto b2     = Axm::isa<core::bit2>(app);
         auto [a, b] = app->args<2>();
         auto sh     = !b2 && (!w || w.id() == core::wrap::shl);
-        alts.emplace_back(root(bin_, 1, {{a}, {b}}, {a, b}));
+        alts.emplace_back(root(bin_, 1, {{a}, {b}}));
         if (Lit::isa(b) && (sh || fits_imm(b)))
-            alts.emplace_back(root(bin_, 1, {{a}, {b, Want::Imm}}, {a, b}));
+            alts.emplace_back(root(bin_, 1, {{a}, {b, Want::Imm}}));
         else if (!sh && commutes(app) && ri(a) == Want::Imm)
-            alts.emplace_back(root(bin_, 1, {{b}, {a, Want::Imm}}, {b, a}));
+            alts.emplace_back(root(bin_, 1, {{b}, {a, Want::Imm}}));
 
         if (!alu_id(app, false) || s.uses(app->arg()) != 1) return;
         for (auto [v, other] : {std::pair{b, a}, std::pair{a, b}}) {
@@ -510,7 +507,7 @@ void match(const ISel& s, const Def* def, Alts& alts) {
             auto bb   = chain(ld->arg(2, 0));
             auto done = DefSet();
             if (bb && other->in_scope(bb) && !depends(other, ld, done)) {
-                auto alt = root(bin_rm, 1, {{other}, {v, Want::Reg, Load}}, {ld, other});
+                auto alt = root(bin_rm, 1, {{other}, {v, Want::Reg, Load}});
                 alt.covers.emplace_back(Cover{ld, Load, {{ld->arg(2, 1), Want::Addr}}});
                 alts.emplace_back(std::move(alt));
             }
@@ -520,22 +517,22 @@ void match(const ISel& s, const Def* def, Alts& alts) {
         auto nc = Axm::isa<core::ncmp>(app);
         if (!(ic ? cc(ic.id()) : cc(nc.id()))) return;
         auto [a, b] = app->args<2>();
-        alts.emplace_back(root(cmp_, 2, {{a}, {b}}, {a, b}));
-        if (ri(b) == Want::Imm) alts.emplace_back(root(cmp_, 2, {{a}, {b, Want::Imm}}, {a, b}));
+        alts.emplace_back(root(cmp_, 2, {{a}, {b}}));
+        if (ri(b) == Want::Imm) alts.emplace_back(root(cmp_, 2, {{a}, {b, Want::Imm}}));
     } else if (auto op = Axm::isa<core::nat>(app)) {
         auto [a, b] = app->args<2>();
         auto imm    = op.id() == core::nat::add || op.id() == core::nat::mul || op.id() == core::nat::sub;
-        alts.emplace_back(root(nat_, 1, {{a}, {b}}, {a, b}));
+        alts.emplace_back(root(nat_, 1, {{a}, {b}}));
         if (imm && ri(b) == Want::Imm)
-            alts.emplace_back(root(nat_, 1, {{a}, {b, Want::Imm}}, {a, b}));
+            alts.emplace_back(root(nat_, 1, {{a}, {b, Want::Imm}}));
         else if (imm && op.id() != core::nat::sub && ri(a) == Want::Imm)
-            alts.emplace_back(root(nat_, 1, {{b}, {a, Want::Imm}}, {b, a}));
+            alts.emplace_back(root(nat_, 1, {{b}, {a, Want::Imm}}));
     } else if (Axm::isa<core::conv>(app) || Axm::isa<core::idx>(app) || Axm::isa<core::idx2nat>(app)
                || Axm::isa<core::bitcast>(app) || Axm::isa<core::rem>(app)) {
         alts.emplace_back(root(unary, 1, {{app->arg()}}));
     } else if (auto op = Axm::isa<core::div>(app)) {
         auto [x, y] = op->arg(2, 1)->projs<2>();
-        alts.emplace_back(root(div_, 1, {{x}, {y}}, {x, y}));
+        alts.emplace_back(root(div_, 1, {{x}, {y}}));
     } else if (Axm::isa<mem::mslot>(app)) {
         alts.emplace_back(root(slot_, 1, {}));
     } else if (Axm::isa<mem::assume>(app)) {
@@ -622,8 +619,7 @@ bool ISel::analyze() {
     auto atomic = pbqp::Choices(graph.num_nodes(), 0);
     assert(!pbqp::evaluate(graph, atomic).is_inf() && "the atomic rules must cover the program");
     auto sol = pbqp::solve(graph);
-    old_world().log().d("x86 isel: {} nodes, {} edges, cost {}", graph.num_nodes(), graph.num_edges(),
-                        sol.cost.value());
+    log().d("x86 isel: {} nodes, {} edges, cost {}", graph.num_nodes(), graph.num_edges(), sol.cost.value());
     // RN is a heuristic, but the atomic rules always remain a valid cover.
     const auto& picked = sol.feasible() ? sol.choices : atomic;
     for (auto def : nodes) {
@@ -764,8 +760,8 @@ const Def* ISel::rewrite_imm_App(const App* app) {
     // Loop hints for LLVM.
     if (Axm::isa<ll::vec>(app) || Axm::isa<ll::novec>(app)) return rewrite(app->arg());
 
-    if (auto axm = app->axm(); axm && is_lowered_plugin(axm) && !app->type()->isa<Pi>() && !Axm::isa<core::M>(app)
-                               && !app->type()->isa<Type>() && !app->type()->isa<Nat>())
+    if (auto axm = app->axm(); axm && is_lowered_plugin(axm) && !app->type()->isa<Pi>() && !app->type()->isa<Type>()
+                               && !app->type()->isa<Nat>())
         app->blame(MIM_X86_BE "instruction selection does not support `{}`", axm).bail();
     return RWPhase::rewrite_imm_App(app);
 }

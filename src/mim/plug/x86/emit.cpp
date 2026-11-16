@@ -8,8 +8,6 @@
 
 #include <mim/plugin.h>
 
-#include <mim/plug/core/core.h>
-
 #include "mim/plug/x86/constraint.h"
 #include "mim/plug/x86/liveness.h"
 #include "mim/plug/x86/x86.h"
@@ -34,12 +32,6 @@ constexpr std::array<Names, 16> names = {{
     {"%r14b", "%r14w", "%r14d", "%r14"}, {"%r15b", "%r15w", "%r15d", "%r15"},
 }};
 // clang-format on
-
-constexpr size_t Rax                         = 0;
-constexpr size_t Rcx                         = 1;
-constexpr size_t Rdx                         = 2;
-constexpr std::array<size_t, 6> Arg_Regs     = {7, 6, 2, 1, 8, 9};
-constexpr std::array<size_t, 5> Callee_Saved = {3, 12, 13, 14, 15};
 
 constexpr std::array<std::string_view, 16> ccs
     = {"o", "no", "b", "ae", "e", "ne", "be", "a", "s", "ns", "p", "np", "l", "ge", "le", "g"};
@@ -72,11 +64,6 @@ nat_t nat(const Def* def) {
     def->blame(MIM_X86_BE "expected a literal, got `{}`", def).bail();
 }
 
-const Def* strip(const Def* def) {
-    if (auto in = Axm::isa<x86::in>(def)) return in->arg();
-    return def;
-}
-
 /// Functions still to emit, shared by all Emitter%s.
 struct Funs {
     std::deque<Lam*> todo;
@@ -92,6 +79,13 @@ struct Src {
     size_t reg     = 0;
     const Def* imm = nullptr;
 };
+
+using Moves = fe::Vector<std::pair<size_t, Src>>;
+
+/// Does a jump to @p lam pass values, which a branch cannot do on its own?
+bool takes_values(Lam* lam) {
+    return std::ranges::any_of(lam->vars(), [](const Def* x) { return !is_mem(x); });
+}
 
 class Emitter {
 public:
@@ -124,6 +118,7 @@ private:
     size_t use_reg(const Def* def) const;
     /// An operand that is a register or an immediate.
     std::string src(const Def* def, nat_t w) const;
+    Src source(const Def* def) const { return Lit::isa(def) ? Src{.imm = def} : Src{.reg = use_reg(def)}; }
     std::string imm(const Def* lit, nat_t w) const;
     std::string addr(const Def*) const;
     void mov_imm(size_t dst, const Def* lit);
@@ -133,7 +128,7 @@ private:
     void step(const App*);
     void block(const Liveness::Block&);
     Lam* tail(const Liveness::Block&) const;
-    void parallel(fe::Vector<std::pair<size_t, Src>> moves, fe::Vector<std::pair<size_t, size_t>> slot_moves);
+    void parallel(Moves moves, fe::Vector<std::pair<size_t, size_t>> slot_moves);
     void copy(Lam* target, const Def* arg);
     void jump(Lam* target);
     void call(Lam* callee, const Def* arg);
@@ -391,7 +386,7 @@ void Emitter::step(const App* app) {
 }
 
 /// Sequentializes the parallel copies @p moves between registers and @p slot_moves between spill slots.
-void Emitter::parallel(fe::Vector<std::pair<size_t, Src>> moves, fe::Vector<std::pair<size_t, size_t>> slot_moves) {
+void Emitter::parallel(Moves moves, fe::Vector<std::pair<size_t, size_t>> slot_moves) {
     std::erase_if(slot_moves, [](auto m) { return m.first == m.second; });
     for (auto [_, from] : slot_moves)
         line("pushq {}", slot(from));
@@ -429,7 +424,7 @@ void Emitter::parallel(fe::Vector<std::pair<size_t, Src>> moves, fe::Vector<std:
 }
 
 void Emitter::copy(Lam* target, const Def* arg) {
-    auto moves      = fe::Vector<std::pair<size_t, Src>>();
+    auto moves      = Moves();
     auto slot_moves = fe::Vector<std::pair<size_t, size_t>>();
     auto n          = target->num_vars();
     for (size_t i = 0; i != n; ++i) {
@@ -439,7 +434,7 @@ void Emitter::copy(Lam* target, const Def* arg) {
         if (Axm::isa<Spill>(x->type()))
             slot_moves.emplace_back(slot_of(x), slot_of(a));
         else if (auto r = fe::lookup(regs_, x))
-            moves.emplace_back(*r, Lit::isa(a) ? Src{.imm = a} : Src{.reg = use_reg(a)});
+            moves.emplace_back(*r, source(a));
     }
     parallel(std::move(moves), std::move(slot_moves));
 }
@@ -457,15 +452,16 @@ void Emitter::epilogue() {
             line("popq {}", name(r, 64));
         line("popq %rbp");
     }
+    line("ret");
 }
 
 void Emitter::call(Lam* callee, const Def* arg) {
     auto n     = arg->num_projs();
-    auto moves = fe::Vector<std::pair<size_t, Src>>();
+    auto moves = Moves();
     for (size_t i = 0, a = 0; i + 1 < n; ++i) {
         if (auto x = arg->proj(n, i); !is_mem(x)) {
             if (a == Arg_Regs.size()) arg->blame(MIM_X86_BE "more than six arguments are not supported yet").bail();
-            moves.emplace_back(Arg_Regs[a++], Lit::isa(x) ? Src{.imm = x} : Src{.reg = use_reg(x)});
+            moves.emplace_back(Arg_Regs[a++], source(x));
         }
     }
     parallel(std::move(moves), {});
@@ -474,15 +470,11 @@ void Emitter::call(Lam* callee, const Def* arg) {
     line("call {}", symbol(callee));
 
     auto ret = arg->proj(n, n - 1);
-    if (ret == ret_) {
-        epilogue();
-        line("ret");
-        return;
-    }
+    if (ret == ret_) return epilogue();
 
     auto k    = Lam::isa_mut_basicblock(ret);
     auto m    = k->num_vars();
-    auto back = fe::Vector<std::pair<size_t, Src>>();
+    auto back = Moves();
     for (size_t i = 0; i != m; ++i)
         if (auto x = k->var(m, i); !is_mem(x))
             if (auto r = fe::lookup(regs_, x)) back.emplace_back(*r, Src{.reg = Rax});
@@ -503,7 +495,7 @@ Lam* Emitter::tail(const Liveness::Block& b) const {
         if (ex->tuple()->num_projs() != 2) return nullptr;
         auto [e, t] = ex->tuple()->projs<2>([](const Def* d) { return Lam::isa_mut_basicblock(d); });
         if (!e || !t) return nullptr;
-        return std::ranges::any_of(t->vars(), [](const Def* x) { return !is_mem(x); }) ? t : e;
+        return takes_values(t) ? t : e;
     }
     return Lam::isa_mut_basicblock(callee);
 }
@@ -516,13 +508,12 @@ void Emitter::block(const Liveness::Block& b) {
     auto arg    = term->arg();
     auto callee = term->callee();
     if (callee == ret_) {
-        auto moves = fe::Vector<std::pair<size_t, Src>>();
+        auto moves = Moves();
         for (auto a : term->args())
-            if (!is_mem(a)) moves.emplace_back(Rax, Lit::isa(a) ? Src{.imm = a} : Src{.reg = use_reg(a)});
+            if (!is_mem(a)) moves.emplace_back(Rax, source(a));
         if (moves.size() > 1) b.lam->blame(MIM_X86_BE "`{}` returns more than one value", b.lam).bail();
         parallel(std::move(moves), {});
         epilogue();
-        line("ret");
     } else if (auto f = Lam::isa_mut_returning(callee)) {
         call(f, arg);
     } else if (auto ex = callee->isa<Extract>()) {
@@ -531,7 +522,7 @@ void Emitter::block(const Liveness::Block& b) {
         auto [e, t] = targets->projs<2>([](const Def* d) { return Lam::isa_mut_basicblock(d); });
         if (!e || !t) b.lam->blame(MIM_X86_BE "`{}` branches to something other than blocks", b.lam).bail();
         auto c          = ex->index();
-        auto trampoline = std::ranges::any_of(t->vars(), [](const Def* x) { return !is_mem(x); });
+        auto trampoline = takes_values(t);
         auto t_lbl      = trampoline ? label(b.lam) + ".t" : label(t);
         if (auto app = isa_sched_cc(c)) {
             use_flags(app->arg());
@@ -571,8 +562,11 @@ void Emitter::emit(bool global) {
         }
         collect(b.lam->body(), done);
     }
-    for (auto r : Callee_Saved)
-        if (std::ranges::any_of(regs_, [r](const auto& p) { return p.second == r; })) saved_.emplace_back(r);
+    auto used = std::array<bool, Num_Regs>{};
+    for (auto [_, r] : regs_)
+        used[r] = true;
+    for (size_t r = 0; r != Num_Regs; ++r)
+        if (!Caller_Saved[r] && !reserved(r) && used[r]) saved_.emplace_back(r);
 
     auto order  = fe::Vector<const Liveness::Block*>();
     auto placed = LamSet();
@@ -589,7 +583,7 @@ void Emitter::emit(bool global) {
     }
 
     auto n     = fun_->num_vars();
-    auto moves = fe::Vector<std::pair<size_t, Src>>();
+    auto moves = Moves();
     for (size_t i = 0, a = 0; i + 1 < n; ++i) {
         if (auto x = fun_->var(n, i); !is_mem(x)) {
             if (a == Arg_Regs.size()) fun_->blame(MIM_X86_BE "more than six arguments are not supported yet").bail();
@@ -609,7 +603,7 @@ void Emitter::emit(bool global) {
 
     auto sym    = symbol(fun_);
     auto pushed = 8 * saved_.size();
-    auto frame  = (8 * num_slots_ + pushed + 15) / 16 * 16 - pushed;
+    auto frame  = fe::pad(8 * num_slots_ + pushed, 16) - pushed;
     if (global) std::println(os_, "\t.globl {}", sym);
     std::println(os_, "\t.type {}, @function", sym);
     std::println(os_, "{}:", sym);
@@ -618,7 +612,7 @@ void Emitter::emit(bool global) {
     for (auto r : saved_)
         std::println(os_, "\tpushq {}", name(r, 64));
     if (frame != 0) std::println(os_, "\tsubq ${}, %rsp", frame);
-    std::print(os_, "{}", body_.str());
+    os_ << body_.view();
     std::println(os_, "\t.size {}, .-{}", sym, sym);
 }
 

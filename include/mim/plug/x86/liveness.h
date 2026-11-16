@@ -9,6 +9,19 @@
 
 namespace mim::plug::x86 {
 
+/// Calls @p f for each block, possibly repeatedly, that the jump @p term passes control or a return continuation to.
+void for_each_succ(const App* term, auto f) {
+    auto succ = [&](const Def* def) {
+        if (auto bb = Lam::isa_mut_basicblock(def); bb && bb->is_set()) f(bb);
+    };
+    succ(term->callee());
+    if (auto ex = term->callee()->isa<Extract>())
+        for (auto target : ex->tuple()->projs())
+            succ(target);
+    for (auto arg : term->args())
+        succ(arg);
+}
+
 /// Liveness of the values of one scheduled function, as a side table.
 /// A *value* is a non-memory result of an instruction on a `mem.M 0` chain or a non-memory parameter.
 /// A parameter is defined at the entry of its block and a jump uses its arguments, so a parameter is never live-in.
@@ -20,7 +33,9 @@ public:
 
     struct Block {
         Lam* lam;
-        fe::Vector<const App*> insns; ///< The `mem.M 0` chain in execution order.
+        fe::Vector<const App*> insns;  ///< The `mem.M 0` chain in execution order.
+        fe::Vector<DefVec> defs, uses; ///< Per instruction.
+        DefVec params, term_uses;
         fe::Vector<size_t> preds, succs;
         DefSet live_in, live_out;
         Pressure max_live = {}; ///< Maximum over all program points, per Class; Stack is unbounded.
@@ -38,22 +53,28 @@ public:
     static Class cls(const Def* value);
     /// Is @p def a parameter of a block or a result of an instruction on a chain, or a projection thereof?
     bool local(const Def* def) const;
-    DefVec params(const Block&) const;
-    DefVec defs(const App* insn) const;
-    DefVec uses(const App* insn) const;
-    DefVec term_uses(const Block&) const; ///< The values the jump at the end reads.
+    const DefVec& params(const Block& block) const { return block.params; }
+    const DefVec& defs(const App* insn) const { return at(insn, &Block::defs); }
+    const DefVec& uses(const App* insn) const { return at(insn, &Block::uses); }
+    /// The values the jump at the end reads.
+    const DefVec& term_uses(const Block& block) const { return block.term_uses; }
     const Block& def_block(const Def* value) const;
 
 private:
     size_t add(Lam*);
     void chain(size_t);
     void values(const Def*, DefVec&, DefSet&) const;
+    void values(Block&);
+    const DefVec& at(const App* insn, fe::Vector<DefVec> Block::* vecs) const {
+        auto [b, i] = insn2block_.find(insn)->second;
+        return (blocks_[b].*vecs)[i];
+    }
     void live_in(size_t, const Def*);
     void sweep(Block&);
 
     fe::Vector<Block> blocks_;
     LamMap<size_t> lam2block_;
-    DefMap<size_t> insn2block_;
+    DefMap<std::pair<size_t, size_t>> insn2block_; ///< Block and position.
 };
 
 /// Is @p value a value of class Liveness::Gpr?

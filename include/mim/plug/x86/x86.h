@@ -1,7 +1,10 @@
 #pragma once
 
+#include <algorithm>
+#include <array>
+#include <ranges>
+
 #include <mim/plug/core/core.h>
-#include <mim/plug/math/math.h>
 
 #include "mim/plug/x86/autogen.h"
 
@@ -9,6 +12,16 @@
 #define MIM_X86_BE "x86 backend: "
 
 namespace mim::plug::x86 {
+
+/// General-purpose registers in hardware encoding order.
+enum Reg : size_t { Rax, Rcx, Rdx, Rbx, Rsp, Rbp, Rsi, Rdi, R8, R9, R10, R11, R12, R13, R14, R15, Num_Regs };
+
+/// System V AMD64 ABI.
+constexpr std::array<size_t, 6> Arg_Regs          = {Rdi, Rsi, Rdx, Rcx, R8, R9};
+constexpr std::array<bool, Num_Regs> Caller_Saved = {1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0};
+constexpr bool reserved(size_t r) { return r == Rsp || r == Rbp; }
+constexpr size_t Num_Caller_Saved = std::ranges::count(Caller_Saved, true);
+constexpr size_t Num_Allocatable  = Num_Regs - std::ranges::count_if(std::views::iota(0uz, +Num_Regs), reserved);
 
 inline bool is_mem(const Def* def) {
     auto type = def->type(); // Level has no type
@@ -18,6 +31,12 @@ inline bool is_mem(const Def* def) {
 /// The register `r` of `x86.in r v` in hardware encoding order.
 inline size_t in_reg(const Def* in) {
     return *Lit::isa(in->as<App>()->callee()->as<App>()->callee()->as<App>()->arg());
+}
+
+/// The `v` of `x86.in r v`, otherwise @p def.
+inline const Def* strip(const Def* def) {
+    if (auto in = Axm::isa<x86::in>(def)) return in->arg();
+    return def;
 }
 
 /// The `f` of `x86.sched f m x`.

@@ -11,10 +11,7 @@ public:
         : ClosedMutPhase(world, annex, true) {}
 
 private:
-    void start() final;
     void visit(Lam*) final;
-
-    std::ostream* os_ = nullptr;
 };
 
 } // namespace mim::plug::x86::phase

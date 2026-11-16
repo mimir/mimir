@@ -13,21 +13,10 @@ namespace {
 std::string str(const DefSet& values) {
     auto sorted = DefVec(values.begin(), values.end());
     std::ranges::sort(sorted, {}, &Def::gid);
-    auto res = std::string();
-    for (auto sep = ""; auto value : sorted) {
-        res += std::format("{}{}", sep, value);
-        sep = ", ";
-    }
-    return res;
+    return std::format("{}", fe::Join(sorted, ", "));
 }
 
 } // namespace
-
-void Live::start() {
-    auto out = Out(std::string(arg_value(args(), "live").value_or("-")));
-    os_      = out.os();
-    ClosedMutPhase::start();
-}
 
 void Live::visit(Lam* fun) {
     // A closed basic block belongs to the function that jumps to it.

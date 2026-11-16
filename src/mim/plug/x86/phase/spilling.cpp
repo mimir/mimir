@@ -16,8 +16,7 @@ namespace {
 
 constexpr size_t Inf = std::numeric_limits<size_t>::max();
 /// Added to the next-use distance across an edge that leaves a loop.
-constexpr size_t Loop_Exit        = 1 << 20;
-constexpr size_t Num_Caller_Saved = 9;
+constexpr size_t Loop_Exit = 1 << 20;
 
 size_t add(size_t a, size_t b) { return a > Inf - b ? Inf : a + b; }
 
@@ -105,6 +104,10 @@ private:
     void build(size_t b);
     const Def* sched(const Def* f, const Def* x);
     const Def* spill(const Def* x);
+    const Def* slot(const Def* v) const {
+        if (auto slot = fe::lookup(stack_, v)) return slot;
+        v->blame(MIM_X86_BE "`{}` has no spill slot", v).bail();
+    }
 
     World& world_;
     Lam* fun_;
@@ -208,16 +211,18 @@ void Spiller::cfg() {
             if (b == 0) return false;
         }
     };
+    auto header = fe::Vector<size_t>(n_, Inf);
     for (size_t b = 0; b != n_; ++b) {
         for (auto h : block(b).succs) {
             if (!dominates(h, b)) continue;
             auto& body = loop_[h];
-            auto in    = [&](size_t x) { return std::ranges::contains(body, x); };
-            if (!in(h)) body.emplace_back(h);
+            auto in    = [&](size_t x) { return header[x] == h; };
+            if (!in(h)) header[h] = h, body.emplace_back(h);
             for (auto todo = fe::Vector<size_t>{b}; !todo.empty();) {
                 auto x = todo.back();
                 todo.pop_back();
                 if (in(x)) continue;
+                header[x] = h;
                 body.emplace_back(x);
                 for (auto p : block(x).preds)
                     todo.emplace_back(p);
@@ -229,10 +234,11 @@ void Spiller::cfg() {
             ++depth_[x];
 
     for (size_t b = 0; b != n_; ++b) {
-        if (kind(b) == Term::Call)
+        auto kd = kind(b);
+        if (kd == Term::Call)
             for (auto a : term(b)->args())
                 if (auto lam = Lam::isa_mut_basicblock(a); lam && live_.block(lam)) ret_cont_[index(lam)] = true;
-        if (kind(b) == Term::Branch)
+        if (kd == Term::Branch)
             for (auto s : block(b).succs)
                 branch_target_[s] = true;
     }
@@ -318,7 +324,7 @@ void Spiller::entry(size_t b) {
     std::erase_if(params, [&](const Def* x) { return std::ranges::contains(take, x); });
     std::ranges::copy(params, std::back_inserter(cands));
 
-    auto preds = block(b).preds;
+    const auto& preds = block(b).preds;
     if (std::ranges::all_of(preds, [&](size_t p) { return done_[p]; })) {
         auto avail = DefMap<size_t>();
         for (auto p : preds) {
@@ -377,7 +383,7 @@ void Spiller::walk(size_t b) {
             for (auto v : cp)
                 w.erase(v);
         auto ds = gpr(live_.defs(insn));
-        if (is_sched_cc(insn)) std::erase_if(ds, [&](const Def* d) { return next_use(b, d, i + 1) == Inf; });
+        if (is_sched_cc(insn)) std::erase_if(ds, [&](const Def* d) { return !live(d); });
         if (ds.size() > k_) insn->blame(MIM_X86_BE "`{}` defines more than {} registers", insn, k_).bail();
         limit(b, w, k_ - ds.size(), i + 1);
         w.insert(ds.begin(), ds.end());
@@ -564,18 +570,10 @@ void Spiller::build(size_t b) {
     auto subst   = [&](const Def* def) { return Subst(world_, cur, m_, &new_lams_).rewrite(def); };
     auto reloads = [&](size_t pos) {
         for (auto [v, ver] : reloads_[b][pos]) {
-            const Def* val;
-            if (is_remat(v)) {
-                auto app = root(v);
-                auto res = world_.call<x86::sched>(sched_insn(app), m_, app->arg());
-                m_       = res->proj(2, 0);
-                val      = reroot(v, app, res);
-            } else {
-                auto slot = fe::lookup(stack_, v);
-                if (!slot) v->blame(MIM_X86_BE "`{}` has no spill slot", v).bail();
-                val = sched(world_.app(world_.annex<x86::reload>(), Idx::as(v->type())), slot);
-            }
-            cur[v] = vers_[ver] = val;
+            auto app = root(v);
+            cur[v] = vers_[ver] = is_remat(v)
+                                    ? reroot(v, app->proj(2, 1), sched(sched_insn(app), app->arg()))
+                                    : sched(world_.app(world_.annex<x86::reload>(), Idx::as(v->type())), slot(v));
         }
     };
 
@@ -594,8 +592,9 @@ void Spiller::build(size_t b) {
     reloads(size(b));
 
     auto t    = term(b);
+    auto kd   = kind(b);
     auto body = static_cast<const Def*>(nullptr);
-    if (kind(b) == Term::Jump) {
+    if (kd == Term::Jump) {
         auto target = t->callee()->as_mut<Lam>();
         auto s      = index(target);
         auto k      = target->num_vars();
@@ -610,9 +609,7 @@ void Spiller::build(size_t b) {
             } else if (Lit::isa(a)) {
                 args.emplace_back(spill(a));
             } else {
-                auto slot = fe::lookup(stack_, a);
-                if (!slot) a->blame(MIM_X86_BE "`{}` has no spill slot", a).bail();
-                args.emplace_back(slot);
+                args.emplace_back(slot(a));
             }
         }
         auto p = size_t(std::ranges::find(block(s).preds, b) - block(s).preds.begin());
@@ -623,7 +620,7 @@ void Spiller::build(size_t b) {
             if (is_mem(a)) a = m_;
         body = world_.app(subst(target), world_.tuple(args));
     } else {
-        if (kind(b) == Term::Branch)
+        if (kd == Term::Branch)
             for (auto target : t->callee()->as<Extract>()->tuple()->projs())
                 if (auto lam = target->isa_mut<Lam>(); lam && new_lams_.contains(lam))
                     lam->blame(MIM_X86_BE "branch target `{}` would need new parameters", lam).bail();
@@ -643,22 +640,12 @@ void split_critical_edges(Lam* fun) {
     auto preds  = LamMap<size_t>();
     auto blocks = fe::Vector<Lam*>{fun};
     auto seen   = LamSet{fun};
-    auto succ   = [&](const Def* def) {
-        if (auto bb = Lam::isa_mut_basicblock(def); bb && bb->is_set()) {
-            ++preds[bb];
-            if (seen.emplace(bb).second) blocks.emplace_back(bb);
-        }
-    };
-    for (size_t i = 0; i != blocks.size(); ++i) {
-        auto term = blocks[i]->body()->isa<App>();
-        if (!term) continue;
-        succ(term->callee());
-        if (auto ex = term->callee()->isa<Extract>())
-            for (auto target : ex->tuple()->projs())
-                succ(target);
-        for (auto arg : term->args())
-            succ(arg);
-    }
+    for (size_t i = 0; i != blocks.size(); ++i)
+        if (auto term = blocks[i]->body()->isa<App>())
+            for_each_succ(term, [&](Lam* bb) {
+                ++preds[bb];
+                if (seen.emplace(bb).second) blocks.emplace_back(bb);
+            });
 
     for (auto lam : blocks) {
         auto term = lam->body()->isa<App>();
@@ -686,10 +673,10 @@ void split_critical_edges(Lam* fun) {
 
 Spilling::Spilling(World& world, flags_t annex)
     : ClosedMutPhase(world, annex, true)
-    , k_(driver().arg_nat("x86", "k").value_or(14)) {
+    , k_(driver().arg_nat("x86", "k").value_or(Num_Allocatable)) {
     if (k_ == 0) {
         log().w("ignoring `-X x86:k=0`");
-        k_ = 14;
+        k_ = Num_Allocatable;
     }
 }
 
