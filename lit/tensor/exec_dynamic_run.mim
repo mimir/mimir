@@ -1,0 +1,4 @@
+// RUN: %mim -p opt -p ll %S/exec_dynamic.mim -X ll:o=%t.ll
+// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 50
+// RUN: %t x y z ; test $? -eq 80

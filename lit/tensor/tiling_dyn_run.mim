@@ -1,0 +1,5 @@
+// RUN: %mim -p opt -p ll %S/tiling_dyn.mim -X ll:o=%t.ll
+// RUN: clang %t.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 155
+// RUN: %t x ; test $? -eq 155
+// RUN: %t x y z ; test $? -eq 155

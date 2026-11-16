@@ -13,10 +13,8 @@ extern con f (m: mem.M 0, a b c: I64, return: Cn [mem.M 0, I64]) =
 
 extern lam _compile (): compile.Phase = compile.phases ff (x86.schedule, x86.spilling, x86.constrain);
 
-// The dividend goes to `rax` through a jump; `a` itself stays live for the shift.
-// CHECK:      con [[DIV:[_a-z0-9]+]] ([[M1:_[0-9]+]]: core.M 0, [[A:a_[0-9]+]]: I64)
-// CHECK-NEXT: [[RAX:_[0-9]+]] = x86.in 0I4 @ 0 [[A]];
-// CHECK-NEXT: x86.sched {{.*}} (x86.div @ 0) [[M1]] ([[RAX]], b);
+// The quotient and the remainder leave `rax` and `rdx` through a jump right after the `div`.
+// CHECK:      con [[POST:[_a-z0-9]+]] ({{_[0-9]+}}: core.M 0, {{_[0-9]+}}: I64, {{_[0-9]+}}: I64)
 // The shift count goes to `rcx`; `a` dies at the shift, so it is not copied.
 // CHECK:      con [[SHL:[_a-z0-9]+]] ([[M2:_[0-9]+]]: core.M 0, [[C:c_[0-9]+]]: I64)
 // CHECK-NEXT: [[RCX:_[0-9]+]] = x86.in 1I4 @ 0 [[C]];
@@ -26,11 +24,18 @@ extern lam _compile (): compile.Phase = compile.phases ff (x86.schedule, x86.spi
 // CHECK-NEXT: x86.sched {{.*}} (x86.add @ 0) [[M3]] ([[B]], c);
 // CHECK:      [[ADD]] ({{.*}}, b);
 // CHECK:      [[SHL]] ({{.*}}, c);
+// The dividend goes to `rax` through a jump; `a` itself stays live for the shift.
+// CHECK:      con [[DIV:[_a-z0-9]+]] ([[M1:_[0-9]+]]: core.M 0, [[A:a_[0-9]+]]: I64)
+// CHECK-NEXT: [[RAX:_[0-9]+]] = x86.in 0I4 @ 0 [[A]];
+// CHECK-NEXT: [[QR:_[0-9]+]] = x86.sched {{.*}} (x86.div @ 0) [[M1]] ([[RAX]], b);
+// CHECK-NEXT: [[Q:_[0-9]+]] = x86.in 0I4 @ 0 [[QR]]#tt#ff;
+// CHECK-NEXT: [[R:_[0-9]+]] = x86.in 2I4 @ 0 [[QR]]#tt#tt;
+// CHECK-NEXT: [[POST]] ([[QR]]#ff, [[Q]], [[R]]);
 // CHECK:      [[DIV]] (m, a);
 
 // At k = 3, the copy of `a` would need a fourth register at the `div`, so `a` leaves its register there and the shift reloads it.
 // K3:      [[SA:_[0-9]+]] = x86.sched {{.*}} (x86.spill @ 0) m a;
-// K3:      x86.in 0I4 @ 0
-// K3-NEXT: (x86.div @ 0)
 // K3:      [[RA:_[0-9]+]] = x86.sched {{.*}} (x86.reload @ 0) {{.*}} [[SA]]#tt;
 // K3:      (x86.shl @ 0) {{.*}} ([[RA]]#tt,
+// K3:      x86.in 0I4 @ 0
+// K3-NEXT: (x86.div @ 0)

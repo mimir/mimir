@@ -1,0 +1,472 @@
+#include "mim/plug/x86/phase/color.h"
+
+#include <ranges>
+
+#include <pbqp/solver.h>
+
+#include <mim/rewrite.h>
+
+#include "mim/plug/x86/constraint.h"
+#include "mim/plug/x86/liveness.h"
+#include "mim/plug/x86/x86.h"
+
+namespace mim::plug::x86::phase {
+
+namespace {
+
+constexpr size_t Num_Regs                = 16;
+constexpr size_t Rax                     = 0;
+constexpr std::array<size_t, 6> Arg_Regs = {7, 6, 2, 1, 8, 9};
+// rax, rcx, rdx, rsi, rdi, r8-r11; rsp and rbp are reserved.
+constexpr std::array<bool, Num_Regs> Caller_Saved = {1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0};
+constexpr pbqp::Cost Move                         = 4;
+// A callee-saved register costs a save and a restore once per function, not per value.
+constexpr pbqp::Cost Callee_Saved = 1;
+
+bool reserved(size_t r) { return r == 4 || r == 5; }
+size_t phys(const Def* r) { return *Lit::isa(r); }
+
+/// The register of `x86.in r v`.
+size_t phys_in(const Def* in) { return phys(in->as<App>()->callee()->as<App>()->callee()->as<App>()->arg()); }
+
+const Def* strip(const Def* def) {
+    if (auto in = Axm::isa<x86::in>(def)) return in->arg();
+    return def;
+}
+
+pbqp::Costs matrix(auto f) {
+    auto res = pbqp::Costs();
+    for (size_t i = 0; i != Num_Regs; ++i)
+        for (size_t j = 0; j != Num_Regs; ++j)
+            res.emplace_back(f(i, j));
+    return res;
+}
+
+/// The block that a call at the end of @p block returns to, if any.
+const Liveness::Block* call_cont(const Liveness& live, Lam* fun, const Liveness::Block& block) {
+    auto term = block.lam->body()->as<App>();
+    if (term->callee() == fun->ret_var() || !Lam::isa_mut_returning(term->callee())) return nullptr;
+    if (auto k = Lam::isa_mut_basicblock(term->arg(term->num_args(), term->num_args() - 1))) return live.block(k);
+    return nullptr;
+}
+
+/// Calls @p f `(d, v)` for each value `v` that is live at the definition of `d` or defined along with it.
+/// Only values that satisfy @p keep take part.
+void interferences(const Liveness& live, const Liveness::Block& block, auto keep, auto f) {
+    auto alive = DefSet();
+    auto gen   = [&](const auto& values) {
+        for (auto v : values)
+            if (is_gpr(v) && keep(v)) alive.emplace(v);
+    };
+    auto def = [&](DefVec ds) {
+        std::erase_if(ds, [&](const Def* d) { return !is_gpr(d) || !keep(d); });
+        for (auto d : ds)
+            alive.erase(d);
+        for (size_t i = 0; i != ds.size(); ++i) {
+            for (auto v : alive)
+                f(ds[i], v);
+            for (size_t j = i + 1; j != ds.size(); ++j)
+                f(ds[i], ds[j]);
+        }
+    };
+
+    gen(block.live_out);
+    gen(live.term_uses(block));
+    for (auto insn : block.insns | std::views::reverse) {
+        def(live.defs(insn));
+        gen(live.uses(insn));
+    }
+    def(live.params(block));
+}
+
+class Prune : public Rewriter {
+public:
+    Prune(World& world, const DefSet& dead)
+        : Rewriter(world)
+        , dead_(dead) {}
+
+    const Def* rewrite(const Def* def) final {
+        if (def->isa_mut() || def->is_closed()) return def;
+        if (auto ex = def->isa<Extract>(); ex && is_mem(def))
+            if (auto app = ex->tuple()->isa<App>(); app && dead_.contains(app)) return rewrite(prev_mem(app));
+        return Rewriter::rewrite(def);
+    }
+
+private:
+    const DefSet& dead_;
+};
+
+void prune(Lam* fun) {
+    auto live = Liveness(fun);
+    // Rewriting a jump in place must not inline its target, e.g., once pruning made both targets of a branch equal.
+    for (const auto& block : live.blocks()) {
+        if (auto lam = block.lam; lam->filter() != fun->world().lit_ff()) {
+            auto body = lam->body();
+            lam->unset()->set(false, body);
+        }
+    }
+
+    auto count = DefMap<size_t>();
+    for (const auto& block : live.blocks()) {
+        for (auto insn : block.insns)
+            for (auto u : live.uses(insn))
+                ++count[u];
+        for (auto u : live.term_uses(block))
+            ++count[u];
+    }
+
+    auto unused = [&](const Def* d) {
+        auto n = fe::lookup(count, d);
+        return !n || *n == 0;
+    };
+    auto dead = DefSet();
+    for (bool todo = true; todo;) {
+        todo = false;
+        for (const auto& block : live.blocks()) {
+            for (auto insn : block.insns | std::views::reverse) {
+                if (dead.contains(insn) || is_sched_cc(insn)) continue;
+                if (!Axm::isa<sched>(insn) && !Axm::isa<load>(insn) && !Axm::isa<rm>(insn) && !Axm::isa<slot>(insn))
+                    continue;
+                auto ds = live.defs(insn);
+                if (ds.empty() || !std::ranges::all_of(ds, unused)) continue;
+                dead.emplace(insn);
+                todo = true;
+                for (auto u : live.uses(insn))
+                    --count[u];
+            }
+        }
+    }
+    if (dead.empty()) return;
+
+    auto prune = Prune(fun->world(), dead);
+    for (const auto& block : live.blocks()) {
+        auto lam    = block.lam;
+        auto filter = prune.rewrite(lam->filter());
+        auto body   = prune.rewrite(lam->body());
+        lam->unset()->set(filter, body);
+    }
+}
+
+/// Wraps every use of a value in `x86.in`.
+class Assign : public Rewriter {
+public:
+    Assign(World& world, const Liveness& live, const DefMap<size_t>& regs)
+        : Rewriter(world)
+        , live_(live)
+        , regs_(regs) {}
+
+    const Def* rewrite(const Def* def) final {
+        auto& w = world();
+        if (def->isa_mut() || def->is_closed()) return def;
+        if (Axm::isa<x86::in>(def)) {
+            auto app = def->as<App>();
+            return w.app(rewrite(app->callee()), raw(app->arg()));
+        }
+        if (live_.local(def)) {
+            if (auto r = fe::lookup(regs_, def)) return w.call<x86::in>(w.lit_idx(Num_Regs, *r), raw(def));
+            // A tuple of values, e.g. the whole variable of a block or an instruction, is used through its projections.
+            if (auto projs = def->projs(); projs.size() > 1 && std::ranges::any_of(projs, [&](const Def* d) {
+                                               return regs_.contains(d) || d->num_projs() > 1;
+                                           })) {
+                auto ops = DefVec();
+                for (auto d : projs)
+                    ops.emplace_back(rewrite(d));
+                return w.tuple(ops);
+            }
+            return raw(def);
+        }
+        return Rewriter::rewrite(def);
+    }
+
+private:
+    /// @p def, a parameter, an instruction, or a projection thereof, without wrapping it.
+    const Def* raw(const Def* def) {
+        if (auto ex = def->isa<Extract>()) return world().extract(raw(ex->tuple()), ex->index());
+        if (def->isa<Var>()) return def;
+        return Rewriter::rewrite(def);
+    }
+
+    const Liveness& live_;
+    const DefMap<size_t>& regs_;
+};
+
+class Colorer {
+public:
+    explicit Colorer(Lam* fun)
+        : fun_(fun)
+        , live_(fun) {}
+
+    void run() {
+        nodes();
+        for (const auto& block : live_.blocks())
+            interferences(
+                live_, block, [&](const Def* v) { return ids_.contains(v); },
+                [&](const Def* a, const Def* b) { link(a, b, interfere_); });
+        constraints();
+        copies();
+        solve();
+        assign();
+    }
+
+private:
+    void nodes();
+    void constraints();
+    void copies();
+    void solve();
+    void assign();
+
+    void add(const Def* v);
+    pbqp::Costs* costs(const Def* v) {
+        auto id = fe::lookup(ids_, strip(v));
+        return id ? &costs_[*id] : nullptr;
+    }
+    void fix(const Def* v, size_t r) {
+        if (auto cs = costs(v))
+            for (size_t o = 0; o != Num_Regs; ++o)
+                if (o != r) (*cs)[o] = pbqp::Cost::inf();
+    }
+    void forbid(const Def* v, size_t r) {
+        if (auto cs = costs(v)) (*cs)[r] = pbqp::Cost::inf();
+    }
+    void prefer(const Def* v, size_t r) {
+        if (auto cs = costs(v))
+            for (size_t o = 0; o != Num_Regs; ++o)
+                if (o != r) (*cs)[o] += Move;
+    }
+    void link(const Def* a, const Def* b, const pbqp::Costs& m) {
+        a = strip(a), b = strip(b);
+        if (a == b) return;
+        if (auto i = fe::lookup(ids_, a))
+            if (auto j = fe::lookup(ids_, b)) graph_.add_edge_costs(*i, *j, m);
+    }
+    void jump(Lam* target, const Def* arg) {
+        auto n = target->num_vars();
+        for (size_t i = 0; i != n; ++i)
+            link(arg->proj(n, i), target->var(n, i), move_);
+    }
+
+    Lam* fun_;
+    Liveness live_;
+    pbqp::Graph graph_;
+    DefMap<pbqp::NodeId> ids_;
+    DefVec values_;
+    fe::Vector<pbqp::Costs> costs_;
+    const pbqp::Costs interfere_ = matrix([](size_t i, size_t j) { return i == j ? pbqp::Cost::inf() : 0; });
+    const pbqp::Costs tie_       = matrix([](size_t i, size_t j) { return i == j ? 0 : pbqp::Cost::inf(); });
+    const pbqp::Costs move_      = matrix([](size_t i, size_t j) { return i == j ? 0 : Move; });
+    DefMap<size_t> regs_;
+};
+
+void Colorer::add(const Def* v) {
+    auto cs = pbqp::Costs();
+    for (size_t r = 0; r != Num_Regs; ++r)
+        cs.emplace_back(reserved(r) ? pbqp::Cost::inf() : Caller_Saved[r] ? pbqp::Cost(0) : Callee_Saved);
+    ids_[v] = graph_.add(cs);
+    values_.emplace_back(v);
+    costs_.emplace_back(cs);
+}
+
+/// Values are added in an order that respects dominance, so their ids are the PEO for RN.
+void Colorer::nodes() {
+    auto used = DefSet();
+    for (const auto& block : live_.blocks()) {
+        for (auto insn : block.insns)
+            for (auto u : live_.uses(insn))
+                used.emplace(u);
+        for (auto u : live_.term_uses(block))
+            used.emplace(u);
+    }
+
+    for (const auto& block : live_.blocks()) {
+        for (auto x : live_.params(block))
+            if (is_gpr(x) && used.contains(x)) add(x);
+        for (auto insn : block.insns) {
+            auto implied = DefSet();
+            for (auto [j, _] : constraint(insn).results)
+                implied.emplace(result(insn, j));
+            for (auto d : live_.defs(insn))
+                if (is_gpr(d) && (used.contains(d) || implied.contains(d))) add(d);
+        }
+    }
+}
+
+void Colorer::constraints() {
+    for (const auto& block : live_.blocks()) {
+        for (auto insn : block.insns) {
+            auto c = constraint(insn);
+            for (auto [j, r] : c.fixed)
+                fix(c.ops[j], phys(r));
+            for (auto [j, r] : c.results)
+                fix(result(insn, j), phys(r));
+            if (c.tied) link(c.ops[*c.tied], result(insn, 0), tie_);
+            for (auto r : c.clobbers)
+                for (auto u : live_.uses(insn))
+                    forbid(u, phys(r));
+        }
+    }
+}
+
+void Colorer::copies() {
+    auto n = fun_->num_vars();
+    for (size_t i = 0, a = 0; i + 1 < n; ++i)
+        if (auto x = fun_->var(n, i); !is_mem(x) && a < Arg_Regs.size()) prefer(x, Arg_Regs[a++]);
+
+    for (const auto& block : live_.blocks()) {
+        auto term   = block.lam->body()->as<App>();
+        auto callee = term->callee();
+        if (callee == fun_->ret_var()) {
+            for (auto a : term->args())
+                if (!is_mem(a)) prefer(a, Rax);
+        } else if (auto ex = callee->isa<Extract>()) {
+            for (auto target : ex->tuple()->projs())
+                if (auto bb = Lam::isa_mut_basicblock(target); bb && live_.block(bb)) jump(bb, term->arg());
+        } else if (auto bb = Lam::isa_mut_basicblock(callee); bb && live_.block(bb)) {
+            jump(bb, term->arg());
+        } else if (Lam::isa_mut_returning(callee)) {
+            auto m = term->num_args();
+            for (size_t i = 0, a = 0; i + 1 < m; ++i)
+                if (auto x = term->arg(m, i); !is_mem(x) && a < Arg_Regs.size()) prefer(x, Arg_Regs[a++]);
+            if (auto k = call_cont(live_, fun_, block)) {
+                for (auto v : k->live_in)
+                    for (size_t r = 0; r != Num_Regs; ++r)
+                        if (Caller_Saved[r]) forbid(v, r);
+                for (auto x : live_.params(*k))
+                    if (!is_mem(x)) prefer(x, Rax);
+            }
+        }
+    }
+}
+
+void Colorer::solve() {
+    for (size_t i = 0; i != values_.size(); ++i)
+        graph_.set_node_costs(i, costs_[i]);
+
+    auto priority = fe::Vector<size_t>();
+    for (size_t i = 0; i != values_.size(); ++i)
+        priority.emplace_back(i);
+    auto sol = pbqp::solve(graph_, priority);
+    if (!sol.feasible()) {
+        auto conflicts = DefVec();
+        for (size_t i = 0; i != values_.size(); ++i)
+            if (sol.conflicts[i]) conflicts.emplace_back(values_[i]);
+        fun_->blame(MIM_X86_BE "cannot assign registers in `{}`; conflicting values: {}", fun_,
+                    fe::Join(conflicts, ", "))
+            .bail();
+    }
+    for (size_t i = 0; i != values_.size(); ++i)
+        regs_[values_[i]] = sol.choices[i];
+}
+
+void Colorer::assign() {
+    auto assign = Assign(fun_->world(), live_, regs_);
+    for (const auto& block : live_.blocks()) {
+        auto lam    = block.lam;
+        auto filter = assign.rewrite(lam->filter());
+        auto body   = assign.rewrite(lam->body());
+        lam->unset()->set(filter, body);
+    }
+}
+
+/// Checks the invariants of an assignment over a fresh Liveness of @p fun.
+class Checker {
+public:
+    explicit Checker(Lam* fun)
+        : fun_(fun)
+        , live_(fun) {}
+
+    void run();
+
+private:
+    void walk(const Def* def, const Def* at);
+    std::optional<size_t> reg(const Def* v) const {
+        if (auto r = fe::lookup(regs_, strip(v))) return *r;
+        return std::nullopt;
+    }
+    [[noreturn]] void fail(const Def* at, std::string msg) {
+        at->blame(MIM_X86_BE "register assignment of `{}`: {}", fun_, msg).bail();
+    }
+
+    Lam* fun_;
+    Liveness live_;
+    DefMap<size_t> regs_;
+};
+
+void Checker::walk(const Def* def, const Def* at) {
+    if (def->isa_mut() || def->is_closed() || is_mem(def)) return;
+    if (auto in = Axm::isa<x86::in>(def)) {
+        auto v        = in->arg();
+        auto r        = phys_in(def);
+        auto [i, ins] = regs_.emplace(v, r);
+        if (!live_.local(v) || !is_gpr(v)) fail(at, std::format("`{}` is no value", v));
+        if (reserved(r)) fail(at, std::format("`{}` is in a reserved register", v));
+        if (!ins && i->second != r) fail(at, std::format("`{}` is in two registers", v));
+        return;
+    }
+    if (live_.local(def)) {
+        for (auto d : def->projs())
+            if (is_gpr(d)) fail(at, std::format("`{}` is used without a register", d));
+        return;
+    }
+    for (auto op : def->ops())
+        walk(op, at);
+}
+
+void Checker::run() {
+    for (const auto& block : live_.blocks()) {
+        for (auto insn : block.insns) {
+            walk(insn->callee(), insn);
+            walk(insn->arg(), insn);
+        }
+        auto term = block.lam->body()->as<App>();
+        if (auto ex = term->callee()->isa<Extract>(); ex && isa_sched_cc(ex->index())) {
+            walk(ex->tuple(), term);
+            walk(term->arg(), term);
+        } else {
+            walk(term, term);
+        }
+    }
+
+    for (const auto& block : live_.blocks()) {
+        for (auto insn : block.insns) {
+            auto c = constraint(insn);
+            for (auto [j, r] : c.results) {
+                auto d = result(insn, j);
+                if (regs_.emplace(d, phys(r)).first->second != phys(r))
+                    fail(insn, std::format("`{}` is not in its fixed register", d));
+            }
+            for (auto [j, r] : c.fixed)
+                if (!Axm::isa<x86::in>(c.ops[j]) || phys_in(c.ops[j]) != phys(r))
+                    fail(insn, std::format("operand `{}` is not in its fixed register", c.ops[j]));
+            if (c.tied && reg(c.ops[*c.tied]) != reg(result(insn, 0)))
+                fail(insn, std::format("`{}` is not in the register of operand `{}`", result(insn, 0), c.ops[*c.tied]));
+            for (auto r : c.clobbers)
+                for (auto u : live_.uses(insn))
+                    if (reg(u) == phys(r)) fail(insn, std::format("operand `{}` is in a clobbered register", u));
+        }
+    }
+
+    for (const auto& block : live_.blocks()) {
+        interferences(
+            live_, block, [&](const Def* v) { return regs_.contains(v); },
+            [&](const Def* a, const Def* b) {
+                if (regs_[a] == regs_[b])
+                    fail(block.lam, std::format("`{}` and `{}` interfere but share a register", a, b));
+            });
+        if (auto k = call_cont(live_, fun_, block))
+            for (auto v : k->live_in)
+                if (auto r = reg(v); r && Caller_Saved[*r])
+                    fail(block.lam, std::format("`{}` lives across a call in a caller-saved register", v));
+    }
+}
+
+} // namespace
+
+void Color::visit(Lam* fun) {
+    if (!Lam::isa_mut_returning(fun)) return;
+
+    prune(fun);
+    Colorer(fun).run();
+    Checker(fun).run();
+}
+
+} // namespace mim::plug::x86::phase

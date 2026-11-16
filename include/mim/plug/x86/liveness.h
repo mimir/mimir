@@ -5,6 +5,8 @@
 #include <mim/def.h>
 #include <mim/lam.h>
 
+#include "mim/plug/x86/x86.h"
+
 namespace mim::plug::x86 {
 
 /// Liveness of the values of one scheduled function, as a side table.
@@ -34,6 +36,8 @@ public:
     }
 
     static Class cls(const Def* value);
+    /// Is @p def a parameter of a block or a result of an instruction on a chain, or a projection thereof?
+    bool local(const Def* def) const;
     DefVec params(const Block&) const;
     DefVec defs(const App* insn) const;
     DefVec uses(const App* insn) const;
@@ -51,5 +55,10 @@ private:
     LamMap<size_t> lam2block_;
     DefMap<size_t> insn2block_;
 };
+
+/// Is @p value a value of class Liveness::Gpr?
+inline bool is_gpr(const Def* value) {
+    return !is_mem(value) && !value->type()->isa<Pi>() && Liveness::cls(value) == Liveness::Gpr;
+}
 
 } // namespace mim::plug::x86

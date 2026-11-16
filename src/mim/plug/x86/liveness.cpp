@@ -72,17 +72,20 @@ Liveness::Class Liveness::cls(const Def* value) {
     return Axm::isa<Fl>(type) ? Flags : Axm::isa<Spill>(type) ? Stack : Gpr;
 }
 
-void Liveness::values(const Def* def, DefVec& res, DefSet& done) const {
-    if (def->isa_mut() || !done.emplace(def).second) return;
-
+bool Liveness::local(const Def* def) const {
     auto root = def;
     while (auto ex = root->isa<Extract>()) {
         if (!Lit::isa(ex->index())) break;
         root = ex->tuple();
     }
-
     auto var = root->isa<Var>();
-    if (var ? lam2block_.contains(var->binder()->isa<Lam>()) : insn2block_.contains(root)) {
+    return var ? lam2block_.contains(var->binder()->isa<Lam>()) : insn2block_.contains(root);
+}
+
+void Liveness::values(const Def* def, DefVec& res, DefSet& done) const {
+    if (def->isa_mut() || !done.emplace(def).second) return;
+
+    if (local(def)) {
         if (is_mem(def) || def->type()->isa<Pi>()) return;
         if (auto n = def->num_projs(); n == 1)
             res.emplace_back(def);

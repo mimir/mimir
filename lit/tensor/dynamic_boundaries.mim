@@ -1,0 +1,21 @@
+// RUN: %mim -p opt -p ll %s -X ll:o=%t.ll
+// RUN: clang %t.ll %S/dynamic_boundaries_aux.c -o %t -Wno-override-module
+// RUN: %t | %FileCheck %s
+
+plugin core;
+plugin tensor;
+
+extern fun set_first {n: Nat} (a: tensor.Tensor 2 (2, n) I32): tensor.Tensor 2 (2, n) I32 =
+    return (tensor.set (a, (0₂, core.idx 0 n 0), 7I32));
+
+extern fun read_at {n: Nat, i: Idx n} (a: tensor.Tensor 1 n I32): I32 =
+    return (tensor.get (a, i));
+
+extern fun pad_vector {n: Nat} (a: tensor.Tensor 1 n I32): tensor.Tensor 1 (core.nat.add (n, 2)) I32 =
+    return (tensor.pad n (0, 1, 1) (a, 7I32));
+
+extern fun pad_matrix {rows cols: Nat} (a: tensor.Tensor 2 (rows, cols) I32)
+    : tensor.Tensor 2 (core.nat.add (rows, 2), core.nat.add (cols, 2)) I32 =
+    return (tensor.pad (rows, cols) (0, (1, 1), (1, 1)) (a, 7I32));
+
+// CHECK: dynamic boundaries: PASS

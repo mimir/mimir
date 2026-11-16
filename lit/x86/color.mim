@@ -1,0 +1,30 @@
+// RUN: %mim %s -o - | %FileCheck %s
+// RUN: %mim %s -X x86:k=3 -o %t.mim
+
+plugin compile;
+plugin mem;
+plugin x86;
+
+extern con g [mem.M 0, I64, Cn [mem.M 0, I64]];
+
+extern con f (m: mem.M 0, a b: I64, return: Cn [mem.M 0, I64]) =
+    let qr = x86.div (a, b);
+    con k (m: mem.M 0, r: I64) = return (m, x86.add (r, qr#0_2));
+    g (m, qr#1_2, k);
+
+extern lam _compile (): compile.Phase = compile.phases ff (x86.schedule, x86.spilling, x86.constrain, x86.color);
+
+// The quotient lives across the call, so it takes a callee-saved register.
+// CHECK:      con {{f_[0-9]+}} ({{_[0-9]+}}: core.M 0, [[Q:_[0-9]+]]: I64, {{_[0-9]+}}: I64)
+// CHECK:      [[QIN:_[0-9]+]] = x86.in {{3|12|13|14|15}}I4 @ 0 [[Q]];
+// The returned value arrives in `rax`, and the tied `add` keeps it there for the return.
+// CHECK:      con k ([[M:m_[0-9]+]]: core.M 0, [[R:r[_0-9]*]]: I64)
+// CHECK-NEXT: [[RIN:_[0-9]+]] = x86.in 0I4 @ 0 [[R]];
+// CHECK-NEXT: [[ADD:_[0-9]+]] = x86.sched {{.*}} (x86.add @ 0) [[M]] ([[RIN]], [[QIN]]);
+// CHECK-NEXT: [[RES:_[0-9]+]] = x86.in 0I4 @ 0 [[ADD]]#tt;
+// CHECK-NEXT: return_1 ([[ADD]]#ff, [[RES]]);
+// `b` stays in its argument register `rsi`.
+// CHECK:      x86.in 6I4 @ 0 b;
+// The results of the `div` are fixed.
+// CHECK:      x86.in 0I4 @ 0 {{_[0-9]+}}#tt#ff;
+// CHECK-NEXT: x86.in 2I4 @ 0 {{_[0-9]+}}#tt#tt;

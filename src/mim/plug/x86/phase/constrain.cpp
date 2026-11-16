@@ -13,8 +13,11 @@ namespace mim::plug::x86::phase {
 
 namespace {
 
-/// The copies() of each instruction.
-using Splits = fe::Vector<fe::Vector<std::pair<size_t, const Def*>>>;
+/// Per instruction, the copies() before it and the fixed results that stay live after it.
+struct Split {
+    fe::Vector<std::pair<size_t, const Def*>> pre, post;
+};
+using Splits = fe::Vector<Split>;
 
 Splits splits(const Liveness& live, const Liveness::Block& block) {
     auto res   = Splits(block.insns.size());
@@ -23,8 +26,11 @@ Splits splits(const Liveness& live, const Liveness::Block& block) {
         after.emplace(v);
 
     for (size_t i = block.insns.size(); i-- != 0;) {
-        auto insn = block.insns[i];
-        res[i]    = copies(constraint(insn), [&](const Def* v) { return after.contains(v); });
+        auto insn  = block.insns[i];
+        auto c     = constraint(insn);
+        res[i].pre = copies(c, [&](const Def* v) { return after.contains(v); });
+        for (auto [j, reg] : c.results)
+            if (after.contains(result(insn, j))) res[i].post.emplace_back(j, reg);
         for (auto d : live.defs(insn))
             after.erase(d);
         for (auto u : live.uses(insn))
@@ -42,7 +48,8 @@ void Constrain::visit(Lam* fun) {
     auto all  = fe::Vector<Splits>();
     for (const auto& block : live.blocks())
         all.emplace_back(splits(live, block));
-    if (std::ranges::all_of(all | std::views::join, [](const auto& s) { return s.empty(); })) return;
+    if (std::ranges::all_of(all | std::views::join, [](const auto& s) { return s.pre.empty() && s.post.empty(); }))
+        return;
 
     auto& w  = world();
     auto map = Def2Def();
@@ -69,7 +76,7 @@ void Constrain::visit(Lam* fun) {
             for (auto& op : ops)
                 op = subst.rewrite(op);
 
-            if (const auto& cps = all[b][i]; !cps.empty()) {
+            if (const auto& cps = all[b][i].pre; !cps.empty()) {
                 auto dom  = DefVec{m->type()};
                 auto args = DefVec{m};
                 for (auto [j, _] : cps) {
@@ -91,6 +98,25 @@ void Constrain::visit(Lam* fun) {
             auto new_app = rebuild(insn, m, ops);
             map[insn]    = new_app;
             m            = is_mem(new_app) ? new_app : new_app->proj(2, 0);
+
+            // A fixed result leaves its register right away, so its own live range is short.
+            if (const auto& post = all[b][i].post; !post.empty()) {
+                auto dom  = DefVec{m->type()};
+                auto args = DefVec{m};
+                for (auto [j, reg] : post) {
+                    auto v = result(new_app, j);
+                    dom.emplace_back(v->type());
+                    args.emplace_back(w.call<in>(reg, v));
+                }
+                auto next = w.mut_con(dom)->set(lam->dbg());
+                finish(w.app(next, w.tuple(args)));
+
+                auto n = dom.size();
+                seg    = next;
+                m      = next->var(n, 0);
+                for (size_t k = 0; auto [j, _] : post)
+                    map[result(insn, j)] = next->var(n, ++k);
+            }
         }
         finish(Subst(w, map, m).rewrite(term));
     }

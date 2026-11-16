@@ -9,14 +9,17 @@ namespace mim::plug::x86 {
 /// What an instruction on the chain prescribes about the registers of its operands.
 /// Registers are the `I4` literals `x86.rax` etc.
 struct Constraint {
-    DefVec ops;                                      ///< See operands().
-    fe::Vector<std::pair<size_t, const Def*>> fixed; ///< Non-literal operands that have to be in a given register.
-    std::optional<size_t> tied;                      ///< The operand whose register the (only) result takes.
-    fe::Vector<const Def*> clobbers;                 ///< Registers written while the operands still occupy theirs.
+    DefVec ops;                                        ///< See operands().
+    fe::Vector<std::pair<size_t, const Def*>> fixed;   ///< Non-literal operands that have to be in a given register.
+    fe::Vector<std::pair<size_t, const Def*>> results; ///< Results, see result(), that land in a given register.
+    std::optional<size_t> tied;                        ///< The operand whose register the (only) result takes.
+    fe::Vector<const Def*> clobbers;                   ///< Registers written while the operands still occupy theirs.
 };
 
 /// The operands of @p insn: the argument of a `sched`'s instruction, otherwise the arguments including the memory.
 DefVec operands(const App* insn);
+/// The @p j-th projection of the non-memory result of @p insn.
+const Def* result(const App* insn, size_t j);
 Constraint constraint(const App* insn);
 /// @p insn continuing @p m with @p ops instead of its operands.
 const App* rebuild(const App* insn, const Def* m, const DefVec& ops);

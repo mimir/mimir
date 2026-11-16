@@ -9,6 +9,11 @@ DefVec operands(const App* insn) {
     return DefVec(ops.begin(), ops.end());
 }
 
+const Def* result(const App* insn, size_t j) {
+    auto res = insn->proj(2, 1);
+    return res->proj(res->num_projs(), j);
+}
+
 Constraint constraint(const App* insn) {
     auto res = Constraint();
     res.ops  = operands(insn);
@@ -25,6 +30,8 @@ Constraint constraint(const App* insn) {
     // clang-format off
     if (id == Annex::Base<div> || id == Annex::Base<idiv>) {
         res.fixed.emplace_back(0, w.annex<rax>());
+        res.results.emplace_back(0, w.annex<rax>());
+        res.results.emplace_back(1, w.annex<rdx>());
         res.clobbers.emplace_back(w.annex<rdx>());
     } else if (id == Annex::Base<shl> || id == Annex::Base<shr> || id == Annex::Base<sar>) {
         res.tied = 0;

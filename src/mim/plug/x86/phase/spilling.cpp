@@ -21,10 +21,6 @@ constexpr size_t Num_Caller_Saved = 9;
 
 size_t add(size_t a, size_t b) { return a > Inf - b ? Inf : a + b; }
 
-bool is_gpr(const Def* value) {
-    return !is_mem(value) && !value->type()->isa<Pi>() && Liveness::cls(value) == Liveness::Gpr;
-}
-
 DefVec gpr(DefVec values) {
     std::erase_if(values, [](const Def* v) { return !is_gpr(v); });
     return values;
@@ -148,7 +144,7 @@ Spiller::Term Spiller::kind(size_t b) const {
     auto callee = term(b)->callee();
     if (callee == fun_->ret_var()) return Term::Ret;
     if (callee->isa<Extract>()) return Term::Branch;
-    if (auto lam = callee->isa_mut<Lam>(); lam && live_.block(lam)) return Term::Jump;
+    if (auto lam = Lam::isa_mut_basicblock(callee); lam && live_.block(lam)) return Term::Jump;
     return Term::Call;
 }
 

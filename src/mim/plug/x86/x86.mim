@@ -283,8 +283,17 @@ axm spilling: compile.Phase;
 /// Moves the operands that an instruction needs in a fixed register, and a two-address operand that stays live, into a fresh continuation right before it.
 /// The jump is the copy, so the copies' live ranges end at the instruction and the interference graph stays chordal.
 /// The fixed operands are wrapped in `in`.
+/// Likewise, a fixed result that stays live is passed on to a fresh continuation right after its instruction.
 ///
 axm constrain: compile.Phase;
+///
+/// ### color
+///
+/// Assigns a register to every general-purpose value by one PBQP per function (Buchwald, Zwinkau, Bersch, CC 2011) and wraps each use of a value in `in`.
+/// Jumps, calls, and returns are parallel copies: their arguments only prefer the registers of the parameters they bind.
+/// Removes chain instructions whose results are all dead.
+///
+axm color: compile.Phase;
 ///
 /// ### live
 ///
