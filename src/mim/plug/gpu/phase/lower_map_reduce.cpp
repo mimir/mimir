@@ -37,6 +37,11 @@ struct LowerMapReduce::Call {
     Vector<nat_t> out_dims;
     Lam *comb, *post;
     Vector<In> ins, posts;
+    /// For `Concat` and `Pad`, `mr` only holds the shapes and types.
+    enum class Kind { MapRed, Concat, Pad } kind = Kind::MapRed;
+    nat_t ax = 0;     ///< `Concat`: the axis.
+    Vector<u64> exts; ///< `Concat`: the inputs' extents along `ax`.
+    const Def *lo = nullptr, *fill = nullptr; ///< `Pad`: the low padding and the literal fill value.
 };
 
 struct LowerMapReduce::Session {
@@ -64,6 +69,11 @@ void count_uses(const Def* def, DefMap<nat_t>& uses, DefSet& seen) {
         ++uses[d];
         count_uses(d, uses, seen);
     }
+}
+
+/// Whether this phase lowers @p app; all of these take `[mem, dst, …]` and return `[mem, Buf]`.
+bool lowerable(const App* app) {
+    return Axm::isa<btensor::map_reduce_post>(app) || Axm::isa<btensor::concat>(app) || Axm::isa<btensor::pad>(app);
 }
 
 /// Substitutes the var of @p old_lam and moves every memory in its Nest to `gpu.GlobalM`.
@@ -305,6 +315,62 @@ Kernel build_kernel(const Op& op) {
 
     btensor::app_cps(cur_lam, op.comb, {cur, elem_acc, w.tuple(elems)}, cont);
     return k;
+}
+
+/// One thread per output cell, which stores `compute(k, iters, mem)`'s element there; `iters` are the cell's `I64`
+/// coordinates and `compute` threads its loads through `mem`.
+Kernel build_kernel_pointwise(const Op& op, std::string name, auto compute) {
+    auto& w  = op.w;
+    auto& mr = op.mr;
+
+    auto total   = product(op.out_dims);
+    auto n_items = std::min<nat_t>(total, 1024);
+    auto k       = mk_kernel(op, (total + n_items - 1) / n_items, n_items, nullptr, std::move(name));
+    auto flat    = add_i64(mul_i64(group_i64(k), n_items), item_i64(k));
+
+    auto in_range     = w.call(core::icmp::ul, Defs{flat, w.lit_i64(total)});
+    auto early_return = w.mut_con(w.sigma(Defs{}))->set("outOfRange");
+    early_return->app(true, k.ret, Defs{k.global, k.shared, k.const_tok, k.local});
+    auto body = w.mut_con(w.sigma(Defs{}))->set("inRange");
+    k.lam->branch(true, in_range, body, early_return);
+
+    auto [cur, coords] = unflatten_index(w, flat, op.out_dims, k.global);
+    auto iters         = DefVec(coords.size(), [&](size_t d) { return w.call(core::conv::u, w.lit_nat_0(), coords[d]); });
+
+    auto elem      = compute(k, iters, cur);
+    auto final_mem = w.call<mem::store>(Defs{cur, mem::op_lea_tuple(k.out, btensor::folded_idx(mr.So, iters)), elem});
+    body->app(true, k.ret, Defs{final_mem, k.shared, k.const_tok, k.local});
+    return k;
+}
+
+/// `btensor.concat` along @p ax: every cell copies the cell of the input owning it.
+Kernel build_kernel_concat(const Op& op, nat_t ax, const Vector<u64>& exts) {
+    auto& w = op.w;
+    return build_kernel_pointwise(op, "concatKernel", [&](const Kernel& k, const DefVec& iters, const Def*& mem) {
+        auto read = [&](u64 i, const Def* ax_idx) {
+            auto in_iters = iters;
+            in_iters[ax]  = ax_idx;
+            auto ptr      = mem::op_lea_tuple(k.ins[i], btensor::folded_idx(op.ins[i].s, in_iters));
+            auto [m, elem] = w.call<mem::load>(Defs{mem, ptr})->projs<2>();
+            mem            = m;
+            return elem;
+        };
+        return btensor::concat_select(iters[ax], exts, read);
+    });
+}
+
+/// Constant-mode `btensor.pad`: every cell reads the input at its coordinates shifted by @p lo, or takes @p fill
+/// outside the input.
+Kernel build_kernel_pad(const Op& op, const Def* lo, const Def* fill) {
+    auto& w = op.w;
+    return build_kernel_pointwise(op, "padKernel", [&](const Kernel& k, const DefVec& iters, const Def*& mem) {
+        auto s_in            = op.ins[0].s;
+        auto [coords, valid] = btensor::pad_coords(iters, lo, s_in, false);
+        auto ptr             = mem::op_lea_tuple(k.ins[0], *Shape(w, coords).fold(s_in));
+        auto [m, elem]       = w.call<mem::load>(Defs{mem, ptr})->projs<2>();
+        mem                  = m;
+        return w.select(valid, elem, fill);
+    });
 }
 
 /// Whether the access map @p map reads loop position @p pos: it is evaluated on two marker vectors differing only
@@ -589,18 +655,19 @@ void LowerMapReduce::start() {
 }
 
 const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
-    if (Axm::isa<btensor::map_reduce_post>(app)) return lower_map_reduce_post(app);
+    if (lowerable(app)) return lower_map_reduce_post(app);
     return Super::rewrite_imm_App(app);
 }
 
 const App* LowerMapReduce::chainable(const Def* def) {
     if (auto i = uses_.find(def); i == uses_.end() || i->second != 1) return nullptr;
     if (auto ex = def->isa<Extract>())
-        if (auto app = ex->tuple()->isa<App>(); app && Axm::isa<btensor::map_reduce_post>(app)) {
+        if (auto app = ex->tuple()->isa<App>(); app && lowerable(app)) {
             // A producer already lowered on its own keeps its host result.
             if (lookup(app) || absorbed_.contains(app)) return nullptr;
             // Nobody may observe the destination of an absorbed producer, so it has to be a fresh buffer.
-            if (auto dst = app->arg(4, 1)->isa<Extract>(); dst && Axm::isa<buffer::alloc>(dst->tuple())) return app;
+            auto dst = app->arg(app->num_args(), 1)->isa<Extract>();
+            if (dst && Axm::isa<buffer::alloc>(dst->tuple())) return app;
         }
     return nullptr;
 }
@@ -617,7 +684,92 @@ void LowerMapReduce::plan_inputs(Call& call, bool post, const Def* group, std::d
     }
 }
 
+LowerMapReduce::Call* LowerMapReduce::plan_concat(const App* app, std::deque<Call>& calls) {
+    auto& w                      = new_world();
+    auto [TnisR, ax, Sis, s_out] = rewrite(app->callee())->as<App>()->uncurry_args<4>();
+    auto [T, nis, r]             = TnisR->projs<3>();
+
+    auto nis_l = Lit::isa<u64>(nis);
+    auto r_l   = Lit::isa<u64>(r);
+    auto ax_l  = Lit::isa<u64>(ax);
+    if (!nis_l || !r_l || !ax_l) {
+        log().w("{} doesn't have a lowering-time known input count, rank and axis", app);
+        return nullptr;
+    }
+    auto exts = btensor::concat_extents(Sis, *nis_l, *r_l, *ax_l);
+
+    Vector<nat_t> out_dims(*r_l);
+    for (nat_t d = 0; d != *r_l; ++d)
+        if (auto l = Lit::isa<nat_t>(s_out->proj(*r_l, d)))
+            out_dims[d] = *l;
+        else
+            exts.reset();
+    if (!exts || product(out_dims) == 0) {
+        log().w("{} doesn't have a lowering-time known, non-empty shape", app);
+        return nullptr;
+    }
+
+    btensor::MapRedPost mr{};
+    mr.Ro = mr.Rn = r;
+    mr.So = mr.Sr = s_out;
+    mr.To = mr.Tp = T;
+    mr.Sis        = Sis;
+    mr.Ris        = w.pack(*nis_l, r);
+    mr.Tis        = w.pack(*nis_l, T);
+
+    Call call{app, mr, *r_l, 0, out_dims, nullptr, nullptr, Vector<Call::In>(*nis_l), Vector<Call::In>(0)};
+    call.kind = Call::Kind::Concat;
+    call.ax   = *ax_l;
+    call.exts = *exts;
+    plan_inputs(call, false, app->arg(3, 2), calls);
+    return &calls.emplace_back(std::move(call));
+}
+
+LowerMapReduce::Call* LowerMapReduce::plan_pad(const App* app, std::deque<Call>& calls) {
+    auto [Tr, s_in, params, s_out] = rewrite(app->callee())->as<App>()->uncurry_args<4>();
+    auto [T, r]                    = Tr->projs<2>();
+    auto [mode, lo, hi]            = params->projs<3>();
+
+    auto r_l    = Lit::isa<u64>(r);
+    auto mode_l = Lit::isa<u64>(mode);
+    if (!r_l || !mode_l) {
+        log().w("{} doesn't have a lowering-time known rank and mode", app);
+        return nullptr;
+    }
+
+    Vector<nat_t> out_dims(*r_l);
+    for (nat_t d = 0; d != *r_l; ++d)
+        if (auto l = Lit::isa<nat_t>(s_out->proj(*r_l, d)))
+            out_dims[d] = *l;
+        else
+            r_l.reset();
+    if (!r_l || product(out_dims) == 0) {
+        log().w("{} doesn't have a lowering-time known, non-empty shape", app);
+        return nullptr;
+    }
+
+    // Only constant mode, and the kernel cannot read a host scalar: the fill value has to be a literal.
+    auto fill = rewrite(app->arg(4, 3));
+    if (*mode_l != 0 || !fill->isa<Lit>()) return nullptr;
+
+    btensor::MapRedPost mr{};
+    mr.Ro = mr.Rn = mr.Ris = r;
+    mr.So = mr.Sr = s_out;
+    mr.To = mr.Tp = mr.Tis = T;
+    mr.Sis                 = s_in;
+
+    Call call{app, mr, *r_l, 0, out_dims, nullptr, nullptr, Vector<Call::In>(1), Vector<Call::In>(0)};
+    call.kind = Call::Kind::Pad;
+    call.lo   = lo;
+    call.fill = fill;
+    plan_inputs(call, false, app->arg(4, 2), calls);
+    return &calls.emplace_back(std::move(call));
+}
+
 LowerMapReduce::Call* LowerMapReduce::plan(const App* app, std::deque<Call>& calls) {
+    if (Axm::isa<btensor::concat>(app)) return plan_concat(app, calls);
+    if (Axm::isa<btensor::pad>(app)) return plan_pad(app, calls);
+
     auto mr    = btensor::MapRedPost::of(rewrite(app->callee())->as<App>());
     auto ranks = mr.ranks();
     if (!ranks) {
@@ -674,7 +826,8 @@ const Def* LowerMapReduce::emit(const Call& call, Session& s) {
         auto n = ins.size();
         Slots slots(n);
         for (size_t i = 0; i != n; ++i) {
-            auto& slot = slots[i] = Slot{Rs->proj(n, i), Ss->proj(n, i), Ts->proj(n, i), maps->proj(n, i), nullptr};
+            auto map   = maps ? maps->proj(n, i) : nullptr;
+            auto& slot = slots[i] = Slot{Rs->proj(n, i), Ss->proj(n, i), Ts->proj(n, i), map, nullptr};
             if (auto producer = ins[i].producer) {
                 slot.dptr = emit(*producer, s);
             } else {
@@ -688,7 +841,8 @@ const Def* LowerMapReduce::emit(const Call& call, Session& s) {
     };
 
     auto ins   = resolve(call.ins, mr.Ris, mr.Sis, mr.Tis, mr.maps);
-    auto posts = resolve(call.posts, mr.Rps, mr.Sps, mr.Tps, mr.post_maps);
+    auto map_red = call.kind == Call::Kind::MapRed;
+    auto posts   = map_red ? resolve(call.posts, mr.Rps, mr.Sps, mr.Tps, mr.post_maps) : Slots();
 
     auto [out_global, out_dptr]
         = w.app(w.app(w.annex<gpu::alloc>(gpu::alloc::block), w.arr(mr.So, mr.Tp)), s.global)->projs<2>();
@@ -700,10 +854,12 @@ const Def* LowerMapReduce::emit(const Call& call, Session& s) {
           call.out_dims,
           std::move(ins),
           std::move(posts),
-          rebuild_lam_global_mem(call.comb, mr.To, w.sym("combGlobal")),
-          rebuild_lam_global_mem(call.post, mr.Tp, w.sym("postGlobal")),
+          map_red ? rebuild_lam_global_mem(call.comb, mr.To, w.sym("combGlobal")) : nullptr,
+          map_red ? rebuild_lam_global_mem(call.post, mr.Tp, w.sym("postGlobal")) : nullptr,
           out_dptr};
-    auto k = select_kernel(op);
+    auto k = call.kind == Call::Kind::Concat ? build_kernel_concat(op, call.ax, call.exts)
+           : call.kind == Call::Kind::Pad    ? build_kernel_pad(op, call.lo, call.fill)
+                                             : select_kernel(op);
 
     DefVec args;
     for (auto& in : op.ins)
@@ -728,8 +884,10 @@ const Def* LowerMapReduce::emit(const Call& call, Session& s) {
 }
 
 const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
-    auto& w                        = new_world();
-    auto [old_mem, old_dst, _, __] = app->args<4>();
+    auto& w      = new_world();
+    auto n_args  = app->num_args();
+    auto old_mem = app->arg(n_args, 0);
+    auto old_dst = app->arg(n_args, 1);
 
     if (absorbed_.contains(app)) return w.tuple({rewrite(old_mem), rewrite(old_dst)});
 

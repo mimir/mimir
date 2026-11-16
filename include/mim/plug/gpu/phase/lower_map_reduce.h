@@ -16,7 +16,8 @@ public:
         : Super(world, annex) {}
 
 private:
-    /// A lowerable `btensor.map_reduce_post` together with the producers chained into it.
+    /// A lowerable `btensor.map_reduce_post`, `btensor.concat` or `btensor.pad` together with the producers chained
+    /// into it.
     struct Call;
     /// The open GPU session a chain of launches is emitted into.
     struct Session;
@@ -28,10 +29,14 @@ private:
 
     const Def* lower_map_reduce_post(const App*);
 
-    /// The `btensor.map_reduce_post` whose buffer result is @p def, if only the reading call consumes it.
+    /// The lowerable call whose buffer result is @p def, if only the reading call consumes it.
     const App* chainable(const Def* def);
     /// `nullptr` unless @p app has lowering-time known ranks, grid shape, combiner and epilogue.
     Call* plan(const App* app, std::deque<Call>&);
+    /// `nullptr` unless @p app has lowering-time known input count, rank, axis and shapes.
+    Call* plan_concat(const App* app, std::deque<Call>&);
+    /// `nullptr` unless @p app is constant-mode with lowering-time known rank, shapes and a literal fill value.
+    Call* plan_pad(const App* app, std::deque<Call>&);
     void plan_inputs(Call&, bool post, const Def* group, std::deque<Call>&);
     /// Marks every producer chained into @p call as absorbed and rewrites the remaining host inputs into @p hosts.
     void commit(Call& call, DefVec& hosts);
