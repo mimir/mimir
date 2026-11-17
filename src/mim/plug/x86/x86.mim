@@ -46,18 +46,33 @@ anx let Base = Addr ff;
 ///
 anx let Index = Addr tt;
 ///
+/// ### addr
+///
+/// `addr (disp, base)` addresses `disp + base`, like AT&T's `disp(base)`.
+/// A literal `0I64` as `base` means there is none.
+///
+axm addr: [disp: I32, base: I64] → Base;
+///
+/// ### index
+///
+/// `index a (i, scale)` addresses `a + (i << scale)`, like AT&T's `disp(base, index, scale)`.
+/// An address has at most one index.
+///
+axm index: Base → [index: I64, scale: I2] → Index;
+///
+/// These lets name the scales.
+///
+anx let scale_1 = 0I2;
+anx let scale_2 = 1I2;
+anx let scale_4 = 2I2;
+anx let scale_8 = 3I2;
+///
 /// ### Spill
 ///
 /// A spill slot holding a value of type `Idx s`.
 /// It is no register value; slot assignment gives it a place in the stack frame.
 ///
 axm Spill: Nat → *;
-///
-/// ### emit
-///
-/// Emits GNU assembler code (AT&T syntax) to `<world>.s`.
-///
-axm emit: compile.Phase;
 ///
 /// ## Operand Sizes
 ///
@@ -90,36 +105,63 @@ anx lam logic (s: Nat): Nat =
     let ok = core.bit2.or 0 (is (s, 2), core.bit2.or 0 (core.bit2.or 0 (is (s, i8), is (s, i16)), core.bit2.or 0 (is (s, i32), is (s, i64))));
     refly.check (ok, s, "x86: operand size must be Bool, i8, i16, i32, or i64");
 ///
-/// ## Addressing
+/// ## Instruction Forms
 ///
-/// ### addr
+/// ### rm
 ///
-/// `addr (disp, base)` addresses `disp + base`, like AT&T's `disp(base)`.
-/// A literal `0I64` as `base` means there is none.
+/// `op r, addr`: `rm f (m, a, addr)` is `f (a, b)` with `b` loaded from `addr`.
 ///
-axm addr: [disp: I32, base: I64] → Base;
+axm rm: {s: Nat, C: *, i: Bool} → («2; Idx s» → C) → [mem.M 0, Idx s, Addr i] → [mem.M 0, C];
 ///
-/// ### index
+/// ### mr
 ///
-/// `index a (i, scale)` addresses `a + (i << scale)`, like AT&T's `disp(base, index, scale)`.
-/// An address has at most one index.
+/// `op addr, r`: `mr f (m, addr, b)` stores `f (a, b)` to `addr` with `a` loaded from `addr`.
 ///
-axm index: Base → [index: I64, scale: I2] → Index;
+axm mr: {s: Nat, i: Bool} → («2; Idx s» → Idx s) → [mem.M 0, Addr i, Idx s] → mem.M 0;
 ///
-/// These lets name the scales.
+/// ### sched
 ///
-anx let scale_1 = 0I2;
-anx let scale_2 = 1I2;
-anx let scale_4 = 2I2;
-anx let scale_8 = 3I2;
+/// Places the pure instruction `f x` on the `mem.M 0` chain right after `m`: `let (m, y) = x86.sched x86.add m (a, b)`.
+/// The chain token makes each placement a distinct Def, so copies, spills, and reloads at different points never merge.
+///
+axm sched: {D C: *} → (D → C) → mem.M 0 → D → [mem.M 0, C];
+///
+/// ## Registers
+///
+/// ### in
+///
+/// `in r v` is `v`, which lives in register `r`; the operand size `s` selects the subregister.
+/// Register allocation wraps every use of a value, so all uses of `v` share one `in r v`.
+/// It is no instruction: it is neither scheduled nor on the chain.
+///
+axm in: [r: I4] → {s: Nat} → Idx s → Idx s;
+///
+/// These lets name the registers in hardware encoding order.
+///
+anx let rax = 0I4;
+anx let rcx = 1I4;
+anx let rdx = 2I4;
+anx let rbx = 3I4;
+anx let rsp = 4I4;
+anx let rbp = 5I4;
+anx let rsi = 6I4;
+anx let rdi = 7I4;
+anx let r8  = 8I4;
+anx let r9  = 9I4;
+anx let r10 = 10I4;
+anx let r11 = 11I4;
+anx let r12 = 12I4;
+anx let r13 = 13I4;
+anx let r14 = 14I4;
+anx let r15 = 15I4;
+///
+/// ## Instructions
 ///
 /// ### lea
 ///
 /// `lea r, addr` materializes an address as a value.
 ///
 axm lea: {i: Bool} → Addr i → I64;
-///
-/// ## Instructions
 ///
 /// ### mov
 ///
@@ -139,23 +181,23 @@ axm load: [s: Nat] → {i: Bool} → [mem.M 0, Addr i] → [mem.M 0, Idx (gpr s)
 ///
 axm store: {s: Nat, i: Bool} → [mem.M 0, Addr i, Idx s] → mem.M 0;
 ///
-/// ### rm
-///
-/// `op r, addr`: `rm f (m, a, addr)` is `f (a, b)` with `b` loaded from `addr`.
-///
-axm rm: {s: Nat, C: *, i: Bool} → («2; Idx s» → C) → [mem.M 0, Idx s, Addr i] → [mem.M 0, C];
-///
-/// ### mr
-///
-/// `op addr, r`: `mr f (m, addr, b)` stores `f (a, b)` to `addr` with `a` loaded from `addr`.
-///
-axm mr: {s: Nat, i: Bool} → («2; Idx s» → Idx s) → [mem.M 0, Addr i, Idx s] → mem.M 0;
-///
 /// ### slot
 ///
 /// Reserves `n` bytes in the stack frame and yields their address via `lea`.
 ///
 axm slot: [n: Nat] → mem.M 0 → [mem.M 0, I64];
+///
+/// ### spill
+///
+/// `spill x` stores `x` into a spill slot; it is placed on the chain via `sched` like any other pure instruction.
+///
+axm spill: {s: Nat} → Idx s → Spill s;
+///
+/// ### reload
+///
+/// `reload x` loads `x` from its spill slot.
+///
+axm reload: {s: Nat} → Spill s → Idx s;
 ///
 /// ### Arithmetic
 ///
@@ -189,72 +231,22 @@ axm (movzx, movsx, trunc): {s: Nat} → [d: Nat] → Idx s → Idx d;
 ///
 axm (cmp, test): {s: Nat} → «2; Idx s» → Fl;
 ///
-/// ## Condition Codes
+/// ### Condition Codes
 ///
 /// A condition code `cc` is a Nat in hardware encoding order:
 /// o = 0, no = 1, b = 2, ae = 3, e = 4, ne = 5, be = 6, a = 7, s = 8, ns = 9, p = 10, np = 11, l = 12, ge = 13, le = 14, g = 15.
 ///
-/// ### cc
+/// #### cc
 ///
 /// Tests `cc` on the flags: `jcc` as a branch condition, `setcc` otherwise.
 ///
 axm cc: [cc: Nat] → Fl → Bool;
 ///
-/// ### cmovcc
+/// #### cmovcc
 ///
 /// `cmovcc cc (f, x, y)` yields `y` if `cc` holds on `f`, else `x`, like `(x, y)#cond`.
 ///
 axm cmovcc: [cc: Nat] → {s: Nat} → [Fl, Idx s, Idx s] → Idx (gpr16 s);
-///
-/// ## Schedule
-///
-/// ### sched
-///
-/// Places the pure instruction `f x` on the `mem.M 0` chain right after `m`: `let (m, y) = x86.sched x86.add m (a, b)`.
-/// The chain token makes each placement a distinct Def, so copies, spills, and reloads at different points never merge.
-///
-axm sched: {D C: *} → (D → C) → mem.M 0 → D → [mem.M 0, C];
-///
-/// ### spill
-///
-/// `spill x` stores `x` into a spill slot; it is placed on the chain via `sched` like any other pure instruction.
-///
-axm spill: {s: Nat} → Idx s → Spill s;
-///
-/// ### reload
-///
-/// `reload x` loads `x` from its spill slot.
-///
-axm reload: {s: Nat} → Spill s → Idx s;
-///
-/// ## Registers
-///
-/// ### in
-///
-/// `in r v` is `v`, which lives in register `r`; the operand size `s` selects the subregister.
-/// Register allocation wraps every use of a value, so all uses of `v` share one `in r v`.
-/// It is no instruction: it is neither scheduled nor on the chain.
-///
-axm in: [r: I4] → {s: Nat} → Idx s → Idx s;
-///
-/// These lets name the registers in hardware encoding order.
-///
-anx let rax = 0I4;
-anx let rcx = 1I4;
-anx let rdx = 2I4;
-anx let rbx = 3I4;
-anx let rsp = 4I4;
-anx let rbp = 5I4;
-anx let rsi = 6I4;
-anx let rdi = 7I4;
-anx let r8  = 8I4;
-anx let r9  = 9I4;
-anx let r10 = 10I4;
-anx let r11 = 11I4;
-anx let r12 = 12I4;
-anx let r13 = 13I4;
-anx let r14 = 14I4;
-anx let r15 = 15I4;
 ///
 /// ## Phases
 ///
@@ -297,9 +289,14 @@ axm constrain: compile.Phase;
 ///
 axm color: compile.Phase;
 ///
+/// ### emit
+///
+/// Emits GNU assembler code (AT&T syntax) to `<world>.s`.
+///
+axm emit: compile.Phase;
+///
 /// ### live
 ///
 /// Prints the liveness of every scheduled function to stdout, or to `-X x86:live=<file>`: per block the live-in and live-out values and the maximum number of live values (general-purpose registers, flags).
 ///
 axm live: compile.Phase;
-///
