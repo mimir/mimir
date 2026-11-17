@@ -49,7 +49,6 @@ struct LowerMapReduce::Session {
     const Def *mem, *global, *const_tok;
     const Def* hosts;
     size_t n_hosts;
-    DefVec to_free;
 };
 
 namespace {
@@ -846,7 +845,6 @@ const Def* LowerMapReduce::emit(const Call& call, Session& s) {
                                   {s.mem, s.global, s.hosts->proj(s.n_hosts, ins[i].host_idx)});
                 std::tie(s.mem, s.global, slot.dptr) = copy->projs<3>();
             }
-            s.to_free.emplace_back(slot.dptr);
         }
         return slots;
     };
@@ -891,6 +889,9 @@ const Def* LowerMapReduce::emit(const Call& call, Session& s) {
     s.cur->set(true, w.app(launch, Defs{w.tuple({s.mem, out_global, s.const_tok}), after_launch}));
     s.cur                                  = after_launch;
     std::tie(s.mem, s.global, s.const_tok) = after_launch->vars<3>();
+    // This kernel is the only reader of its input buffers, so free them now rather than at the end of the chain.
+    for (size_t i = 0, e = args.size() - 1; i != e; ++i)
+        s.global = w.call(gpu::free::block, Defs{s.global, args[i]});
     return out_dptr;
 }
 
@@ -919,15 +920,13 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     auto cont                           = fun->var(2, 1);
 
     auto [h_mem, h_global, h_const] = w.app(w.annex<gpu::auto_init>(), fun_mem)->projs<3>();
-    Session s{fun, h_mem, h_global, h_const, fun_hosts, new_hosts.size(), {}};
+    Session s{fun, h_mem, h_global, h_const, fun_hosts, new_hosts.size()};
     auto out_dptr = emit(*call, s);
 
     auto& mr = call->mr;
     auto copy
         = w.app(w.app(w.annex<gpu::buf_copy_to_host>(), {mr.Ro, mr.So, mr.Tp}), {s.mem, s.global, out_dptr, host_buf});
     auto [cb_mem, cb_global] = copy->projs<2>();
-    for (auto dptr : s.to_free)
-        cb_global = w.call(gpu::free::block, Defs{cb_global, dptr});
     cb_global = w.call(gpu::free::block, Defs{cb_global, out_dptr});
 
     auto final_mem = w.app(w.annex<gpu::auto_deinit>(), Defs{cb_mem, cb_global, s.const_tok});
