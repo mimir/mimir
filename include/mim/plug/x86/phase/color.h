@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mim/phase.h>
+#include <mim/plugin.h>
 
 namespace mim::plug::x86::phase {
 
@@ -15,6 +16,10 @@ public:
 
 private:
     void visit(Lam*) final;
+    /// The stream of `-X x86:color-dot=<file>`, if requested.
+    std::ostream* dot();
+
+    Out dot_;
 };
 
 } // namespace mim::plug::x86::phase

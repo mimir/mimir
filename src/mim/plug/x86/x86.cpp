@@ -27,6 +27,8 @@ static constexpr PluginArg known_args[] = {
     {"o=<file>, output=<file>", "Writes the assembly to `<file>` instead of the default `<world>.s`/`a.s`; `<file>` may be `-` for stdout."},
     {"live=<file>", "Writes the output of `x86.live` to `<file>` instead of stdout."},
     {"k=<n>", "Lets `x86.spilling` keep at most `<n>` general-purpose values in registers instead of 14."},
+    {"isel-dot=<file>", "Writes the instruction-selection PBQP graph of `x86.isel` in Graphviz DOT format to `<file>`, with the chosen options highlighted; `<file>` may be `-` for stdout."},
+    {"color-dot=<file>", "Writes the register-assignment PBQP graph of each function in Graphviz DOT format to `<file>`, with the chosen options highlighted; `<file>` may be `-` for stdout."},
 };
 // clang-format on
 

@@ -1,9 +1,12 @@
 #include "mim/plug/x86/phase/color.h"
 
+#include <print>
 #include <ranges>
 
+#include <pbqp/dot.h>
 #include <pbqp/solver.h>
 
+#include <mim/plugin.h>
 #include <mim/rewrite.h>
 
 #include "mim/plug/x86/constraint.h"
@@ -190,9 +193,10 @@ private:
 
 class Colorer {
 public:
-    explicit Colorer(Lam* fun)
+    Colorer(Lam* fun, std::ostream* dot = nullptr)
         : fun_(fun)
-        , live_(fun) {}
+        , live_(fun)
+        , dot_(dot) {}
 
     void run() {
         nodes();
@@ -245,6 +249,7 @@ private:
 
     Lam* fun_;
     Liveness live_;
+    std::ostream* dot_;
     pbqp::Graph graph_;
     DefMap<pbqp::NodeId> ids_;
     DefVec values_;
@@ -337,6 +342,12 @@ void Colorer::solve() {
 
     auto priority = fe::Vector<size_t>(values_.size(), [](size_t i) { return i; });
     auto sol      = pbqp::solve(graph_, priority);
+    if (dot_) {
+        std::println(*dot_, "// fun {}", fun_);
+        for (size_t i = 0; i != values_.size(); ++i)
+            std::println(*dot_, "// n{} = {}", i, values_[i]);
+        pbqp::write_dot(*dot_, graph_, sol.choices);
+    }
     if (!sol.feasible()) {
         auto conflicts = DefVec();
         for (size_t i = 0; i != values_.size(); ++i)
@@ -448,8 +459,16 @@ void Color::visit(Lam* fun) {
     if (!Lam::isa_mut_returning(fun)) return;
 
     prune(fun);
-    Colorer(fun).run();
+    Colorer(fun, dot()).run();
     Checker(fun).run();
+}
+
+std::ostream* Color::dot() {
+    if (auto d = arg_value(args(), "color-dot")) {
+        if (dot_.name().empty()) dot_.name() = std::string(*d);
+        return dot_.os();
+    }
+    return nullptr;
 }
 
 } // namespace mim::plug::x86::phase

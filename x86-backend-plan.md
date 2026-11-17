@@ -89,6 +89,7 @@ Done (on `feature/x86`):
   - It first drops chain instructions none of whose results is used (to a fixpoint), so a result without a use is one whose register its instruction implies (`div`'s remainder); and it sets every block's filter to `ff`, since rebuilding a jump must not inline its target (pruning can make both targets of a branch α-equal, and the World then folds the branch).
   - One PBQP over the general-purpose values with 16 options; `rsp` and `rbp` are ∞, callee-saved registers cost 1.
     A dead parameter is no node.
+    `-X x86:color-dot=<file>` writes each function's graph in Graphviz DOT format with the chosen options highlighted.
   - Interference edges (∞ on the diagonal) between a definition and every value live after it or defined along with it; tie edges (∞ off the diagonal) between a two-address result and its tied operand; fixed operands and results are precolored; clobbers are ∞ on the operands (`rdx` at `div`); values live across a call are ∞ on the nine caller-saved registers.
   - Copies are preferences: a jump argument and its parameter get an edge that costs 4 off the diagonal; entry parameters prefer their SysV argument registers, call arguments theirs, a return continuation's parameter and a returned value prefer `rax`.
   - `rn_priority` is the node id, and nodes are created in block discovery order (which visits a dominator first) and within a block in definition order, so RN eliminates along a PEO.
@@ -109,6 +110,7 @@ Done (on `feature/x86`):
   `ISel::analyze()` builds the PBQP generically from that: every operation with a match is a node, inner alternatives are derived from the covers, edges price `conv` between rule type and hole type, and all-zero edges are left out.
   The rewrite is generic too: a root alternative's rule builds the replacement, `hole` converts operands to the hole's type, and an inner node defers to the root of its match.
   The first alternative of every node is atomic (asserted, as is that the atomic cover is valid), and it is the fallback should RN end infeasible.
+  `-X x86:isel-dot=<file>` writes the graph in Graphviz DOT format with the chosen options highlighted.
 - Rules: `lea_off_base`/`lea_off_index` (polymorphic in the index), `lea_index` (onto a `Base`), `load`, `store` (register or immediate), `bin` (`core.wrap`/`core.bit2`/`core.shr`, register or immediate), `bin_rm`, `store_mr`, `cmp`, `nat`, `unary` (conversions), `div`, `slot`, `assume`, `select`.
 - Not yet as designed: matchers are C++ code with their conditions inline, so atomic completeness and composability are asserted per program instead of checked over the rule set; this comes with rules as data.
 - `x86.emit` prints a literal operand as `$c` (it must fit a sign-extended `i32`) and rejects one where the instruction needs a register.

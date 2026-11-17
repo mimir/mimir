@@ -1,3 +1,4 @@
+#include <bit>
 #include <type_traits>
 
 #include <mim/plug/math/math.h>
@@ -916,6 +917,8 @@ const Def* normalize_rem(const Def* type, const Def* callee, const Def* x) {
     if (x->isa<Bot>()) return world.bot(type);
     if (auto l = Lit::isa(x)) return world.lit(type, *l % *d);
     if (auto s = Idx::isa_lit(type); s && *s != 0 && *s <= *d) return x;
+    // x % 2^k keeps the low k bits.
+    if (std::has_single_bit(*d)) return world.call(bit2::and_, Mode::none, Defs{x, world.lit(type, *d - 1)});
     return {};
 }
 

@@ -4,10 +4,17 @@
 // RUN: %t ; test $? -eq 0
 // RUN: %t a ; test $? -eq 0
 // RUN: %t a b ; test $? -eq 0
+// RUN: %mim -p opt %s -o - | %FileCheck %s --implicit-check-not='core.rem @ 0 4'
 
 // Each component of `ops` depends on the modulus of `Idx 3` or `I2`.
 // Applied to a literal, the normalizers fold it; applied to a runtime value, it reaches the backend widened to `I8`.
 // main returns how many components disagree.
+
+// A power-of-two modulus reduces with bit-magic instead of `core.rem`; odd moduli keep it.
+// CHECK: core.bit2.and 0 @ 0 (3I64
+// CHECK: core.bit2.and 0 @ 0 (3I64
+// CHECK: core.rem @ 0 3
+// CHECK: core.rem @ 0 3000000000007
 
 plugin core;
 plugin mem;

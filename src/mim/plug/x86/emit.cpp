@@ -213,6 +213,8 @@ std::string Emitter::addr(const Def* a) const {
 void Emitter::mov_imm(size_t dst, const Def* lit) {
     auto w = width(lit->type());
     auto l = *Lit::isa(lit);
+    // `xorl` clobbers the flags, so only use it while none are pending.
+    if (l == 0 && flags_ == nullptr) return line("xorl {}, {}", name(dst, 32), name(dst, 32));
     if (w < 64) return line("movl ${}, {}", l, name(dst, 32));
     auto s = std::bit_cast<int64_t>(l);
     if (s < INT32_MIN || s > INT32_MAX)

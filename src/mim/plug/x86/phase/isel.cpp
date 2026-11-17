@@ -1,6 +1,11 @@
 #include "mim/plug/x86/phase/isel.h"
 
+#include <print>
+
+#include <pbqp/dot.h>
 #include <pbqp/solver.h>
+
+#include <mim/plugin.h>
 
 #include <mim/plug/core/core.h>
 #include <mim/plug/ll/autogen.h>
@@ -622,6 +627,13 @@ bool ISel::analyze() {
     log().d("x86 isel: {} nodes, {} edges, cost {}", graph.num_nodes(), graph.num_edges(), sol.cost.value());
     // RN is a heuristic, but the atomic rules always remain a valid cover.
     const auto& picked = sol.feasible() ? sol.choices : atomic;
+    if (auto d = arg_value(args(), "isel-dot")) {
+        auto out = Out(std::string(*d));
+        auto& os = *out.os();
+        for (auto def : nodes)
+            std::println(os, "// n{} = {}", ids[def], def);
+        pbqp::write_dot(os, graph, picked);
+    }
     for (auto def : nodes) {
         auto c        = picked[ids[def]];
         choices_[def] = c;

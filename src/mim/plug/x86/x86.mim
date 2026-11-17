@@ -261,6 +261,7 @@ anx let r15 = 15I4;
 /// ### isel
 ///
 /// Instruction selection.
+/// `-X x86:isel-dot=<file>` writes the PBQP graph in Graphviz DOT format, with the chosen options highlighted.
 ///
 axm isel: compile.Phase;
 ///
@@ -292,6 +293,7 @@ axm constrain: compile.Phase;
 /// Assigns a register to every general-purpose value by one PBQP per function (Buchwald, Zwinkau, Bersch, CC 2011) and wraps each use of a value in `in`.
 /// Jumps, calls, and returns are parallel copies: their arguments only prefer the registers of the parameters they bind.
 /// Removes chain instructions whose results are all dead.
+/// `-X x86:color-dot=<file>` writes the PBQP graph of each function in Graphviz DOT format, with the chosen options highlighted.
 ///
 axm color: compile.Phase;
 ///
