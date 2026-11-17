@@ -65,10 +65,9 @@ static bool check(size_t batch, size_t c_in, size_t hidden, size_t c_out) {
 }
 
 int main() {
-    constexpr std::array<size_t, 7> batches               = {0, 1, 2, 3, 7, 16, 17};
-    constexpr std::array<std::array<size_t, 3>, 8> widths = {
-        {{5, 7, 3}, {8, 16, 4}, {1, 1, 1}, {1, 5, 3}, {5, 1, 3}, {0, 7, 3}, {5, 0, 3}, {5, 7, 0}}
-    };
+    constexpr std::array<size_t, 7> batches = {0, 1, 2, 3, 7, 16, 17};
+    constexpr std::array<std::array<size_t, 3>, 8> widths
+        = {{{5, 7, 3}, {8, 16, 4}, {1, 1, 1}, {1, 5, 3}, {5, 1, 3}, {0, 7, 3}, {5, 0, 3}, {5, 7, 0}}};
     for (auto batch : batches)
         for (auto [c_in, hidden, c_out] : widths)
             if (!check(batch, c_in, hidden, c_out)) return 1;

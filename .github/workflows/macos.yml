@@ -12,7 +12,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: [Debug, Release]
+        include:
+          - build-type: Debug
+            preset: debug
+          - build-type: Release
+            preset: release
 
     steps:
       - name: Clone recursively
@@ -42,20 +46,17 @@ jobs:
       - name: Configure
         run: |
           CC="${LLVM_PREFIX}/bin/clang" CXX="${LLVM_PREFIX}/bin/clang++"    \
-          cmake -B build                                                    \
+          cmake --preset ${{matrix.preset}}                                 \
                 -G Ninja                                                    \
-                -DCMAKE_BUILD_TYPE=${{matrix.build-type}}                   \
                 -DCMAKE_C_COMPILER_LAUNCHER=ccache                          \
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache                        \
-                -DBUILD_TESTING=ON                                          \
-                -DMIM_BUILD_EXAMPLES=ON                                     \
                 -DMIM_TEST_ROUNDTRIP=${{matrix.build-type == 'Release' && 'ON' || 'OFF'}} \
                 -DMIM_FILECHECK=${LLVM_PREFIX}/bin/FileCheck                \
                 -DMIM_LIT_TIMEOUT=300                                       \
                 -DPython_EXECUTABLE=${{github.workspace}}/.venv/bin/python3
 
       - name: Build
-        run: cmake --build build -v
+        run: cmake --build --preset ${{matrix.preset}} -v
 
       - name: Test
-        run: cmake --build build -v --target test-all
+        run: cmake --build --preset ${{matrix.preset}} -v --target test-all

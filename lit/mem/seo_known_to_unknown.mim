@@ -2,6 +2,9 @@
 // RUN: %mim -p opt %s -o - -p ll | %FileCheck %s
 // RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t; test $? -eq 5
+// RUN: %if x86_64-linux %{ %mim -p opt %s -p x86 -X x86:o=%t.s %}
+// RUN: %if x86_64-linux %{ clang %t.s -o %t.x86 %}
+// RUN: %if x86_64-linux %{ %t.x86 ; test $? -eq 5 %}
 
 // `head → body` is known while `i` is still `0`, but unknown once `i` reaches ⊤.
 // A stale `j = 0` would fold `body → step` to a known edge and pin `k` to `1`, looping forever.

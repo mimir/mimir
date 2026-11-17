@@ -2,6 +2,9 @@
 // RUN: %mim %s -p opt -p ll -o - | %FileCheck %s
 // RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t ; test $? -eq 2
+// RUN: %if x86_64-linux %{ %mim -p opt %s -p x86 -X x86:o=%t.s %}
+// RUN: %if x86_64-linux %{ clang %t.s -o %t.x86 %}
+// RUN: %if x86_64-linux %{ %t.x86 ; test $? -eq 2 %}
 
 // `(i·3) floordiv 3` is `i` only if `i·3` does not wrap the i64 carrier. `i` ranges over `Idx 0`, which bounds
 // nothing, so `affine.lower_index` must keep the division although `i·3` is syntactically a multiple of 3.

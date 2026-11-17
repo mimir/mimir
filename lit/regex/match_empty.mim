@@ -5,6 +5,12 @@
 // RUN: %t "a1"; test $? -eq 1
 // RUN: %t "ab"; test $? -eq 0
 // RUN: %t "1a"; test $? -eq 0
+// RUN: %if x86_64-linux %{ %mim -p opt %s -p x86 -X x86:o=%t.s %}
+// RUN: %if x86_64-linux %{ clang %t.s -o %t.x86 %}
+// RUN: %if x86_64-linux %{ %t.x86 "a"; test $? -eq 1 %}
+// RUN: %if x86_64-linux %{ %t.x86 "a1"; test $? -eq 1 %}
+// RUN: %if x86_64-linux %{ %t.x86 "ab"; test $? -eq 0 %}
+// RUN: %if x86_64-linux %{ %t.x86 "1a"; test $? -eq 0 %}
 
 plugin mem;
 plugin core;

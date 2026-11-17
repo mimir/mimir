@@ -204,7 +204,8 @@ protected:
     std::string emit_unsafe(const Def* def) {
         if (auto s = fe::lookup(locals_, def)) return *s;
 
-        auto place          = scheduler_.smart(curr_lam_, def);
+        // locals_ holds one name per Def, so a closed Def goes to the entry instead of being rematerialized.
+        auto place          = def->is_closed() ? scheduler_.nest().root() : scheduler_.smart(curr_lam_, def);
         auto& bb            = lam2bb_[place->mut()->as<Lam>()];
         auto val            = emit_bb(bb, def);
         return locals_[def] = val;

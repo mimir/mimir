@@ -16,15 +16,14 @@ jobs:
         # The `RUN: clang ...` lines in lit/ and `find_program(NAMES clang)` in cmake/Mim.cmake resolve via /usr/lib/llvm-22/bin.
         include:
           - build-type: Debug
+            preset: asan
             cc: clang-22
             cxx: clang++-22
             packages: ""
             test-target: test-all
-            cmake-args: >-
-              -DMIM_BUILD_PYTHON=OFF
-              -DMIM_TEST_ROUNDTRIP=OFF
-              -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined,leak,bounds -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fno-sanitize=vptr"
+            cmake-args: ""
           - build-type: Release
+            preset: release
             cc: gcc-15
             cxx: g++-15
             packages: g++-15 valgrind
@@ -61,22 +60,20 @@ jobs:
 
       - name: Configure
         run: |
-          CC=${{matrix.cc}} CXX=${{matrix.cxx}}           \
-          cmake -B build                                  \
-                -G Ninja                                  \
-                -DCMAKE_BUILD_TYPE=${{matrix.build-type}} \
-                -DBUILD_TESTING=ON                        \
-                -DMIM_BUILD_EXAMPLES=ON                   \
-                -DMIM_FILECHECK=/usr/bin/FileCheck-22     \
-                -DMIM_LIT_TIMEOUT=300                     \
+          CC=${{matrix.cc}} CXX=${{matrix.cxx}}       \
+          cmake --preset ${{matrix.preset}}           \
+                -G Ninja                              \
+                -DMIM_FILECHECK=/usr/bin/FileCheck-22 \
+                -DMIM_LIT_TIMEOUT=300                 \
                 ${{matrix.cmake-args}}
 
       - name: Build
-        run: cmake --build build -v
+        run: cmake --build --preset ${{matrix.preset}} -v
 
       - name: Test
-        run: cmake --build build -v --target ${{matrix.test-target}}
+        run: cmake --build --preset ${{matrix.preset}} -v --target ${{matrix.test-target}}
 
+      # `-T memcheck` reads DartConfiguration.tcl from the cwd, which `--preset` does not change.
       - name: Test with Valgrind
         if: matrix.build-type == 'Release'
-        run: ctest --test-dir build --verbose --output-on-failure -T memcheck
+        run: ctest --preset ${{matrix.preset}} --test-dir build-${{matrix.preset}} --verbose -T memcheck

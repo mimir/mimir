@@ -191,6 +191,8 @@ std::optional<std::string_view> idx_name(nat_t size) {
     // clang-format off
     switch (size) {
         case 0x0'0000'0002_n: return "Bool";
+        case 0x0'0000'0004_n: return "I2";
+        case 0x0'0000'0010_n: return "I4";
         case 0x0'0000'0100_n: return "I8";
         case 0x0'0001'0000_n: return "I16";
         case 0x1'0000'0000_n: return "I32";

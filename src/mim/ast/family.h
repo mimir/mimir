@@ -15,11 +15,15 @@
     case Tag::K_ff:    \
     case Tag::K_tt:    \
     case Tag::K_i1:    \
+    case Tag::K_i2:    \
+    case Tag::K_i4:    \
     case Tag::K_i8:    \
     case Tag::K_i16:   \
     case Tag::K_i32:   \
     case Tag::K_i64:   \
     case Tag::K_I1:    \
+    case Tag::K_I2:    \
+    case Tag::K_I4:    \
     case Tag::K_I8:    \
     case Tag::K_I16:   \
     case Tag::K_I32:   \

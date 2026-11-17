@@ -105,10 +105,8 @@ inline const Def* op(pe o, const Def* def) {
 ///@{
 /// Use like this: `a op b = tab[a][b]`
 constexpr std::array<std::array<u64, 2>, 2> make_truth_table(bit2 id) {
-    return {
-        {{sub_t(id) & sub_t(0b0001) ? u64(-1) : 0, sub_t(id) & sub_t(0b0010) ? u64(-1) : 0},
-         {sub_t(id) & sub_t(0b0100) ? u64(-1) : 0, sub_t(id) & sub_t(0b1000) ? u64(-1) : 0}}
-    };
+    return {{{sub_t(id) & sub_t(0b0001) ? u64(-1) : 0, sub_t(id) & sub_t(0b0010) ? u64(-1) : 0},
+             {sub_t(id) & sub_t(0b0100) ? u64(-1) : 0, sub_t(id) & sub_t(0b1000) ? u64(-1) : 0}}};
 }
 ///@}
 
@@ -125,16 +123,6 @@ inline Lam* mut_con(const Def* dom) {
 
 /// If @p def is a `core.M`-typed value, yields its memory type `core.M a`; otherwise `nullptr`.
 inline const App* isa_mem(const Def* def) { return Axm::isa<M>(def->type()); }
-
-/// Does @p pi already thread memory - a leading `core.M`, either directly or grouped as the first
-/// component of the first parameter (e.g. the `Fn [mem.M 0, To, ins] → …` shape of a mem-threaded combiner)?
-inline bool has_leading_mem(const Pi* pi) {
-    if (pi->num_doms() == 0) return false;
-    auto dom0 = pi->dom(pi->num_doms(), 0);
-    if (Axm::isa<M>(dom0)) return true;
-    if (auto sig = dom0->isa<Sigma>(); sig && sig->num_ops() != 0 && Axm::isa<M>(sig->op(0))) return true;
-    return false;
-}
 
 /// Returns the (first) element of type `core.M a` from the given tuple.
 inline const Def* mem_def(const Def* def) {

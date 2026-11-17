@@ -12,13 +12,15 @@ Complementary instruction sources — don't duplicate them here:
 Assume a `build/` tree configured Debug with testing enabled (Debug builds use `-Og` and enable expensive `MIM_ENABLE_CHECKS` by default):
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON
-cmake --build build -j$(nproc)   # binaries land in build/bin (mim, mim-test, mim-regex-test, ...)
+cmake --preset debug             # = -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON
+cmake --build build -j$(nproc)   # binaries land in build/bin (mim, mim-test, mim-regex-test, mim-pbqp-test, ...)
 ```
+
+`CMakePresets.json` also has `release`, `asan`, `static`, and `docs`, each in `build-<preset>/` (see `docs/coding.md`).
 
 | Task | Command |
 | ---- | ------- |
-| Build part | `cmake --build build --target mim` / `libmim` / `mim_all_plugins` |
+| Build part | `cmake --build build --target mim` / `libmim` / `mim_all_plugins` / `pbqp` |
 | All tests | `cmake --build build --target test-all` (lit + roundtrip + unit + py) |
 | `lit` suite | `cmake --build build --target lit` |
 | One lit test | `cd lit && ../scripts/probe.sh foo.mim` — also accepts `extra/<plugin>/lit/foo.mim`, passes extra args through to lit |
@@ -41,13 +43,34 @@ cmake --build build -j$(nproc)   # binaries land in build/bin (mim, mim-test, mi
 
 ## Architecture quick facts
 
-- `libmim` (`src/mim/`, headers in `include/mim/`) is the core library: IR (`Def`, `World`), the Mim AST frontend (`ast/`), rewriting, phases, checks, dumping, and utilities. `src/automaton/` backs the regex subsystem as a separate static library.
+- `libmim` (`src/mim/`, headers in `include/mim/`) is the core library: IR (`Def`, `World`), the Mim AST frontend (`ast/`), rewriting, phases, checks, dumping, and utilities. `src/automaton/` backs the regex subsystem and `src/pbqp/` is the PBQP solver for the x86 backend, each a separate static library.
 - `Driver` is the central runtime object: it owns `Flags`, `Log`, the current `World`, plugin search paths and handles, and the normalizer/stage/backend registries. Plugins, imports, and backend runtimes have three separate lookups (`Driver::plugin_paths`/`import_paths`/`rt_paths`): `-P`/`-I` add plain directories, while `--prefix-path`, the install prefix, and the tree `libmim` came from add prefix roots deriving `<root>/<libdir>/mim`, `<root>/<datadir>/mim`, and `<root>/<libdir>/mim/rt`.
 - The `mim` CLI (`src/mim/cli/main.cpp`) is thin glue around `Driver`: parse Mim → compile into the `World` → `optimize(World&)` → emit whatever `--output-*` asks for. Plugins load on demand via `plugin` directives or `-p`/`--plugin`; `--output-h`/`--output-py` bootstrap plugin headers and exit before compilation. A `plugin` directive takes its `.mim` from the directory the library was loaded from, so both halves always pair up.
 - A plugin is two halves that must stay in sync under one name: `<plugin>.mim` (public annex surface) and `libmim_<plugin>` (exports `mim_get_plugin` to register normalizers, stages, and backends). Names: letters/digits/underscores, max 8 chars.
 - Out-of-tree plugins under `extra/*/CMakeLists.txt` are auto-discovered at configure time; their lit tests are staged into `lit` and unit tests become `mim-<plugin>-test`. Create new plugins with `./scripts/new_plugin.py [--extra]`; the in-tree `demo` plugin (`src/mim/plug/demo/`) is the minimal template.
 - Optimization is phase-driven (`Phase`/`RWPhase`/`PhaseMan`, with `Analysis` for fixed points); the old `Pass`/`PassMan` machinery is gone — don't reintroduce it or ad hoc whole-program traversals. `optimize(World&)` looks for an entry point (`_compile`, `_default_compile`, or any nullary external returning `compile.Phase`), resolves stages from the plugin registry, and runs the pipeline; without an entry point optimization is skipped. `RWPhase` rebuilds the old world into a new inherited world and swaps them at the end.
 - Tests come in two layers: `lit/` drives the CLI end-to-end with `RUN:` lines plus `FileCheck`, and `test/*.cpp` exercises library APIs with [doctest](https://github.com/doctest/doctest) (`mim-test`, `mim-regex-test`). A third-party plugin's `extra/<plugin>/test/*.cpp` are auto-discovered into `mim-<plugin>-test` the same way its `lit/` tests are staged.
+
+## libpbqp
+
+`src/pbqp/` is a PBQP (Partitioned Boolean Quadratic Programming) solver for the x86 backend's instruction selection and register allocation; it is a static library like `src/automaton/` that depends only on `fe` and knows nothing about MimIR.
+It is kept warning-free under `-Wpedantic -Wconversion -Wshadow` (`-Wshadow=local` on GCC) on top of `-Wall -Wextra`.
+Its tests are `test/pbqp.cpp` run as `build/bin/mim-pbqp-test` (`-tc=NAME` for one case) with inputs in `test/data/pbqp/`.
+
+- `include/pbqp/` holds the public headers and `src/pbqp/` the implementations; `cost.h` is private.
+- `fe` is a public dependency: the public headers use `fe::Vector` for storage and `fe::View`/`fe::Span` for spans.
+- `Graph` only grows: it stores cost vectors and matrices under dense ids handed out from 0, with at most one edge per node pair; `add_edge_costs` sums onto an existing edge in either direction.
+- Storage stays private (read-only spans, `edge(e)` endpoints, `set_node_costs`/`set_edge_costs`), so equal edge matrices are hash-consed into one copy in an append-only `ankerl::unordered_dense` set whose positions are the matrix ids; a matrix that `set_edge_costs`/`add_edge_costs` replaces stays in the pool.
+- `Cost` is a class around one `std::int32_t` whose `+`/`+=` saturate for any sign and absorb `Cost::inf`; totals are `Cost`s too, and `Cost::inf` marks forbidden entries and absorbs any total.
+- `solve` reduces a normalized `int32` working copy (non-negative, saturating at `Cost::inf`, all-zero edges dropped) whose edges borrow the graph's matrices until their first write, which copies into an `fe::Arena` as plain arrays.
+- Transient matrices live in a second, rolled-back scratch arena; RII/RM results are allocated last so they can become the edge's matrix or be rolled back.
+- Worklists separate exact reductions from RN candidates: forbidden options are deleted (tracked back to original indices), single-option nodes and RI/RII are reduced exactly, and RM merges implied neighbours right before RN.
+- RN commits to the locally best option, taking the highest optional `rn_priority` first (PEO positions for SSA-based register allocation), then the highest degree, then the widest cost spread.
+- `solve` back-substitutes in reverse reduction order; infeasible solutions carry `conflicts`, the nodes whose choice hits a `Cost::inf` entry.
+- `solve_exhaustive` is the reference for tiny instances.
+- `read_json`/`write_json` speak our own JSON format: a node's position in `nodes` is its id, edge `costs` are row-major with `src` as the row (`rows`/`cols` are optional checks), `"inf"` is `Cost::inf`, and the optional `rn_priority` has one entry per node.
+  The reader is built on `fe::Lexer`/`fe::Parser`, keeps string escapes verbatim, recovers at anchored `}`/`]`, and throws everything it collected once parsing is done.
+- Reduction kernels are plain 32-bit add/min loops over normalized costs that the compiler vectorizes, using the solver's own non-negative `add_costs` and by-value `min` since GCC does not vectorize `std::min` over `Cost`; on x86 ELF, `target_clones` adds x86-64-v4/AVX2 runtime dispatch (off under ThreadSanitizer).
 
 ## Core IR invariants
 
