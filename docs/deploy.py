@@ -69,6 +69,45 @@ def deploy_subdir(build_dir: Path, site_dir: Path, name: str) -> None:
     copy_children(build_dir, target_dir)
 
 
+def update_playground_versions(playground_dir: Path) -> None:
+    """Write the manifest the playground's version picker reads."""
+    builds = [
+        path.name for path in playground_dir.iterdir()
+        if path.is_dir() and VERSION_RE.fullmatch(path.name) and (path / 'index.html').exists()
+    ]
+
+    versions: list[dict[str, str]] = []
+    if (playground_dir / 'index.html').exists():
+        versions.append({'label': 'master', 'href': './'})
+
+    for name in sorted(builds, key=natural_key, reverse=True):
+        versions.append({'label': name, 'href': f'{name}/'})
+
+    payload = json.dumps(versions, indent=2) + '\n'
+    (playground_dir / 'versions.json').write_text(payload)
+
+
+def deploy_playground(build_dir: Path, site_dir: Path, git_ref: str, ref_name: str) -> str:
+    """Deploy master at playground/ and released builds beside it at playground/<tag>/."""
+    playground_dir = site_dir / 'playground'
+    playground_dir.mkdir(exist_ok=True)
+
+    if git_ref == 'refs/heads/master':
+        label = 'master'
+        # A master deploy replaces its own files but must leave the released builds untouched.
+        for child in playground_dir.iterdir():
+            if child.name == 'versions.json' or (child.is_dir() and VERSION_RE.fullmatch(child.name)):
+                continue
+            remove_path(child)
+        copy_children(build_dir, playground_dir)
+    else:
+        label = ref_name
+        deploy_subdir(build_dir, playground_dir, label)
+
+    update_playground_versions(playground_dir)
+    return label
+
+
 def natural_key(name: str) -> list[object]:
     """Split version names into comparable text and numeric chunks."""
     return [int(part) if part.isdigit() else part for part in re.findall(r'\d+|[^\d]+', name)]
@@ -137,8 +176,12 @@ def deploy(build_dir: Path, site_dir: Path, git_ref: str, ref_name: str, subdir:
         raise ValueError('Missing ref name')
 
     if subdir:
-        deploy_subdir(build_dir, site_dir, subdir)
-        what = f'{subdir} for {ref_name}'
+        if subdir == 'playground':
+            label = deploy_playground(build_dir, site_dir, git_ref, ref_name)
+        else:
+            deploy_subdir(build_dir, site_dir, subdir)
+            label = ref_name
+        what = f'{subdir} for {label}'
     else:
         if git_ref == 'refs/heads/master':
             deploy_root(build_dir, site_dir)

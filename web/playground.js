@@ -247,6 +247,8 @@ function setSource(text) {
 const DRAFT_KEY = 'mim-playground-draft';
 const dirty = () => getSource() !== loaded;
 
+let leaving = false; // the version picker carries the program in the link, so nothing is lost
+
 function save() {
     if (dirty()) localStorage.setItem(DRAFT_KEY, getSource());
     else localStorage.removeItem(DRAFT_KEY);
@@ -254,7 +256,7 @@ function save() {
 
 window.addEventListener('beforeunload', e => {
     save();
-    if (!dirty()) return;
+    if (leaving || !dirty()) return;
     e.preventDefault();
     e.returnValue = true; // Chrome/Edge < 119 ignore preventDefault here.
 });
@@ -380,6 +382,43 @@ async function share() {
     setTimeout(() => (btn.textContent = 'Share'), 1500);
 }
 
+// Released builds are siblings of master; the deploy writes a manifest listing only the ones it serves,
+// so an entry never points at a missing build.
+async function setupVersions() {
+    const versionPicker = $('version');
+    const here = new URL('.', import.meta.url);
+    const root = new URL(here.pathname.replace(/\/v[0-9][^/]*\/$/, '/'), here.origin);
+
+    let versions;
+    try {
+        const response = await fetch(new URL('versions.json', root), { cache: 'no-store' });
+        if (!response.ok) return; // a locally staged build has no deployed siblings
+        versions = (await response.json())
+            .filter(v => typeof v.label === 'string' && typeof v.href === 'string')
+            .map(v => ({ label: v.label, url: new URL(v.href, root) }));
+    } catch {
+        return;
+    }
+
+    const current = versions.find(v => v.url.pathname === here.pathname);
+    if (!current || versions.length < 2) return;
+
+    versionPicker.replaceChildren(...versions.map(v => new Option(v.label, v.url.href)));
+    versionPicker.value = current.url.href;
+    versionPicker.hidden = false;
+    versionPicker.onchange = async () => {
+        const url = new URL(versionPicker.value);
+        url.search = '';
+        try {
+            url.hash = 'z=' + await ShareLink.encode(getSource());
+        } catch {
+            url.hash = location.hash;
+        }
+        leaving = true;
+        location.href = url.href;
+    };
+}
+
 const custom = (await urlSource()) ?? localStorage.getItem(DRAFT_KEY);
 const picker = $('examples');
 if (custom !== null) picker.add(new Option('(custom)', ''));
@@ -408,5 +447,6 @@ new MutationObserver(() => {
 
 // setupEditor fills the textarea before it awaits, so the first compile starts alongside.
 const initial = custom ?? await example(EXAMPLES[0]);
+setupVersions();
 await Promise.all([setupEditor(initial), run()]);
 if (editor && $('vi').checked) await toggleVi();
