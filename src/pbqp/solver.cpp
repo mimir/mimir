@@ -518,6 +518,7 @@ private:
 
     /// RM (Buchwald et al. 2011): moves the other edges of a neighbour whose option `n` determines onto `n`.
     bool merge_neighbour(NodeId n, fe::Vector<Subst>& stack) {
+        // add_to_edge may grow nodes_[n].edges and dangle this loop's iterator, so a merge must return immediately.
         for (const auto e : nodes_[n].edges) {
             const NodeId m = other_end(e, n);
             if (degree(m) < 2) continue;

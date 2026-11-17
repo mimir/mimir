@@ -622,7 +622,9 @@ bool ISel::analyze() {
     }
 
     auto atomic = pbqp::Choices(graph.num_nodes(), 0);
-    assert(!pbqp::evaluate(graph, atomic).is_inf() && "the atomic rules must cover the program");
+#ifdef MIM_ENABLE_CHECKS
+    if (pbqp::evaluate(graph, atomic).is_inf()) fe::throwf("the atomic rules must cover the program");
+#endif
     auto sol = pbqp::solve(graph);
     log().d("x86 isel: {} nodes, {} edges, cost {}", graph.num_nodes(), graph.num_edges(), sol.cost.value());
     // RN is a heuristic, but the atomic rules always remain a valid cover.
