@@ -60,11 +60,11 @@ PBQP_DISPATCH void fold_row(Cost* __restrict dst, const Cost* __restrict row, Co
         dst[i] = min(dst[i], add_normalized(cost, row[i]));
 }
 
-Matrix allocate_matrix(fe::Arena& arena, size_t rows, size_t cols) {
+MatrixSpan allocate_matrix(fe::Arena& arena, size_t rows, size_t cols) {
     return {arena.allocate<Cost>(rows * cols), rows, cols};
 }
 
-/// Matrix of an edge oriented (reduced option, neighbour option).
+/// Row-major matrix of an edge oriented (reduced option, neighbour option).
 struct TrimmedEdge {
     NodeId neighbour = 0;
     MatrixView matrix;
@@ -78,9 +78,8 @@ struct Reduction {
 /// What back-substitution needs of an edge; dead edges are never written, so their matrices stay as reduced.
 struct Link {
     NodeId neighbour = 0;
-    MatrixView matrix;
+    MatrixView matrix;                           // (reduced option, neighbour option)
     const OptionId* neighbour_working = nullptr; // original -> working option or npos; null if none was deleted
-    bool is_src                       = false;
 };
 
 /// A reduced node in working option order.
@@ -109,7 +108,7 @@ public:
                && "solve: rn_priority does not cover every node");
         for (const auto e : graph.edges()) {
             const auto [src, dst] = graph.edge(e);
-            link(src, dst, graph.edge_costs(e).data(), nullptr);
+            link(src, dst, graph.edge_matrix(e).data(), nullptr);
         }
         for (EdgeId e = 0; e < edges_.size(); ++e)
             normalize_edge(e);
@@ -187,7 +186,7 @@ public:
                 const OptionId chosen = choices[link.neighbour];
                 const OptionId y      = link.neighbour_working ? link.neighbour_working[chosen] : chosen;
                 assert(y != Graph::npos && "choose: a neighbour picked an option it had already lost");
-                total += link.is_src ? link.matrix[x, y] : link.matrix[y, x];
+                total += link.matrix[x, y];
             }
             if (total < best_total) {
                 best_total = total;
@@ -230,15 +229,24 @@ private:
     [[nodiscard]] size_t degree(NodeId n) const { return nodes_[n].edges.size(); }
     [[nodiscard]] size_t options(NodeId n) const { return nodes_[n].costs.size(); }
 
-    [[nodiscard]] MatrixView data(EdgeId e) const {
+    [[nodiscard]] MatrixView view(EdgeId e) const {
         const Edge& edge = edges_[e];
         return {edge.owned != nullptr ? edge.owned : edge.shared, options(edge.src), options(edge.dst)};
     }
 
-    [[nodiscard]] Matrix writable(EdgeId e) {
-        if (edges_[e].owned == nullptr) edges_[e].owned = arena_.copy(data(e)).data();
+    [[nodiscard]] MatrixSpan writable(EdgeId e) {
+        if (edges_[e].owned == nullptr) edges_[e].owned = arena_.copy(view(e)).data();
         const Edge& edge = edges_[e];
         return {edge.owned, options(edge.src), options(edge.dst)};
+    }
+
+    /// The options of `from` are the rows.
+    [[nodiscard]] MatrixView view(EdgeId e, NodeId from) const {
+        return edges_[e].src == from ? view(e) : view(e).transposed();
+    }
+
+    [[nodiscard]] MatrixSpan writable(EdgeId e, NodeId from) {
+        return edges_[e].src == from ? writable(e) : writable(e).transposed();
     }
 
     /// Cost spread per incident edge: what a wrong RN decision is likely to cost.
@@ -283,11 +291,11 @@ private:
         const size_t cols = dst_costs.size();
 
         for (size_t r = 0; r < rows; ++r) {
-            const Cost* const row = data(e).row(r);
+            const Cost* const row = view(e).row(r);
             const Cost minimum    = std::accumulate(row, row + cols, Cost::inf(), min);
             if (minimum == 0) continue;
             src_costs[r] += minimum;
-            Matrix matrix = writable(e);
+            const MatrixSpan matrix = writable(e);
             for (size_t c = 0; c < cols; ++c)
                 matrix[r, c] = sub_normalized(matrix[r, c], minimum);
         }
@@ -295,17 +303,17 @@ private:
         Cost* const minima = scratch_.allocate<Cost>(cols);
         std::fill_n(minima, cols, Cost::inf());
         for (size_t r = 0; r < rows; ++r)
-            fold_row(minima, data(e).row(r), 0, cols);
+            fold_row(minima, view(e).row(r), 0, cols);
         if (std::ranges::any_of(fe::View<Cost>{minima, cols}, [](Cost minimum) { return minimum != 0; })) {
             for (size_t c = 0; c < cols; ++c)
                 dst_costs[c] += minima[c];
-            Matrix matrix = writable(e);
+            const MatrixSpan matrix = writable(e);
             for (size_t r = 0; r < rows; ++r)
                 for (size_t c = 0; c < cols; ++c)
                     matrix[r, c] = sub_normalized(matrix[r, c], minima[c]);
         }
         scratch_.deallocate(mark);
-        if (std::ranges::all_of(data(e), [](Cost cost) { return cost == 0; })) {
+        if (std::ranges::all_of(view(e), [](Cost cost) { return cost == 0; })) {
             erase(nodes_[src].edges, e);
             erase(nodes_[dst].edges, e);
             ++statistics_.dropped_edges;
@@ -319,11 +327,8 @@ private:
     void erase_option(NodeId n, OptionId a) {
         Node& node = nodes_[n];
         for (const auto e : node.edges) {
-            Matrix matrix = writable(e);
-            if (edges_[e].src == n)
-                matrix.erase_row(a);
-            else
-                matrix.erase_col(a);
+            MatrixSpan matrix = writable(e, n);
+            matrix.erase_row(a);
         }
         node.costs.erase(node.costs.begin() + static_cast<std::ptrdiff_t>(a));
         node.original.erase(node.original.begin() + static_cast<std::ptrdiff_t>(a));
@@ -366,14 +371,12 @@ private:
     }
 
     [[nodiscard]] Subst record(NodeId n) {
-        const Node& node   = nodes_[n];
-        const auto links   = arena_.copy(node.edges | std::views::transform([&](EdgeId e) {
-                                           const NodeId other = other_end(e, n);
-                                           return Link{.neighbour         = other,
-                                                       .matrix            = data(e),
-                                                       .neighbour_working = working_options(other),
-                                                       .is_src            = edges_[e].src == n};
-                                         }));
+        const Node& node = nodes_[n];
+        const auto links = arena_.copy(
+            node.edges | std::views::transform([&](EdgeId e) {
+                const NodeId other = other_end(e, n);
+                return Link{.neighbour = other, .matrix = view(e, n), .neighbour_working = working_options(other)};
+            }));
         const bool deleted = node.original.size() != node.original_options;
         return Subst{.node     = n,
                      .costs    = arena_.copy(node.costs),
@@ -406,15 +409,15 @@ private:
         }
     }
 
-    /// Views edges stored as (from, other) and transposes the others into the scratch arena.
+    /// Copies a matrix without contiguous rows into the scratch arena.
     [[nodiscard]] TrimmedEdge trim_edge(EdgeId e, NodeId from) {
         const NodeId other      = other_end(e, from);
-        const MatrixView matrix = data(e);
-        if (edges_[e].src == from) return {.neighbour = other, .matrix = matrix};
+        const MatrixView matrix = view(e, from);
+        if (matrix.row_major()) return {.neighbour = other, .matrix = matrix};
 
-        Matrix transposed = allocate_matrix(scratch_, matrix.cols(), matrix.rows());
-        transposed.transpose_from(matrix);
-        return {.neighbour = other, .matrix = transposed};
+        const MatrixSpan copy = allocate_matrix(scratch_, matrix.rows(), matrix.cols());
+        copy.copy_from(matrix);
+        return {.neighbour = other, .matrix = copy};
     }
 
     [[nodiscard]] Reduction snapshot(NodeId n, const Subst& subst) {
@@ -436,37 +439,39 @@ private:
         normalize_node(edge.neighbour);
     }
 
-    /// Whether the edge between `m` and `n` exists and is stored as (n, m).
-    [[nodiscard]] bool reversed(NodeId m, NodeId n) const {
-        const EdgeId e = find_edge(m, n);
-        return e != Graph::npos && edges_[e].src != m;
-    }
-
     /// RII: M'_mn(i, j) = min_x ( c(x) + M_m(x, i) + M_n(x, j) )
     void contract(const Reduction& reduction) {
         const TrimmedEdge* to_m = &reduction.edges[0];
         const TrimmedEdge* to_n = &reduction.edges[1];
-        if (reversed(to_m->neighbour, to_n->neighbour)) std::swap(to_m, to_n);
+        const EdgeId e          = find_edge(to_m->neighbour, to_n->neighbour);
+        // fold_row fills whole rows, so they must be the rows of the edge's storage.
+        if (e != Graph::npos && edges_[e].src != to_m->neighbour) std::swap(to_m, to_n);
         const size_t m_dim = to_m->matrix.cols();
         const size_t n_dim = to_n->matrix.cols();
 
-        const auto state = arena_.state();
-        Matrix merged    = allocate_matrix(arena_, m_dim, n_dim);
+        const auto state        = arena_.state();
+        const MatrixSpan merged = allocate_matrix(arena_, m_dim, n_dim);
         std::ranges::fill(merged, Cost::inf());
         for (size_t x = 0; x < reduction.costs.size(); ++x) {
             const Cost* const n_row = to_n->matrix.row(x);
             for (size_t i = 0; i < m_dim; ++i)
                 fold_row(merged.row(i), n_row, add_normalized(reduction.costs[x], to_m->matrix[x, i]), n_dim);
         }
-        add_to_edge(to_m->neighbour, to_n->neighbour, merged, state);
+        add_to_edge(e, to_m->neighbour, to_n->neighbour, merged, state);
     }
 
-    /// Adds `matrix`, the newest allocation in the arena since `state`, to the edge between m and n.
-    /// It is oriented like that edge, or (m, n) if there is none, and is kept whenever the edge needs a fresh matrix.
-    void add_to_edge(NodeId m, NodeId n, Matrix matrix, fe::Arena::State state) {
-        assert((matrix.rows() == options(m) && matrix.cols() == options(n)) && "add_to_edge: matrix orientation");
-        EdgeId e = find_edge(m, n);
-        assert((e == Graph::npos || edges_[e].src == m) && "add_to_edge: edge orientation");
+    /// A fresh options(m) × options(n) matrix whose storage is oriented like `e`, the edge between m and n, if any.
+    [[nodiscard]] MatrixSpan allocate_edge_matrix(EdgeId e, NodeId m, NodeId n) {
+        if (e != Graph::npos && edges_[e].src == n) return allocate_matrix(arena_, options(n), options(m)).transposed();
+        return allocate_matrix(arena_, options(m), options(n));
+    }
+
+    /// Adds `matrix`, the newest allocation in the arena since `state`, to `e`, the edge between m and n, if any.
+    /// Its storage is oriented like `e`, so it can become the edge's matrix.
+    void add_to_edge(EdgeId e, NodeId m, NodeId n, MatrixSpan matrix, fe::Arena::State state) {
+        assert((matrix.rows() == options(m) && matrix.cols() == options(n)) && "add_to_edge: matrix shape");
+        assert(((e == Graph::npos || edges_[e].src == m) ? matrix : matrix.transposed()).row_major()
+               && "add_to_edge: storage orientation");
         if (e == Graph::npos) {
             e = edges_.size();
             link(m, n, nullptr, matrix.data());
@@ -484,14 +489,14 @@ private:
 
     /// The option of `m` that each option of `n` forces, or null if some option of `n` leaves `m` a choice.
     [[nodiscard]] const OptionId* implied_options(EdgeId e, NodeId n) {
-        const TrimmedEdge edge  = trim_edge(e, n);
-        const Costs& m_costs    = nodes_[edge.neighbour].costs;
+        const MatrixView matrix = view(e, n);
+        const Costs& m_costs    = nodes_[other_end(e, n)].costs;
         OptionId* const implied = scratch_.allocate<OptionId>(options(n));
         std::fill_n(implied, options(n), Graph::npos);
         for (OptionId i = 0; i < options(n); ++i) {
             if (nodes_[n].costs[i].is_inf()) continue;
-            for (OptionId j = 0; j < edge.matrix.cols(); ++j) {
-                if (add_normalized(edge.matrix[i, j], m_costs[j]).is_inf()) continue;
+            for (OptionId j = 0; j < matrix.cols(); ++j) {
+                if (add_normalized(matrix[i, j], m_costs[j]).is_inf()) continue;
                 if (implied[i] != Graph::npos) return nullptr;
                 implied[i] = j;
             }
@@ -515,27 +520,20 @@ private:
             const Edges moved = nodes_[m].edges;
             for (const auto f : moved) {
                 if (f == e) continue;
-                const NodeId w         = other_end(f, m);
-                const TrimmedEdge to_w = trim_edge(f, m);
-                const size_t w_options = to_w.matrix.cols();
-                const bool flip        = reversed(n, w);
-                const auto [a, b]      = flip ? std::pair{w, n} : std::pair{n, w};
+                const NodeId w        = other_end(f, m);
+                const MatrixView to_w = view(f, m);
+                const EdgeId to_n_w   = find_edge(n, w);
 
-                const auto state = arena_.state();
-                Matrix delta     = allocate_matrix(arena_, options(a), options(b));
+                const auto state       = arena_.state();
+                const MatrixSpan delta = allocate_edge_matrix(to_n_w, n, w);
                 std::ranges::fill(delta, Cost{0});
-                for (OptionId i = 0; i < options(n); ++i) {
-                    if (implied[i] == Graph::npos) continue;
-                    const Cost* const row = to_w.matrix.row(implied[i]);
-                    if (flip)
-                        for (OptionId j = 0; j < w_options; ++j)
-                            delta[j, i] = row[j];
-                    else
-                        std::copy_n(row, w_options, delta.row(i));
-                }
+                for (OptionId i = 0; i < options(n); ++i)
+                    if (implied[i] != Graph::npos)
+                        for (OptionId j = 0; j < options(w); ++j)
+                            delta[i, j] = to_w[implied[i], j];
                 erase(nodes_[m].edges, f);
                 erase(nodes_[w].edges, f);
-                add_to_edge(a, b, delta, state);
+                add_to_edge(to_n_w, n, w, delta, state);
                 touch(w);
             }
             scratch_.deallocate(mark);

@@ -608,19 +608,19 @@ bool ISel::analyze() {
                 if (auto op = key(d.def); alts_.contains(op) && std::ranges::find(operands, op) == operands.end())
                     operands.emplace_back(op);
         for (auto op : operands) {
-            auto costs = pbqp::Costs();
-            for (const auto& alt : alts)
-                for (const auto& o : alts_[op]) {
-                    pbqp::Cost c = 0;
-                    for (const auto& d : alt.demands) {
-                        if (key(d.def) != op) continue;
-                        if (d.inner)
-                            c += !o.rule && o.inner == d.inner ? 0 : pbqp::Cost::inf();
-                        else
-                            c += o.rule ? conv(o.rule->type, d.want) : pbqp::Cost::inf();
-                    }
-                    costs.emplace_back(c);
+            const auto& op_alts = alts_[op];
+            auto costs          = pbqp::Matrix(alts.size(), op_alts.size(), [&](size_t i, size_t j) {
+                const auto& o = op_alts[j];
+                auto c        = pbqp::Cost(0);
+                for (const auto& d : alts[i].demands) {
+                    if (key(d.def) != op) continue;
+                    if (d.inner)
+                        c += !o.rule && o.inner == d.inner ? 0 : pbqp::Cost::inf();
+                    else
+                        c += o.rule ? conv(o.rule->type, d.want) : pbqp::Cost::inf();
                 }
+                return c;
+            });
             if (std::ranges::any_of(costs, [](pbqp::Cost c) { return c != 0; }))
                 graph.add_edge_costs(ids[def], ids[op], costs);
         }

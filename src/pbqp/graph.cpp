@@ -15,11 +15,12 @@ NodeId Graph::add(fe::View<Cost> costs) {
     return nodes_.size() - 1;
 }
 
-EdgeId Graph::link(NodeId m, NodeId n, fe::View<Cost> costs) {
+EdgeId Graph::link(NodeId m, NodeId n, MatrixView costs) {
     assert((m < num_nodes() && n < num_nodes()) && "link: unknown node");
     assert((m != n) && "link: self edges are not supported, fold them into the node cost vector instead");
     assert((edge(m, n) == npos) && "link: an edge between these nodes already exists, merge the matrices instead");
-    assert((costs.size() == num_options(m) * num_options(n)) && "link: cost matrix has the wrong size");
+    assert((costs.rows() == num_options(m) && costs.cols() == num_options(n))
+           && "link: cost matrix has the wrong shape");
 
     edges_.emplace_back(Edge{.src = m, .dst = n, .matrix = intern(costs)});
     auto e = edges_.size() - 1;
@@ -28,19 +29,13 @@ EdgeId Graph::link(NodeId m, NodeId n, fe::View<Cost> costs) {
     return e;
 }
 
-EdgeId Graph::add_edge_costs(NodeId m, NodeId n, fe::View<Cost> costs) {
+EdgeId Graph::add_edge_costs(NodeId m, NodeId n, MatrixView costs) {
     const EdgeId e = edge(m, n);
     if (e == npos) return link(m, n, costs);
-    assert((costs.size() == num_options(m) * num_options(n)) && "add_edge_costs: cost matrix has the wrong size");
 
-    const MatrixView old = edge_matrix(e);
-    Costs sum(old.begin(), old.end());
-    Matrix into(sum.data(), old.rows(), old.cols());
-    const MatrixView add(costs.data(), num_options(m), num_options(n));
-    if (edges_[e].src == m)
-        into += add;
-    else
-        into.add_transposed(add);
+    Matrix sum(edge_matrix(e));
+    const MatrixSpan from_m = edges_[e].src == m ? sum.span() : sum.span().transposed();
+    from_m += costs;
     set_edge_costs(e, sum);
     return e;
 }
@@ -50,8 +45,9 @@ void Graph::set_node_costs(NodeId n, fe::View<Cost> costs) {
     std::ranges::copy(costs, nodes_[n].costs.begin());
 }
 
-void Graph::set_edge_costs(EdgeId e, fe::View<Cost> costs) {
-    assert((costs.size() == edge_costs(e).size()) && "set_edge_costs: cost matrix has the wrong size");
+void Graph::set_edge_costs(EdgeId e, MatrixView costs) {
+    assert((costs.rows() == edge_matrix(e).rows() && costs.cols() == edge_matrix(e).cols())
+           && "set_edge_costs: cost matrix has the wrong shape");
     edges_[e].matrix = intern(costs);
 }
 
@@ -65,7 +61,9 @@ EdgeId Graph::edge(NodeId m, NodeId n) const {
     return npos;
 }
 
-Graph::MatrixId Graph::intern(fe::View<Cost> costs) {
+Graph::MatrixId Graph::intern(MatrixView matrix) {
+    if (!matrix.row_major()) return intern(Matrix(matrix));
+    const fe::View<Cost> costs(matrix.data(), matrix.size());
     const auto bytes  = std::string_view(reinterpret_cast<const char*>(costs.data()), costs.size() * sizeof(Cost));
     const size_t hash = ankerl::unordered_dense::hash<std::string_view>{}(bytes);
 

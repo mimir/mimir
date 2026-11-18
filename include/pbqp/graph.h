@@ -6,10 +6,12 @@
 #include <cstdint>
 
 #include <algorithm>
+#include <initializer_list>
 #include <iosfwd>
 #include <limits>
 #include <ranges>
 #include <type_traits>
+#include <utility>
 
 #include <ankerl/unordered_dense.h>
 #include <fe/span.h>
@@ -66,90 +68,154 @@ using Edges   = fe::Vector<EdgeId, 4>;
 using Choices = fe::Vector<OptionId, 8>; ///< One option per node, indexed by node id.
 ///@}
 
-/// A row-major matrix of costs over storage owned elsewhere.
+/// A view of a cost matrix over row-major storage owned elsewhere; transposed() views the same storage column-major.
 template<class T>
 requires std::same_as<std::remove_cv_t<T>, Cost> class BasicMatrix {
 public:
     constexpr BasicMatrix() = default;
     constexpr BasicMatrix(T* data, size_t rows, size_t cols)
-        : data_(data)
-        , rows_(rows)
-        , cols_(cols) {}
+        : BasicMatrix(data, rows, cols, true) {}
 
     template<class U>
     requires(std::same_as<T, const Cost> && std::same_as<U, Cost>) constexpr BasicMatrix(const BasicMatrix<U>& other)
-        : data_(other.data())
-        , rows_(other.rows())
-        , cols_(other.cols()) {}
+        : BasicMatrix(other.data(), other.rows(), other.cols(), other.row_major()) {}
 
     [[nodiscard]] constexpr T& operator[](size_t row, size_t col) const {
         assert(row < rows_ && col < cols_);
-        return data_[row * cols_ + col];
+        return data_[row * row_stride_ + col * col_stride_];
     }
 
     [[nodiscard]] constexpr size_t rows() const { return rows_; }
     [[nodiscard]] constexpr size_t cols() const { return cols_; }
     [[nodiscard]] constexpr size_t size() const { return rows_ * cols_; }
 
+    /// Whether rows are contiguous, which also holds for a transposed single row or column.
+    [[nodiscard]] constexpr bool row_major() const { return col_stride_ == 1; }
+    [[nodiscard]] constexpr BasicMatrix transposed() const { return {data_, cols_, rows_, !row_major()}; }
+
+    /// @name Storage
+    /// Iteration covers the storage in memory order, which is row-major only if row_major().
+    ///@{
     [[nodiscard]] constexpr T* data() const { return data_; }
-    [[nodiscard]] constexpr T* row(size_t row) const {
-        assert(row < rows_);
-        return data_ + row * cols_;
-    }
     [[nodiscard]] constexpr T* begin() const { return data_; }
     [[nodiscard]] constexpr T* end() const { return data_ + size(); }
+    [[nodiscard]] constexpr T* row(size_t row) const {
+        assert(row < rows_ && row_major());
+        return data_ + row * row_stride_;
+    }
+    ///@}
 
-    constexpr BasicMatrix& operator+=(BasicMatrix<const Cost> rhs) requires std::same_as<T, Cost> {
+    constexpr const BasicMatrix& operator+=(BasicMatrix<const Cost> rhs) const requires(!std::is_const_v<T>) {
         assert(rows_ == rhs.rows() && cols_ == rhs.cols());
-        for (size_t i = 0; i < size(); ++i)
-            data_[i] += rhs.data()[i];
+        assert((size() <= 1 || data_ != rhs.data() || row_major() == rhs.row_major()) && "+=: rhs aliases this");
+        for (size_t r = 0; r < rows_; ++r)
+            for (size_t c = 0; c < cols_; ++c)
+                (*this)[r, c] += rhs[r, c];
         return *this;
     }
 
-    /// Adds the transpose of `rhs`, i.e. `(*this)[r, c] += rhs[c, r]`.
-    constexpr void add_transposed(BasicMatrix<const Cost> rhs) requires std::same_as<T, Cost> {
-        assert(rows_ == rhs.cols() && cols_ == rhs.rows());
-        assert((size() <= 1 || data_ != rhs.data()) && "add_transposed: rhs aliases this");
+    constexpr void copy_from(BasicMatrix<const Cost> src) const requires(!std::is_const_v<T>) {
+        assert(rows_ == src.rows() && cols_ == src.cols());
+        assert((size() <= 1 || data_ != src.data() || row_major() == src.row_major()) && "copy_from: src aliases this");
         for (size_t r = 0; r < rows_; ++r)
             for (size_t c = 0; c < cols_; ++c)
-                (*this)[r, c] += rhs[c, r];
-    }
-
-    /// Replaces every entry with the transpose of `src`.
-    constexpr void transpose_from(BasicMatrix<const Cost> src) requires std::same_as<T, Cost> {
-        assert(rows_ == src.cols() && cols_ == src.rows());
-        assert((size() <= 1 || data_ != src.data()) && "transpose_from: src aliases this");
-        for (size_t r = 0; r < rows_; ++r)
-            for (size_t c = 0; c < cols_; ++c)
-                (*this)[r, c] = src[c, r];
+                (*this)[r, c] = src[r, c];
     }
 
     // `&` so that erasing on an rvalue cannot compact the storage yet drop the shrunken dimensions.
-    constexpr void erase_row(size_t row) & requires std::same_as<T, Cost> {
+    constexpr void erase_row(size_t row) & requires(!std::is_const_v<T>) {
         assert(row < rows_);
-        std::copy_n(data_ + (row + 1) * cols_, (rows_ - row - 1) * cols_, data_ + row * cols_);
-        --rows_;
+        if (row_major())
+            std::copy_n(data_ + (row + 1) * cols_, (rows_ - row - 1) * cols_, data_ + row * cols_);
+        else
+            erase_storage_col(row);
+        *this = BasicMatrix(data_, rows_ - 1, cols_, row_major());
     }
 
-    constexpr void erase_col(size_t col) & requires std::same_as<T, Cost> {
-        assert(col < cols_);
-        T* out = data_;
-        for (size_t r = 0; r < rows_; ++r) {
-            const Cost* const in = row(r);
-            out                  = std::copy(in, in + col, out);
-            out                  = std::copy(in + col + 1, in + cols_, out);
-        }
-        --cols_;
+    constexpr void erase_col(size_t col) & requires(!std::is_const_v<T>) {
+        *this = transposed();
+        erase_row(col);
+        *this = transposed();
     }
 
 private:
-    T* data_     = nullptr;
-    size_t rows_ = 0;
-    size_t cols_ = 0;
+    constexpr BasicMatrix(T* data, size_t rows, size_t cols, bool row_major)
+        : data_(data)
+        , rows_(rows)
+        , cols_(cols)
+        , row_stride_(row_major || rows <= 1 || cols <= 1 ? cols : 1)
+        , col_stride_(row_major || rows <= 1 || cols <= 1 ? 1 : rows) {}
+
+    /// Erases column `col` of the storage, which has `cols_` rows of `rows_` entries.
+    constexpr void erase_storage_col(size_t col) {
+        T* out = data_;
+        for (size_t r = 0; r < cols_; ++r) {
+            const Cost* const in = data_ + r * rows_;
+            out                  = std::copy(in, in + col, out);
+            out                  = std::copy(in + col + 1, in + rows_, out);
+        }
+    }
+
+    T* data_           = nullptr;
+    size_t rows_       = 0;
+    size_t cols_       = 0;
+    size_t row_stride_ = 0;
+    size_t col_stride_ = 1;
 };
 
-using Matrix     = BasicMatrix<Cost>;
+using MatrixSpan = BasicMatrix<Cost>;
 using MatrixView = BasicMatrix<const Cost>;
+
+/// An owning row-major cost matrix; it views its own storage, so writes go through span().
+class Matrix : public MatrixView {
+public:
+    Matrix() = default;
+    Matrix(size_t rows, size_t cols, Cost fill = 0)
+        : Matrix(Costs(rows * cols, fill), rows, cols) {}
+    Matrix(size_t rows, size_t cols, std::initializer_list<Cost> costs)
+        : Matrix(Costs(costs), rows, cols) {}
+    /// Entry `(r, c)` is `f(r, c)`, generated in row-major order.
+    template<class F>
+    requires std::is_invocable_r_v<Cost, F&, size_t, size_t> Matrix(size_t rows, size_t cols, F f)
+        : Matrix(Costs(rows * cols, [&f, cols](size_t i) -> Cost { return f(i / cols, i % cols); }), rows, cols) {}
+    explicit Matrix(MatrixView view)
+        : Matrix(view.rows(), view.cols(), [view](size_t r, size_t c) { return view[r, c]; }) {}
+
+    Matrix(const Matrix& other)
+        : Matrix(Costs(other.costs_), other.rows(), other.cols()) {}
+    Matrix(Matrix&& other) noexcept
+        : Matrix(std::move(other.costs_), other.rows(), other.cols()) {
+        other.view() = {};
+    }
+    Matrix& operator=(Matrix other) noexcept {
+        costs_       = std::move(other.costs_);
+        view()       = {costs_.data(), other.rows(), other.cols()};
+        other.view() = {};
+        return *this;
+    }
+
+    [[nodiscard]] MatrixSpan span() { return {costs_.data(), rows(), cols()}; }
+
+    Matrix& operator+=(MatrixView rhs) {
+        span() += rhs;
+        return *this;
+    }
+
+    friend bool operator==(const Matrix& a, const Matrix& b) {
+        return a.rows() == b.rows() && a.cols() == b.cols() && a.costs_ == b.costs_;
+    }
+
+private:
+    Matrix(Costs&& costs, size_t rows, size_t cols)
+        : costs_(std::move(costs)) {
+        assert(costs_.size() == rows * cols && "Matrix: wrong number of costs");
+        view() = {costs_.data(), rows, cols};
+    }
+
+    MatrixView& view() { return *this; }
+
+    Costs costs_;
+};
 
 /// A PBQP problem graph.
 ///
@@ -182,27 +248,21 @@ public:
     /// The vector must not be empty.
     NodeId add(fe::View<Cost> costs);
 
-    /// Link `m` and `n` with a row-major num_options(m) x num_options(n) matrix.
+    /// Link `m` and `n` with a num_options(m) × num_options(n) matrix.
     /// Requires distinct nodes that are not linked yet.
-    EdgeId link(NodeId m, NodeId n, fe::View<Cost> costs);
+    EdgeId link(NodeId m, NodeId n, MatrixView costs);
 
     /// Like link, but sums `costs` onto an existing edge between `m` and `n`, whichever way it points.
     /// Sums saturate and Cost::inf absorbs.
-    EdgeId add_edge_costs(NodeId m, NodeId n, fe::View<Cost> costs);
+    EdgeId add_edge_costs(NodeId m, NodeId n, MatrixView costs);
 
     void set_node_costs(NodeId n, fe::View<Cost> costs); ///< Replace a cost vector; the option count must not change.
-    void set_edge_costs(EdgeId e, fe::View<Cost> costs); ///< Replace a cost matrix; the size must not change.
+    void set_edge_costs(EdgeId e, MatrixView costs);     ///< Replace a cost matrix, src options as rows.
     ///@}
 
     /// @name Getters
     ///@{
     [[nodiscard]] fe::View<Cost> node_costs(NodeId n) const { return checked_node(n).costs; }
-
-    /// Row-major with the src option as the row.
-    [[nodiscard]] fe::View<Cost> edge_costs(EdgeId e) const {
-        const MatrixView matrix = edge_matrix(e);
-        return {matrix.data(), matrix.size()};
-    }
 
     /// Row-major with the src option as the row.
     [[nodiscard]] MatrixView edge_matrix(EdgeId e) const {
@@ -211,9 +271,11 @@ public:
         return {costs.data(), num_options(edge.src), num_options(edge.dst)};
     }
 
-    /// Matrix entry of `e`, addressed as (src option, dst option).
-    [[nodiscard]] Cost edge_cost(EdgeId e, OptionId src_option, OptionId dst_option) const {
-        return edge_matrix(e)[src_option, dst_option];
+    /// The options of `from`, an end of `e`, are the rows.
+    [[nodiscard]] MatrixView edge_matrix(EdgeId e, NodeId from) const {
+        const auto [src, dst] = edge(e);
+        assert((from == src || from == dst) && "edge_matrix: not an end of the edge");
+        return from == src ? edge_matrix(e) : edge_matrix(e).transposed();
     }
 
     [[nodiscard]] size_t num_options(NodeId n) const { return node_costs(n).size(); }
@@ -291,7 +353,7 @@ private:
         return edges_[e];
     }
 
-    [[nodiscard]] MatrixId intern(fe::View<Cost> costs);
+    [[nodiscard]] MatrixId intern(MatrixView matrix);
     [[nodiscard]] const Costs& matrix(MatrixId id) const { return matrices_.values()[id].costs; }
 
     fe::Vector<Node> nodes_;

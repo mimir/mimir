@@ -44,14 +44,6 @@ void for_each_use(const Liveness& live, auto f) {
     }
 }
 
-pbqp::Costs matrix(auto f) {
-    auto res = pbqp::Costs();
-    for (size_t i = 0; i != Num_Regs; ++i)
-        for (size_t j = 0; j != Num_Regs; ++j)
-            res.emplace_back(f(i, j));
-    return res;
-}
-
 /// The block that a call at the end of @p block returns to, if any.
 const Liveness::Block* call_cont(const Liveness& live, Lam* fun, const Liveness::Block& block) {
     auto term = block.lam->body()->as<App>();
@@ -235,7 +227,7 @@ private:
             for (size_t o = 0; o != Num_Regs; ++o)
                 if (o != r) (*cs)[o] += Move;
     }
-    void link(const Def* a, const Def* b, const pbqp::Costs& m) {
+    void link(const Def* a, const Def* b, pbqp::MatrixView m) {
         a = strip(a), b = strip(b);
         if (a == b) return;
         if (auto i = fe::lookup(ids_, a))
@@ -254,10 +246,12 @@ private:
     DefMap<pbqp::NodeId> ids_;
     DefVec values_;
     fe::Vector<pbqp::Costs> costs_;
-    const pbqp::Costs interfere_ = matrix([](size_t i, size_t j) { return i == j ? pbqp::Cost::inf() : 0; });
-    const pbqp::Costs tie_       = matrix([](size_t i, size_t j) { return i == j ? 0 : pbqp::Cost::inf(); });
-    const pbqp::Costs move_      = matrix([](size_t i, size_t j) { return i == j ? 0 : Move; });
-    const pbqp::Costs base_      = pbqp::Costs(Num_Regs, [](size_t r) {
+    const pbqp::Matrix interfere_
+        = pbqp::Matrix(Num_Regs, Num_Regs, [](size_t i, size_t j) { return i == j ? pbqp::Cost::inf() : 0; });
+    const pbqp::Matrix tie_
+        = pbqp::Matrix(Num_Regs, Num_Regs, [](size_t i, size_t j) { return i == j ? 0 : pbqp::Cost::inf(); });
+    const pbqp::Matrix move_ = pbqp::Matrix(Num_Regs, Num_Regs, [](size_t i, size_t j) { return i == j ? 0 : Move; });
+    const pbqp::Costs base_  = pbqp::Costs(Num_Regs, [](size_t r) {
         return reserved(r) ? pbqp::Cost::inf() : Caller_Saved[r] ? pbqp::Cost(0) : Callee_Saved;
     });
     DefMap<size_t> regs_;

@@ -404,7 +404,7 @@ private:
             else if (edge.costs.size() != rows * cols)
                 error().e(edge.costs_loc, "expected {} × {} costs, got {}", rows, cols, edge.costs.size());
             else
-                graph.link(src, dst, edge.costs);
+                graph.link(src, dst, MatrixView(edge.costs.data(), rows, cols));
         }
 
         if (rn_priority_loc_ && rn_priority_.size() != graph.num_nodes())
@@ -463,10 +463,11 @@ void write_json(std::ostream& out, const Graph& graph, fe::View<size_t> rn_prior
     std::print(out, R"(  "edges": [)");
     separator = "\n";
     for (const auto e : graph.edges()) {
-        const auto [src, dst] = graph.edge(e);
+        const auto [src, dst]   = graph.edge(e);
+        const MatrixView matrix = graph.edge_matrix(e);
         std::print(out, R"({}    {{"src": {}, "dst": {}, "rows": {}, "cols": {}, "costs": )", separator, src, dst,
-                   graph.num_options(src), graph.num_options(dst));
-        json::write_costs(out, graph.edge_costs(e));
+                   matrix.rows(), matrix.cols());
+        json::write_costs(out, {matrix.data(), matrix.size()});
         out << '}';
         separator = ",\n";
     }

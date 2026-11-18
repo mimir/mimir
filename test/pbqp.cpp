@@ -45,7 +45,7 @@ TEST_CASE("independent nodes are independent") {
 
 TEST_CASE("matrix indexes rows and columns") {
     std::array<pbqp::Cost, 6> cells = {1, 2, 3, 4, 5, 6};
-    pbqp::Matrix matrix(cells.data(), 2, 3);
+    const pbqp::MatrixSpan matrix(cells.data(), 2, 3);
     CHECK(matrix.rows() == 2);
     CHECK(matrix.cols() == 3);
     CHECK(matrix.size() == 6);
@@ -59,44 +59,61 @@ TEST_CASE("matrix indexes rows and columns") {
 
     const pbqp::MatrixView view(cells.data(), 2, 3);
     CHECK(view[1, 2] == 7);
+
+    const pbqp::Matrix owned(2, 3, [](size_t r, size_t c) { return pbqp::Cost(static_cast<int>(10 * r + c)); });
+    CHECK(owned == pbqp::Matrix(2, 3, {0, 1, 2, 10, 11, 12}));
+    CHECK(pbqp::Matrix(pbqp::MatrixView(owned).transposed()) == pbqp::Matrix(3, 2, {0, 10, 1, 11, 2, 12}));
+
+    // Copies, moves, and assignments view their own storage.
+    pbqp::Matrix copy = owned;
+    CHECK(copy == owned);
+    CHECK(copy.data() != owned.data());
+    copy.span()[0, 0] = 5;
+    CHECK(owned[0, 0] == 0);
+    const pbqp::Matrix moved = std::move(copy);
+    CHECK(moved[0, 0] == 5);
+    copy = moved;
+    CHECK(copy[1, 2] == 12);
+    CHECK(copy.data() != moved.data());
+    pbqp::Matrix wide(5, 5, 7);
+    wide = pbqp::Matrix(2, 2, {1, 2, 3, 4});
+    CHECK(wide == pbqp::Matrix(2, 2, {1, 2, 3, 4}));
 }
 
 TEST_CASE("matrix operations transpose and erase") {
     const std::array<pbqp::Cost, 6> cells = {1, 2, 3, 4, 5, 6};
-    const pbqp::MatrixView src(cells.data(), 2, 3);
-
-    std::array<pbqp::Cost, 6> transposed_cells{};
-    pbqp::Matrix transposed(transposed_cells.data(), 3, 2);
-    transposed.transpose_from(src);
+    const pbqp::MatrixView transposed     = pbqp::MatrixView(cells.data(), 2, 3).transposed();
+    CHECK(transposed.rows() == 3);
+    CHECK(!transposed.row_major());
     CHECK(transposed[0, 0] == 1);
     CHECK(transposed[1, 0] == 2);
     CHECK(transposed[2, 0] == 3);
     CHECK(transposed[0, 1] == 4);
     CHECK(transposed[2, 1] == 6);
+    CHECK(transposed.transposed().row_major());
+    CHECK(pbqp::MatrixView(cells.data(), 1, 6).transposed().row_major());
 
-    std::array<pbqp::Cost, 4> sum_cells = {10, 20, 30, 40};
-    const std::array<pbqp::Cost, 4> add = {1, 2, 3, 4};
-    pbqp::Matrix sum(sum_cells.data(), 2, 2);
-    sum += pbqp::MatrixView(add.data(), 2, 2);
-    CHECK(std::ranges::equal(sum, std::array<pbqp::Cost, 4>{11, 22, 33, 44}));
-
-    sum.add_transposed(pbqp::MatrixView(add.data(), 2, 2));
-    CHECK(std::ranges::equal(sum, std::array<pbqp::Cost, 4>{12, 25, 35, 48}));
+    pbqp::Matrix sum(2, 2, {10, 20, 30, 40});
+    const pbqp::Matrix add(2, 2, {1, 2, 3, 4});
+    sum += add;
+    CHECK(sum == pbqp::Matrix(2, 2, {11, 22, 33, 44}));
+    sum += pbqp::MatrixView(add).transposed();
+    CHECK(sum == pbqp::Matrix(2, 2, {12, 25, 35, 48}));
 
     std::array<pbqp::Cost, 6> rows_cells = {1, 2, 3, 4, 5, 6};
-    pbqp::Matrix rows(rows_cells.data(), 2, 3);
+    pbqp::MatrixSpan rows(rows_cells.data(), 2, 3);
     rows.erase_row(0);
     CHECK(rows.rows() == 1);
     CHECK(rows.cols() == 3);
     CHECK(rows[0, 2] == 6);
 
     std::array<pbqp::Cost, 6> last_row_cells = {1, 2, 3, 4, 5, 6};
-    pbqp::Matrix last_row(last_row_cells.data(), 2, 3);
+    pbqp::MatrixSpan last_row(last_row_cells.data(), 2, 3);
     last_row.erase_row(1);
     CHECK(std::ranges::equal(last_row, std::array<pbqp::Cost, 3>{1, 2, 3}));
 
     std::array<pbqp::Cost, 6> cols_cells = {1, 2, 3, 4, 5, 6};
-    pbqp::Matrix cols(cols_cells.data(), 2, 3);
+    pbqp::MatrixSpan cols(cols_cells.data(), 2, 3);
     cols.erase_col(1);
     CHECK(cols.rows() == 2);
     CHECK(cols.cols() == 2);
@@ -106,14 +123,27 @@ TEST_CASE("matrix operations transpose and erase") {
     CHECK(cols[1, 1] == 6);
 
     std::array<pbqp::Cost, 6> first_col_cells = {1, 2, 3, 4, 5, 6};
-    pbqp::Matrix first_col(first_col_cells.data(), 2, 3);
+    pbqp::MatrixSpan first_col(first_col_cells.data(), 2, 3);
     first_col.erase_col(0);
     CHECK(std::ranges::equal(first_col, std::array<pbqp::Cost, 4>{2, 3, 5, 6}));
 
     std::array<pbqp::Cost, 6> last_col_cells = {1, 2, 3, 4, 5, 6};
-    pbqp::Matrix last_col(last_col_cells.data(), 2, 3);
+    pbqp::MatrixSpan last_col(last_col_cells.data(), 2, 3);
     last_col.erase_col(2);
     CHECK(std::ranges::equal(last_col, std::array<pbqp::Cost, 4>{1, 2, 4, 5}));
+
+    // Erasing a row of the transposed view erases a column of the storage.
+    std::array<pbqp::Cost, 6> transposed_cells = {1, 2, 3, 4, 5, 6};
+    pbqp::MatrixSpan flipped                   = pbqp::MatrixSpan(transposed_cells.data(), 2, 3).transposed();
+    flipped.erase_row(1);
+    CHECK(flipped.rows() == 2);
+    CHECK(flipped.cols() == 2);
+    CHECK(flipped[0, 1] == 4);
+    CHECK(flipped[1, 1] == 6);
+    CHECK(std::ranges::equal(flipped, std::array<pbqp::Cost, 4>{1, 3, 4, 6}));
+    flipped.erase_col(0);
+    CHECK(std::ranges::equal(flipped, std::array<pbqp::Cost, 2>{4, 6}));
+    CHECK(flipped[1, 0] == 6);
 }
 
 TEST_CASE("edge choice trades off node costs") {
@@ -122,12 +152,13 @@ TEST_CASE("edge choice trades off node costs") {
     const pbqp::NodeId a = graph.add({0, 1});
     const pbqp::NodeId b = graph.add({1, 0});
     graph.link(a, b,
-               {
-                   10,
-                   10, // a=0
-                   0,
-                   0, // a=1
-               });
+               pbqp::Matrix(2, 2,
+                            {
+                                10,
+                                10, // a=0
+                                0,
+                                0, // a=1
+                            }));
 
     const pbqp::Solution solution = pbqp::solve(graph);
     CHECK(solution.choices[a] == 1);
@@ -143,12 +174,7 @@ TEST_CASE("triangle with conflicting colours") {
     for (int i = 0; i < 3; ++i)
         nodes.emplace_back(graph.add({0, 0}));
 
-    const fe::Vector<pbqp::Cost, 4> same_colour = {
-        5,
-        0,
-        0,
-        5,
-    };
+    const pbqp::Matrix same_colour(2, 2, {5, 0, 0, 5});
     for (size_t i = 0; i < nodes.size(); ++i)
         graph.link(nodes[i], nodes[(i + 1) % nodes.size()], same_colour);
 
@@ -179,12 +205,12 @@ void check_random_trees(int min_cost, int max_cost, int forbidden_percent) {
 
         for (pbqp::NodeId n = 1; n < num_nodes; ++n) {
             const pbqp::NodeId m = std::uniform_int_distribution<size_t>{0, n - 1}(random);
-            fe::Vector<pbqp::Cost, 4> matrix(graph.num_options(m) * graph.num_options(n));
-            std::ranges::generate(matrix, next_cost);
+            pbqp::Matrix matrix(graph.num_options(m), graph.num_options(n));
+            std::ranges::generate(matrix.span(), next_cost);
             if (cost(random) % 2 == 0)
                 graph.link(m, n, matrix);
             else
-                graph.link(n, m, matrix);
+                graph.link(n, m, pbqp::MatrixView(matrix).transposed());
         }
 
         const pbqp::Solution heuristic = pbqp::solve(graph);
@@ -210,11 +236,11 @@ TEST_CASE("long path with large costs stays exact") {
     pbqp::NodeId previous = graph.add({4000, 4000});
     for (int i = 0; i < 11; ++i) {
         const pbqp::NodeId next = graph.add({4000, 4000});
-        graph.link(previous, next, {0, 50, 50, 0});
+        graph.link(previous, next, pbqp::Matrix(2, 2, {0, 50, 50, 0}));
         previous = next;
     }
     const pbqp::NodeId last = graph.add({100, 0});
-    graph.link(previous, last, {0, 50, 50, 0});
+    graph.link(previous, last, pbqp::Matrix(2, 2, {0, 50, 50, 0}));
 
     CHECK(pbqp::solve(graph).cost == pbqp::solve_exhaustive(graph)->cost);
 }
@@ -227,16 +253,16 @@ TEST_CASE("rn charges its edges to the neighbours") {
     graph.add({0, 6, 6});
     graph.add({0, 9, 2});
     graph.add({7, 0, 4});
-    graph.link(0, 1, {8, 3, 9, 9, 4, 8, 6, 0, 3});
-    graph.link(0, 2, {9, 1, 2, 9, 5, 0, 4, 3, 9});
-    graph.link(0, 3, {4, 3, 4, 7, 7, 6, 0, 7, 9});
-    graph.link(0, 4, {5, 6, 0, 3, 3, 8, 8, 4, 6});
-    graph.link(1, 2, {9, 4, 6, 9, 1, 4, 4, 1, 6});
-    graph.link(1, 3, {6, 2, 8, 2, 1, 8, 7, 2, 7});
-    graph.link(1, 4, {2, 4, 0, 1, 1, 4, 0, 1, 3});
-    graph.link(2, 3, {4, 1, 4, 1, 8, 5, 7, 5, 5});
-    graph.link(2, 4, {9, 5, 4, 4, 5, 2, 2, 1, 0});
-    graph.link(3, 4, {6, 9, 6, 5, 1, 9, 2, 6, 9});
+    graph.link(0, 1, pbqp::Matrix(3, 3, {8, 3, 9, 9, 4, 8, 6, 0, 3}));
+    graph.link(0, 2, pbqp::Matrix(3, 3, {9, 1, 2, 9, 5, 0, 4, 3, 9}));
+    graph.link(0, 3, pbqp::Matrix(3, 3, {4, 3, 4, 7, 7, 6, 0, 7, 9}));
+    graph.link(0, 4, pbqp::Matrix(3, 3, {5, 6, 0, 3, 3, 8, 8, 4, 6}));
+    graph.link(1, 2, pbqp::Matrix(3, 3, {9, 4, 6, 9, 1, 4, 4, 1, 6}));
+    graph.link(1, 3, pbqp::Matrix(3, 3, {6, 2, 8, 2, 1, 8, 7, 2, 7}));
+    graph.link(1, 4, pbqp::Matrix(3, 3, {2, 4, 0, 1, 1, 4, 0, 1, 3}));
+    graph.link(2, 3, pbqp::Matrix(3, 3, {4, 1, 4, 1, 8, 5, 7, 5, 5}));
+    graph.link(2, 4, pbqp::Matrix(3, 3, {9, 5, 4, 4, 5, 2, 2, 1, 0}));
+    graph.link(3, 4, pbqp::Matrix(3, 3, {6, 9, 6, 5, 1, 9, 2, 6, 9}));
 
     CHECK(pbqp::solve(graph).cost == 45);
 }
@@ -259,11 +285,11 @@ TEST_CASE("heuristic result is always valid") {
             graph.add(values);
         }
 
-        fe::Vector<pbqp::Cost, 4> matrix(options * options);
+        pbqp::Matrix matrix(options, options);
         for (size_t m = 0; m < num_nodes; ++m) {
             for (size_t n = m + 1; n < num_nodes; ++n) {
                 if (cost(random) < 5) continue; // roughly half the pairs
-                std::ranges::generate(matrix, next_cost);
+                std::ranges::generate(matrix.span(), next_cost);
                 graph.link(m, n, matrix);
             }
         }
@@ -281,13 +307,7 @@ TEST_CASE("negative costs reward coalescing") {
     pbqp::Graph graph;
     const pbqp::NodeId a = graph.add({0, 0});
     const pbqp::NodeId b = graph.add({0, 0});
-    graph.link(a, b,
-               {
-                   -5,
-                   0,
-                   0,
-                   -5,
-               });
+    graph.link(a, b, pbqp::Matrix(2, 2, {-5, 0, 0, -5}));
 
     const pbqp::Solution solution = pbqp::solve(graph);
     CHECK(solution.cost == -5);
@@ -300,13 +320,7 @@ TEST_CASE("infinity forbids same option") {
     pbqp::Graph graph;
     const pbqp::NodeId a = graph.add({0, 0});
     const pbqp::NodeId b = graph.add({0, 0});
-    graph.link(a, b,
-               {
-                   infinity,
-                   0,
-                   0,
-                   infinity,
-               });
+    graph.link(a, b, pbqp::Matrix(2, 2, {infinity, 0, 0, infinity}));
 
     const pbqp::Solution solution = pbqp::solve(graph);
     CHECK(solution.choices[a] != solution.choices[b]);
@@ -323,12 +337,7 @@ TEST_CASE("infinite sums do not wrap") {
     for (int i = 0; i < 3; ++i)
         nodes.emplace_back(graph.add({0, 0}));
 
-    const fe::Vector<pbqp::Cost, 4> interference = {
-        infinity,
-        0,
-        0,
-        infinity,
-    };
+    const pbqp::Matrix interference(2, 2, {infinity, 0, 0, infinity});
     for (size_t i = 0; i < nodes.size(); ++i)
         graph.link(nodes[i], nodes[(i + 1) % nodes.size()], interference);
 
@@ -357,8 +366,8 @@ void pruned_complete_graph(pbqp::Graph& graph, std::mt19937_64& random, size_t n
     }
     for (pbqp::NodeId m = 0; m < num_nodes; ++m) {
         for (pbqp::NodeId n = m + 1; n < num_nodes; ++n) {
-            pbqp::Costs matrix(graph.num_options(m) * graph.num_options(n));
-            std::ranges::generate(matrix, next_cost);
+            pbqp::Matrix matrix(graph.num_options(m), graph.num_options(n));
+            std::ranges::generate(matrix.span(), next_cost);
             graph.link(m, n, matrix);
         }
     }
@@ -394,8 +403,8 @@ TEST_CASE("heuristic handles forbidden options on dense graphs") {
         for (pbqp::NodeId m = 0; m < num_nodes; ++m) {
             for (pbqp::NodeId n = m + 1; n < num_nodes; ++n) {
                 if (percent(random) < 30) continue;
-                pbqp::Costs matrix(graph.num_options(m) * graph.num_options(n));
-                std::ranges::generate(matrix, next_cost);
+                pbqp::Matrix matrix(graph.num_options(m), graph.num_options(n));
+                std::ranges::generate(matrix.span(), next_cost);
                 graph.link(m, n, matrix);
             }
         }
@@ -441,10 +450,9 @@ void random_interval_instance(IntervalInstance& instance, std::mt19937_64& rando
             const bool affinity = percent(random) < 15;
             if (!interferes(m, n) && !affinity) continue;
             const pbqp::Cost copy = affinity ? static_cast<pbqp::Cost>(weight(random)) : 0;
-            pbqp::Costs matrix(registers * registers, copy);
-            pbqp::Matrix cells(matrix.data(), registers, registers);
+            pbqp::Matrix matrix(registers, registers, copy);
             for (size_t r = 0; r < registers; ++r)
-                cells[r, r] = interferes(m, n) ? pbqp::Cost::inf() : 0;
+                matrix.span()[r, r] = interferes(m, n) ? pbqp::Cost::inf() : 0;
             instance.graph.link(m, n, matrix);
         }
     }
@@ -480,7 +488,7 @@ TEST_CASE("statistics count every node") {
     for (int i = 0; i < 5; ++i)
         path.add({1, 2});
     for (pbqp::NodeId n = 1; n < 5; ++n)
-        path.link(n - 1, n, {0, 3, 3, 0});
+        path.link(n - 1, n, pbqp::Matrix(2, 2, {0, 3, 3, 0}));
     const pbqp::Statistics path_stats = pbqp::solve(path).statistics;
     CHECK(path_stats.rn == 0);
     CHECK(path_stats.r0 + path_stats.r1 + path_stats.r2 == 5);
@@ -490,7 +498,7 @@ TEST_CASE("infeasible instances are reported") {
     pbqp::Graph graph;
     for (int i = 0; i < 3; ++i)
         graph.add({0, 0});
-    const pbqp::Costs interference = {pbqp::Cost::inf(), 0, 0, pbqp::Cost::inf()};
+    const pbqp::Matrix interference(2, 2, {pbqp::Cost::inf(), 0, 0, pbqp::Cost::inf()});
     for (pbqp::NodeId n = 0; n < 3; ++n)
         graph.link(n, (n + 1) % 3, interference);
     const pbqp::Solution solution = pbqp::solve(graph);
@@ -510,7 +518,7 @@ TEST_CASE("conflicts name the forbidden nodes") {
     const pbqp::NodeId b = graph.add({0, pbqp::Cost::inf()});
     const pbqp::NodeId c = graph.add({0, 0});
     const pbqp::NodeId d = graph.add({0, 0});
-    graph.link(c, d, {pbqp::Cost::inf(), 0, 0, 0});
+    graph.link(c, d, pbqp::Matrix(2, 2, {pbqp::Cost::inf(), 0, 0, 0}));
 
     const pbqp::Choices choices = {0, 1, 0, 0};
     const fe::Bitset expected   = {b, c, d};
@@ -525,36 +533,36 @@ TEST_CASE("add_edge_costs accumulates in either direction") {
     const pbqp::NodeId m = graph.add({0, 0});
     const pbqp::NodeId n = graph.add({0, 0, 0});
 
-    const pbqp::EdgeId e = graph.add_edge_costs(m, n, {1, 2, 3, 4, 5, 6});
+    const pbqp::EdgeId e = graph.add_edge_costs(m, n, pbqp::Matrix(2, 3, {1, 2, 3, 4, 5, 6}));
     CHECK(graph.edge(m, n) == e);
-    CHECK(graph.add_edge_costs(m, n, {10, 0, 0, 0, 0, pbqp::Cost::inf()}) == e);
-    CHECK(graph.add_edge_costs(n, m, {0, 100, -2, 0, 0, 0}) == e);
+    CHECK(graph.add_edge_costs(m, n, pbqp::Matrix(2, 3, {10, 0, 0, 0, 0, pbqp::Cost::inf()})) == e);
+    CHECK(graph.add_edge_costs(n, m, pbqp::Matrix(3, 2, {0, 100, -2, 0, 0, 0})) == e);
     CHECK(graph.num_edges() == 1);
+    CHECK(pbqp::Matrix(graph.edge_matrix(e)) == pbqp::Matrix(2, 3, {11, 0, 3, 104, 5, pbqp::Cost::inf()}));
+    CHECK(graph.edge_matrix(e, n)[0, 1] == 104);
 
-    const pbqp::Costs expected = {11, 0, 3, 104, 5, pbqp::Cost::inf()};
-    CHECK(std::ranges::equal(graph.edge_costs(e), expected));
-
-    graph.add_edge_costs(m, n, {pbqp::Cost::inf().value() - 1, -5, 0, 0, 0, -1});
-    CHECK(graph.edge_cost(e, 0, 0) == pbqp::Cost::inf());
-    CHECK(graph.edge_cost(e, 0, 1) == -5);
-    CHECK(graph.edge_cost(e, 1, 2) == pbqp::Cost::inf());
+    graph.add_edge_costs(m, n, pbqp::Matrix(2, 3, {pbqp::Cost::inf().value() - 1, -5, 0, 0, 0, -1}));
+    CHECK(graph.edge_matrix(e)[0, 0] == pbqp::Cost::inf());
+    CHECK(graph.edge_matrix(e)[0, 1] == -5);
+    CHECK(graph.edge_matrix(e)[1, 2] == pbqp::Cost::inf());
 }
 
 TEST_CASE("rm merges implied neighbour") {
     // Figure 2 of Buchwald et al. 2011: coloring U implies V, and merging V into U leaves only exact reductions.
     constexpr auto inf = pbqp::Cost::inf();
     pbqp::Graph graph;
-    const pbqp::NodeId u             = graph.add({0, 0});
-    const pbqp::NodeId v             = graph.add({0, 0});
-    const pbqp::NodeId w             = graph.add({0, 0, 0});
-    const pbqp::NodeId y             = graph.add({0, 0, 0});
-    const pbqp::NodeId a             = graph.add({0, 0, 0});
-    const pbqp::NodeId b             = graph.add({0, 0, 0});
-    const pbqp::Costs interference33 = {inf, 0, 0, 0, inf, 0, 0, 0, inf};
-    const pbqp::Costs affinity23     = {0, 1, 1, 1, 0, 1};
-    graph.link(u, w, {inf, 0, 0, 0, inf, 0});
-    graph.link(u, v, {inf, 0, 0, inf});
-    graph.link(v, w, {inf, 0, 0, 0, inf, 0});
+    const pbqp::NodeId u = graph.add({0, 0});
+    const pbqp::NodeId v = graph.add({0, 0});
+    const pbqp::NodeId w = graph.add({0, 0, 0});
+    const pbqp::NodeId y = graph.add({0, 0, 0});
+    const pbqp::NodeId a = graph.add({0, 0, 0});
+    const pbqp::NodeId b = graph.add({0, 0, 0});
+    const pbqp::Matrix interference23(2, 3, {inf, 0, 0, 0, inf, 0});
+    const pbqp::Matrix interference33(3, 3, {inf, 0, 0, 0, inf, 0, 0, 0, inf});
+    const pbqp::Matrix affinity23(2, 3, {0, 1, 1, 1, 0, 1});
+    graph.link(u, w, interference23);
+    graph.link(u, v, pbqp::Matrix(2, 2, {inf, 0, 0, inf}));
+    graph.link(v, w, interference23);
     graph.link(v, y, affinity23);
     graph.link(u, a, affinity23);
     graph.link(w, b, interference33);
@@ -588,7 +596,7 @@ TEST_CASE("find edge works in both directions") {
     const pbqp::NodeId a = graph.add({1, 2});
     const pbqp::NodeId b = graph.add({1, 2});
 
-    graph.link(a, b, {0, 0, 0, 0});
+    graph.link(a, b, pbqp::Matrix(2, 2));
     CHECK(graph.edge(a, b) != pbqp::Graph::npos);
     CHECK(graph.edge(b, a) != pbqp::Graph::npos);
 }
@@ -597,19 +605,19 @@ TEST_CASE("accessors and setters round trip") {
     pbqp::Graph graph;
     const pbqp::NodeId m = graph.add({1, 2});
     const pbqp::NodeId n = graph.add({3, 4, 5});
-    const pbqp::EdgeId e = graph.link(m, n, {0, 1, 2, 3, 4, 5});
+    const pbqp::EdgeId e = graph.link(m, n, pbqp::Matrix(2, 3, {0, 1, 2, 3, 4, 5}));
 
     const auto [src, dst] = graph.edge(e);
     CHECK(src == m);
     CHECK(dst == n);
     CHECK(graph.incident_edges(n).size() == 1);
-    CHECK(graph.edge_cost(e, 1, 2) == 5);
     CHECK(graph.edge_matrix(e)[1, 2] == 5);
+    CHECK(graph.edge_matrix(e, n)[2, 1] == 5);
 
     graph.set_node_costs(m, std::array<pbqp::Cost, 2>{7, 8});
-    graph.set_edge_costs(e, std::array<pbqp::Cost, 6>{6, 5, 4, 3, 2, 1});
+    graph.set_edge_costs(e, pbqp::Matrix(2, 3, {6, 5, 4, 3, 2, 1}));
     CHECK(graph.node_costs(m)[1] == 8);
-    CHECK(graph.edge_cost(e, 1, 2) == 1);
+    CHECK(graph.edge_matrix(e)[1, 2] == 1);
 }
 
 TEST_CASE("equal matrices are shared") {
@@ -617,37 +625,37 @@ TEST_CASE("equal matrices are shared") {
     fe::Vector<pbqp::NodeId> nodes;
     for (int i = 0; i < 4; ++i)
         nodes.emplace_back(graph.add({0, 0}));
-    const pbqp::Costs interference = {pbqp::Cost::inf(), 0, 0, pbqp::Cost::inf()};
+    const pbqp::Matrix interference(2, 2, {pbqp::Cost::inf(), 0, 0, pbqp::Cost::inf()});
 
     const pbqp::EdgeId ab = graph.link(nodes[0], nodes[1], interference);
     const pbqp::EdgeId bc = graph.link(nodes[1], nodes[2], interference);
     const pbqp::EdgeId cd = graph.link(nodes[2], nodes[3], interference);
     CHECK(graph.num_matrices() == 1);
 
-    graph.add_edge_costs(nodes[0], nodes[1], {0, -1, -1, 0});
+    graph.add_edge_costs(nodes[0], nodes[1], pbqp::Matrix(2, 2, {0, -1, -1, 0}));
     CHECK(graph.num_matrices() == 2);
-    CHECK(graph.edge_cost(ab, 0, 1) == -1);
-    CHECK(graph.edge_cost(bc, 0, 1) == 0);
+    CHECK(graph.edge_matrix(ab)[0, 1] == -1);
+    CHECK(graph.edge_matrix(bc)[0, 1] == 0);
 
-    graph.set_edge_costs(bc, graph.edge_costs(ab));
-    graph.set_edge_costs(cd, graph.edge_costs(ab));
+    graph.set_edge_costs(bc, graph.edge_matrix(ab));
+    graph.set_edge_costs(cd, graph.edge_matrix(ab).transposed());
     CHECK(graph.num_matrices() == 2);
 
     for (const auto e : {ab, bc, cd})
         graph.set_edge_costs(e, interference);
     CHECK(graph.num_matrices() == 2);
-    CHECK(graph.edge_cost(ab, 0, 1) == 0);
+    CHECK(graph.edge_matrix(ab)[0, 1] == 0);
     CHECK(pbqp::solve(graph).cost == 0);
 }
 
 TEST_CASE("shared matrices survive random mutations") {
     std::mt19937_64 random{42};
     std::uniform_int_distribution<int> pick{0, 3};
-    const std::array<pbqp::Costs, 4> palette = {
-        pbqp::Costs{0, 1, 2, 3},
-        pbqp::Costs{pbqp::Cost::inf(), 0, 0, pbqp::Cost::inf()},
-        pbqp::Costs{0, 0, 0, 0},
-        pbqp::Costs{3, 2, 1, 0},
+    const std::array<pbqp::Matrix, 4> palette = {
+        pbqp::Matrix(2, 2, {0, 1, 2, 3}),
+        pbqp::Matrix(2, 2, {pbqp::Cost::inf(), 0, 0, pbqp::Cost::inf()}),
+        pbqp::Matrix(2, 2),
+        pbqp::Matrix(2, 2, {3, 2, 1, 0}),
     };
 
     pbqp::Graph graph;
@@ -655,14 +663,14 @@ TEST_CASE("shared matrices survive random mutations") {
     for (size_t i = 0; i < num_nodes; ++i)
         graph.add({0, 0});
 
-    fe::Vector<pbqp::Costs> shadow;
+    fe::Vector<pbqp::Matrix> shadow;
     std::uniform_int_distribution<size_t> node{0, num_nodes - 1};
     for (int step = 0; step < 2000; ++step) {
         const pbqp::NodeId m = node(random);
         const pbqp::NodeId n = node(random);
         if (m == n) continue;
-        const pbqp::Costs& costs = palette[static_cast<size_t>(pick(random))];
-        const pbqp::EdgeId e     = graph.edge(m, n);
+        const pbqp::Matrix& costs = palette[static_cast<size_t>(pick(random))];
+        const pbqp::EdgeId e      = graph.edge(m, n);
         switch (pick(random)) {
             case 0:
             case 1:
@@ -677,21 +685,17 @@ TEST_CASE("shared matrices survive random mutations") {
                 if (e == pbqp::Graph::npos) {
                     shadow[linked] = costs;
                 } else {
-                    pbqp::Matrix entry(shadow[e].data(), 2, 2);
-                    const pbqp::MatrixView add(costs.data(), 2, 2);
-                    if (graph.edge(e).src == m)
-                        entry += add;
-                    else
-                        entry.add_transposed(add);
+                    shadow[e]
+                        += graph.edge(e).src == m ? pbqp::MatrixView(costs) : pbqp::MatrixView(costs).transposed();
                 }
                 break;
             }
         }
     }
 
-    fe::Vector<pbqp::Costs> distinct;
+    fe::Vector<pbqp::Matrix> distinct;
     for (const auto e : graph.edges()) {
-        CHECK(std::ranges::equal(graph.edge_costs(e), shadow[e]));
+        CHECK(pbqp::Matrix(graph.edge_matrix(e)) == shadow[e]);
         if (std::ranges::find(distinct, shadow[e]) == distinct.end()) distinct.emplace_back(shadow[e]);
     }
     CHECK(graph.num_matrices() >= distinct.size());
@@ -710,11 +714,11 @@ TEST_CASE("parallel exhaustive matches sequential") {
         graph.add(values);
     }
 
-    fe::Vector<pbqp::Cost, 4> matrix(9);
+    pbqp::Matrix matrix(3, 3);
     for (size_t m = 0; m < 6; ++m) {
         for (size_t n = m + 1; n < 6; ++n) {
             if (cost(random) < 5) continue;
-            std::ranges::generate(matrix, next_cost);
+            std::ranges::generate(matrix.span(), next_cost);
             graph.link(m, n, matrix);
         }
     }
@@ -733,7 +737,7 @@ TEST_CASE("wide option vectors stay exact") {
     for (const auto options : {size_t{17}, size_t{33}}) {
         CAPTURE(options);
         fe::Vector<pbqp::Cost, 4> values(options);
-        fe::Vector<pbqp::Cost, 4> matrix(options * options);
+        pbqp::Matrix matrix(options, options);
 
         // A single edge exercises RI with a wide row.
         pbqp::Graph pair;
@@ -741,7 +745,7 @@ TEST_CASE("wide option vectors stay exact") {
         const pbqp::NodeId a = pair.add(values);
         std::ranges::generate(values, next_cost);
         const pbqp::NodeId b = pair.add(values);
-        std::ranges::generate(matrix, next_cost);
+        std::ranges::generate(matrix.span(), next_cost);
         pair.link(a, b, matrix);
         CHECK(pbqp::solve(pair).cost == pbqp::solve_exhaustive(pair)->cost);
 
@@ -753,7 +757,7 @@ TEST_CASE("wide option vectors stay exact") {
             nodes.emplace_back(triangle.add(values));
         }
         for (size_t i = 0; i < nodes.size(); ++i) {
-            std::ranges::generate(matrix, next_cost);
+            std::ranges::generate(matrix.span(), next_cost);
             triangle.link(nodes[i], nodes[(i + 1) % nodes.size()], matrix);
         }
         CHECK(pbqp::solve(triangle).cost == pbqp::solve_exhaustive(triangle)->cost);
@@ -772,11 +776,11 @@ TEST_CASE("concurrent solves share a graph") {
         graph.add(values);
     }
 
-    fe::Vector<pbqp::Cost, 4> matrix(4);
+    pbqp::Matrix matrix(2, 2);
     for (size_t m = 0; m < 7; ++m) {
         for (size_t n = m + 1; n < 7; ++n) {
             if (cost(random) < 5) continue;
-            std::ranges::generate(matrix, next_cost);
+            std::ranges::generate(matrix.span(), next_cost);
             graph.link(m, n, matrix);
         }
     }
@@ -808,7 +812,7 @@ TEST_CASE("dot shows costs and choices") {
     pbqp::Graph graph;
     const pbqp::NodeId a = graph.add({3, 4});
     const pbqp::NodeId b = graph.add({7});
-    graph.link(a, b, {pbqp::Cost::inf(), 5});
+    graph.link(a, b, pbqp::Matrix(2, 1, {pbqp::Cost::inf(), 5}));
 
     std::ostringstream plain;
     pbqp::write_dot(plain, graph);
@@ -840,7 +844,7 @@ TEST_CASE("json round trips ids infinity and priorities") {
     pbqp::Graph graph;
     const pbqp::NodeId a = graph.add({-3, pbqp::Cost::inf()});
     const pbqp::NodeId c = graph.add({7, 0, 2});
-    graph.link(c, a, {1, pbqp::Cost::inf(), -5, 0, 4, 2});
+    graph.link(c, a, pbqp::Matrix(3, 2, {1, pbqp::Cost::inf(), -5, 0, 4, 2}));
     const std::array<size_t, 2> priority{5, 9};
 
     const std::string text = write_json(graph, priority);
@@ -854,7 +858,7 @@ TEST_CASE("json round trips ids infinity and priorities") {
     const pbqp::EdgeId e = instance.graph.edge(a, c);
     REQUIRE(e != pbqp::Graph::npos);
     CHECK(instance.graph.edge(e).src == c);
-    CHECK(std::ranges::equal(instance.graph.edge_costs(e), graph.edge_costs(graph.edge(a, c))));
+    CHECK(std::ranges::equal(instance.graph.edge_matrix(e), graph.edge_matrix(graph.edge(a, c))));
     REQUIRE(instance.rn_priority.size() == 2);
     CHECK(instance.rn_priority[c] > instance.rn_priority[a]);
     CHECK(write_json(instance.graph, instance.rn_priority) == text);
@@ -876,8 +880,7 @@ TEST_CASE("json skips unknown keys and optional fields") {
     const pbqp::EdgeId e = graph.edge(0, 1);
     REQUIRE(e != pbqp::Graph::npos);
     CHECK(graph.edge(e).src == 1);
-    CHECK(
-        std::ranges::equal(graph.edge_costs(e), std::array<pbqp::Cost, 4>{pbqp::Cost::inf(), 0, 0, pbqp::Cost::inf()}));
+    CHECK(pbqp::Matrix(graph.edge_matrix(e)) == pbqp::Matrix(2, 2, {pbqp::Cost::inf(), 0, 0, pbqp::Cost::inf()}));
     CHECK(instance.rn_priority.empty());
     CHECK(pbqp::solve(graph).cost == 2);
 }
