@@ -1,5 +1,8 @@
 # Native x86-64 Backend
 
+This is the design and the living status of the `x86` plugin; update *Status* and *Known gaps* with every backend change.
+Never propose a separate machine IR: everything stays in the World (see *Decisions*).
+
 ## Goal
 
 An SSA-based native x86-64 backend for MimIR.
@@ -187,7 +190,8 @@ Instruction selection:
 
 Testing and tooling:
 
-- Only `emit_cf.mim`, `constrain.mim`, and `color.mim` run at a small `k` in lit; the sweep of the whole allowlist at `k = 2`, `3`, `4`, and `6` (compile with `-X x86:k=<n>`, run, compare stdout and exit code with `k = 14`) was manual, so it needs a lit parameter or a CI job to stay checked.
+- Only `emit_cf.mim`, `constrain.mim`, and `color.mim` run at a small `k` by default; `scripts/x86_ksweep.sh` runs the whole allowlist at `k = 2`, `3`, `4`, and `6` via `--param x86_k=<n>` against each test's expected exit codes, but no CI job runs it yet.
+  At `k = 2`, nine tests stop with "needs more than 2 registers", the error without fallback described under *Spilling*.
 - No lit test pins the parallel-copy cases directly (an `xchg` cycle, a memory-φ `push`/`pop`, callee-saved saves, the `trunc` division); only the manual sweep exercises them, at small `k`.
 - The emit tests match registers by pattern now; they check the chosen instructions and address modes, not the assignment.
 - Re-running the full pipeline on backend output is not meaningful (`core.legalize_idx` η-wraps `x86.trunc` to `Idx 4`); round-trip backend dumps with `--no-opt`.

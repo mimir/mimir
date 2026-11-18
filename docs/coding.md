@@ -117,6 +117,17 @@ cd lit
 ../scripts/probe.sh foo.mim
 ```
 
+lit runs the copies staged into `build/lit/`, so a manual run after editing a test needs `cmake --build build --target mim_lit_tests` first.
+`scripts/lit.sh` does that for you, caps each run's virtual memory, and prints only failures and the summary while the full log goes to `build/lit.log`:
+
+```sh
+scripts/lit.sh                      # whole suite
+scripts/lit.sh x86/ 'clos/|matrix/' # regexes over test paths, or-ed
+scripts/lit.sh -- --param x86_k=3   # options after `--` go to lit
+```
+
+`MIM_BUILD_DIR`, `MIM_JOBS`, and `MIM_VMEM` (KiB) override the build tree, the parallelism, and the memory cap.
+
 @note To generate a one-line reproducer for the current checkout and a specific `lit` failure, use:
 
 ```sh
@@ -166,6 +177,69 @@ doctest breaks into an attached debugger on a failing assertion; pass `-nb` to s
 ```sh
 ./scripts/make_test_error.sh "World: dependent extract"
 ```
+
+### Output Oracles {#oracles}
+
+lit only checks a few lines per test, so a phase can silently emit different - still valid - IR.
+`scripts/oracle.sh` runs `mim` over every `lit/` and `extra/*/lit/` input and compares stdout, stderr, and exit code byte for byte:
+
+```sh
+scripts/oracle.sh snap base             # before the change: record the current build's outputs
+scripts/oracle.sh diff base             # after rebuilding: compare against them
+scripts/oracle.sh rev HEAD -m dump5     # or build HEAD in a scratch worktree and compare against that
+scripts/oracle.sh diff base -- lit/fib.mim lit/x86/emit_cf.mim  # only some inputs
+```
+
+| Mode (`-m`) | Command per input                     | Use for                                    |
+| ----------- | ------------------------------------- | ------------------------------------------ |
+| `opt`       | `mim -p opt <f> -o -` (default)       | optimizer and phase refactors              |
+| `noopt`     | `mim --no-opt <f> -o -`               | the frontend                               |
+| `ast`       | `mim --output-ast - <f>`              | the parser                                 |
+| `ll`        | `mim -p opt <f> -p ll -X ll:o=-`      | codegen                                    |
+| `nest`      | `mim --output-nest - <f>`             | `Nest` and scheduling                      |
+| `dump5`     | `opt`, `noopt`, `typed`, `ascii`, `dot` | the dumper                               |
+| `NAME='ARGS'` | your own arguments, `{}` for the input |                                         |
+
+The dump carries gids, so even a changed number or order of created `Def`s shows up: a pure refactor must be byte-identical.
+Snapshots live in `MIM_ORACLE_DIR` (default `${TMPDIR:-/tmp}/mim-oracle`); `rev` builds `mim` and the plugins once per commit with the build type and compiler of your tree, and never touches your working tree.
+
+### Performance {#perf_ab}
+
+Wall time varies by several percent from run to run, so compare user-space instruction counts of two staged Release builds instead:
+
+```sh
+scripts/perf_ab.sh snap before          # copies build-release/{bin,lib}
+# ... change and rebuild build-release ...
+scripts/perf_ab.sh cmp before live      # median of 3 runs per workload, delta in percent
+scripts/perf_ab.sh cmp before live -w vgg16 -w "mine=$PWD/foo.mim -p opt -o -"
+```
+
+The default workloads are `hlo` (`-p opt -p gpu lit/tensor/hlo.mim -p nvptx`) and `vgg16` (`lit/tensor/vgg16.mim -p opt -o -`).
+
+### x86 Backend at Small Register Counts {#x86_ksweep}
+
+Most bugs in the x86 register allocator only show when it has to spill.
+`--param x86_k=<n>` makes lit compile every `-p x86 … -X x86:o=` RUN line with `-X x86:k=<n>`, so each test's expected exit codes check the spiller at that register count; `scripts/x86_ksweep.sh` runs the whole allowlist that way:
+
+```sh
+scripts/x86_ksweep.sh                   # k = 2, 3, 4, 6
+scripts/x86_ksweep.sh -k 3 regex/       # one k, some tests
+```
+
+Keep `-p x86 -X x86:o=` adjacent in new RUN lines so the parameter finds them.
+
+### Claude Code Skills {#skills}
+
+`.claude/skills/` holds project skills for [Claude Code](https://claude.com/claude-code) that encode the workflows above; invoke them as `/<name>` or let the agent pick them up:
+
+| Skill          | Does                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------ |
+| `verify`       | maps a diff to the checks it needs (lit, unit tests, oracles, `test-py`, k-sweep, perf) and runs them |
+| `new-lit-test` | writes a lit test in the right shape, stages, runs, and mutation-checks it                            |
+| `x86-status`   | brings `src/mim/plug/x86/AGENTS.md`, the backend's design and status, in line with the code            |
+| `sync-syntax`  | propagates a surface-syntax change to the language reference, editors, and grammars                    |
+
+Agent instructions live in `AGENTS.md` at the root and in the subdirectories that need their own; each has a `CLAUDE.md` next to it that imports it.
 
 ## Coding Style
 
