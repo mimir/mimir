@@ -324,30 +324,36 @@ private:
         return edges_[e].src == n ? edges_[e].dst : edges_[e].src;
     }
 
-    void erase_option(NodeId n, OptionId a) {
+    /// Deletes the options in `options`, which are sorted and distinct, from `n` and its incident edges.
+    void erase_options(NodeId n, fe::View<OptionId> options) {
         Node& node = nodes_[n];
         for (const auto e : node.edges) {
             MatrixSpan matrix = writable(e, n);
-            matrix.erase_row(a);
+            matrix.erase_rows(options);
         }
-        node.costs.erase(node.costs.begin() + static_cast<std::ptrdiff_t>(a));
-        node.original.erase(node.original.begin() + static_cast<std::ptrdiff_t>(a));
+        for (size_t k = 0; k < options.size(); ++k) {
+            const auto index = static_cast<std::ptrdiff_t>(options[k] - k);
+            node.costs.erase(node.costs.begin() + index);
+            node.original.erase(node.original.begin() + index);
+        }
         node.working = nullptr;
     }
 
     /// Deletes forbidden options, always keeping at least one.
     void prune(NodeId n) {
-        bool changed = false;
-        for (OptionId a = 0; a < options(n) && options(n) > 1;) {
-            if (nodes_[n].costs[a].is_inf()) {
-                erase_option(n, a);
-                ++statistics_.forbidden_options;
-                changed = true;
-            } else {
-                ++a;
-            }
+        const auto mark           = scratch_.state();
+        OptionId* const forbidden = scratch_.allocate<OptionId>(options(n));
+        size_t count              = 0;
+        for (OptionId a = 0; a < options(n); ++a)
+            if (nodes_[n].costs[a].is_inf()) forbidden[count++] = a;
+        if (count == options(n)) --count;
+        if (count == 0) {
+            scratch_.deallocate(mark);
+            return;
         }
-        if (!changed) return;
+        statistics_.forbidden_options += count;
+        erase_options(n, {forbidden, count});
+        scratch_.deallocate(mark);
 
         const Edges incident = nodes_[n].edges;
         for (const auto e : incident)

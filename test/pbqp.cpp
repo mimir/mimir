@@ -80,7 +80,7 @@ TEST_CASE("matrix indexes rows and columns") {
     CHECK(wide == pbqp::Matrix(2, 2, {1, 2, 3, 4}));
 }
 
-TEST_CASE("matrix operations transpose and erase") {
+TEST_CASE("matrix operations transpose and add") {
     const std::array<pbqp::Cost, 6> cells = {1, 2, 3, 4, 5, 6};
     const pbqp::MatrixView transposed     = pbqp::MatrixView(cells.data(), 2, 3).transposed();
     CHECK(transposed.rows() == 3);
@@ -99,51 +99,41 @@ TEST_CASE("matrix operations transpose and erase") {
     CHECK(sum == pbqp::Matrix(2, 2, {11, 22, 33, 44}));
     sum += pbqp::MatrixView(add).transposed();
     CHECK(sum == pbqp::Matrix(2, 2, {12, 25, 35, 48}));
+}
 
-    std::array<pbqp::Cost, 6> rows_cells = {1, 2, 3, 4, 5, 6};
-    pbqp::MatrixSpan rows(rows_cells.data(), 2, 3);
-    rows.erase_row(0);
+TEST_CASE("matrix erases several rows and columns at once") {
+    const std::array<pbqp::Cost, 9> cells       = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+    constexpr std::array<size_t, 2> every_other = {0, 2};
+
+    std::array<pbqp::Cost, 9> rows_cells = cells;
+    pbqp::MatrixSpan rows(rows_cells.data(), 3, 3);
+    rows.erase_rows(every_other);
     CHECK(rows.rows() == 1);
     CHECK(rows.cols() == 3);
-    CHECK(rows[0, 2] == 6);
+    CHECK(std::ranges::equal(rows, std::array<pbqp::Cost, 3>{4, 5, 6}));
 
-    std::array<pbqp::Cost, 6> last_row_cells = {1, 2, 3, 4, 5, 6};
-    pbqp::MatrixSpan last_row(last_row_cells.data(), 2, 3);
-    last_row.erase_row(1);
-    CHECK(std::ranges::equal(last_row, std::array<pbqp::Cost, 3>{1, 2, 3}));
+    // Erasing rows of the transposed view erases several storage columns.
+    constexpr std::array<size_t, 2> first_rows = {0, 1};
+    std::array<pbqp::Cost, 9> flipped_cells    = cells;
+    pbqp::MatrixSpan flipped                   = pbqp::MatrixSpan(flipped_cells.data(), 3, 3).transposed();
+    flipped.erase_rows(first_rows);
+    CHECK(flipped.rows() == 1);
+    CHECK(flipped.cols() == 3);
+    CHECK(std::ranges::equal(flipped, std::array<pbqp::Cost, 3>{3, 6, 9}));
 
-    std::array<pbqp::Cost, 6> cols_cells = {1, 2, 3, 4, 5, 6};
-    pbqp::MatrixSpan cols(cols_cells.data(), 2, 3);
-    cols.erase_col(1);
-    CHECK(cols.rows() == 2);
-    CHECK(cols.cols() == 2);
-    CHECK(cols[0, 0] == 1);
-    CHECK(cols[0, 1] == 3);
-    CHECK(cols[1, 0] == 4);
-    CHECK(cols[1, 1] == 6);
+    std::array<pbqp::Cost, 9> cols_cells = cells;
+    pbqp::MatrixSpan cols(cols_cells.data(), 3, 3);
+    cols.erase_cols(every_other);
+    CHECK(cols.rows() == 3);
+    CHECK(cols.cols() == 1);
+    CHECK(std::ranges::equal(cols, std::array<pbqp::Cost, 3>{2, 5, 8}));
 
-    std::array<pbqp::Cost, 6> first_col_cells = {1, 2, 3, 4, 5, 6};
-    pbqp::MatrixSpan first_col(first_col_cells.data(), 2, 3);
-    first_col.erase_col(0);
-    CHECK(std::ranges::equal(first_col, std::array<pbqp::Cost, 4>{2, 3, 5, 6}));
-
-    std::array<pbqp::Cost, 6> last_col_cells = {1, 2, 3, 4, 5, 6};
-    pbqp::MatrixSpan last_col(last_col_cells.data(), 2, 3);
-    last_col.erase_col(2);
-    CHECK(std::ranges::equal(last_col, std::array<pbqp::Cost, 4>{1, 2, 4, 5}));
-
-    // Erasing a row of the transposed view erases a column of the storage.
-    std::array<pbqp::Cost, 6> transposed_cells = {1, 2, 3, 4, 5, 6};
-    pbqp::MatrixSpan flipped                   = pbqp::MatrixSpan(transposed_cells.data(), 2, 3).transposed();
-    flipped.erase_row(1);
-    CHECK(flipped.rows() == 2);
-    CHECK(flipped.cols() == 2);
-    CHECK(flipped[0, 1] == 4);
-    CHECK(flipped[1, 1] == 6);
-    CHECK(std::ranges::equal(flipped, std::array<pbqp::Cost, 4>{1, 3, 4, 6}));
-    flipped.erase_col(0);
-    CHECK(std::ranges::equal(flipped, std::array<pbqp::Cost, 2>{4, 6}));
-    CHECK(flipped[1, 0] == 6);
+    // An empty set leaves the matrix untouched.
+    std::array<pbqp::Cost, 9> unchanged_cells = cells;
+    pbqp::MatrixSpan unchanged(unchanged_cells.data(), 3, 3);
+    unchanged.erase_rows({});
+    unchanged.erase_cols({});
+    CHECK(std::ranges::equal(unchanged, cells));
 }
 
 TEST_CASE("edge choice trades off node costs") {

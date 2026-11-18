@@ -122,19 +122,35 @@ public:
                 (*this)[r, c] = src[r, c];
     }
 
-    // `&` so that erasing on an rvalue cannot compact the storage yet drop the shrunken dimensions.
-    constexpr void erase_row(size_t row) & requires(!std::is_const_v<T>) {
-        assert(row < rows_);
-        if (row_major())
-            std::copy_n(data_ + (row + 1) * cols_, (rows_ - row - 1) * cols_, data_ + row * cols_);
-        else
-            erase_storage_col(row);
-        *this = BasicMatrix(data_, rows_ - 1, cols_, row_major());
+    /// Erases the rows in `rows`, which must be sorted and distinct.
+    /// The `&` ensures erasing an rvalue cannot compact the storage yet drop the shrunken dimensions.
+    constexpr void erase_rows(fe::View<size_t> rows) & requires(!std::is_const_v<T>) {
+        if (rows.empty()) return;
+        assert(std::ranges::is_sorted(rows) && "erase_rows: rows not sorted");
+        assert(std::ranges::adjacent_find(rows) == rows.end() && "erase_rows: duplicate row");
+        assert(rows.back() < rows_ && "erase_rows: row out of range");
+        if (row_major()) {
+            size_t dst = 0;
+            auto i     = rows.begin();
+            for (size_t r = 0; r < rows_; ++r) {
+                if (i != rows.end() && *i == r) {
+                    ++i;
+                    continue;
+                }
+                if (dst != r) std::copy_n(data_ + r * cols_, cols_, data_ + dst * cols_);
+                ++dst;
+            }
+            *this = BasicMatrix(data_, dst, cols_, true);
+        } else {
+            erase_storage_cols(rows);
+            *this = BasicMatrix(data_, rows_ - rows.size(), cols_, false);
+        }
     }
 
-    constexpr void erase_col(size_t col) & requires(!std::is_const_v<T>) {
+    /// Erases the columns in `cols`, which must be sorted and distinct.
+    constexpr void erase_cols(fe::View<size_t> cols) & requires(!std::is_const_v<T>) {
         *this = transposed();
-        erase_row(col);
+        erase_rows(cols);
         *this = transposed();
     }
 
@@ -146,13 +162,17 @@ private:
         , row_stride_(row_major || rows <= 1 || cols <= 1 ? cols : 1)
         , col_stride_(row_major || rows <= 1 || cols <= 1 ? 1 : rows) {}
 
-    /// Erases column `col` of the storage, which has `cols_` rows of `rows_` entries.
-    constexpr void erase_storage_col(size_t col) {
+    /// Erases the storage columns in `cols`, which are positions within each of the `cols_` rows of `rows_` entries.
+    constexpr void erase_storage_cols(fe::View<size_t> cols) {
         T* out = data_;
         for (size_t r = 0; r < cols_; ++r) {
-            const Cost* const in = data_ + r * rows_;
-            out                  = std::copy(in, in + col, out);
-            out                  = std::copy(in + col + 1, in + rows_, out);
+            const T* const base = data_ + r * rows_;
+            const T* in         = base;
+            for (const auto col : cols) {
+                out = std::copy(in, base + col, out);
+                in  = base + col + 1;
+            }
+            out = std::copy(in, base + rows_, out);
         }
     }
 
