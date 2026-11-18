@@ -766,17 +766,9 @@ LowerMapReduce::Call* LowerMapReduce::plan_pad(const App* app, std::deque<Call>&
 }
 
 LowerMapReduce::Call* LowerMapReduce::plan(const App* app, std::deque<Call>& calls) {
-    auto call = Axm::isa<btensor::concat>(app) ? plan_concat(app, calls)
-              : Axm::isa<btensor::pad>(app)    ? plan_pad(app, calls)
-                                               : plan_map_reduce(app, calls);
-    // `gpu.launch` types the kernel arguments as `«i: n; Ts#i»`. From Flags::scalarize_threshold on, that Seq is
-    // not unrolled, and Scalarize cannot coerce the flattened kernel to it. The planned producers stay unused.
-    auto n_args = call ? call->ins.size() + call->posts.size() + 1 : 0;
-    if (n_args >= new_world().flags().scalarize_threshold) {
-        log().w("{} would launch a kernel with {} arguments; keeping it on the host", app, n_args);
-        return nullptr;
-    }
-    return call;
+    return Axm::isa<btensor::concat>(app) ? plan_concat(app, calls)
+         : Axm::isa<btensor::pad>(app)    ? plan_pad(app, calls)
+                                          : plan_map_reduce(app, calls);
 }
 
 LowerMapReduce::Call* LowerMapReduce::plan_map_reduce(const App* app, std::deque<Call>& calls) {
@@ -878,9 +870,9 @@ const Def* LowerMapReduce::emit(const Call& call, Session& s) {
     args.emplace_back(out_dptr);
     DefVec arg_tys(args.size(), [&](size_t i) { return args[i]->type(); });
 
-    auto launch = w.app(w.annex<gpu::launch>(), Defs{w.lit_nat(args.size()), w.tuple(arg_tys)});
-    launch      = w.app(launch, Defs{w.lit_nat(k.n_groups), w.lit_nat(k.n_items), w.annex<gpu::default_stream>(),
-                                     w.lit_bool(k.shared_ty != nullptr), k.shared_ty ? k.shared_ty : w.tuple()});
+    auto launch = w.app(w.annex<gpu::launch>(), Defs{w.lit_nat(k.shared_ty ? 1 : 0),
+                                                       k.shared_ty ? k.shared_ty : w.tuple(), w.sigma(arg_tys)});
+    launch      = w.app(launch, Defs{w.lit_nat(k.n_groups), w.lit_nat(k.n_items), w.annex<gpu::default_stream>()});
     launch      = w.app(launch, k.lam);
     launch      = w.app(launch, args);
 

@@ -529,7 +529,8 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         declare("i32 @{}(ptr, i32, i32, i32, i32, i32, i32, i32, ptr, ptr, ptr)", Cu_Launch_Kernel);
 
         auto [implicits, launch_config, kernel_def, arg_def, func_args] = launch->uncurry_args<5>();
-        auto [n_groups_def, n_items_def, stream_def, m, MT]             = launch_config->projs<5>();
+        auto [m, MT, Ts]                                                = implicits->projs<3>();
+        auto [n_groups_def, n_items_def, stream_def]                    = launch_config->projs<3>();
         auto [mem, ret_lam_def]                                         = func_args->projs<2>();
 
         Lam* lam = kernel_def->isa_mut<Lam>();

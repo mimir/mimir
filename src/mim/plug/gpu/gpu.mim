@@ -206,14 +206,14 @@ axm buf_copy_to_host: {r: Nat, s: «r; Nat», T: *}
 ///
 /// #### launch
 ///
-/// Launches a kernel function on the device with dynamic shared memory and module symbols.
-// TODO: refactor to {n m: N, Ts: «n; *»} as soon as type inference bug is fixed
-axm launch: {n: Nat, Ts: «n; *»}
-          → [n_groups n_items: Nat, Stream, m: Bool, MT: «core.idx2nat m; *»]
+/// Launches a kernel with `m` (0 or 1, checked by the emitter) shared-memory buffers of types `MT` and arguments `Ts`.
+/// `Ts` is a tuple since arrays ≥ `scalarize_threshold` are not flattened.
+axm launch: {m: Nat, MT: «m; *», Ts: *}
+          → [n_groups n_items: Nat, Stream]
           → Cn [GlobalM, SharedM, ConstM, LocalM, Idx n_groups, Idx n_items,
-                «i: core.idx2nat m; SharedPtr MT#i», «i: n; Ts#i»,
+                «i: m; SharedPtr MT#i», Ts,
                 Cn [GlobalM, SharedM, ConstM, LocalM]]
-          → «i: n; Ts#i»
+          → Ts
           → Fn [mem.M 0, GlobalM, ConstM]
           → [mem.M 0, GlobalM, ConstM];
 ///
