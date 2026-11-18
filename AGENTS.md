@@ -92,6 +92,7 @@ Humans find the scripts below in `docs/coding.md` (*Testing*); keep both in sync
 - No def-use chains, use lists, or reverse indices: they see dead code; the only one is `Def::users()` (mutables, for cache invalidation).
   Prefer construction-time or pull-based solutions.
 - No CFG in the IR: scope and dominance-like facts come from binding structure (`Def::nests`), never from stale derived state.
+- **Do not compute a CFG** or any CFG-derived information (block graphs, dominator trees, per-block liveness) unless explicitly confirmed first.
 
 ## Comments
 
