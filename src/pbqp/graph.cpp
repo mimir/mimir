@@ -37,9 +37,12 @@ EdgeId Graph::add_edge_costs(NodeId m, NodeId n, fe::View<Cost> costs) {
     const size_t cols   = num_options(n);
     const bool same_way = edges_[e].src == m;
     Costs sum(edge_costs(e).begin(), edge_costs(e).end());
-    for (size_t r = 0; r < rows; ++r)
-        for (size_t c = 0; c < cols; ++c)
-            sum[same_way ? r * cols + c : c * rows + r] += costs[r * cols + c];
+    Matrix into(sum.data(), same_way ? rows : cols, same_way ? cols : rows);
+    const MatrixView add(costs.data(), rows, cols);
+    if (same_way)
+        into += add;
+    else
+        into.add_transposed(add);
     set_edge_costs(e, sum);
     return e;
 }

@@ -43,6 +43,79 @@ TEST_CASE("independent nodes are independent") {
     CHECK(solution.cost == 8);
 }
 
+TEST_CASE("matrix indexes rows and columns") {
+    std::array<pbqp::Cost, 6> cells = {1, 2, 3, 4, 5, 6};
+    pbqp::Matrix matrix(cells.data(), 2, 3);
+    CHECK(matrix.rows() == 2);
+    CHECK(matrix.cols() == 3);
+    CHECK(matrix.size() == 6);
+    CHECK(matrix[0, 0] == 1);
+    CHECK(matrix[1, 2] == 6);
+    CHECK(matrix.row(1)[1] == 5);
+
+    matrix[1, 2] = 7;
+    CHECK(cells[5] == 7);
+    CHECK(std::ranges::equal(matrix, std::array<pbqp::Cost, 6>{1, 2, 3, 4, 5, 7}));
+
+    const pbqp::MatrixView view(cells.data(), 2, 3);
+    CHECK(view[1, 2] == 7);
+}
+
+TEST_CASE("matrix operations transpose and erase") {
+    const std::array<pbqp::Cost, 6> cells = {1, 2, 3, 4, 5, 6};
+    const pbqp::MatrixView src(cells.data(), 2, 3);
+
+    std::array<pbqp::Cost, 6> transposed_cells{};
+    pbqp::Matrix transposed(transposed_cells.data(), 3, 2);
+    transposed.transpose_from(src);
+    CHECK(transposed[0, 0] == 1);
+    CHECK(transposed[1, 0] == 2);
+    CHECK(transposed[2, 0] == 3);
+    CHECK(transposed[0, 1] == 4);
+    CHECK(transposed[2, 1] == 6);
+
+    std::array<pbqp::Cost, 4> sum_cells = {10, 20, 30, 40};
+    const std::array<pbqp::Cost, 4> add = {1, 2, 3, 4};
+    pbqp::Matrix sum(sum_cells.data(), 2, 2);
+    sum += pbqp::MatrixView(add.data(), 2, 2);
+    CHECK(std::ranges::equal(sum, std::array<pbqp::Cost, 4>{11, 22, 33, 44}));
+
+    sum.add_transposed(pbqp::MatrixView(add.data(), 2, 2));
+    CHECK(std::ranges::equal(sum, std::array<pbqp::Cost, 4>{12, 25, 35, 48}));
+
+    std::array<pbqp::Cost, 6> rows_cells = {1, 2, 3, 4, 5, 6};
+    pbqp::Matrix rows(rows_cells.data(), 2, 3);
+    rows.erase_row(0);
+    CHECK(rows.rows() == 1);
+    CHECK(rows.cols() == 3);
+    CHECK(rows[0, 2] == 6);
+
+    std::array<pbqp::Cost, 6> last_row_cells = {1, 2, 3, 4, 5, 6};
+    pbqp::Matrix last_row(last_row_cells.data(), 2, 3);
+    last_row.erase_row(1);
+    CHECK(std::ranges::equal(last_row, std::array<pbqp::Cost, 3>{1, 2, 3}));
+
+    std::array<pbqp::Cost, 6> cols_cells = {1, 2, 3, 4, 5, 6};
+    pbqp::Matrix cols(cols_cells.data(), 2, 3);
+    cols.erase_col(1);
+    CHECK(cols.rows() == 2);
+    CHECK(cols.cols() == 2);
+    CHECK(cols[0, 0] == 1);
+    CHECK(cols[0, 1] == 3);
+    CHECK(cols[1, 0] == 4);
+    CHECK(cols[1, 1] == 6);
+
+    std::array<pbqp::Cost, 6> first_col_cells = {1, 2, 3, 4, 5, 6};
+    pbqp::Matrix first_col(first_col_cells.data(), 2, 3);
+    first_col.erase_col(0);
+    CHECK(std::ranges::equal(first_col, std::array<pbqp::Cost, 4>{2, 3, 5, 6}));
+
+    std::array<pbqp::Cost, 6> last_col_cells = {1, 2, 3, 4, 5, 6};
+    pbqp::Matrix last_col(last_col_cells.data(), 2, 3);
+    last_col.erase_col(2);
+    CHECK(std::ranges::equal(last_col, std::array<pbqp::Cost, 4>{1, 2, 4, 5}));
+}
+
 TEST_CASE("edge choice trades off node costs") {
     // The cheap option of `a` is expensive once the edge is paid for.
     pbqp::Graph graph;
@@ -369,8 +442,9 @@ void random_interval_instance(IntervalInstance& instance, std::mt19937_64& rando
             if (!interferes(m, n) && !affinity) continue;
             const pbqp::Cost copy = affinity ? static_cast<pbqp::Cost>(weight(random)) : 0;
             pbqp::Costs matrix(registers * registers, copy);
+            pbqp::Matrix cells(matrix.data(), registers, registers);
             for (size_t r = 0; r < registers; ++r)
-                matrix[r * registers + r] = interferes(m, n) ? pbqp::Cost::inf() : 0;
+                cells[r, r] = interferes(m, n) ? pbqp::Cost::inf() : 0;
             instance.graph.link(m, n, matrix);
         }
     }
@@ -530,6 +604,7 @@ TEST_CASE("accessors and setters round trip") {
     CHECK(dst == n);
     CHECK(graph.incident_edges(n).size() == 1);
     CHECK(graph.edge_cost(e, 1, 2) == 5);
+    CHECK(graph.edge_matrix(e)[1, 2] == 5);
 
     graph.set_node_costs(m, std::array<pbqp::Cost, 2>{7, 8});
     graph.set_edge_costs(e, std::array<pbqp::Cost, 6>{6, 5, 4, 3, 2, 1});
@@ -602,13 +677,12 @@ TEST_CASE("shared matrices survive random mutations") {
                 if (e == pbqp::Graph::npos) {
                     shadow[linked] = costs;
                 } else {
-                    const bool same_way = graph.edge(e).src == m;
-                    for (size_t r = 0; r < 2; ++r)
-                        for (size_t c = 0; c < 2; ++c) {
-                            pbqp::Cost& entry    = shadow[e][same_way ? r * 2 + c : c * 2 + r];
-                            const pbqp::Cost add = costs[r * 2 + c];
-                            entry += add;
-                        }
+                    pbqp::Matrix entry(shadow[e].data(), 2, 2);
+                    const pbqp::MatrixView add(costs.data(), 2, 2);
+                    if (graph.edge(e).src == m)
+                        entry += add;
+                    else
+                        entry.add_transposed(add);
                 }
                 break;
             }
