@@ -59,7 +59,7 @@ struct Rule {
     std::string_view name;
     Ty type;
     /// Builds the replacement of the match @p alt rooted at the old_world() Def @p root.
-    const Def* (*build)(ISel&, const Def* root, const Alt& alt);
+    const Def* (ISel::*build)(const Def* root, const Alt& alt);
 };
 ///@}
 
@@ -104,12 +104,32 @@ public:
     Address split(const Def* addr);
     /// @p a as a value.
     const Def* materialize(Address a);
+    /// Applies @p insn, going through `i32` for operands narrower than 16 bits.
+    const Def*
+    wide(const Def* (*insn)(World&, const Def*, const Def*), const Def* type, bool sign, const Def* a, const Def* b);
+
+    const Def* build_lea_off(const Def* root, const Alt& alt);
+    const Def* build_lea_idx(const Def* root, const Alt& alt);
+    const Def* build_load(const Def* root, const Alt& alt);
+    const Def* build_store(const Def* root, const Alt& alt);
+    const Def* build_store_mr(const Def* root, const Alt& alt);
+    const Def* build_bin(const Def* root, const Alt& alt);
+    const Def* build_bin_rm(const Def* root, const Alt& alt);
+    const Def* build_cmp(const Def* root, const Alt& alt);
+    const Def* build_nat(const Def* root, const Alt& alt);
+    const Def* build_unary(const Def* root, const Alt& alt);
+    const Def* build_div(const Def* root, const Alt& alt);
+    const Def* build_slot(const Def* root, const Alt& alt);
+    const Def* build_assume(const Def* root, const Alt& alt);
+    const Def* build_select(const Def* root, const Alt& alt);
     ///@}
 
 private:
     bool analyze() final;
     /// Counts in `uses_` how often each Def of old_world() occurs as an operand.
     void count(const Def*);
+    /// Appends the matches rooted at @p def to @p alts, an atomic one first.
+    void match(const Def* def, Alts& alts) const;
     /// The node Def @p def stands for: a load stands for its value.
     const Def* key(const Def* def) const;
     /// The chosen alternative of the node @p def.
