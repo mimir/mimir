@@ -82,11 +82,7 @@ public:
         , rows_(other.rows())
         , cols_(other.cols()) {}
 
-    [[nodiscard]] constexpr T& operator[](size_t row, size_t col) {
-        assert(row < rows_ && col < cols_);
-        return data_[row * cols_ + col];
-    }
-    [[nodiscard]] constexpr const Cost& operator[](size_t row, size_t col) const {
+    [[nodiscard]] constexpr T& operator[](size_t row, size_t col) const {
         assert(row < rows_ && col < cols_);
         return data_[row * cols_ + col];
     }
@@ -139,7 +135,7 @@ public:
         assert(col < cols_);
         T* out = data_;
         for (size_t r = 0; r < rows_; ++r) {
-            const Cost* const in = data_ + r * cols_;
+            const Cost* const in = row(r);
             out                  = std::copy(in, in + col, out);
             out                  = std::copy(in + col + 1, in + cols_, out);
         }
@@ -285,12 +281,12 @@ private:
         MatrixId matrix = npos;
     };
 
-    [[nodiscard]] const Graph::Node& checked_node(NodeId n) const {
+    [[nodiscard]] const Node& checked_node(NodeId n) const {
         assert((n < num_nodes()) && "node: unknown node");
         return nodes_[n];
     }
 
-    [[nodiscard]] const Graph::Edge& checked_edge(EdgeId e) const {
+    [[nodiscard]] const Edge& checked_edge(EdgeId e) const {
         assert((e < num_edges()) && "edge: unknown edge");
         return edges_[e];
     }

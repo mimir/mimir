@@ -33,13 +33,11 @@ EdgeId Graph::add_edge_costs(NodeId m, NodeId n, fe::View<Cost> costs) {
     if (e == npos) return link(m, n, costs);
     assert((costs.size() == num_options(m) * num_options(n)) && "add_edge_costs: cost matrix has the wrong size");
 
-    const size_t rows   = num_options(m);
-    const size_t cols   = num_options(n);
-    const bool same_way = edges_[e].src == m;
-    Costs sum(edge_costs(e).begin(), edge_costs(e).end());
-    Matrix into(sum.data(), same_way ? rows : cols, same_way ? cols : rows);
-    const MatrixView add(costs.data(), rows, cols);
-    if (same_way)
+    const MatrixView old = edge_matrix(e);
+    Costs sum(old.begin(), old.end());
+    Matrix into(sum.data(), old.rows(), old.cols());
+    const MatrixView add(costs.data(), num_options(m), num_options(n));
+    if (edges_[e].src == m)
         into += add;
     else
         into.add_transposed(add);
@@ -71,7 +69,9 @@ Graph::MatrixId Graph::intern(fe::View<Cost> costs) {
     const auto bytes  = std::string_view(reinterpret_cast<const char*>(costs.data()), costs.size() * sizeof(Cost));
     const size_t hash = ankerl::unordered_dense::hash<std::string_view>{}(bytes);
 
-    const auto i = matrices_.emplace(Probe{costs, hash}).first;
+    const Probe probe{costs, hash};
+    auto i = matrices_.find(probe);
+    if (i == matrices_.end()) i = matrices_.emplace(probe).first;
     return static_cast<MatrixId>(i - matrices_.begin());
 }
 

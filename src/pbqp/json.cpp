@@ -11,6 +11,7 @@
 #include <utility>
 
 #include <fe/driver.h>
+#include <fe/format.h>
 #include <fe/lexer.h>
 #include <fe/parser.h>
 
@@ -471,12 +472,7 @@ void write_json(std::ostream& out, const Graph& graph, fe::View<size_t> rn_prior
     }
     std::print(out, "\n  ]");
 
-    if (!rn_priority.empty()) {
-        std::print(out, ",\n  \"rn_priority\": [");
-        for (size_t i = 0; i < rn_priority.size(); ++i)
-            std::print(out, "{}{}", i == 0 ? "" : ", ", rn_priority[i]);
-        out << ']';
-    }
+    if (!rn_priority.empty()) std::print(out, ",\n  \"rn_priority\": [{}]", fe::Join(rn_priority, ", "));
     std::println(out, "\n}}");
 }
 

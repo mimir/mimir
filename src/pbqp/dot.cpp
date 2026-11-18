@@ -11,18 +11,18 @@ namespace {
 constexpr const char* kChosen = R"( bgcolor="palegreen")";
 
 void print_cell(std::ostream& out, Cost cost, bool chosen) {
+    const char* const attr = chosen ? kChosen : "";
     if (cost.is_inf())
-        std::print(out, "<td{}>&#8734;</td>", chosen ? kChosen : "");
+        std::print(out, "<td{}>&#8734;</td>", attr);
     else
-        std::print(out, "<td{}>{}</td>", chosen ? kChosen : "", cost.value());
+        std::print(out, "<td{}>{}</td>", attr, cost.value());
 }
 
 } // namespace
 
 void write_dot(std::ostream& out, const Graph& graph, fe::View<OptionId> choices) {
     const bool highlight = !choices.empty();
-    for ([[maybe_unused]] const auto n : graph.nodes())
-        assert((!highlight || n < choices.size()) && "write_dot: choices must cover every node id");
+    assert((!highlight || choices.size() >= graph.num_nodes()) && "write_dot: choices must cover every node id");
 
     std::println(out, "graph pbqp {{");
     std::println(out, "    node [shape=plain];");
@@ -40,16 +40,16 @@ void write_dot(std::ostream& out, const Graph& graph, fe::View<OptionId> choices
     }
 
     for (const auto e : graph.edges()) {
-        const auto [src, dst] = graph.edge(e);
-        const size_t columns  = graph.num_options(dst);
+        const auto [src, dst]   = graph.edge(e);
+        const MatrixView matrix = graph.edge_matrix(e);
         std::print(
             out,
             R"(    n{} -- n{} [label=<<table border="0" cellborder="1" cellspacing="0"><tr><td colspan="{}">n{} &#215; n{}</td></tr>)",
-            src, dst, columns, src, dst);
-        for (OptionId i = 0; i < graph.num_options(src); ++i) {
+            src, dst, matrix.cols(), src, dst);
+        for (OptionId i = 0; i < matrix.rows(); ++i) {
             std::print(out, "<tr>");
-            for (OptionId j = 0; j < columns; ++j)
-                print_cell(out, graph.edge_cost(e, i, j), highlight && choices[src] == i && choices[dst] == j);
+            for (OptionId j = 0; j < matrix.cols(); ++j)
+                print_cell(out, matrix[i, j], highlight && choices[src] == i && choices[dst] == j);
             std::print(out, "</tr>");
         }
         std::println(out, "</table>>];");
