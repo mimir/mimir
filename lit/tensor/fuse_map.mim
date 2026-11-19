@@ -12,8 +12,7 @@ use tensor;
 lam add1 (x: Nat): Nat = x + 1;
 lam mul2 (x: Nat): Nat = x * 2;
 
-extern con f (v: «2; «3; Nat»», return: Cn «2; «3; Nat»») =
-    let v = buf v;
+extern con f (v: tensor.Tensor 2 (2, 3) Nat, return: Cn tensor.Tensor 2 (2, 3) Nat) =
     return (unary mul2 (unary add1 v));
 
 extern lam _compile (): compile.Phase =

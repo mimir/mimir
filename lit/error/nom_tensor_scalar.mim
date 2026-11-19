@@ -1,0 +1,6 @@
+// RUN: (! %mim --no-opt %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+extern lam bad (t: tensor.Tensor 0 () I32): I32 = t;
+
+// CHECK: error: function body is not assignable to its declared codomain

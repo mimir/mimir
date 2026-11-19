@@ -387,11 +387,15 @@ const Def* PrimaryExpr::emit_(Emitter& e) const {
         case Tag::K_ff:   return e.world().lit_ff();
         case Tag::K_tt:   return e.world().lit_tt();
         case Tag::K_i1:   return e.world().lit_i1();
+        case Tag::K_i2:   return e.world().lit_i2();
+        case Tag::K_i4:   return e.world().lit_i4();
         case Tag::K_i8:   return e.world().lit_i8();
         case Tag::K_i16:  return e.world().lit_i16();
         case Tag::K_i32:  return e.world().lit_i32();
         case Tag::K_i64:  return e.world().lit_i64();
         case Tag::K_I1:   return e.world().type_i1();
+        case Tag::K_I2:   return e.world().type_i2();
+        case Tag::K_I4:   return e.world().type_i4();
         case Tag::K_I8:   return e.world().type_i8();
         case Tag::K_I16:  return e.world().type_i16();
         case Tag::K_I32:  return e.world().type_i32();

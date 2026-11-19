@@ -4,16 +4,23 @@ on:
   push:
   pull_request:
     branches: [master]
+  # Rebuild a release that predates the versioned layout, e.g. v0.4; the sources are checked out at
+  # the tag while the deploy script still comes from this branch.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and deploy (e.g. v0.4)
+        required: true
 
 concurrency:
   # Only one run per group queues, so deploying runs share a group instead of racing on
   # mimir.github.io, all others are keyed by run_id, and `doxygen.yml` needs a group of its own.
   # `env` is unavailable here, hence the repeated DEPLOY condition.
-  group: ${{github.workflow}}-${{(github.event_name == 'push' && github.ref == 'refs/heads/master') && 'deploy' || github.run_id}}
+  group: ${{github.workflow}}-${{(github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')))) && 'deploy' || github.run_id}}
   cancel-in-progress: false
 
 env:
-  DEPLOY: ${{github.event_name == 'push' && github.ref == 'refs/heads/master'}}
+  DEPLOY: ${{github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')))}}
 
 jobs:
   build:
@@ -24,7 +31,15 @@ jobs:
       - name: Clone recursively
         uses: actions/checkout@v4
         with:
+          ref: ${{inputs.tag || github.ref}}
           submodules: recursive
+
+      # The tagged tree's own deploy.py predates the versioned layout; use this branch's instead.
+      - name: Checkout the deploy scripts
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+        with:
+          path: deploy-scripts
 
       - name: Install dependencies
         run: |
@@ -57,23 +72,18 @@ jobs:
 
       - name: Configure
         run: |
-          emcmake cmake -B build-wasm                                              \
-                -G Ninja                                                           \
-                -DCMAKE_BUILD_TYPE=Release                                         \
-                -DCMAKE_C_COMPILER_LAUNCHER=ccache                                 \
-                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache                               \
-                -DBUILD_SHARED_LIBS=OFF                                            \
-                -DBUILD_TESTING=OFF                                                \
-                -DMIM_BUILD_PYTHON=OFF                                             \
-                -DMIM_VERIFY_PLUGINS=OFF                                           \
+          cmake --preset wasm                                                \
+                -G Ninja                                                     \
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache                           \
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache                         \
                 -DMIM_NATIVE_MIM=${{github.workspace}}/build-native/bin/mim
 
       - name: Build
-        run: cmake --build build-wasm --target mim_playground
+        run: cmake --build --preset wasm
 
       # Catches a wasm-only regression such as `Def::ops_ptr`'s.
       - name: Smoke test
-        run: cmake --build build-wasm --target mim_playground_smoke
+        run: cmake --build --preset wasm --target mim_playground_smoke
 
       - name: Upload the playground
         uses: actions/upload-artifact@v4
@@ -94,4 +104,12 @@ jobs:
       # `playground/` survives the docs deploy's sweep via `docs/deploy.py`'s FOREIGN_DIRS.
       - name: Deploy
         if: env.DEPLOY == 'true'
-        run: python3 docs/deploy.py --build-dir build-wasm/playground --subdir playground
+        env:
+          TAG: ${{inputs.tag}}
+        run: |
+          if [ -n "$TAG" ]; then
+            python3 deploy-scripts/docs/deploy.py --build-dir build-wasm/playground --subdir playground \
+              --git-ref "refs/tags/$TAG" --ref-name "$TAG"
+          else
+            python3 docs/deploy.py --build-dir build-wasm/playground --subdir playground
+          fi

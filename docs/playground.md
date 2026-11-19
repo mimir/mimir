@@ -38,7 +38,7 @@ source ~/emsdk/emsdk_env.sh
 
 ### A native `mim` first
 
-A cross build cannot run the `mim` it just built, but bootstrapping a plugin needs one, so point `MIM_NATIVE_MIM` at a native binary — an ordinary `build/bin/mim` does.
+A cross build cannot run the `mim` it just built, but bootstrapping a plugin needs one, so `MIM_NATIVE_MIM` points at a native binary — the `wasm` preset uses an ordinary `build/bin/mim`.
 Bring it up to date first:
 
 ```sh
@@ -53,15 +53,11 @@ Rebuild the native tree and try again.
 
 ```sh
 source ~/emsdk/emsdk_env.sh
-emcmake cmake -B build-wasm                     \
-    -DCMAKE_BUILD_TYPE=Release                  \
-    -DBUILD_SHARED_LIBS=OFF                     \
-    -DBUILD_TESTING=OFF                         \
-    -DMIM_BUILD_PYTHON=OFF                      \
-    -DMIM_VERIFY_PLUGINS=OFF                    \
-    -DMIM_NATIVE_MIM=$PWD/build/bin/mim
-cmake --build build-wasm --target mim_playground -j16
+cmake --preset wasm
+cmake --build --preset wasm -j16
 ```
+
+The preset takes the toolchain file from `$EMSDK`, disables what a cross build cannot use, and needs no `emcmake`; see [Presets](@ref presets) for what it sets and how to override it.
 
 `mim_playground` also stages the page, so a change to it alone is a second's rebuild — no need to touch the compiler.
 
@@ -85,6 +81,10 @@ The editor compiles on every keystroke, half a second after you stop typing; **C
 _optimize_ runs the [opt](@ref opt) pipeline and the [ll](@ref ll) backend; without it the program is only parsed and emitted again.
 The **Mim** tab's _typed lets_ box is `--mim-typed-let`; see @ref cli for what it does.
 _ASCII_ is `-a`, which is a global flag rather than a Mim-only one: it swaps the UTF-8 spellings out of every output, the graph's labels included.
+
+The version picker beside the title switches builds: `master` is the root build and each tag lives under `playground/<tag>/`.
+Switching carries the current program over in the `#z=` fragment, so the same source can be tried on an older compiler.
+The picker lists only the builds the deploy found, so it stays hidden until a second one exists.
 
 The _vi_ box in the editor bar switches the editor to vi keybindings — [@replit/codemirror-vim](https://github.com/replit/codemirror-vim), fetched from a CDN the first time you tick it.
 The bar below the editor shows the mode and takes `:` commands; `:w` runs the program, which is the only thing there is to write to.
@@ -137,5 +137,7 @@ The graph's colors are baked by the compiler rather than applied by CSS, so flip
 `.github/workflows/playground.yml` does all of the above on every push, compiles a program with the binary it just built — a wasm-only regression such as the one behind `Def::ops_ptr` fails there instead of silently shipping — and uploads `build-wasm/playground/` as an artifact.
 
 A push to `master` also deploys that directory into `playground/` of the [site repository](https://github.com/mimir/mimir.github.io), next to the Doxygen output, via `docs/deploy.py --subdir playground`.
+A tag deploys into `playground/<tag>/` instead, and every playground deploy rewrites `playground/versions.json`, which is what the version picker lists.
+Dispatching `playground.yml` by hand with a tag input rebuilds an older release whose tagged workflow predates this layout, such as `v0.4`.
 The docs deploy sweeps the site root, so `playground/` only survives by being listed in that script's `FOREIGN_DIRS`.
 Both workflows push to the same repository from their own concurrency group and rely on the script's rebase retry; they never write the same paths.

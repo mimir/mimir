@@ -1,0 +1,15 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin core;
+plugin x86;
+import compile;
+
+extern lam _compile (): compile.Phase = compile.phases ff (compile.named "x86.isel");
+
+extern lam f (a b: I8): I8 = core.wrap.mul 0 (a, b);
+extern lam g (a: I8): I8 = core.wrap.mul 0 (a, 3I8);
+
+// CHECK-NOT: core.wrap
+// CHECK-DAG: x86.imul @ i32
+// CHECK-DAG: x86.trunc @ i32 i8
+// CHECK-DAG: 3I32

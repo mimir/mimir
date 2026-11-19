@@ -1,0 +1,23 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin core;
+plugin compile;
+plugin mem;
+
+extern con f (c: Bool, return: Cn [mem.M 0, mem.Ptr (I32, 0), I32]) =
+    con t () =
+        let (m, p) = mem.alloc (I32, 0) (⊥:(mem.M 0));
+        return (m, p, 1I32);
+    con e () =
+        let (m, p) = mem.alloc (I32, 0) (⊥:(mem.M 0));
+        return (m, p, 0I32);
+    (e, t)#c ();
+
+extern con g (return: Cn [mem.M 0, mem.Ptr (I32, 0)]) = return (mem.alloc (I32, 0) (⊥:(mem.M 0)));
+
+extern lam _compile (): compile.Phase = compile.phases ff (compile.cleanup, mem.add_mem);
+
+// CHECK-DAG: extern con f ([[F:_[0-9]+]]: core.M 0
+// CHECK-DAG: mem.alloc (I32, 0) [[F]];
+// CHECK-DAG: extern fun g ([[G:_[0-9]+]]: core.M 0)
+// CHECK-DAG: mem.alloc (I32, 0) [[G]];

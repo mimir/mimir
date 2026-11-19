@@ -1,0 +1,55 @@
+// RUN: rm -f %{s:stem}.ll
+// RUN: %mim -p opt %s -p ll
+// RUN: %FileCheck %s < %{s:stem}.ll
+// RUN: clang %{s:stem}.ll -o %t -Wno-override-module
+// RUN: %t ; test $? -eq 30
+plugin core;
+plugin mem;
+
+use core.ops.u.w;
+
+let Arr = «4; I32»;
+
+fun add (k: I32) (x: I32): I32 = return (k + x);
+fun sq (x: I32): I32 = return (x * x);
+
+fun map (f: Fn I32 → I32) (m: mem.M 0, p: mem.Ptr0 Arr): mem.M 0 =
+    loop (m, 0I32)
+    where
+        con loop(m: mem.M 0, i: I32) =
+            (exit, body)#(i < 4I32) m
+            where
+                con body m: mem.M 0 =
+                    let q = mem.lea (p, core.conv.u 4 i);
+                    let (m, x) = mem.load (m, q);
+                    ret y = f $ x;
+                    let m = mem.store (m, q, y);
+                    loop (m, 1I32 + i);
+                con exit(m: mem.M 0) = return m;
+            end
+    end
+
+fun sum (m: mem.M 0, p: mem.Ptr0 Arr): [mem.M 0, I32] =
+    loop (m, 0I32, 0I32)
+    where
+        con loop(m: mem.M 0, i acc: I32) =
+            (exit, body)#(i < 4I32) m
+            where
+                con body m: mem.M 0 =
+                    let (m, x) = mem.load (m, mem.lea (p, core.conv.u 4 i));
+                    loop (m, 1I32 + i, acc + x);
+                con exit(m: mem.M 0) = return (m, acc);
+            end
+    end
+
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
+    let (m, p) = mem.alloc (Arr, 0) m;
+    let m = mem.store (m, p, (0I32, 1I32, 2I32, 3I32));
+    ret m = map (add 1I32) $ (m, p);
+    ret m = map sq $ (m, p);
+    ret (m, s) = sum $ (m, p);
+    return (m, s);
+
+// CHECK: define i32 @main
+// CHECK-NOT: call
+// CHECK-NOT: define

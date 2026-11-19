@@ -68,15 +68,12 @@ jobs:
       - name: Configure
         run: |
           CC=gcc-15 CXX=g++-15                                    \
-          cmake -B build                                          \
+          cmake --preset docs                                     \
                 -G Ninja                                          \
-                -DCMAKE_BUILD_TYPE=Debug                          \
-                -DMIM_BUILD_DOCS=ON                               \
-                -DMIM_BUILD_PYTHON=OFF                            \
                 -DDOXYGEN_EXECUTABLE=${{env.DOXYGEN_DIR}}/bin/doxygen
 
       - name: Build
-        run: cmake --build build -v --target docs
+        run: cmake --build --preset docs -v
 
       - name: Checkout docs repository
         if: env.DEPLOY == 'true'
@@ -89,4 +86,4 @@ jobs:
 
       - name: Deploy
         if: env.DEPLOY == 'true'
-        run: python3 docs/deploy.py
+        run: python3 docs/deploy.py --build-dir build-docs/html

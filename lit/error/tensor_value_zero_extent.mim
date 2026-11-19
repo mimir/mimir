@@ -1,0 +1,9 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+plugin compile;
+
+extern con empty_input (a: tensor.Tensor 1 0 I32, return: Cn [tensor.Tensor 1 0 I32]) = return a;
+extern lam _compile (): compile.Phase = tensor.lower_map_reduce;
+
+// CHECK: error: cannot lower value tensor with a zero extent

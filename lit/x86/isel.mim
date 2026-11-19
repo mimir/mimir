@@ -1,0 +1,26 @@
+// RUN: %mim %s -o %t.mim
+// RUN: %mim --no-opt %t.mim -o - | %FileCheck %s
+
+plugin core;
+plugin mem;
+plugin x86;
+import compile;
+
+extern lam _compile (): compile.Phase = compile.phases ff (compile.named "x86.isel", compile.named "x86.schedule");
+
+extern con f (m: mem.M 0, p: mem.Ptr0 «4; I32», i: Idx 4, x: I32, return: Cn [mem.M 0, I32]) =
+    let q = mem.lea (p, i);
+    let (m, y) = mem.load (m, q);
+    let z = core.wrap.add 0 (y, core.wrap.shl 0 (x, 3I32));
+    let m = mem.store (m, q, z);
+    con t (m: mem.M 0) = return (m, z);
+    con e (m: mem.M 0) = return (m, core.shr.a (y, 1I32));
+    (e, t)#(core.icmp.sl (z, x)) m;
+
+// CHECK-NOT: core.wrap
+// CHECK-NOT: mem.lea
+// CHECK-DAG: x86.load i32
+// CHECK-DAG: x86.store
+// CHECK-DAG: (x86.shl @ i32)
+// CHECK-DAG: (x86.sar @ i32)
+// CHECK-DAG: x86.cc.l

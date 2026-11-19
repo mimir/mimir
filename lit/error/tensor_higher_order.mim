@@ -1,0 +1,6 @@
+// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
+
+plugin tensor;
+extern con apply (f: Cn [tensor.Tensor 1 2 I32, Cn I32], a: tensor.Tensor 1 2 I32, return: Cn I32) = f (a, return);
+
+// CHECK: error: cannot bufferize: unsupported higher-order tensor contract

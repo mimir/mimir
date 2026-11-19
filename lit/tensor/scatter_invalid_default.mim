@@ -3,5 +3,5 @@
 plugin tensor;
 
 // CHECK: scatter index shape exceeds updates shape at axis 1
-extern fun invalid (input: «2, 4; I32», index: «2, 4; Idx 2», updates: «2, 3; I32»): «2, 4; I32» =
-    return (tensor.scatter ((2, 4), (2, 4), (2, 3)) 0₂ (tensor.buf input, tensor.buf index, tensor.buf updates));
+extern fun invalid (input: tensor.Tensor 2 (2, 4) I32, index: tensor.Tensor 2 (2, 4) (Idx 2), updates: tensor.Tensor 2 (2, 3) I32): tensor.Tensor 2 (2, 4) I32 =
+    return (tensor.scatter ((2, 4), (2, 4), (2, 3)) 0₂ (input, index, updates));

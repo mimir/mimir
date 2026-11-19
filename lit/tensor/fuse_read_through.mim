@@ -23,9 +23,8 @@ let Ring = (Nat, 0, core.nat.add, core.nat.mul);
 let `+ = binary core.nat.add;
 let `* = product_2d Ring;
 
-extern con f (a: «2, 3; Nat», b: «4, 3; Nat», bias: «4; Nat», return: Cn «2, 4; Nat») =
-    let (a, b, bias) = (buf a, buf b, buf bias);
-    let b2 = repeat (1, 4) (2, 4) bias;
+extern con f (a: tensor.Tensor 2 (2, 3) Nat, b: tensor.Tensor 2 (4, 3) Nat, bias: tensor.Tensor 1 4 Nat, return: Cn [tensor.Tensor 2 (2, 4) Nat]) =
+    let b2 = repeat (1, 4) (2, 4) (reshape 4 (1, 4) bias);
     return (unary add1 (a * transpose_2d b + b2));
 
 extern lam _compile (): compile.Phase =

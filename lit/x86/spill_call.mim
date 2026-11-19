@@ -1,0 +1,27 @@
+// RUN: %mim %s -X x86:k=14 -X x86:live=%t.live -o - | %FileCheck %s
+// RUN: %FileCheck %s --check-prefix=LIVE < %t.live
+
+plugin compile;
+plugin mem;
+plugin x86;
+
+extern con g [mem.M 0, I32, Cn [mem.M 0, I32]];
+
+/// Six values survive the call to `g`, but only five callee-saved registers do.
+extern con f (m: mem.M 0, a b c d e: I32, return: Cn [mem.M 0, I32]) =
+    let x = x86.add (a, b);
+    con k (m: mem.M 0, r: I32) =
+        return (m, x86.add (x86.add (x86.add (x86.add (x86.add (x86.add (r, a), b), c), d), e), x));
+    g (m, x, k);
+
+extern lam _compile (): compile.Phase = compile.phases ff (x86.schedule, x86.spilling, x86.live);
+
+// `x` is used last after the call, so it is the one that goes to memory.
+// CHECK:      [[X:_[0-9]+]] = x86.sched @ («2; I32», I32) (x86.add @ i32) m (a, b);
+// CHECK-NEXT: [[S:_[0-9]+]] = x86.sched @ (I32, x86.Spill i32) (x86.spill @ i32) [[X]]#ff [[X]]#tt;
+// CHECK:      (x86.reload @ i32) {{.*}} [[S]]#tt;
+// CHECK-NOT:  x86.reload
+// CHECK:      g ([[S]]#ff, [[X]]#tt, k{{[_0-9]*}});
+// LIVE:       fun f
+// LIVE-NEXT:  f: {{.*}} max 6 flags 0
+// LIVE-NEXT:  k{{[_0-9]*}}: {{.*}} max 6 flags 0

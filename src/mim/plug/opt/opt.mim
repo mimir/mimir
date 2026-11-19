@@ -102,6 +102,18 @@ extern lam _default_compile (): compile.Phase =
         mem.alloc2malloc_repl,
         compile.named "refly.remove_dbg_repl",
         compile.named "gpu.check_addr_spaces_repl",
+
+        // llvm
         compile.named "ll.emit",
         compile.named "nvptx.emit",
+
+        // x86
+        // By now no Axm pins a continuation's type anymore, so every continuation gets the mem.M to schedule on.
+        compile.cond "x86" mem.add_mem,
+        compile.named "x86.isel",
+        compile.named "x86.schedule",
+        compile.named "x86.spilling",
+        compile.named "x86.constrain",
+        compile.named "x86.color",
+        compile.named "x86.emit",
     );

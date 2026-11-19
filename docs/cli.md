@@ -23,30 +23,53 @@ Use `--loc-style` to pick how much of a location that header spells out:
 
 ## Plugins
 
-### Search Paths
+### Search Paths {#clisearchpaths}
 
 Mim keeps three separate lookups, because the artifacts they find are different in kind:
 a plugin library is host-native code, a `.mim` is portable source, and a backend runtime belongs to the target.
 
-Two kinds of entry feed them.
-A _plain directory_ is probed as-is and is what `-P` / `-I` and their environment variables add.
-A _prefix root_ stands for an install tree and derives `<root>/lib/mim`, `<root>/share/mim`, and `<root>/lib/mim/rt` from itself;
-`--prefix-path` / `MIM_PREFIX_PATH` add one, as do the install prefix and the tree `libmim` was loaded from.
+Two kinds of entry feed them:
+
+- A _plain directory_ is probed as-is and is what `-P`, `-I`, their environment variables, and the `--config` file add.
+- A _prefix root_ stands for an install tree and derives `<root>/lib/mim`, `<root>/share/mim`, and `<root>/lib/mim/rt` from itself.
+
+`--prefix-path` / `MIM_PREFIX_PATH` add a prefix root, as do the install prefix and the tree `libmim` was loaded from.
+
+For every lookup below, sources add up in priority order: CLI flag, then environment variable, then the `--config` file.
+`plugin-path`, `import-path`, and `prefix-path` resolve independently.
+Entries keep the order you wrote them, so a path given in several places is searched at its highest-priority position.
 
 | Looking for | Order |
 | --- | --- |
-| `libmim_<name>` | cwd, `-P`, `MIM_PLUGIN_PATH`, then each root's `lib/mim` |
-| `<name>.mim` | cwd, `-I`, `MIM_IMPORT_PATH`, `-P`, `MIM_PLUGIN_PATH`, then each root's `share/mim` and `lib/mim` |
-| runtime modules | cwd `rt`, `-P` and `MIM_PLUGIN_PATH` each with `rt`, then each root's `lib/mim/rt` |
+| `libmim_<name>` | cwd, the plugin search paths (`-P`, then `MIM_PLUGIN_PATH`, then the `--config` file's `plugin-path`), then each root's `lib/mim` |
+| `<name>.mim` | cwd, the import search paths (`-I`, then `MIM_IMPORT_PATH`, then the `--config` file's `import-path`), the plugin search paths, then each root's `share/mim` and `lib/mim` |
+| runtime modules | cwd `rt`, the plugin search paths each suffixed with `rt`, then each root's `lib/mim/rt` |
 
 Plugin directories are searched for imports too, since a plugin ships both of its halves together.
 `mim -l` prints all three lists fully resolved.
 
-A `plugin <name>;` directive is special: its `<name>.mim` is taken from the directory `libmim_<name>` was actually loaded from,
-so the two halves of a plugin can never be paired up across different directories.
-A plugin may also be spelled as a path - `plugin "foo/bar";` or `-p foo/bar` - which looks for `libmim_bar` in the `foo` below each entry of the table above.
-A bare `import <name>;` has no such anchor and resolves by the table above,
-so spell an import of your own file as `import "<name>.mim"` if the name could collide with an installed plugin.
+- A `plugin <name>;` directive is special: its `<name>.mim` is taken from the directory `libmim_<name>` was actually loaded from, so the two halves of a plugin can never be paired up across different directories.
+- A plugin may also be spelled as a path, `plugin "foo/bar";` or `-p foo/bar`, which looks for `libmim_bar` in the `foo` below each entry of the table above.
+- A bare `import <name>;` has no such anchor and resolves by the table above, so spell an import of your own file as `import "<name>.mim"` if the name could collide with an installed plugin.
+
+### Project Configuration {#climanifest}
+
+A project can pin its plugins, search paths, and plugin arguments in a `mim.toml` file:
+
+```toml
+plugin      = ["ll"]
+plugin-path = ["build/plugins"]
+import-path = ["src", "extra/mim"]
+prefix-path = ["/opt/misc"]
+plugin-arg  = ["ll:o=out.ll"]
+```
+
+- Keys are the long option names above: `plugin`, `plugin-path`, `import-path`, `prefix-path`, `plugin-arg`.
+- Values are TOML arrays of strings; each key may appear at most once.
+- `#` starts a comment to end of line.
+- Relative `*-path` entries resolve against the directory of the config file.
+
+Pass `--config <path>` to read the file. Every `*-path` key adds to what the command line and environment provide, in the [Search Paths](@ref clisearchpaths) order, so the file supplies the defaults.
 
 ### Arguments {#clipluginargs}
 

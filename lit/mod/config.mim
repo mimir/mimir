@@ -1,0 +1,27 @@
+// RUN: rm -rf %t && mkdir -p %t/p-env %t/p-cli %t/p2-env
+// RUN: printf '%%s\n' 'plugin = ["mim/demo"]' 'plugin-path = ["%libdir"]' > %t/mim.toml
+// RUN: env -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH MIM_PLUGIN_PATH="%t/from-missing%pathsep%t/p-env%pathsep%t/p2-env" %mim -l --config %t/mim.toml -P %t/p-cli | %FileCheck %s --check-prefix=PATHS
+
+// The manifest's `plugin`s add to the CLI's `-p`s.
+// RUN: env -u MIM_PLUGIN_PATH -u MIM_IMPORT_PATH -u MIM_PREFIX_PATH %mim -VV --config %t/mim.toml %s -p clos -o - 2>&1 | %FileCheck %s
+
+// `plugin-arg` reaches the plugin.
+// RUN: printf '%%s\n' 'plugin = ["mim/ll"]' 'plugin-path = ["%libdir"]' 'plugin-arg = ["ll:o=%t/out.ll"]' > %t/arg.toml
+// RUN: %mim --config %t/arg.toml %s
+// RUN: test -f %t/out.ll
+
+// A bad config makes the CLI fail.
+// RUN: printf '%%s\n' 'bogus = ["1"]' > %t/bad.toml
+// RUN: ! %mim --config %t/bad.toml %s
+
+// Search-path sources add up, highest priority first: CLI, then env, then the `--config` file.
+// Nonexistent env paths are dropped.
+// PATHS: {{^    .*}}/p-cli"{{$}}
+// PATHS-NOT: {{^    .*}}/from-missing"{{$}}
+// PATHS-NEXT: {{^    .*}}/p-env"{{$}}
+// PATHS-NEXT: {{^    .*}}/p2-env"{{$}}
+// PATHS-NEXT: {{^    .*}}/lib"{{$}}
+
+// CHECK: load plugin `clos`
+// CHECK: load plugin `mim/demo`
+// CHECK: plugin {{.*}}/mim/demo.mim";

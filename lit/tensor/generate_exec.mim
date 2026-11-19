@@ -2,6 +2,9 @@
 // RUN: %mim -p opt -p clos -p ll %s
 // RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t; test $? -eq 30
+// RUN: %if x86_64-linux %{ %mim -p opt %s -p x86 -X x86:o=%t.s %}
+// RUN: %if x86_64-linux %{ clang %t.s -o %t.x86 %}
+// RUN: %if x86_64-linux %{ %t.x86 ; test $? -eq 30 %}
 
 plugin mem;
 plugin core;
@@ -15,4 +18,4 @@ extern con main (m: mem.M 0, argc: I32,
                  argv: mem.Ptr («core.idx2nat argc; mem.Ptr (mem.Char, 0)», 0),
                  return: Cn [mem.M 0, I32]) =
     let generated = tensor.generate (2, 3) row_value;
-    return (m, generated#(0₂, 2₃) + generated#(1₂, 1₃));
+    return (m, tensor.get (generated, (0₂, 2₃)) + tensor.get (generated, (1₂, 1₃)));

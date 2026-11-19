@@ -16,6 +16,6 @@ let `+ = tensor.binary (math.arith.add 0);
 
 lam relu (x: F32): F32 = math.extrema.fmax 0 (0:F32, x);
 
-extern fun lin (x: «64, 256; F32», w: «128, 256; F32», b: «128; F32»): «64, 128; F32» =
-    let y = tensor.product_2d R (x, tensor.transpose_2d w) + tensor.broadcast ((1, 128), (64, 128), b);
+extern fun lin (x: tensor.Tensor 2 (64, 256) F32, w: tensor.Tensor 2 (128, 256) F32, b: tensor.Tensor 1 128 F32): tensor.Tensor 2 (64, 128) F32 =
+    let y = tensor.product_2d R (x, tensor.transpose_2d w) + tensor.broadcast ((1, 128), (64, 128), tensor.reshape 128 (1, 128) b);
     return (tensor.unary relu y);

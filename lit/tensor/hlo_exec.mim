@@ -29,12 +29,11 @@ let Ring    = (F32, 0:F32, math.arith.add fast, math.arith.mul fast);
 let `+ = binary (math.arith.add fast);
 let `* = product_2d Ring;
 
-lam tanh {r: Nat, s: «r; Nat»} (i: «s; F32»): «s; F32» = unary (math.tri.tanh fast) i;
+lam tanh {r: Nat, s: «r; Nat»} (i: tensor.Tensor r s F32): tensor.Tensor r s F32 = unary (math.tri.tanh fast) i;
 
-extern fun main_hlo (arg0: «784; «1024; F32»», arg1: «1024; F32», arg2: «1024; «1024; F32»», arg3: «1024; F32», arg4: «1024; «10; F32»», arg6: «128; «784; F32»», arg7: «128; «10; F32»», arg5: «10; F32»)
-: «128; F32» =
-    let (arg0, arg1, arg2, arg3, arg4, arg6, arg7, arg5) = (buf arg0, buf arg1, buf arg2, buf arg3, buf arg4, buf arg6, buf arg7, buf arg5);
-    let h0     = tanh (arg6 * arg0 + broadcast ((1, 1024), (128, 1024), arg1));
-    let h1     = tanh (h0 * arg2 + broadcast ((1, 1024), (128, 1024), arg3));
-    let logits = h1 * arg4 + broadcast ((1, 10), (128, 10), arg5);
+extern fun main_hlo (arg0: tensor.Tensor 2 (784, 1024) F32, arg1: tensor.Tensor 1 1024 F32, arg2: tensor.Tensor 2 (1024, 1024) F32, arg3: tensor.Tensor 1 1024 F32, arg4: tensor.Tensor 2 (1024, 10) F32, arg6: tensor.Tensor 2 (128, 784) F32, arg7: tensor.Tensor 2 (128, 10) F32, arg5: tensor.Tensor 1 10 F32)
+: tensor.Tensor 1 128 F32 =
+    let h0     = tanh (arg6 * arg0 + broadcast ((1, 1024), (128, 1024), reshape 1024 (1, 1024) arg1));
+    let h1     = tanh (h0 * arg2 + broadcast ((1, 1024), (128, 1024), reshape 1024 (1, 1024) arg3));
+    let logits = h1 * arg4 + broadcast ((1, 10), (128, 10), reshape 10 (1, 10) arg5);
     return (reduce (math.extrema.fmax fast, neg_inf) 1₂ logits);

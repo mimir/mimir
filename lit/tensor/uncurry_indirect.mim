@@ -1,0 +1,19 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin core;
+plugin tensor;
+plugin compile;
+
+extern lam make (n: Nat, finish: Cn I32): Cn [Nat, tensor.Tensor 2 (2, n) I32, I32] =
+    con loop (count: Nat, a: tensor.Tensor 2 (2, n) I32, acc: I32) =
+        con done (count: Nat, a: tensor.Tensor 2 (2, n) I32, acc: I32) =
+            finish (core.wrap.add 0 (tensor.get (a, (0₂, core.idx 0 n 0)), acc));
+        (loop, done)#(core.ncmp.e (count, 0)) (core.nat.sub (count, 1), a, core.wrap.add 0 (acc, 1I32));
+    loop;
+
+extern lam _compile (): compile.Phase = tensor.lower_to_mem;
+
+// CHECK: extern con make
+// CHECK: con loop
+// CHECK: make (
+// CHECK: (loop, done)#

@@ -4,6 +4,11 @@
 // RUN: %t; test $? -eq 1
 // RUN: %t 1 2 3; test $? -eq 4
 // RUN: %t 1 2 3 4 5; test $? -eq 6
+// RUN: %if x86_64-linux %{ %mim -p opt %s -p x86 -X x86:o=%t.s %}
+// RUN: %if x86_64-linux %{ clang %t.s -o %t.x86 %}
+// RUN: %if x86_64-linux %{ %t.x86 ; test $? -eq 1 %}
+// RUN: %if x86_64-linux %{ %t.x86 1 2 3; test $? -eq 4 %}
+// RUN: %if x86_64-linux %{ %t.x86 1 2 3 4 5; test $? -eq 6 %}
 
 plugin core;
 plugin mem;

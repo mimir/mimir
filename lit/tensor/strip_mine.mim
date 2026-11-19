@@ -18,8 +18,7 @@ lam mi (o: «3; affine.Index»): «3; affine.Index» = o;
 
 // out[i, j] = Σ_k in[i, j, k] over «2, 4, 8» with the reduction dim strip-mined by 2:
 // the domain becomes (2, 4, 4, 2) with two reduction dims.
-extern fun sum_red (input: «2, 4, 8; Nat»): «2, 4; Nat» =
-    let input = buf input;
+extern fun sum_red (input: tensor.Tensor 3 (2, 4, 8) Nat): tensor.Tensor 2 (2, 4) Nat =
     return (materialize (strip_mine_red (
         mr_tileable @1 @(2, 1) ((2, 4), (0, 1), (2, 4, 8))
             (add, 0, id)
@@ -28,8 +27,7 @@ extern fun sum_red (input: «2, 4, 8; Nat»): «2, 4; Nat» =
 
 // The same sum with the parallel dim j (extent 4) split by 2: the domain becomes (2, 2, 2, 8)
 // and the output is packed «2, 2, 2» (a row-major reshape restores «2, 4»).
-extern fun sum_par (input: «2, 4, 8; Nat»): «2, 2, 2; Nat» =
-    let input = buf input;
+extern fun sum_par (input: tensor.Tensor 3 (2, 4, 8) Nat): tensor.Tensor 3 (2, 2, 2) Nat =
     return (materialize (strip_mine_par (
         mr_tileable @1 @(2, 1) ((2, 4), (0, 1), (2, 4, 8))
             (add, 0, id)

@@ -25,8 +25,8 @@ let Ring = (Nat, 0, core.nat.add, core.nat.mul);
 
 // dilated, no padding: 7x7 input, 3x3 kernel, dilation 2 (effective kernel 5x5), stride 1 -> 3x3 output.
 // CHECK-DAG: extern fun conv_dilate
-extern fun conv_dilate (input: «2, 2, 7, 7; Nat», weight: «3, 2, 3, 3; Nat»): «2, 3, 3, 3; Nat» =
-    return (conv Ring ((1, 1), (2, 2), (0, 0)) (buf input, buf weight));
+extern fun conv_dilate (input: tensor.Tensor 4 (2, 2, 7, 7) Nat, weight: tensor.Tensor 4 (3, 2, 3, 3) Nat): tensor.Tensor 4 (2, 3, 3, 3) Nat =
+    return (conv Ring ((1, 1), (2, 2), (0, 0)) (input, weight));
 
 // Custom pipeline that stops before tensor.lower_to_mem: the checks below only need the shape computation.
 extern lam _compile (): compile.Phase =

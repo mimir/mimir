@@ -1,8 +1,7 @@
 // RUN: %mim -p opt %s -o - | %FileCheck %s
 // RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=GONE
 
-// MVP for tensor bufferization: `tensor.buf` nominates the parameter as a tensor, so its `Extract` /
-// `Insert` lower onto the buffer layer and from there to mem.*.
+// Nominal tensor reads and value updates lower through buffers to mem.*.
 // `f` reads input[1][2] and returns a copy of `input` with [0][0] set to that value.
 // Under the always-allocate-and-copy policy the `set` allocates a fresh buffer, copies the
 // source in, then writes the single element — so `input` is never mutated.
@@ -13,9 +12,8 @@ plugin buffer;
 plugin opt;
 plugin compile;
 
-extern fun f (input: «3, 4; I32»): «3, 4; I32» =
-    let input = tensor.buf input;
-    return (input#(0₃, 0₄) ← input#(1₃, 2₄));
+extern fun f (input: tensor.Tensor 2 (3, 4) I32): tensor.Tensor 2 (3, 4) I32 =
+    return (tensor.set (input, (0₃, 0₄), tensor.get (input, (1₃, 2₄))));
 
 extern lam _compile (): compile.Phase =
     compile.phases ff (

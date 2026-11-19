@@ -21,7 +21,7 @@ lam mo (i _ _: affine.Index): «1; affine.Index» = i;
 lam mi (i j k: affine.Index): «3; affine.Index» = (i, j, k);
 
 // out[i] = sum_{a, b} input[i][a][b], with `a` strip-mined by 4.
-extern fun sum_all (input: «2, 8, 3; I32»): «2; I32» =
+extern fun sum_all (input: tensor.Tensor 3 (2, 8, 3) I32): tensor.Tensor 1 2 I32 =
     return (tensor.materialize (tensor.strip_mine_red (
         tensor.mr_tileable @1 @(1, 2) (2, 0, (2, 8, 3))
             (fn (x y: I32)@tt = return (x + y), 0I32, tensor.id)
@@ -29,8 +29,8 @@ extern fun sum_all (input: «2, 8, 3; I32»): «2; I32» =
         1, 4)));
 
 extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr («core.idx2nat argc; mem.Ptr (mem.Char, 0)», 0), return: Cn [mem.M 0, I32]) =
-    let t = ‹2; ‹8; ‹3; 1I32›››;
-    con done (o: «2; I32») = return (m, o#1₂);
+    let t = tensor.from_array ‹2; ‹8; ‹3; 1I32›››;
+    con done (o: tensor.Tensor 1 2 I32) = return (m, tensor.get (o, 1₂));
     sum_all (t, done);
 
 // GONE-NOT: tensor.

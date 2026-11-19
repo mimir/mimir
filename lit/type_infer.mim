@@ -1,10 +1,10 @@
-// RUN: %mim -p opt %s -o - | %FileCheck %s
+// RUN: %mim --no-opt -p opt %s -o - | %FileCheck %s
 plugin tensor;
 plugin core;
 
 use core.ops.u.w;
 
-extern lam foo {pe: Nat} {r: Nat} {s: «r; Nat»} (lhs: «s; Idx pe», rhs: «s; Idx pe ») =
+extern lam foo {pe: Nat} {r: Nat} {s: «r; Nat»} (lhs: tensor.Tensor r s (Idx pe), rhs: tensor.Tensor r s (Idx pe)) =
   let app = λ (x y: Idx pe) = x + y;
   tensor.map app (lhs, rhs);
 

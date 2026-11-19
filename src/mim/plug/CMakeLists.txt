@@ -21,6 +21,7 @@ set(MIM_PLUGINS
     tensor
     tuple
     vec
+    x86
 )
 
 foreach(PLUGIN IN LISTS MIM_PLUGINS)

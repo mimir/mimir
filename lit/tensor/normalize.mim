@@ -49,8 +49,8 @@ let b = ();
 let m = 2;
 let k = 2;
 let l = 2;
-let t1 = m0;
-let t2 = m0;
+let t1 = from_array m0;
+let t2 = from_array m0;
 
 let s1 = (m, k);
 let s2 = (k, l);
@@ -110,29 +110,32 @@ let dot = map_reduce (s_out, s_full) (f, 0)
     (proj_map subs_1, proj_map subs_2)
     (t1, t2);
 
-// Identity shape ops normalize away to their input (m1 : «2, 3; Nat»).
+let tm1 = from_array m1;
+let tm2 = from_array m2#0₂;
+
+// Identity shape ops normalize away to their input (tm1 : «2, 3; Nat»).
 // A reshape to the same shape is the identity.
-let _ = refly.struc.e (tensor.reshape (2, 3) (2, 3) m1, m1);
-// So is one that only inserts size-1 axes, as «2, 1, 3; Nat» is «2, 3; Nat».
-let _ = refly.struc.e (tensor.reshape (2, 3) (2, 1, 3) m1, m1);
+let _ = refly.struc.e (tensor.reshape (2, 3) (2, 3) tm1, tm1);
+// Inserting a singleton axis preserves that axis in the logical shape.
+let _ = refly.struc.e (tensor.shape (tensor.reshape (2, 3) (2, 1, 3) tm1), (2, 1, 3));
 // A repeat to the same shape is the identity.
-let _ = refly.struc.e (tensor.repeat (2, 3) (2, 3) m1, m1);
+let _ = refly.struc.e (tensor.repeat (2, 3) (2, 3) tm1, tm1);
 // A slice that starts at 0 with unit step and keeps the full extent is the identity.
-let _ = refly.struc.e (tensor.slice (2, 3) ((0, 0), (1, 1), (2, 3)) m1, m1);
+let _ = refly.struc.e (tensor.slice (2, 3) ((0, 0), (1, 1), (2, 3)) tm1, tm1);
 // A pad with lo == hi == 0 on every axis is the identity (the fill value is irrelevant).
-let _ = refly.struc.e (tensor.pad (2, 3) (0, (0, 0), (0, 0)) (m1, 0), m1);
+let _ = refly.struc.e (tensor.pad (2, 3) (0, (0, 0), (0, 0)) (tm1, 0), tm1);
 
 // A transpose of a transpose composes; an identity permutation is the input itself.
-let _ = refly.struc.e (transpose_2d (transpose_2d m1), m1);
-let _ = refly.struc.e (transpose (tt, ff) (transpose_2d m1), m1);
-let _ = refly.struc.e (transpose (0₃, 1₃, 2₃) m2#0₂, m2#0₂);
-let _ = refly.struc.e (transpose (2₃, 0₃, 1₃) (transpose (1₃, 2₃, 0₃) m2#0₂), m2#0₂);
-let _ = refly.struc.e (transpose (1₃, 2₃, 0₃) (transpose (1₃, 2₃, 0₃) m2#0₂), transpose (2₃, 0₃, 1₃) m2#0₂);
+let _ = refly.struc.e (transpose_2d (transpose_2d tm1), tm1);
+let _ = refly.struc.e (transpose (tt, ff) (transpose_2d tm1), tm1);
+let _ = refly.struc.e (transpose (0₃, 1₃, 2₃) tm2, tm2);
+let _ = refly.struc.e (transpose (2₃, 0₃, 1₃) (transpose (1₃, 2₃, 0₃) tm2), tm2);
+let _ = refly.struc.e (transpose (1₃, 2₃, 0₃) (transpose (1₃, 2₃, 0₃) tm2), transpose (2₃, 0₃, 1₃) tm2);
 
-let _ = refly.struc.e (tensor.shape 1 (10, 20, 30, 40), 4);
-let _ = refly.struc.e (tensor.shape 2 m1, (2, 3));
-let _ = refly.struc.e (tensor.shape 3 (((1, 2), (3, 4)), ((5, 6), (7, 8))), (2, 2, 2));
+let _ = refly.struc.e (tensor.shape (from_array (10, 20, 30, 40)), 4);
+let _ = refly.struc.e (tensor.shape tm1, (2, 3));
+let _ = refly.struc.e (tensor.shape (from_array (((1, 2), (3, 4)), ((5, 6), (7, 8)))), (2, 2, 2));
 
-// Reading *through* a broadcast / repeat is `tensor.lower_tensor`'s job; see read_through.mim.
+// Reading through broadcast/repeat is covered by read_through.mim.
 
 extern fun main() = return dot;

@@ -23,9 +23,8 @@ General C++ guidelines for this repository.
 - Don't write recursive lambdas (self-passing `auto&& self`, deducing `this`, or `std::function` that captures itself); some compilers choke on them.
   Use a named member or free function instead, e.g. a recursive `visit(const Def*)` member.
 - Never check a `Def*` argument for `nullptr` inside a helper; that is the caller's responsibility.
-  A helper such as `Pi::isa_cn` or `Idx::isa` dereferences its argument, and the caller guards wherever a
-  `nullptr` can actually arise - `Def::unfold_type` of `Level`, or a projection in a frozen `World`.
+  A helper such as `Pi::isa_cn` or `Idx::isa` dereferences its argument, and the caller guards wherever a `nullptr` can actually arise - `Def::unfold_type` of `Level`, or a projection in a frozen `World`.
   `Lit::isa` is the one deliberate exception, documented at its declaration.
 - In Doxygen comments (`///`, `/** ... */`), prefer one sentence per line over column-filling wraps, so diffs stay readable.
   Deliberate exceptions are fine where a sentence would fragment awkwardly.
-- Comment sparingly; see the *Comments* section in `.github/copilot-instructions.md`.
+- Comment sparingly; see the *Comments* section in `AGENTS.md`.

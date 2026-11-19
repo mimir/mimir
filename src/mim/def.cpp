@@ -679,9 +679,9 @@ std::optional<nat_t> Idx::isa_lit(const Def* def) {
     return {};
 }
 
-std::optional<nat_t> Idx::size2bitwidth(const Def* size) {
+nat_t Idx::size2bitwidth(const Def* size) {
     if (auto s = Lit::isa(size)) return size2bitwidth(*s);
-    return {};
+    return 64;
 }
 
 } // namespace mim
