@@ -107,6 +107,10 @@ anx lam logic (s: Nat): Nat =
 ///
 /// ## Instruction Forms
 ///
+/// The plugin pretends that x86 uses three-address code and copes with x86's two-address code later on.
+/// However, some artifacts shine through:
+/// for two-address instructions the tied value operand comes first; the tie is only a register-assignment constraint (`add (a, b)` computes `a + b`), and `x86.emit` reverses the value operands for its AT&T output.
+///
 /// ### rm
 ///
 /// `op r, addr`: `rm f (m, a, addr)` is `f (a, b)` with `b` loaded from `addr`.
@@ -239,7 +243,25 @@ axm (cmp, test): {s: Nat} → «2; Idx s» → Flags;
 /// ### Condition Codes
 ///
 /// The condition codes in hardware encoding order:
-/// `o` = 0, `no` = 1, `b` = 2, `ae` = 3, `e` = 4, `ne` = 5, `be` = 6, `a` = 7, `s` = 8, `ns` = 9, `p` = 10, `np` = 11, `l` = 12, `ge` = 13, `le` = 14, `g` = 15.
+///
+/// | Subtag | cc |
+/// |--------|----|
+/// | `o`    |  0 |
+/// | `no`   |  1 |
+/// | `b`    |  2 |
+/// | `ae`   |  3 |
+/// | `e`    |  4 |
+/// | `ne`   |  5 |
+/// | `be`   |  6 |
+/// | `a`    |  7 |
+/// | `s`    |  8 |
+/// | `ns`   |  9 |
+/// | `p`    | 10 |
+/// | `np`   | 11 |
+/// | `l`    | 12 |
+/// | `ge`   | 13 |
+/// | `le`   | 14 |
+/// | `g`    | 15 |
 ///
 /// #### cc
 ///

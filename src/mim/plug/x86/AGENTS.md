@@ -22,6 +22,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 ### Instruction types are plain integers
 
 - x86 instructions are axioms typed over `Idx s`, e.g. `x86.add: {s: Nat} → «2; Idx s» → Idx (gpr s)`.
+- For two-address instructions the tied value operand comes first; the tie is only a register-assignment constraint (`x86.add (a, b)` computes `a + b`), and `x86.emit` reverses the value operands for its AT&T output.
 - Registers and the schedule are no concern of these types.
 - Constants are explicit: a literal operand of an instruction is an immediate and must fit its encoding (a sign-extended `i32`, any shift count), and `x86.mov c` (`mov r, imm`) puts any other constant into a register.
   Isel decides this per use, as part of the cover (Buchwald & Zwinkau, *Instruction Selection by Graph Transformation*, CASES 2010: `Add+Const` versus atomic `Const`).
