@@ -534,7 +534,7 @@ e   ::= "|" (I (":" e)? ("|" I (":" e)?)*)?
 
 - `| I₀: e₀ | ... | Iₙ₋₁: eₙ₋₁` forms a variant type: a sum whose cases are _positional_.
   A constructor without `: e` carries `[]`, and a lone `|` is the empty variant.
-- Nothing is sorted, deduplicated, or flattened: `| A | B | C` has three cases, and `| A: Nat | B: Nat` keeps both.
+- Every constructor is a case of its own, even with the same payload: `| A | B | C` has three cases, and `| A: Nat | B: Nat` two.
 - A variant is a type like any other and may be anonymous; `rec` makes it recursive, and a `mutual` block mutually recursive.
 - Its last payload extends as far right as it can, and `|` never starts an application argument: write `f (| A | B)`, and parenthesize a variant inside a `match` arm.
 - `T#I` or `T#n` on a variant type `T` selects a case by constructor name or by index, counting from `0`.
@@ -829,7 +829,7 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 
 ### Variants
 
-- a variant is never sorted, deduplicated, or flattened; a one-case variant stays a variant, while the empty one is `⊥`
+- a one-case variant stays a variant, while the empty one is `⊥`
 - `match (T#i x) with ...` -> the arm for case `i`
 - the arms of a `match` on a variant are in the order of its cases, one each
 - all arms of a `match` on a variant agree on their codomain, which is the type of the `match`; an arm into `⊥` fits any
