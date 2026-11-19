@@ -90,6 +90,7 @@ extern lam _default_compile (): compile.Phase =
         // type legalization
         compile.nom_erasure,
         compile.single_erasure,
+        core.lower_dyn_extract,
         core.lower_variant,
         core.legalize_idx,
 
