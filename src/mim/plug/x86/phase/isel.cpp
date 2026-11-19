@@ -205,8 +205,7 @@ const Def* alu(World& w, const Def* def) {
 
 } // namespace
 
-const Def*
-ISel::wide(const Def* (*insn)(World&, const Def*, const Def*), const Def* type, bool sign, const Def* a, const Def* b) {
+const Def* ISel::wide(Insn insn, const Def* type, bool sign, const Def* a, const Def* b) {
     auto& w   = new_world();
     auto size = Idx::isa_lit(type);
     if (!size || reg_width(*size) >= 16) return insn(w, a, b);

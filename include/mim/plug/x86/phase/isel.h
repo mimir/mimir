@@ -104,9 +104,11 @@ public:
     Address split(const Def* addr);
     /// @p a as a value.
     const Def* materialize(Address a);
+    /// A binary x86 instruction builder.
+    using Insn = const Def* (*)(World&, const Def*, const Def*);
+
     /// Applies @p insn, going through `i32` for operands narrower than 16 bits.
-    const Def*
-    wide(const Def* (*insn)(World&, const Def*, const Def*), const Def* type, bool sign, const Def* a, const Def* b);
+    const Def* wide(Insn insn, const Def* type, bool sign, const Def* a, const Def* b);
 
     const Def* build_lea_off(const Def* root, const Alt& alt);
     const Def* build_lea_idx(const Def* root, const Alt& alt);
