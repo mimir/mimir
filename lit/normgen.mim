@@ -56,10 +56,13 @@ norm normalize_snd (a b: Nat): snd (b, a) => a;
 // CHECK-NEXT:  if (auto res = normalize_unwrap_1(type, callee, arg)) return res;
 // CHECK-NEXT:  return nullptr;
 
-// `(a, b)` eta-reduces to the rule's Var, so the lhs binds it whole and the rhs projects it.
+// The binders are independent placeholders, so `(a, b)` stays a tuple instead of eta-reducing.
 // CHECK-LABEL: inline const Def* normalize_fst_0(
-// CHECK:       {{\[\[maybe_unused\]\]}} auto [[M:[a-z0-9_]+]] = arg;
-// CHECK-NEXT:  return w.extract([[M]], w.lit_idx(2_n, 0_n));
+// CHECK:       auto d0 = arg;
+// CHECK-NEXT:  if (Lit::isa(d0->arity()) != 2_n) return nullptr;
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto a_ = d0->proj(2, 0);
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto b_ = d0->proj(2, 1);
+// CHECK-NEXT:  return a_;
 
 // A tuple pattern decomposes any value of its arity through projections.
 // CHECK-LABEL: inline const Def* normalize_snd_0(

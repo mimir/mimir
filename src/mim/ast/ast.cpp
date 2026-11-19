@@ -4,6 +4,7 @@
 
 #include "mim/check.h"
 #include "mim/nom.h"
+#include "mim/rewrite.h"
 #include "mim/rule.h"
 
 #include "mim/ast/parser.h"
@@ -125,9 +126,8 @@ private:
         body_.str("");
         num_tmps_ = 0;
 
-        var_     = rule->has_var();
-        auto lhs = rule->lhs()->zonk();
-        auto app = lhs->isa<App>();
+        auto [lhs, guard, rhs] = instantiate(decl, rule);
+        auto app               = lhs->isa<App>();
 
         // TODO a non-App lhs, such as a nullary axiom, has no (callee, arg) to match against
         // TODO an Axm with a custom curry or trip counter normalizes at another spot than after its last argument
@@ -138,10 +138,9 @@ private:
 
         match(app->callee(), "callee");
         match(app->arg(), "arg");
-        if (auto guard = rule->guard()->zonk(); guard != guard->world().lit_tt())
-            line("if ({} != w.lit_tt()) return nullptr;", build(guard));
+        if (guard != guard->world().lit_tt()) line("if ({} != w.lit_tt()) return nullptr;", build(guard));
         // TODO guard against an rhs that rebuilds the lhs, which recurses into this very normalizer forever
-        line("return {};", build(rule->rhs()->zonk()));
+        line("return {};", build(rhs));
 
         std::println(os,
                      "inline const Def* {}(const Def* type, [[maybe_unused]] const Def* callee, "
@@ -154,43 +153,49 @@ private:
         auto head = lhs;
         while (auto a = head->isa<App>())
             head = a->callee();
-        if (auto axm = head->isa<Axm>()) return annex(axm);
+        if (auto axm = head->isa<Axm>(); axm && !is_meta(axm)) return annex(axm);
         return {nullptr, 0};
     }
 
-    /// The rule's Var or a projection of it.
-    bool is_meta(const Def* def) const {
-        if (!var_) return false;
-        if (def == var_) return true;
-        if (auto extract = def->isa<Extract>(); extract && extract->index()->isa<Lit>())
-            return is_meta(extract->tuple());
-        return false;
+    /// Replaces each binder by a placeholder, since eta folds `(a, b)` of the rule's single Var back into it.
+    std::array<const Def*, 3> instantiate(const RuleDecl* decl, const Rule* rule) {
+        auto ops = std::array{rule->lhs(), rule->guard(), rule->rhs()};
+        if (auto var = rule->has_var()) {
+            auto rw = VarRewriter(var, placeholder(decl->var(), rule->dom()));
+            for (auto& op : ops)
+                op = rw.rewrite(op);
+        }
+        return {ops[0]->zonk(), ops[1]->zonk(), ops[2]->zonk()};
     }
 
-    bool binds_ancestor(const Def* def) const {
-        for (auto extract = def->isa<Extract>(); extract; extract = extract->tuple()->isa<Extract>())
-            if (bound_.contains(extract->tuple())) return true;
-        return false;
-    }
+    const Def* placeholder(const Ptrn* ptrn, const Def* type) {
+        auto& w = type->world();
+        if (auto alias = ptrn->isa<AliasPtrn>()) return placeholder(alias->ptrn(), type);
+        if (auto tuple = ptrn->isa<TuplePtrn>()) {
+            auto n = tuple->num_ptrns();
+            if (n == 1) return placeholder(tuple->ptrn(0), type);
+            auto parts = DefVec();
+            for (size_t i = 0; i != n; ++i)
+                parts.emplace_back(placeholder(tuple->ptrn(i), w.component(type, parts, n, i)));
+            return w.tuple(type, parts);
+        }
 
-    bool binds_all(const Def* def) const {
-        if (bound_.contains(def)) return true;
-        auto n = Lit::isa(def->arity());
-        if (!n || *n == 1) return false;
-        for (size_t i = 0; i != *n; ++i)
-            if (!binds_all(def->proj(*n, i))) return false;
-        return true;
-    }
-
-    const std::string& meta_name(const Def* def) {
-        if (auto i = metas_.find(def); i != metas_.end()) return i->second;
-        auto name = std::string(def->sym().view());
+        auto name = std::string(ptrn->dbg().sym().view());
         std::ranges::replace_if(name, [](char c) { return !std::isalnum(static_cast<unsigned char>(c)); }, '_');
         if (name.empty() || std::isdigit(static_cast<unsigned char>(name.front()))) name = "m" + name;
         name += "_";
         for (auto base = name; !names_.emplace(name).second;)
             name = std::format("{}{}_", base, names_.size());
-        return metas_[def] = name;
+
+        auto meta = w.axm(type)->set(ptrn->dbg().sym());
+        metas_.emplace(meta, name);
+        return meta;
+    }
+
+    bool is_meta(const Def* def) const { return metas_.contains(def); }
+    const std::string& meta_name(const Def* def) const { return metas_.find(def)->second; }
+    bool mentions_meta(const Def* def) const {
+        return RWPhase::mentions(def, [this](const Def* d) { return is_meta(d); });
     }
 
     void match(const Def* pat, const std::string& def) {
@@ -217,7 +222,7 @@ private:
         }
 
         // TODO match up to normalization: e.g. a literal arg may stem from a folded application in the pattern
-        if (!var_ || !pat->has_free_var(var_)) {
+        if (!mentions_meta(pat)) {
             line("if ({} != {}) return nullptr;", def, build(pat));
             return;
         }
@@ -249,16 +254,11 @@ private:
     }
 
     std::string build(const Def* def) {
-        // Eta may have merged the lhs's components of a meta into the meta itself, or vice versa.
-        if (is_meta(def) && !bound_.contains(def) && !binds_ancestor(def)) {
-            if (auto n = Lit::isa(def->arity()); n && *n != 1 && binds_all(def)) {
-                auto ops = DefVec(*n, [&](size_t i) { return def->proj(*n, i); });
-                return std::format("w.tuple({{{}}})", build(ops));
-            }
-            ast_.error().e(def->loc(), "meta variable `{}` is not bound by the left-hand side", def);
-            return "nullptr";
+        if (is_meta(def)) {
+            if (!bound_.contains(def))
+                ast_.error().e(def->loc(), "meta variable `{}` is not bound by the left-hand side", def);
+            return meta_name(def);
         }
-        if (is_meta(def) && bound_.contains(def)) return meta_name(def);
         if (auto axm = def->isa<Axm>()) {
             auto [annex, sub] = this->annex(axm);
             if (annex)
@@ -326,7 +326,6 @@ private:
 
     AST& ast_;
     std::set<std::string>& plugins_;
-    const Var* var_ = nullptr;
     DefMap<std::string> metas_;
     std::set<std::string> names_;
     DefSet bound_;
