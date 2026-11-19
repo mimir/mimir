@@ -16,16 +16,15 @@ static_assert(!fe::Nodeable<Ext> && fe::NodeSetable<Ext>);
 
 // The concrete leaves keep the exact-node path: fe::Nodeable is checked first.
 static_assert(fe::Nodeable<Sigma> && fe::Nodeable<Tuple> && fe::Nodeable<Arr> && fe::Nodeable<Pack>);
-static_assert(fe::Nodeable<Join> && fe::Nodeable<Top> && fe::Nodeable<Bot>);
+static_assert(fe::Nodeable<Variant> && fe::Nodeable<Top> && fe::Nodeable<Bot>);
 
 TEST_CASE("Cast: node sets") {
     Driver driver;
     World& w = driver.world();
 
     SUBCASE("each union groups exactly its own nodes") {
-        for (auto node :
-             {Node::Sigma, Node::Tuple, Node::Arr, Node::Pack, Node::Join, Node::Top, Node::Bot, Node::Lit, Node::Var,
-              Node::App, Node::Lam, Node::Pi, Node::Nat, Node::Idx, Node::Extract, Node::Variant}) {
+        for (auto node : {Node::Sigma, Node::Tuple, Node::Arr, Node::Pack, Node::Top, Node::Bot, Node::Lit, Node::Var,
+                          Node::App, Node::Lam, Node::Pi, Node::Nat, Node::Idx, Node::Extract, Node::Variant}) {
             CHECK(Prod::isa_node(node) == (node == Node::Sigma || node == Node::Tuple));
             CHECK(Seq::isa_node(node) == (node == Node::Arr || node == Node::Pack));
             CHECK(Ext::isa_node(node) == (node == Node::Top || node == Node::Bot));

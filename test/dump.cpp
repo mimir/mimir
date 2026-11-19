@@ -187,7 +187,7 @@ TEST_CASE("dump: pis") {
     CHECK_RT(w.pi(w.sigma({nat, i32}), nat));
     CHECK_RT(w.pi(nat, w.cn(i32)));
     CHECK_RT(w.cn({nat, w.cn(i32)})); // a returning continuation - `Fn`
-    CHECK_RT(w.pi(w.arr(3, nat), w.join({nat, i32})));
+    CHECK_RT(w.pi(w.arr(3, nat), w.variant({nat, i32})));
 
     SUBCASE("dependent") {
         auto pi = w.mut_pi(w.type<1>())->set_dom(w.type<0>());
@@ -207,16 +207,11 @@ TEST_CASE("dump: bounds") {
     auto& w  = rt.world();
     auto nat = w.type_nat();
     auto i32 = w.type_i32();
-    auto j   = w.join({nat, i32});
-    CHECK_RT(j);
-    CHECK_RT(w.join({nat, w.join({i32, w.type_i8()})}));
-    CHECK_RT(w.join({nat, i32, w.type_i8()}));
     CHECK_RT(w.single(nat));
-    CHECK_RT(w.single(j));
+    CHECK_RT(w.single(w.variant({nat, i32})));
     CHECK_RT(w.wrap(nat));
     CHECK_RT(w.wrap(w.lit_nat(23)));
-    CHECK_RT(w.inj(j, w.lit_nat(23)));
-    CHECK_RT(w.join({w.single(nat), w.single(i32)}));
+    CHECK_RT(w.variant({w.single(nat), w.single(i32)}));
 }
 
 TEST_CASE("dump: variants") {
@@ -280,9 +275,6 @@ TEST_CASE("dump: precedence") {
         // clang-format off
         CHECK(std::format("{}", w.pi(w.pi(nat, i32), nat))    == "(Nat → I32) → Nat");
         CHECK(std::format("{}", w.pi(nat, w.pi(i32, nat)))    == "Nat → I32 → Nat");
-        CHECK(std::format("{}", w.pi(w.join({nat, i32}), i8)) == "(Nat ∪ I32) → I8");
-        CHECK(std::format("{}", w.join({w.pi(nat, i32), i8})) == "I8 ∪ Nat → I32");
-        CHECK(std::format("{}", w.inj(w.join({nat, i32}), w.lit_nat(23))) == "23 inj Nat ∪ I32");
         CHECK(std::format("{}", w.arr(3, w.pi(nat, i32)))     == "«3; Nat → I32»");
         CHECK(std::format("{}", add)                          == "core.wrap.add 0 @ i8 (255I8, ⊤:I8)");
         CHECK(std::format("{}", w.single(w.pi(nat, i32)))     == "«Nat → I32»");
@@ -291,14 +283,10 @@ TEST_CASE("dump: precedence") {
     }
 
     SUBCASE("round-trip") {
-        CHECK_RT(w.pi(w.join({nat, i32}), i8));
-        CHECK_RT(w.join({w.pi(nat, i32), i8}));
         CHECK_RT(w.arr(3, w.pi(nat, i32)));
         CHECK_RT(w.pi(w.arr(3, nat), w.arr(3, i32)));
         CHECK_RT(w.single(w.pi(nat, i32)));
         CHECK_RT(w.wrap(w.pi(nat, i32)));
-        CHECK_RT(w.join({w.single(nat), w.single(i32)}));
-        CHECK_RT(w.inj(w.join({nat, i32}), w.lit_nat(23)));
         CHECK_RT(w.extract(t, i0));
         CHECK_RT(w.insert(t, i0, w.lit_nat(7)));
         CHECK_RT(w.insert(w.insert(t, i0, w.lit_nat(7)), i1, w.lit_nat(8)));

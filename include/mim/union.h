@@ -40,31 +40,7 @@ using Bot = TExt<false>;
 using Top = TExt<true>;
 /// @}
 
-/// A union type whose ops are sorted and deduplicated: `T ∪ T` is `T`.
-class Join : public Def, public Setters<Join> {
-private:
-    Join(const Def* type, Defs ops)
-        : Def(Node, type, ops, 0) {}
-
-public:
-    using Setters<Join>::set;
-
-    /// @name Cases
-    /// @p infer resolves Hole%s, so a mere search should leave it `false`.
-    ///@{
-    std::optional<size_t> case_of(const Def* type, bool infer = false) const; ///< The case that *is* @p type.
-    /// The case @p value inhabits: the one its type is, or else a singleton of @p value.
-    std::optional<size_t> find_case(const Def* value, bool infer = false) const;
-    ///@}
-
-    static constexpr auto Node      = mim::Node::Join;
-    static constexpr size_t Num_Ops = std::dynamic_extent;
-
-private:
-    friend class World;
-};
-
-/// Constructs a [Join](@ref mim::Join) or Variant **value**.
+/// Constructs a Variant **value**.
 class Inj : public Def, public Setters<Inj> {
 private:
     Inj(const Def* type, const Def* value, flags_t index)
@@ -78,8 +54,7 @@ public:
     const Def* value() const { return op(0); }
     ///@}
 
-    /// The case of a Variant this injects into.
-    /// A Join has no use for it: there, value()'s type determines the case.
+    /// The case of the Variant this injects into.
     size_t index() const { return flags(); }
 
     static constexpr auto Node      = mim::Node::Inj;
@@ -89,7 +64,7 @@ private:
     friend class World;
 };
 
-/// A sum type whose cases are positional: unlike a Join, they are neither sorted nor deduplicated.
+/// A sum type whose cases are positional.
 /// It is *mutable* only if it refers to itself.
 class Variant : public Def, public Setters<Variant> {
 private:
@@ -146,14 +121,14 @@ public:
         return ops().subspan<1, N>();
     }
     const Def* arm(size_t i) const { return arms()[i]; }
-    size_t num_arms() const { return arms().size(); } ///< @warning Can undercut Join::num_ops!
+    size_t num_arms() const { return arms().size(); }
     ///@}
 
     /// @name Dispatch
     ///@{
-    /// The cases @p scrutinee dispatches on: its Join's or Variant's ops, or - a one-case union - its type.
+    /// The cases @p scrutinee dispatches on: its Variant's ops, or - a one-case match - its type.
     static DefVec cases(const Def* scrutinee);
-    /// Does @p arm handle @p c? An arm accepts the case that *is* its domain, or that its domain contains.
+    /// Does @p arm handle @p c? An arm accepts the case that *is* its domain.
     /// @p infer resolves Hole%s, so a mere search should leave it `false`.
     static bool accepts(const Def* arm, const Def* c, bool infer = false);
     ///@}

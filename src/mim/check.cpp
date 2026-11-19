@@ -158,9 +158,10 @@ const Def* Check::coerce_(const Def* type, const Def* val) {
         return w.tuple(new_ops);
     }
 
-    // A dynamic Extract's type joins its components' types, which may only agree once each is coerced on its own.
-    if (auto extract = val->isa<Extract>();
-        extract && val_ty->isa<Join>() && !type->isa<Join>() && !Hole::isa_unset(type)) {
+    // A dynamic Extract's type selects among its components' types, which may only agree once each is coerced.
+    if (auto extract = val->isa<Extract>(), ty = val_ty->isa<Extract>();
+        extract && ty && ty->tuple()->isa<Tuple>() && ty->index() == extract->index() && !type->isa<Extract>()
+        && !Hole::isa_unset(type)) {
         auto tuple = extract->tuple();
         if (auto sigma = tuple->unfold_type()->zonk()->isa_imm<Sigma>()) {
             auto n       = sigma->num_ops();

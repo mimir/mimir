@@ -205,7 +205,6 @@ std::optional<std::string_view> idx_name(nat_t size) {
 Prec def2prec(Ctx* ctx, const Def* def) {
     if (auto ex = def->isa<Extract>()) return by_name(ctx, ex) ? Prec::Lit : Prec::Extract;
     if (def->isa<Insert>()) return Prec::Ins;
-    if (def->isa<Join>()) return Prec::Union;
     if (auto inj = def->isa<Inj>()) {
         if (auto variant = inj->type()->isa<Variant>())
             return variant->op(inj->index()) == def->world().sigma() ? Prec::Extract : Prec::App;
@@ -694,8 +693,6 @@ void full(std::ostream& os, Full d) {
         return std::print(os, "{}{}; {}{}", pl, shape(d.ctx(), pack, pack->has_var()), d.op(pack->body()), pr);
     } else if (auto proxy = d->isa<Proxy>()) {
         return std::print(os, "(proxy#{} {})", proxy->tag(), Op::map(d.ctx(), proxy->ops()));
-    } else if (auto join = d->isa<Join>()) {
-        return std::print(os, "{}", Op::map(d.ctx(), join->ops(), " ∪ ", Prec::Union));
     } else if (auto variant = d->isa<Variant>()) {
         return std::print(os, "({})", ctors(d.ctx(), variant));
     } else if (auto inj = d->isa<Inj>()) {

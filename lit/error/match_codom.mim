@@ -1,0 +1,5 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+rec AB = | A | B;
+lam f (v: AB): Nat = match v with | A => 0 | B => tt;
+// CHECK: error: codomain `Bool` of match-expression arm differs from `Nat` of the preceding arms

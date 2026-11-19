@@ -5,5 +5,5 @@ lam f {T: *} (x: Nat): T = x inj T;
 // CHECK: {{.*}}inj_degenerate.mim:3:28-3:34: error: value is not assignable to `T`
 // CHECK-NEXT: 3 | lam f {T: *} (x: Nat): T = x inj T;
 // CHECK-NEXT:   |                            ^^^^^^^
-// CHECK-NEXT: = note: `T` is neither a union nor a nominal type, so `inj` into it is the identity
+// CHECK-NEXT: = note: `T` is not a nominal type, so `inj` into it is the identity
 // CHECK-NEXT: = note: expected `T`, got `Nat`

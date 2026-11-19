@@ -19,7 +19,7 @@ def _every_node(w) -> list[tuple[mim.Def, type]]:
     i8v, tt, n4 = w.lit_i8(7), w.lit_tt(), w.lit_nat(4)
     lam = w.mut_con([b, i8])
     var = lam.var()
-    join = w.join([b, i8])
+    variant = w.variant([b, i8])
     nom = w.nom(1, i8)
     nom_var = w.mut_con(nom).var() # an opaque value, so `struc` does not cancel a `name`
     return [
@@ -37,14 +37,13 @@ def _every_node(w) -> list[tuple[mim.Def, type]]:
         (w.pack(n4, i8v), mim.Pack),
         (w.extract(var, 0), mim.Extract),
         (w.insert(var, 1, i8v), mim.Insert),
-        (join, mim.Join),
         (w.bot(i8), mim.Bot),
         (w.top(i8), mim.Top),
         (w.mut_hole(i8), mim.Hole),
         (w.single(i8v), mim.Single),
         (w.wrap(i8v), mim.Wrap),
-        (w.inj(join, tt), mim.Inj),
-        (w.variant([b, i8]), mim.Variant),
+        (w.inj(variant, 0, tt), mim.Inj),
+        (variant, mim.Variant),
         (nom, mim.Nom),
         (w.name(nom, i8v), mim.Name),
         (w.struc(nom_var), mim.Struc),

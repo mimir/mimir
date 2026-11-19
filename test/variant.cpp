@@ -14,8 +14,6 @@ TEST_CASE("Variant: cases are positional and free") {
     auto nat  = w.type_nat();
     auto b    = w.type_bool();
 
-    // Where a Join collapses, a Variant keeps every case.
-    CHECK(w.join({unit, unit, unit}) == unit);
     auto color = w.variant({unit, unit, unit});
     REQUIRE(color->isa<Variant>());
     CHECK(color->num_ops() == 3);
@@ -24,7 +22,7 @@ TEST_CASE("Variant: cases are positional and free") {
     CHECK(w.variant({nat, b}) != w.variant({b, nat}));
     CHECK(w.variant({nat, b}) == w.variant({nat, b}));
     CHECK(w.variant({nat})->isa<Variant>());
-    CHECK(w.variant({}) == w.join({}));
+    CHECK(w.variant({}) == w.bot(w.type()));
 }
 
 TEST_CASE("Variant: Inj carries its case") {

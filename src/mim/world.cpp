@@ -789,7 +789,22 @@ const Def* World::extract1(const Def* d, const Def* index) {
             }
             if (!extents.empty()) elem_t = this->arr(extract(tuple(extents), index), body);
         }
-        if (!elem_t) elem_t = join(sigma->ops());
+        if (!elem_t && sigma->num_ops() == 0) elem_t = bot(this->type<0>());
+        if (!elem_t) {
+            auto n  = sigma->num_ops();
+            auto ts = DefVec(n);
+            if (auto var = sigma->has_var()) {
+                for (size_t i = 0; i != n; ++i)
+                    if (!(ts[i] = is_frozen() ? cached_reduct(var, d, i) : reduce(var, d, i))) return nullptr;
+            } else {
+                ts.assign(sigma->ops().begin(), sigma->ops().end());
+            }
+            // Otherwise, the type of `(ts)#index` would again be a dynamic Extract - one level up, ad infinitum.
+            if (!Check::is_uniform(DefVec(n, [&](size_t i) { return ts[i]->unfold_type(); })))
+                index->blame("cannot extract dynamically from `{}`: its components live on different type levels", type)
+                    .bail();
+            elem_t = extract(tuple(ts), index);
+        }
     }
 
     if (index->isa<Top>()) {
@@ -950,33 +965,6 @@ const Def* World::ext(const Def* type) {
     return unify<TExt<Up>>(type);
 }
 
-const Def* World::join(Defs ops_) {
-    auto ops = DefVec();
-    ops.reserve(ops_.size());
-    auto push = [&ops](const Def* op) {
-        if (!op->isa<Bot>()) ops.emplace_back(op);
-    };
-
-    for (auto op_ : ops_) {
-        auto op = op_->zonk();
-        // A nested Join is already flat, so one level suffices to keep the operation associative.
-        if (auto join = op->isa_imm<Join>())
-            for (auto o : join->ops())
-                push(o);
-        else
-            push(op);
-    }
-
-    auto kind = type(level(ops));
-    if (std::ranges::any_of(ops, [](const Def* op) { return op->isa<Top>(); })) return top(kind);
-
-    sort_unique(ops);
-
-    if (ops.empty()) return bot(kind);
-    if (ops.size() == 1) return ops[0];
-    return unify<Join>(kind, ops);
-}
-
 const Def* World::inj(const Def* type, const Def* value) {
     type  = type->zonk();
     value = value->zonk();
@@ -984,15 +972,9 @@ const Def* World::inj(const Def* type, const Def* value) {
     if (type->isa<Variant>())
         value->blame("injecting into variant type `{}` requires the index of a case", type).bail();
     if (type->isa<Nom>()) return name(type, value);
-    if (auto join = type->isa<Join>()) {
-        // Hole%s are resolved only once no case matches outright, so a mere search never commits to one.
-        if (!join->find_case(value) && !join->find_case(value, true))
-            value->blame("value of type `{}` is not a case of union type `{}`", type_of(value), type).bail();
-        return unify<Inj>(type, value, flags_t(0));
-    }
     if (auto v = Check::coerce(type, value)) return v;
     value->blame("value is not assignable to `{}`", type)
-        .n("`{}` is neither a union nor a nominal type, so `inj` into it is the identity", type)
+        .n("`{}` is not a nominal type, so `inj` into it is the identity", type)
         .n("expected `{}`, got `{}`", type, type_of(value))
         .bail();
 }
@@ -1049,59 +1031,29 @@ const Def* World::match(Defs ops_) {
                     ->blame("domain type `{}` of match-expression arm does not match variant case `{}`", pi->dom(),
                             variant->op(i))
                     .bail();
-            type = type ? this->join({type, pi->codom()}) : pi->codom();
+            // A diverging arm fits any result type.
+            if (pi->codom()->isa<Bot>()) continue;
+            if (!type)
+                type = pi->codom();
+            else if (!Check::alpha(type, pi->codom()))
+                arms[i]
+                    ->blame("codomain `{}` of match-expression arm differs from `{}` of the preceding arms",
+                            pi->codom(), type)
+                    .bail();
         }
+        if (!type) type = arms.front()->isa_type<Pi>()->codom();
 
         if (auto inj = scrutinee->isa<Inj>()) return app(arms[inj->index()], inj->value());
         return unify_elim<Match>(type, ops);
     }
 
-    auto join = scrut_t->isa<Join>();
-
-    // A scrutinee that is not a union is the degenerate one-case union; cf. `d#i` for `i: Idx 1`.
-    auto cases = Match::cases(scrutinee);
-
-    // The first accepting arm handles a case, any later one is dead; arms are *not* sorted, their order is the
-    // tie-break.
-    auto sel = DefVec(cases.size());
-    for (size_t i = 0, e = cases.size(); i != e; ++i) {
-        auto c = cases[i];
-        auto j = std::ranges::find_if(arms, [c](const Def* arm) { return Match::accepts(arm, c); });
-        // Hole%s are resolved only once no arm matches outright, so a mere search never commits to one.
-        if (j == arms.end())
-            j = std::ranges::find_if(arms, [c](const Def* arm) { return Match::accepts(arm, c, true); });
-        if (j == arms.end()) scrutinee->blame("match expression has no arm for union case `{}`", c).bail();
-        sel[i] = *j;
-    }
-
-    // Keep the arms actually selected, in the order written; a dead arm is dropped.
-    auto res        = DefVec();
-    const Def* type = nullptr;
-    res.emplace_back(scrutinee);
-    for (auto arm : arms) {
-        if (!std::ranges::contains(sel, arm)) continue;
-        auto codom = arm->isa_type<Pi>()->codom();
-        type       = type ? this->join({type, codom}) : codom;
-        res.emplace_back(arm);
-    }
-
-    // An arm covering several cases expects the wider union, so narrow values are injected back into it.
-    auto dispatch
-        = [this](const Def* arm, const Def* value) { return app(arm, inj(arm->isa_type<Pi>()->dom(), value)); };
-
-    if (!join) return dispatch(sel[0], scrutinee);
-
-    // A constructor fixes the active union case. Dispatch before the Match can
-    // escape into later lowering phases, where the payload representation may
-    // already have changed (for example, a tensor may have become a buffer).
-    if (auto inj = scrutinee->isa<Inj>()) {
-        auto value = inj->value();
-        for (size_t i = 0, e = cases.size(); i != e; ++i)
-            if (Check::alpha(value->unfold_type(), cases[i])) return dispatch(sel[i], value);
-        scrutinee->blame("injected value type `{}` is not a case of union type `{}`", type_of(value), join).bail();
-    }
-
-    return unify_elim<Match>(type, res);
+    // A scrutinee that is not a variant is the degenerate one-case match; cf. `d#i` for `i: Idx 1`.
+    // Hole%s are resolved only once no arm matches outright, so a mere search never commits to one.
+    auto j = std::ranges::find_if(arms, [scrut_t](const Def* arm) { return Match::accepts(arm, scrut_t); });
+    if (j == arms.end())
+        j = std::ranges::find_if(arms, [scrut_t](const Def* arm) { return Match::accepts(arm, scrut_t, true); });
+    if (j == arms.end()) scrutinee->blame("match expression has no arm for `{}`", scrut_t).bail();
+    return app(*j, inj((*j)->isa_type<Pi>()->dom(), scrutinee));
 }
 
 const Def* World::single(const Def* op) {

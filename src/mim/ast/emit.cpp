@@ -480,16 +480,6 @@ void InfixExpr::emit_body_(Emitter& e, const Def*) const {
     pi_->set_codom(rhs()->emit(e)); // TODO try to immutabilize
 }
 
-/// `a ∪ b ∪ c` is one n-ary Join, so flatten the left spine the left-associative parse built.
-static void emit_union(Emitter& e, const Expr* expr, DefVec& types) {
-    if (auto infix = InfixExpr::isa_op(Tag::T_union, expr)) {
-        emit_union(e, infix->lhs(), types);
-        types.emplace_back(infix->rhs()->emit(e));
-    } else {
-        types.emplace_back(expr->emit(e));
-    }
-}
-
 const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
     auto& w = e.world();
     // A simple path names a field of tup's Sigma before anything the binder resolved it to.
@@ -590,11 +580,6 @@ const Def* InfixExpr::emit_(Emitter& e) const {
     auto& w = e.world();
 
     switch (op().tag()) {
-        case Tag::T_union: {
-            DefVec types;
-            emit_union(e, this, types);
-            return w.join(types);
-        }
         case Tag::T_extract: {
             auto tup = w.implicit_holes(lhs()->emit(e));
             if (auto variant = tup->isa<Variant>()) return emit_ctor(e, variant, rhs());
