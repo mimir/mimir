@@ -1,0 +1,10 @@
+// RUN: %mim %s -o -
+
+plugin buffer;
+plugin refly;
+
+lam lit (b: buffer.Buf (2, (3, 5), I32)): Nat = refly.struc.e (buffer.shape (2, (3, 5), I32) (b, 1₂), 5);
+
+// The shape is a variable rather than a tuple, so the rule binds it through projections.
+lam var (rsT: [r: Nat, s: «r; Nat», T: *], b: buffer.Buf rsT, i: Idx rsT#0₃): Nat =
+    refly.struc.e (buffer.shape rsT (b, i), rsT#1₃#i);

@@ -48,7 +48,7 @@ axm read: [r: Nat, s: «r; Nat», T: *] as rsT
 /// Write `val` at `idx` in place and return the same buffer.
 ///
 axm write: [r: Nat, s: «r; Nat», T: *] as rsT
-         → [mem.M 0, Buf rsT, idx: «i: r; Idx s#i», val: T] → [mem.M 0, Buf rsT], normalize_write;
+         → [mem.M 0, Buf rsT, idx: «i: r; Idx s#i», val: T] → [mem.M 0, Buf rsT];
 ///
 /// ### init
 ///
@@ -68,6 +68,8 @@ axm lit: [r: Nat, s: «r; Nat», T: *] as rsT → [mem.M 0, T] → [mem.M 0, Buf
 /// Yields the size of the buffer along dimension `i` (resolved from the type).
 ///
 axm shape: [r: Nat, s: «r; Nat», T: *] as rsT → [Buf rsT, i: Idx r] → Nat, normalize_shape;
+// The logical shape, since the type of `buf` has its size-1 axes folded away.
+norm normalize_shape (r: Nat, s: «r; Nat», T: *, buf: Buf (r, s, T), i: Idx r): shape (r, s, T) (buf, i) => s#i;
 ///
 /// ### copy
 ///

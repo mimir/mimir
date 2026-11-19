@@ -103,8 +103,8 @@ public:
         if (family) std::println(os, "template<{} id>", tag_name(*family));
         std::println(os,
                      "inline const Def* {}([[maybe_unused]] const Def* type, [[maybe_unused]] const Def* callee, "
-                     "[[maybe_unused]] const Def* arg) {{",
-                     norm);
+                     "[[maybe_unused]] const Def* arg) {{ // generated from the `norm` rules `{}` in {}",
+                     norm, name, fs::path(rules.front()->loc().src->path()).filename().string());
         for (size_t i = 0, e = heads.size(); i != e; ++i) {
             auto call = std::format("if (auto res = {}_{}(type, callee, arg)) return res;", norm, i);
             if (auto [annex, sub] = heads[i]; family && annex == family)
@@ -167,6 +167,21 @@ private:
         return false;
     }
 
+    bool binds_ancestor(const Def* def) const {
+        for (auto extract = def->isa<Extract>(); extract; extract = extract->tuple()->isa<Extract>())
+            if (bound_.contains(extract->tuple())) return true;
+        return false;
+    }
+
+    bool binds_all(const Def* def) const {
+        if (bound_.contains(def)) return true;
+        auto n = Lit::isa(def->arity());
+        if (!n || *n == 1) return false;
+        for (size_t i = 0; i != *n; ++i)
+            if (!binds_all(def->proj(*n, i))) return false;
+        return true;
+    }
+
     const std::string& meta_name(const Def* def) {
         if (auto i = metas_.find(def); i != metas_.end()) return i->second;
         auto name = std::string(def->sym().view());
@@ -207,6 +222,17 @@ private:
             return;
         }
 
+        // Projections, unlike a node check, also decompose a tuple-typed Var or App.
+        if (auto tuple = pat->isa<Tuple>()) {
+            auto tmp = std::format("d{}", num_tmps_++);
+            auto n   = tuple->num_ops();
+            line("auto {} = {};", tmp, def);
+            line("if (Lit::isa({}->arity()) != {}_n) return nullptr;", tmp, n);
+            for (size_t i = 0; i != n; ++i)
+                match(tuple->op(i), std::format("{}->proj({}, {})", tmp, n, i));
+            return;
+        }
+
         if (pat->isa_mut()) {
             // TODO mutables in a pattern, such as a lambda over a meta variable
             ast_.error().e(pat->loc(), "mutable `{}` not yet supported in the left-hand side of a `norm` rule", pat);
@@ -223,11 +249,16 @@ private:
     }
 
     std::string build(const Def* def) {
-        if (is_meta(def)) {
-            if (!bound_.contains(def))
-                ast_.error().e(def->loc(), "meta variable `{}` is not bound by the left-hand side", def);
-            return meta_name(def);
+        // Eta may have merged the lhs's components of a meta into the meta itself, or vice versa.
+        if (is_meta(def) && !bound_.contains(def) && !binds_ancestor(def)) {
+            if (auto n = Lit::isa(def->arity()); n && *n != 1 && binds_all(def)) {
+                auto ops = DefVec(*n, [&](size_t i) { return def->proj(*n, i); });
+                return std::format("w.tuple({{{}}})", build(ops));
+            }
+            ast_.error().e(def->loc(), "meta variable `{}` is not bound by the left-hand side", def);
+            return "nullptr";
         }
+        if (is_meta(def) && bound_.contains(def)) return meta_name(def);
         if (auto axm = def->isa<Axm>()) {
             auto [annex, sub] = this->annex(axm);
             if (annex)
