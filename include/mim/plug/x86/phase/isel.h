@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string_view>
+
 #include <pbqp/graph.h>
 
 #include <mim/phase.h>
@@ -22,10 +24,61 @@ enum class Ty : u8 {
 /// The type of a hole.
 enum class Want : u8 {
     Reg,   ///< A register.
-    Imm,   ///< A literal that fits an immediate; it is a pattern node rather than a hole.
+    Imm,   ///< A literal that fits a sign-extended `i32` immediate; it is a pattern node rather than a hole.
+    Sh,    ///< A literal shift count, which x86 masks; any literal fits.
     Base,  ///< `x86.Base`.
     Index, ///< `x86.Index`.
     Addr,  ///< `Addr i` for any `i`.
+};
+
+/// The operation a rule selects, one per instruction of the pattern surface.
+#define MIM_X86_ISEL_OPS(X) \
+    X(Select)               \
+    X(LeaOffset)            \
+    X(LeaScale)             \
+    X(LeaMul)               \
+    X(Load)                 \
+    X(Store)                \
+    X(WrapAdd)              \
+    X(WrapSub)              \
+    X(WrapMul)              \
+    X(WrapShl)              \
+    X(BitAnd)               \
+    X(BitOr)                \
+    X(BitXor)               \
+    X(BitNand)              \
+    X(BitNor)               \
+    X(BitNxor)              \
+    X(ShrA)                 \
+    X(ShrL)                 \
+    X(Icmp)                 \
+    X(Ncmp)                 \
+    X(NatAdd)               \
+    X(NatSub)               \
+    X(NatMul)               \
+    X(NatDiv)               \
+    X(NatRem)               \
+    X(Conv)                 \
+    X(Idx)                  \
+    X(Idx2Nat)              \
+    X(Bitcast)              \
+    X(Rem)                  \
+    X(Div)                  \
+    X(Slot)                 \
+    X(Assume)               \
+    X(Num)
+
+enum class Op : u8 {
+#define X(op) op,
+    MIM_X86_ISEL_OPS(X)
+#undef X
+};
+
+/// Which operand form a rule builds; the instruction is the same.
+enum class Form : u8 {
+    Reg, ///< All operands in registers, addresses, or flags.
+    Imm, ///< A literal operand whose range the hole type states.
+    Rm,  ///< A load folded into a memory operand.
 };
 
 /// What a match needs of the operand @p def: a hole of type @p want or, if @p inner is set, that inner pattern node.
@@ -55,11 +108,19 @@ struct Alt {
 
 using Alts = fe::Vector<Alt>;
 
+/// One pattern ↦ replacement: what it selects, its operand forms, holes, cost, and how to build the replacement.
 struct Rule {
-    std::string_view name;
+    Op op;
+    Form form;
     Ty type;
+    pbqp::Cost cost;
+    u8 num_holes = 0;
+    u16 wants    = 0; ///< 3 bits per hole, see want().
+    std::string_view name;
     /// Builds the replacement of the match @p alt rooted at the old_world() Def @p root.
     const Def* (ISel::*build)(const Def* root, const Alt& alt);
+
+    Want want(size_t i) const { return Want((wants >> (3 * i)) & 0b111); }
 };
 ///@}
 
@@ -130,8 +191,26 @@ private:
     bool analyze() final;
     /// Counts in `uses_` how often each Def of old_world() occurs as an operand.
     void count(const Def*);
-    /// Appends the matches rooted at @p def to @p alts, an atomic one first.
+    /// Appends the matches rooted at @p def to @p alts.
     void match(const Def* def, Alts& alts) const;
+    /// Appends the alternatives of @p op and @p form that @p operands satisfy; returns how many.
+    size_t append(Op op, Form form, Alts& alts, Defs operands) const;
+    /// Appends the `bin_rm` alternatives folding the load @p ld into @p op.
+    void append_bin_rm(Op op, Alts& alts, const Def* other, const Def* v, const App* ld) const;
+    /// Appends the `store_mr` alternatives folding the load @p ld behind the store of @p u at @p p.
+    void append_store_mr(Alts& alts,
+                         const Def* p,
+                         const Def* x,
+                         const App* u,
+                         const App* ld,
+                         const Def* v,
+                         const Def* other) const;
+    /// The index of the first atomic alternative of @p alts, or `size_t(-1)`.
+    size_t atomic_choice(const Alts& alts) const;
+#ifdef MIM_ENABLE_CHECKS
+    /// Verifies atomic completeness, total conversions, and inner-node coverage over the rule set.
+    void check_rules() const;
+#endif
     /// The node Def @p def stands for: a load stands for its value.
     const Def* key(const Def* def) const;
     /// The chosen alternative of the node @p def.

@@ -109,13 +109,15 @@ Done (on `feature/x86`):
   - A non-power-of-two `trunc` is a `div` with `rax`, `rcx`, and `rdx` saved around it by `push`/`pop`, as nothing reserves them.
   - A non-external callee is emitted as a local function `<name>_<gid>`; an external declaration is called by its symbol.
 - `x86.cmovcc cc (f, x, y)` yields `y` if `cc` holds, like `(x, y)#cond`.
-- `x86.isel` follows *Instruction Selection with PBQP*: a `Rule` is one object (name, type of its replacement, builder), and one `match` function appends a node's matches as `Alt`s with typed `Demand`s on the operands and the inner nodes they cover (`Cover`).
+- `x86.isel` follows *Instruction Selection with PBQP*: the rules are data, one `rules_` entry per pattern ↦ replacement, and `match` is the only code that knows the axiom surface.
+  A `Rule` carries `op`, `form`, the type of its replacement, its cost, packed hole `Want`s, its name, and its builder.
+  `Op` has one value per instruction and `Form` distinguishes a register, an immediate, and a folded memory operand, so one instruction is one row per operand form.
+  `match` appends a node's matches as `Alt`s with typed `Demand`s on the operands and the inner nodes they cover (`Cover`).
   `ISel::analyze()` builds the PBQP generically from that: every operation with a match is a node, inner alternatives are derived from the covers, edges price `conv` between rule type and hole type, and all-zero edges are left out.
   The rewrite is generic too: a root alternative's rule builds the replacement, `hole` converts operands to the hole's type, and an inner node defers to the root of its match.
-  The first alternative of every node is atomic (asserted, as is that the atomic cover is valid), and it is the fallback should RN end infeasible.
+  `atomic_choice` scans the alternatives for an atomic fallback (no inner nodes, holes only `Reg`/`Base`/`Addr`) instead of trusting the table order, and `check_rules` verifies the rule set itself (see *Solvability*).
   `-X x86:isel-dot=<file>` writes the graph in Graphviz DOT format with the chosen options highlighted.
-- Rules: `lea_off_base`/`lea_off_index` (polymorphic in the index), `lea_index` (onto a `Base`), `load`, `store` (register or immediate), `bin` (`core.wrap`/`core.bit2`/`core.shr`, register or immediate), `bin_rm`, `store_mr`, `cmp`, `nat`, `unary` (conversions), `div`, `slot`, `assume`, `select`.
-- Not yet as designed: matchers are C++ code with their conditions inline, so atomic completeness and composability are asserted per program instead of checked over the rule set; this comes with rules as data.
+- `Want::Sh` is a shift count: any literal, since x86 masks it, where `Want::Imm` must fit a sign-extended `i32`.
 - `x86.emit` prints a literal operand as `$c` (it must fit a sign-extended `i32`) and rejects one where the instruction needs a register.
 - Address rules: constant indices and struct offsets go into `disp`, one dynamic index with an element size of 1, 2, 4, or 8 into `index`/`scale` (otherwise `imul`), and a second dynamic index or a `disp` beyond `i32` materializes the prefix with `lea` or `add`.
 - `bin_rm` folds a sole load into `add`/`sub`/`and`/`or`/`xor`/`imul` as `x86.rm f (m, a, addr)` (`op r, addr`): the user moves to the load's place in the memory order, so its other operand must be in scope of the load's block and must not depend on the load.
@@ -207,7 +209,7 @@ Pitfalls already hit (fixed, but each is a rule for any new backend phase):
 
 ## Next Steps
 
-1. **PBQP instruction selection**: rules are single objects with typed holes now (see *Staging*); next is rules as data with the solvability checks over the rule set, and only then rules in bulk (`cc` for flags consumed by branches and `cmov`, scaled indices from `shl`/`mul`, three-operand `add` via `lea`, the `and` mask for `trunc` → `movzx`).
+1. **PBQP instruction selection**: rules are data and the solvability checks run over the rule set now (see *Solvability*); next is rules in bulk (`cc` for flags consumed by branches and `cmov`, scaled indices from `shl`/`mul`, three-operand `add` via `lea`, the `and` mask for `trunc` → `movzx`).
 2. **Register allocation**: spilling, `x86.constrain`, `x86.color`, and `emit` on the colored registers (SSA destruction by parallel copies) are done; next are spill-slot coloring with memory-φ coalescing, loop-depth weights for copies, and pressure-aware list scheduling (see *Register Assignment*); each piece is checked against the allowlist, also at small `k`.
 
 ## Instruction Selection with PBQP
@@ -263,11 +265,11 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 
 ### Solvability
 
-- *Atomic completeness*: every operation has a rule whose holes are all registers and whose type is a register.
-- *Total conversions*: every type a rule may have converts to a register (`Addr` via `x86.lea`, a literal via `x86.mov`, flags via `setcc`).
-- *Composability* (the paper's Def. 12) is checked for the multi-node patterns only: cutting any successor of the root and the spanning graph of any inner node must again be covered by rules.
-  A cut at a typed hole is a rule boundary already.
-- All three are checked mechanically over the rule set; a missing rule is reported by name.
+- *Atomic completeness*: every operation has a rule with no inner nodes, an operand form, and holes only in `Reg`/`Base`/`Addr`; it is the fallback cover, and *total conversions* ensures its type is usable as a value.
+- *Total conversions*: every type a rule may have converts to a register (`Addr` via `x86.lea`, a literal via `x86.mov`, flags via `setcc`), and every hole type is reachable from some rule type.
+- *Composability* (the paper's Def. 12) is implemented for the inner nodes only: a rule that folds a `mem.load` needs an atomic rule for that load, since the inner node must be coverable on its own.
+  The general successor cut of a multi-node pattern is not checked yet; a cut at a typed hole is a rule boundary already.
+- `check_rules()` runs these over the whole rule set on every `analyze()` in a checked build (`MIM_ENABLE_CHECKS`, on by default in Debug) and reports the offending rule by name.
 - The solver deletes forbidden options and propagates the deletion, which is the paper's infinity propagation.
 - The paper's proof covers untyped holes only; typed holes are a factored presentation of such a rule set, but recursive operand rules make that expansion infinite.
   So selection keeps the fallback: the atomic rules everywhere are always a valid cover.
@@ -280,9 +282,9 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 
 ### Staging
 
-- Now, each rule is one C++ object: pattern matcher, hole types, conditions, cost, and replacement builder.
-  The PBQP construction and the rewrite are generic over the rule list; the solvability checks are still asserted per program.
-- Later, the rule list is generated from Mim rules (*Pattern Database*); nothing else changes.
+- Now the rule set is a `constexpr` table in `isel.cpp`: one entry per operation and operand form with its holes, cost, and builder.
+  The only per-axiom code left is the structural part of `match` that extracts the operands; the PBQP construction, the rewrite, and the solvability checks are generic over the table.
+- Later, the rule table is generated from Mim rules (*Pattern Database*); nothing else changes.
 
 ### Open points
 
