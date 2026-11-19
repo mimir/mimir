@@ -131,15 +131,14 @@ public:
         assert(rows.back() < rows_ && "erase_rows: row out of range");
         if (row_major()) {
             size_t dst = 0;
-            auto i     = rows.begin();
-            for (size_t r = 0; r < rows_; ++r) {
-                if (i != rows.end() && *i == r) {
-                    ++i;
-                    continue;
-                }
-                if (dst != r) std::copy_n(data_ + r * cols_, cols_, data_ + dst * cols_);
-                ++dst;
+            size_t src = 0;
+            for (const size_t row : rows) {
+                if (dst != src) std::copy_n(data_ + src * cols_, (row - src) * cols_, data_ + dst * cols_);
+                dst += row - src;
+                src = row + 1;
             }
+            if (dst != src) std::copy_n(data_ + src * cols_, (rows_ - src) * cols_, data_ + dst * cols_);
+            dst += rows_ - src;
             *this = BasicMatrix(data_, dst, cols_, true);
         } else {
             erase_storage_cols(rows);

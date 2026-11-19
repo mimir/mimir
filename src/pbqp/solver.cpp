@@ -341,19 +341,18 @@ private:
 
     /// Deletes forbidden options, always keeping at least one.
     void prune(NodeId n) {
-        const auto mark           = scratch_.state();
-        OptionId* const forbidden = scratch_.allocate<OptionId>(options(n));
-        size_t count              = 0;
-        for (OptionId a = 0; a < options(n); ++a)
-            if (nodes_[n].costs[a].is_inf()) forbidden[count++] = a;
-        if (count == options(n)) --count;
-        if (count == 0) {
-            scratch_.deallocate(mark);
-            return;
+        const auto num_options = options(n);
+        if (forbidden_capacity_ < num_options) {
+            forbidden_          = arena_.allocate<OptionId>(num_options);
+            forbidden_capacity_ = num_options;
         }
+        size_t count = 0;
+        for (OptionId a = 0; a < num_options; ++a)
+            if (nodes_[n].costs[a].is_inf()) forbidden_[count++] = a;
+        if (count == num_options) --count;
+        if (count == 0) return;
         statistics_.forbidden_options += count;
-        erase_options(n, {forbidden, count});
-        scratch_.deallocate(mark);
+        erase_options(n, {forbidden_, count});
 
         const Edges incident = nodes_[n].edges;
         for (const auto e : incident)
@@ -583,6 +582,8 @@ private:
     fe::View<size_t> rn_priority_;
     Statistics statistics_;
     std::priority_queue<Candidate, fe::Vector<Candidate>> high_;
+    OptionId* forbidden_       = nullptr;
+    size_t forbidden_capacity_ = 0;
 };
 
 } // namespace
