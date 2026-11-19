@@ -615,7 +615,7 @@ public:
     ///@{
     Variant* mut_variant(const Def* type, size_t size) { return insert<Variant>(type, size); }
     const Def* variant(Defs ops);
-    const Def* inj(const Def* type, const Def* value);
+    const Def* inj(const Def* type, const Def* value);              ///< Injects @p value into the nominal @p type.
     const Def* inj(const Def* type, nat_t index, const Def* value); ///< Injects @p value as case @p index of a Variant.
     const Def* match(Defs);
     ///@}

@@ -706,8 +706,8 @@ public:
         Dbg ctor() const { return ctor_; }
 
         virtual void bind(Scopes&) const;
-        /// @p dom is the case's payload type if the scrutinee is a Variant; otherwise ptrn() determines the domain.
-        Lam* emit(Emitter&, const Def* dom = nullptr) const;
+        /// @p dom is the payload type of the case this arm handles.
+        Lam* emit(Emitter&, const Def* dom) const;
         void stream(fe::Tab&, std::ostream&) const override;
 
     private:

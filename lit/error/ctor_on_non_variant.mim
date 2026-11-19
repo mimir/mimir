@@ -1,4 +1,0 @@
-// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
-lam f (u: Nat): Nat = match u with | Some x => 0;
-// CHECK: error: a constructor pattern needs a variant scrutinee
-// CHECK: but the scrutinee has type `Nat`

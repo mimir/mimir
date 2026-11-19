@@ -17,7 +17,6 @@ target_sources(libmim
         rule.cpp
         schedule.cpp
         tuple.cpp
-        union.cpp
         world.cpp
         ast/ast.cpp
         ast/bind.cpp

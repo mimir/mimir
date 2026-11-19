@@ -139,8 +139,7 @@ const Def* Rewriter::rewrite_imm_App(const App* d) {
 const Def* Rewriter::rewrite_imm_Inj(const Inj* d) {
     auto new_type  = rewrite(d->type());
     auto new_value = rewrite(d->value());
-    if (d->type()->isa<Variant>()) return world().inj(new_type, d->index(), new_value);
-    return world().inj(new_type, new_value);
+    return world().inj(new_type, d->index(), new_value);
 }
 
 const Def* Rewriter::rewrite_imm_Insert(const Insert* d) {

@@ -523,9 +523,8 @@ arm ::= p "=>" e
      |  (I | L) p? "=>" e
 ```
 
-- `e inj T` wraps a value into the [nominal type](@ref nominal) `T`; into any other type it is the identity.
-- `match e with | p => e | ...` eliminates a [variant](@ref variant) value.
-  On a scrutinee that is not a variant, it applies the first arm whose pattern accepts the scrutinee's type.
+- `e inj T` wraps a value into the [nominal type](@ref nominal) `T`.
+- `match e with | p => e | ...` eliminates a [variant](@ref variant) value; its scrutinee must be of variant type.
 
 #### Variants {#variant}
 
@@ -828,14 +827,9 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 - an application of an [axiom](@ref decl) runs its normalizer once the curry counter hits `0`
 - an application of a `{T: *} → e` inserts a `Hole` per implicit argument
 
-### Match
-
-- `x inj T` -> `x` if `T` is not a nominal type
-- a `match` whose scrutinee is not a variant is the degenerate one-case match and reduces right away to its **first** arm accepting the scrutinee
-
 ### Variants
 
-- a variant is never sorted, deduplicated, or flattened; an empty or one-case variant stays a variant
+- a variant is never sorted, deduplicated, or flattened; a one-case variant stays a variant, while the empty one is `⊥`
 - `match (T#i x) with ...` -> the arm for case `i`
 - the arms of a `match` on a variant are in the order of its cases, one each
 - all arms of a `match` on a variant agree on their codomain, which is the type of the `match`; an arm into `⊥` fits any

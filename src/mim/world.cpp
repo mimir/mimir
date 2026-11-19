@@ -972,11 +972,7 @@ const Def* World::inj(const Def* type, const Def* value) {
     if (type->isa<Variant>())
         value->blame("injecting into variant type `{}` requires the index of a case", type).bail();
     if (type->isa<Nom>()) return name(type, value);
-    if (auto v = Check::coerce(type, value)) return v;
-    value->blame("value is not assignable to `{}`", type)
-        .n("`{}` is not a nominal type, so `inj` into it is the identity", type)
-        .n("expected `{}`, got `{}`", type, type_of(value))
-        .bail();
+    value->blame("cannot inject into `{}`, which is not a nominal type", type).bail();
 }
 
 const Def* World::inj(const Def* type, nat_t index, const Def* value) {
@@ -1017,43 +1013,35 @@ const Def* World::match(Defs ops_) {
     auto scrut_t = scrutinee->unfold_type();
     if (!scrut_t) scrutinee->blame("scrutinee of a match expression has no type").bail();
 
-    if (auto variant = scrut_t->isa<Variant>()) {
-        if (arms.size() != variant->num_ops())
-            scrutinee
-                ->blame("match expression has {} arms but variant type has {} cases", arms.size(), variant->num_ops())
+    auto variant = scrut_t->isa<Variant>();
+    if (!variant)
+        scrutinee->blame("scrutinee of a match expression is of type `{}` but must be of variant type", scrut_t).bail();
+    if (arms.size() != variant->num_ops())
+        scrutinee->blame("match expression has {} arms but variant type has {} cases", arms.size(), variant->num_ops())
+            .bail();
+
+    const Def* type = nullptr;
+    for (size_t i = 0, e = arms.size(); i != e; ++i) {
+        auto pi = arms[i]->isa_type<Pi>();
+        if (!Check::alpha(pi->dom(), variant->op(i)))
+            arms[i]
+                ->blame("domain type `{}` of match-expression arm does not match variant case `{}`", pi->dom(),
+                        variant->op(i))
                 .bail();
-
-        const Def* type = nullptr;
-        for (size_t i = 0, e = arms.size(); i != e; ++i) {
-            auto pi = arms[i]->isa_type<Pi>();
-            if (!Check::alpha(pi->dom(), variant->op(i)))
-                arms[i]
-                    ->blame("domain type `{}` of match-expression arm does not match variant case `{}`", pi->dom(),
-                            variant->op(i))
-                    .bail();
-            // A diverging arm fits any result type.
-            if (pi->codom()->isa<Bot>()) continue;
-            if (!type)
-                type = pi->codom();
-            else if (!Check::alpha(type, pi->codom()))
-                arms[i]
-                    ->blame("codomain `{}` of match-expression arm differs from `{}` of the preceding arms",
-                            pi->codom(), type)
-                    .bail();
-        }
-        if (!type) type = arms.front()->isa_type<Pi>()->codom();
-
-        if (auto inj = scrutinee->isa<Inj>()) return app(arms[inj->index()], inj->value());
-        return unify_elim<Match>(type, ops);
+        // A diverging arm fits any result type.
+        if (pi->codom()->isa<Bot>()) continue;
+        if (!type)
+            type = pi->codom();
+        else if (!Check::alpha(type, pi->codom()))
+            arms[i]
+                ->blame("codomain `{}` of match-expression arm differs from `{}` of the preceding arms", pi->codom(),
+                        type)
+                .bail();
     }
+    if (!type) type = arms.front()->isa_type<Pi>()->codom();
 
-    // A scrutinee that is not a variant is the degenerate one-case match; cf. `d#i` for `i: Idx 1`.
-    // Hole%s are resolved only once no arm matches outright, so a mere search never commits to one.
-    auto j = std::ranges::find_if(arms, [scrut_t](const Def* arm) { return Match::accepts(arm, scrut_t); });
-    if (j == arms.end())
-        j = std::ranges::find_if(arms, [scrut_t](const Def* arm) { return Match::accepts(arm, scrut_t, true); });
-    if (j == arms.end()) scrutinee->blame("match expression has no arm for `{}`", scrut_t).bail();
-    return app(*j, inj((*j)->isa_type<Pi>()->dom(), scrutinee));
+    if (auto inj = scrutinee->isa<Inj>()) return app(arms[inj->index()], inj->value());
+    return unify_elim<Match>(type, ops);
 }
 
 const Def* World::single(const Def* op) {

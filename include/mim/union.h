@@ -101,8 +101,8 @@ private:
     friend class World;
 };
 
-/// Scrutinize Match::scrutinee() and dispatch to Match::arms.
-/// For a Variant, the arms are positional: `arm(i)` handles case `i`.
+/// Scrutinize the Variant value Match::scrutinee() and dispatch to Match::arms.
+/// The arms are positional: `arm(i)` handles case `i`.
 class Match : public Def, public Setters<Match> {
 private:
     Match(const Def* type, Defs ops)
@@ -122,15 +122,6 @@ public:
     }
     const Def* arm(size_t i) const { return arms()[i]; }
     size_t num_arms() const { return arms().size(); }
-    ///@}
-
-    /// @name Dispatch
-    ///@{
-    /// The cases @p scrutinee dispatches on: its Variant's ops, or - a one-case match - its type.
-    static DefVec cases(const Def* scrutinee);
-    /// Does @p arm handle @p c? An arm accepts the case that *is* its domain.
-    /// @p infer resolves Hole%s, so a mere search should leave it `false`.
-    static bool accepts(const Def* arm, const Def* c, bool infer = false);
     ///@}
 
 private:
