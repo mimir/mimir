@@ -49,16 +49,16 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 
 ### Condition codes
 
-- A condition code is a `Nat` in hardware encoding order (o = 0, …, g = 15).
-- `x86.cc cc: Fl → Bool` is `setcc` as a value and `jcc` as a branch condition.
-- `core.icmp` maps onto `x86.cc c (x86.cmp (a, b))` for `e`, `ne`, `sl`, `sle`, `sg`, `sge`, `ul`, `ule`, `ug`, `uge`; the other predicates are rejected for now.
+- `x86.cc` and `x86.cmovcc` are families in hardware encoding order (`x86.cc.o` = 0, …, `x86.cc.g` = 15), so a code is a subtag rather than an operand: C++ compares `Axm::base()` and reads `Axm::sub()`.
+- `x86.cc.l: Flags → Bool` is `setcc` as a value and `jcc` as a branch condition.
+- `core.icmp` maps onto `x86.cc.<c> (x86.cmp (a, b))` for `e`, `ne`, `sl`, `sle`, `sg`, `sge`, `ul`, `ule`, `ug`, `uge`; the other predicates are rejected for now.
 
 ## Status
 
 Done (on `feature/x86`):
 
 - `x86` plugin (`src/mim/plug/x86/`), with `mem.add_mem` (if `x86` is loaded), `x86.isel`, `x86.schedule`, `x86.spilling`, `x86.constrain`, `x86.color`, and `x86.emit` at the end of the default pipeline in `opt.mim`; by then no axiom pins a continuation's type, so every continuation has its `mem.M`.
-- `x86.mim`: `Fl`, `Addr` (`Base`, `Index`), `Spill`, `addr`, `scale_1`/`_2`/`_4`/`_8`, `index`, `lea`, `mov`, `rm`, `mr`, `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `imul`, `shl`, `shr`, `sar`, `movzx`, `movsx`, `trunc`, `cmp`, `test`, `cc`, `cmovcc`, `spill`, `reload`, `in` with the register lets `rax` … `r15`, plus the size predicates.
+- `x86.mim`: `Flags`, `Addr` (`Base`, `Index`), `Spill`, `addr`, `scale_1`/`_2`/`_4`/`_8`, `index`, `lea`, `mov`, `rm`, `mr`, `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `imul`, `shl`, `shr`, `sar`, `movzx`, `movsx`, `trunc`, `cmp`, `test`, the condition-code families `cc` and `cmovcc`, `spill`, `reload`, `in` with the module `reg` of the register lets `x86.reg.rax` … `x86.reg.r15`, plus the size predicates.
 - `x86.isel` (`src/mim/plug/x86/phase/isel.cpp`) covers `core.wrap`, `core.bit2` (and/or/xor), `core.shr`, `core.icmp`, `core.conv`, `mem.load`/`mem.store` of integers and pointers, `mem.lea` (array index or constant struct offset), `mem.assume`, `mem.mslot`, `core.idx`, `core.idx2nat`, `core.rem`, `core.div`, `core.nat`, `core.ncmp`, integer `core.bitcast`, and a select `(x, y)#c` (as `cmovcc`).
   An `Idx n` of dynamic size and `Nat` become `I64`, as in `ll`; `Nat` literals stay `Nat` so they still work as type-level arguments, and become `I64` only as values.
   The loop hints `ll.vec`/`ll.novec` are dropped.
@@ -108,11 +108,12 @@ Done (on `feature/x86`):
   - Blocks are laid out by chasing each block's last jump (a jump's target, a call's return continuation, a branch's else target or its trampoline's target) and fall through to the next block where possible.
   - A non-power-of-two `trunc` is a `div` with `rax`, `rcx`, and `rdx` saved around it by `push`/`pop`, as nothing reserves them.
   - A non-external callee is emitted as a local function `<name>_<gid>`; an external declaration is called by its symbol.
-- `x86.cmovcc cc (f, x, y)` yields `y` if `cc` holds, like `(x, y)#cond`.
-- `x86.isel` follows *Instruction Selection with PBQP*: the rules are data, one `rules_` entry per pattern ↦ replacement, and `match` is the only code that knows the axiom surface.
+- `x86.cmovcc.l (f, x, y)` yields `y` if `l` holds, like `(x, y)#cond`.
+- `x86.isel` follows *Instruction Selection with PBQP*: both sides are data, `rules_` (one entry per pattern ↦ replacement) and `patterns_` (which `core`/`mem` axiom each operation is).
   A `Rule` carries `op`, `form`, the type of its replacement, its cost, packed hole `Want`s, its name, and its builder.
   `Op` has one value per instruction and `Form` distinguishes a register, an immediate, and a folded memory operand, so one instruction is one row per operand form.
-  `match` appends a node's matches as `Alt`s with typed `Demand`s on the operands and the inner nodes they cover (`Cover`).
+  A `Pattern` carries the axiom (or the member of a multi-member annex), its `Op`, the `Tag` that tells `match` how to take it apart, the x86 instruction of its memory form, and whether an immediate may also be the first operand.
+  `match` is then a single switch over `Tag`; it appends a node's matches as `Alt`s with typed `Demand`s on the operands and the inner nodes they cover (`Cover`).
   `ISel::analyze()` builds the PBQP generically from that: every operation with a match is a node, inner alternatives are derived from the covers, edges price `conv` between rule type and hole type, and all-zero edges are left out.
   The rewrite is generic too: a root alternative's rule builds the replacement, `hole` converts operands to the hole's type, and an inner node defers to the root of its match.
   `atomic_choice` scans the alternatives for an atomic fallback (no inner nodes, holes only `Reg`/`Base`/`Addr`) instead of trusting the table order, and `check_rules` verifies the rule set itself (see *Solvability*).
@@ -127,10 +128,11 @@ Done (on `feature/x86`):
 - `isel` widens 8-bit and `Bool` multiplications to `i32` (`movzx`, `imul`, `trunc`), since `imul` has no 8-bit form.
 - Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/emit_pbqp.mim` (competing folds), `lit/x86/sched.mim`, `lit/x86/sched_join.mim` (one placement in the dominator), `lit/x86/sched_loop.mim` (hoisting), `lit/x86/sched_remat.mim`, `lit/x86/sched_closed_tuple.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/sched_no_chain.mim`, `lit/x86/live_loop.mim`, `lit/x86/live_call.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`, `lit/x86/spill_loop.mim` (live-through values spilled outside the loop), `lit/x86/spill_phi.mim` (memory φ), `lit/x86/spill_ssa.mim` (new φ for a reloaded value), `lit/x86/spill_call.mim` (callee-saved limit), `lit/x86/constrain.mim` (also at `k = 3`), `lit/x86/color.mim` (fixed results, a value across a call; also at `k = 3`); `lit/x86/emit_cf.mim` also runs at `k = 3`.
 
-Known gaps and bugs, as of 2026-11-17.
+Known gaps and bugs, as of 2026-11-19.
 
 Open bugs and risks (wrong code or a crash is possible, or only a later check catches it):
 
+- `x86.reg`, `x86.cc`, and `x86.cmovcc` have to stay in hardware encoding order, and nothing checks it: C++ reads registers and condition codes off the subtag (`encoding`, `emit`'s mnemonic table, `isel`'s `cc` ↦ `cmovcc`), so a reordering silently emits wrong registers or conditions while a register's Mim value stays as written.
 - A use of a fixed-result tuple as a whole (`div`'s `insn#1` instead of its projections) bypasses `x86.constrain`'s post-split: `Subst` maps the projections to the new continuation's parameters, but `insn#1` itself to the new instruction's, so that use would see `rax`/`rdx` past the split; untested, `x86.color`'s checker would report it.
 - A two-address instruction whose tied operand is a literal (`sub (5, x)`) has no tie (`constraint()` drops it), so nothing keeps the result out of the other operand's register; `emit` rejects the literal ("needs an `x86.mov`"), and isel must never produce it.
 - `emit` checks two-address results only with `assert`s, so a release build relies on `x86.color`'s checker.
@@ -222,7 +224,7 @@ This keeps their rule shape and solvability argument and adds the factoring of a
 
 - A rule is `pattern ↦ replacement` plus a cost.
   Both sides are Mim terms over the same holes: the pattern over `core`/`mem`, the replacement over `x86`.
-- A hole is a variable whose type is an x86 operand type: `Idx s` (a register), `Addr i`, or `Fl`.
+- A hole is a variable whose type is an x86 operand type: `Idx s` (a register), `Addr i`, or `Flags`.
 - `Addr: Bool → *` states in its type whether the address has an index, with the aliases `Base = Addr ff` and `Index = Addr tt`: `x86.addr (disp, base): Base` and `x86.index a (index, scale): Index` for `a: Base`.
   So "at most one index" is a typing fact: the dynamic-index rule has a hole of type `Base`, the constant-offset rule is polymorphic in `i`, and a second index converts `Index` to `I64` (`x86.lea`) and on to `Base`.
 - The `mem.M` token is order only: it is neither a hole nor a result of a pattern and no PBQP edge; the replacement rewires it.
@@ -282,14 +284,15 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 
 ### Staging
 
-- Now the rule set is a `constexpr` table in `isel.cpp`: one entry per operation and operand form with its holes, cost, and builder.
-  The only per-axiom code left is the structural part of `match` that extracts the operands; the PBQP construction, the rewrite, and the solvability checks are generic over the table.
+- Now both sides of the rule set are `constexpr` tables in `isel.cpp`: `rules_`, one entry per operation and operand form with its holes, cost, and builder, and `patterns_`, one entry per recognized axiom with its `Tag`.
+  `match` names no axiom: it switches over `Tag` to extract the operands, so the only code left is the operand extraction and the side conditions a `Tag` implies (`core.icmp`/`core.ncmp` predicate support, the sole-load checks).
+  The PBQP construction, the rewrite, and the solvability checks are generic over the tables.
 - Later, the rule table is generated from Mim rules (*Pattern Database*); nothing else changes.
 
 ### Open points
 
 - A multi-result pattern that should win only because it is shared (`sub` and `cmp` of the same operands) is underpriced by the one-rule-per-result scheme; to be revisited with flags.
-- Flags: `cmp` + `cc` as a rule of type `Fl` consumed by branches and `cmovcc`; keeping the flags alive until then is the scheduler's job.
+- Flags: `cmp` + `cc` as a rule of type `Flags` consumed by branches and `cmovcc`; keeping the flags alive until then is the scheduler's job.
 - The cost unit: µops or latency from uops.info for a chosen µarch, with encoding size as tie-breaker.
 
 ## Register Allocation
@@ -314,10 +317,11 @@ The result of coloring lives in the graph: every use of a value is wrapped in
 axm in: [r: I4] → {s: Nat} → Idx s → Idx s;
 ```
 
-- `x86.in r v` is `v`, which lives in register `r` in hardware encoding order (rax = 0, rcx = 1, rdx = 2, rbx = 3, rsp = 4, rbp = 5, rsi = 6, rdi = 7, r8 = 8, …, r15 = 15), with lets `x86.rax = 0I4` etc. like the scales.
+- `x86.in r v` is `v`, which lives in register `r` in hardware encoding order (rax = 0, rcx = 1, rdx = 2, rbx = 3, rsp = 4, rbp = 5, rsi = 6, rdi = 7, r8 = 8, …, r15 = 15).
+  The lets `x86.reg.rax = 0I4` etc. form the module `x86.reg`, whose subtags are in that order; C++ takes `Num_Regs` and a register's encoding from them (`Annex::num<reg>()`, `encoding(reg::rax)`), so the registers are written down once.
 - `I4` makes "a general-purpose register" a typing fact; the width comes from `s`, so al/ax/eax/rax need no names, and since one value occupies a whole physical register, subregisters cannot alias.
 - `in` is no instruction: it is not scheduled and sits on no chain, like `x86.addr`.
-- Not wrapped: literals (immediates), `mem.M`, `Fl` (one flags register), `Spill s` (a stack slot each, in `emit`), `Addr` itself (its base and index are wrapped inside it), and the `Bool` of a `cc` that only a branch consumes.
+- Not wrapped: literals (immediates), `mem.M`, `Flags` (one flags register), `Spill s` (a stack slot each, in `emit`), `Addr` itself (its base and index are wrapped inside it), and the `Bool` of a `cc` that only a branch consumes.
 - `Liveness::values` already looks through non-instruction Defs, so `in r v` counts as a use of `v` without changes.
 
 Use-wrapping is def-annotation:

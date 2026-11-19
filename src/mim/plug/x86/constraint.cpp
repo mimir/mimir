@@ -23,19 +23,19 @@ Constraint constraint(const App* insn) {
     }
     if (!Axm::isa<sched>(insn)) return res;
 
-    auto f = sched_insn(insn)->isa<App>();
-    if (!f || !f->axm()) return res;
+    auto axm = std::get<0>(Axm::get(sched_insn(insn)));
+    if (!axm) return res;
     auto& w = insn->world();
-    auto id = f->axm()->flags();
+    auto id = axm->base();
     // clang-format off
     if (id == Annex::Base<div> || id == Annex::Base<idiv>) {
-        res.fixed.emplace_back(0, w.annex<rax>());
-        res.results.emplace_back(0, w.annex<rax>());
-        res.results.emplace_back(1, w.annex<rdx>());
-        res.clobbers.emplace_back(w.annex<rdx>());
+        res.fixed.emplace_back(0, w.annex(reg::rax));
+        res.results.emplace_back(0, w.annex(reg::rax));
+        res.results.emplace_back(1, w.annex(reg::rdx));
+        res.clobbers.emplace_back(w.annex(reg::rdx));
     } else if (id == Annex::Base<shl> || id == Annex::Base<shr> || id == Annex::Base<sar>) {
         res.tied = 0;
-        res.fixed.emplace_back(1, w.annex<rcx>());
+        res.fixed.emplace_back(1, w.annex(reg::rcx));
     } else if (id == Annex::Base<add> || id == Annex::Base<sub> || id == Annex::Base<and_> || id == Annex::Base<or_>
             || id == Annex::Base<xor_> || id == Annex::Base<imul>) {
         res.tied = 0;

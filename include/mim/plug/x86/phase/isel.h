@@ -108,6 +108,9 @@ struct Alt {
 
 using Alts = fe::Vector<Alt>;
 
+/// Builds the replacement of the match @p alt rooted at the old_world() Def @p root.
+using BuildFn = const Def* (ISel::*)(const Def*, const Alt&);
+
 /// One pattern ↦ replacement: what it selects, its operand forms, holes, cost, and how to build the replacement.
 struct Rule {
     Op op;
@@ -117,8 +120,7 @@ struct Rule {
     u8 num_holes = 0;
     u16 wants    = 0; ///< 3 bits per hole, see want().
     std::string_view name;
-    /// Builds the replacement of the match @p alt rooted at the old_world() Def @p root.
-    const Def* (ISel::*build)(const Def* root, const Alt& alt);
+    BuildFn build;
 
     Want want(size_t i) const { return Want((wants >> (3 * i)) & 0b111); }
 };

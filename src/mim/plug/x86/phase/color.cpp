@@ -308,7 +308,7 @@ void Colorer::copies() {
         auto callee = term->callee();
         if (callee == fun_->ret_var()) {
             for (auto a : term->args())
-                if (!is_mem(a)) prefer(a, Rax);
+                if (!is_mem(a)) prefer(a, encoding(reg::rax));
         } else if (auto ex = callee->isa<Extract>()) {
             for (auto target : ex->tuple()->projs())
                 if (auto bb = Lam::isa_mut_basicblock(target); bb && live_.block(bb)) jump(bb, term->arg());
@@ -324,7 +324,7 @@ void Colorer::copies() {
                         for (size_t r = 0; r != Num_Regs; ++r)
                             if (Caller_Saved[r]) (*cs)[r] = pbqp::Cost::inf();
                 for (auto x : live_.params(*k))
-                    if (!is_mem(x)) prefer(x, Rax);
+                    if (!is_mem(x)) prefer(x, encoding(reg::rax));
             }
         }
     }

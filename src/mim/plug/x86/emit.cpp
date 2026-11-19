@@ -228,8 +228,8 @@ void Emitter::use_flags(const Def* fl) const {
 }
 
 void Emitter::insn(const Def* res, const Def* f, const Def* x) {
-    auto axm  = f->isa<Axm>() ? f->as<Axm>() : f->as<App>()->axm();
-    auto id   = axm->flags();
+    auto axm  = std::get<0>(Axm::get(f));
+    auto id   = axm->base();
     auto keep = id == Annex::Base<mov> || id == Annex::Base<x86::spill> || id == Annex::Base<reload>
              || id == Annex::Base<lea> || id == Annex::Base<movzx> || id == Annex::Base<movsx> || id == Annex::Base<cc>
              || id == Annex::Base<cmovcc>;
@@ -255,7 +255,7 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
     auto divide = [&](bool sign) {
         auto [a, b] = x->projs<2>();
         auto w      = width(a->type());
-        assert(use_reg(a) == Rax);
+        assert(use_reg(a) == encoding(reg::rax));
         if (!sign)
             line("xorl %edx, %edx");
         else
@@ -306,7 +306,7 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         if (n != 0 && !std::has_single_bit(n)) {
             // Nothing reserves rax, rcx, and rdx for the division, so save them around it.
             auto save = fe::Vector<size_t>();
-            for (auto r : {Rax, Rcx, Rdx})
+            for (auto r : {encoding(reg::rax), encoding(reg::rcx), encoding(reg::rdx)})
                 if (r != rd) save.emplace_back(r);
             for (auto r : save)
                 line("pushq {}", name(r, 64));
@@ -315,11 +315,11 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
             if (wx < 32)
                 line("movz{}l {}, %eax", suffix(wx), name(rs, wx));
             else
-                line("mov{} {}, {}", suffix(ws), name(rs, ws), name(Rax, ws));
+                line("mov{} {}, {}", suffix(ws), name(rs, ws), name(encoding(reg::rax), ws));
             line("xorl %edx, %edx");
-            line("mov{} ${}, {}", suffix(ws), n, name(Rcx, ws));
-            line("div{} {}", suffix(ws), name(Rcx, ws));
-            if (rd != Rdx) line("movq %rdx, {}", name(rd, 64));
+            line("mov{} ${}, {}", suffix(ws), n, name(encoding(reg::rcx), ws));
+            line("div{} {}", suffix(ws), name(encoding(reg::rcx), ws));
+            if (rd != encoding(reg::rdx)) line("movq %rdx, {}", name(rd, 64));
             for (auto r : save | std::views::reverse)
                 line("popq {}", name(r, 64));
         } else {
@@ -334,14 +334,14 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
     } else if (id == Annex::Base<cc>) {
         use_flags(x);
         // A condition that only a branch consumes has no register.
-        if (auto r = fe::lookup(regs_, res)) line("set{} {}", ccs[nat(f->as<App>()->arg())], name(*r, 8));
+        if (auto r = fe::lookup(regs_, res)) line("set{} {}", ccs[axm->sub()], name(*r, 8));
     } else if (id == Annex::Base<cmovcc>) {
         auto [fl, a, b] = x->projs<3>();
         auto w          = width(res->type());
         auto dst        = def_reg(res);
         assert(use_reg(a) == dst);
         use_flags(fl);
-        line("cmov{} {}, {}", ccs[nat(f->as<App>()->callee()->as<App>()->arg())], name(use_reg(b), w), name(dst, w));
+        line("cmov{} {}, {}", ccs[axm->sub()], name(use_reg(b), w), name(dst, w));
     } else {
         f->blame(MIM_X86_BE "cannot emit `{}`", axm).bail();
     }
@@ -479,7 +479,7 @@ void Emitter::call(Lam* callee, const Def* arg) {
     auto back = Moves();
     for (size_t i = 0; i != m; ++i)
         if (auto x = k->var(m, i); !is_mem(x))
-            if (auto r = fe::lookup(regs_, x)) back.emplace_back(*r, Src{.reg = Rax});
+            if (auto r = fe::lookup(regs_, x)) back.emplace_back(*r, Src{.reg = encoding(reg::rax)});
     parallel(std::move(back), {});
     jump(k);
 }
@@ -512,7 +512,7 @@ void Emitter::block(const Liveness::Block& b) {
     if (callee == ret_) {
         auto moves = Moves();
         for (auto a : term->args())
-            if (!is_mem(a)) moves.emplace_back(Rax, source(a));
+            if (!is_mem(a)) moves.emplace_back(encoding(reg::rax), source(a));
         if (moves.size() > 1) b.lam->blame(MIM_X86_BE "`{}` returns more than one value", b.lam).bail();
         parallel(std::move(moves), {});
         epilogue();
@@ -528,7 +528,7 @@ void Emitter::block(const Liveness::Block& b) {
         auto t_lbl      = trampoline ? label(b.lam) + ".t" : label(t);
         if (auto app = isa_sched_cc(c)) {
             use_flags(app->arg());
-            line("j{} {}", ccs[nat(sched_insn(app)->as<App>()->arg())], t_lbl);
+            line("j{} {}", ccs[Axm::as<cc, 1>(sched_insn(app)).sub()], t_lbl);
         } else {
             auto r = name(use_reg(c), 8);
             line("testb {}, {}", r, r);

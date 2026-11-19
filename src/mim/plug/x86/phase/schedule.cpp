@@ -15,11 +15,7 @@ bool is_insn(const Def* def) {
 }
 
 /// Flags are no register value, so each consumer recomputes them right before itself.
-bool is_flags(const Def* def) {
-    if (Axm::isa<Fl>(def->type())) return true;
-    if (auto app = def->isa<App>(); app && app->axm()) return app->axm()->flags() == Annex::Base<cc>;
-    return false;
-}
+bool is_flags(const Def* def) { return Axm::isa<Flags>(def->type()) || Axm::isa<cc>(def); }
 
 /// An instruction without a place of its own: a fresh copy goes right before each use.
 bool is_remat(const Def* def) { return is_insn(def) && (Scheduler::is_remat(def) || is_flags(def)); }

@@ -21,11 +21,11 @@ import compile;
 ///
 /// ## Types
 ///
-/// ### Fl
+/// ### Flags
 ///
 /// The flags register.
 ///
-axm Fl: *;
+axm Flags: *;
 ///
 /// ### Addr
 ///
@@ -136,24 +136,29 @@ axm sched: {D C: *} → (D → C) → mem.M 0 → D → [mem.M 0, C];
 ///
 axm in: [r: I4] → {s: Nat} → Idx s → Idx s;
 ///
-/// These lets name the registers in hardware encoding order.
+/// ### reg
 ///
-anx let rax = 0I4;
-anx let rcx = 1I4;
-anx let rdx = 2I4;
-anx let rbx = 3I4;
-anx let rsp = 4I4;
-anx let rbp = 5I4;
-anx let rsi = 6I4;
-anx let rdi = 7I4;
-anx let r8  = 8I4;
-anx let r9  = 9I4;
-anx let r10 = 10I4;
-anx let r11 = 11I4;
-anx let r12 = 12I4;
-anx let r13 = 13I4;
-anx let r14 = 14I4;
-anx let r15 = 15I4;
+/// The general-purpose registers in hardware encoding order.
+/// A register's subtag is its hardware encoding, so they have to stay in this order.
+///
+pub mod reg
+    anx let rax = 0I4;
+    anx let rcx = 1I4;
+    anx let rdx = 2I4;
+    anx let rbx = 3I4;
+    anx let rsp = 4I4;
+    anx let rbp = 5I4;
+    anx let rsi = 6I4;
+    anx let rdi = 7I4;
+    anx let r8  = 8I4;
+    anx let r9  = 9I4;
+    anx let r10 = 10I4;
+    anx let r11 = 11I4;
+    anx let r12 = 12I4;
+    anx let r13 = 13I4;
+    anx let r14 = 14I4;
+    anx let r15 = 15I4;
+end
 ///
 /// ## Instructions
 ///
@@ -229,24 +234,24 @@ axm (movzx, movsx, trunc): {s: Nat} → [d: Nat] → Idx s → Idx d;
 ///
 /// `cmp r, r/imm` and `test r, r/imm`.
 ///
-axm (cmp, test): {s: Nat} → «2; Idx s» → Fl;
+axm (cmp, test): {s: Nat} → «2; Idx s» → Flags;
 ///
 /// ### Condition Codes
 ///
-/// A condition code `cc` is a Nat in hardware encoding order:
-/// o = 0, no = 1, b = 2, ae = 3, e = 4, ne = 5, be = 6, a = 7, s = 8, ns = 9, p = 10, np = 11, l = 12, ge = 13, le = 14, g = 15.
+/// The condition codes in hardware encoding order:
+/// `o` = 0, `no` = 1, `b` = 2, `ae` = 3, `e` = 4, `ne` = 5, `be` = 6, `a` = 7, `s` = 8, `ns` = 9, `p` = 10, `np` = 11, `l` = 12, `ge` = 13, `le` = 14, `g` = 15.
 ///
 /// #### cc
 ///
-/// Tests `cc` on the flags: `jcc` as a branch condition, `setcc` otherwise.
+/// Tests a condition code on the flags: `jcc` as a branch condition, `setcc` otherwise.
 ///
-axm cc: [cc: Nat] → Fl → Bool;
+axm cc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): Flags → Bool;
 ///
 /// #### cmovcc
 ///
-/// `cmovcc cc (f, x, y)` yields `y` if `cc` holds on `f`, else `x`, like `(x, y)#cond`.
+/// `cmovcc.l (f, x, y)` yields `y` if `l` holds on `f`, else `x`, like `(x, y)#cond`.
 ///
-axm cmovcc: [cc: Nat] → {s: Nat} → [Fl, Idx s, Idx s] → Idx (gpr16 s);
+axm cmovcc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): {s: Nat} → [Flags, Idx s, Idx s] → Idx (gpr16 s);
 ///
 /// ## Phases
 ///

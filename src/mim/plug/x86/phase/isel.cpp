@@ -34,37 +34,45 @@ nat_t trait(core::trait t, const Def* type) {
     type->blame(MIM_X86_BE "type `{}` has no static size or alignment", type).bail();
 }
 
-std::optional<nat_t> cc(core::icmp id) {
+std::optional<x86::cc> cc(core::icmp id) {
     // clang-format off
     switch (id) {
-        case core::icmp::  e: return 4;
-        case core::icmp:: ne: return 5;
-        case core::icmp::ul : return 2;
-        case core::icmp::ule: return 6;
-        case core::icmp::ug : return 7;
-        case core::icmp::uge: return 3;
-        case core::icmp::sl : return 12;
-        case core::icmp::sle: return 14;
-        case core::icmp::sg : return 15;
-        case core::icmp::sge: return 13;
+        case core::icmp::  e: return x86::cc:: e;
+        case core::icmp:: ne: return x86::cc::ne;
+        case core::icmp::ul : return x86::cc:: b;
+        case core::icmp::ule: return x86::cc::be;
+        case core::icmp::ug : return x86::cc:: a;
+        case core::icmp::uge: return x86::cc::ae;
+        case core::icmp::sl : return x86::cc:: l;
+        case core::icmp::sle: return x86::cc::le;
+        case core::icmp::sg : return x86::cc:: g;
+        case core::icmp::sge: return x86::cc::ge;
         default: return {};
     }
     // clang-format on
 }
 
-std::optional<nat_t> cc(core::ncmp id) {
+std::optional<x86::cc> cc(core::ncmp id) {
     // clang-format off
     switch (id) {
-        case core::ncmp:: e: return 4;
-        case core::ncmp::ne: return 5;
-        case core::ncmp::l : return 2;
-        case core::ncmp::le: return 6;
-        case core::ncmp::g : return 7;
-        case core::ncmp::ge: return 3;
+        case core::ncmp:: e: return x86::cc:: e;
+        case core::ncmp::ne: return x86::cc::ne;
+        case core::ncmp::l : return x86::cc:: b;
+        case core::ncmp::le: return x86::cc::be;
+        case core::ncmp::g : return x86::cc:: a;
+        case core::ncmp::ge: return x86::cc::ae;
         default: return {};
     }
     // clang-format on
 }
+
+std::optional<x86::cc> cc(const Def* cmp) {
+    if (auto op = Axm::isa<core::icmp>(cmp)) return cc(op.id());
+    return cc(Axm::as<core::ncmp>(cmp).id());
+}
+
+/// The `cmovcc` with the same subtag as @p code.
+x86::cmovcc cmovcc_of(sub_t code) { return static_cast<x86::cmovcc>(Annex::Base<x86::cmovcc> | code); }
 
 /// Does the old_world() or new_world() literal @p lit fit a sign-extended 32-bit immediate?
 bool fits_imm(const Def* lit) {
@@ -112,32 +120,94 @@ bool is_lowered_plugin(const Axm* axm) {
     return p == core::Plugin_Id || p == mem::Plugin_Id || p == math::Plugin_Id;
 }
 
-/// The x86 instruction for the `core` operation @p def if it has a memory-operand form (read-modify-write if @p rmw).
-std::optional<flags_t> alu_id(const Def* def, bool rmw) {
-    auto s = Idx::isa_lit(def->type());
-    if (!s || !is_reg_size(*s)) return {};
-    if (auto op = Axm::isa<core::wrap>(def)) {
-        switch (op.id()) {
-            case core::wrap::add: return Annex::Base<add>;
-            case core::wrap::sub: return Annex::Base<sub>;
-            // `imul` has neither an 8-bit nor a read-modify-write form.
-            case core::wrap::mul: return !rmw && reg_width(*s) >= 16 ? std::optional(Annex::Base<imul>) : std::nullopt;
-            default: return {};
-        }
-    } else if (auto op = Axm::isa<core::bit2>(def)) {
-        switch (op.id()) {
-            case core::bit2::and_: return Annex::Base<and_>;
-            case core::bit2::or_: return Annex::Base<or_>;
-            case core::bit2::xor_: return Annex::Base<xor_>;
-            default: return {};
-        }
-    }
-    return {};
+/// How `match` extracts the operands of a pattern.
+enum class Tag : u8 {
+    Lea,   ///< `mem.lea (p, i)`.
+    Load,  ///< `mem.load (m, p)`.
+    Store, ///< `mem.store (m, p, x)`.
+    Bin,   ///< Two operands; the value may come from a folded load.
+    Cmp,   ///< Two operands and a supported `core.icmp`/`core.ncmp` predicate.
+    Unary, ///< One operand.
+    Div,   ///< Two operands behind the `divrem` tuple.
+    None,  ///< No operands.
+};
+
+/// A program-side operation `match` recognizes: its axiom, the `Op` it selects, and how to take it apart.
+struct Pattern {
+    flags_t flags;        ///< The axiom, or the whole annex if `member` is `false`.
+    bool member = true;   ///< @p flags names one member of the annex.
+    Op op;                ///< The operation @p flags selects.
+    Tag tag;              ///< How `match` extracts the operands.
+    flags_t insn  = 0;    ///< The x86 ALU instruction of its memory form, or 0 if it has none.
+    bool commutes = true; ///< An immediate may also be the first operand.
+};
+
+/// One member of a multi-member annex.
+template<class Id>
+constexpr Pattern member(Id id, Op op, Tag tag, flags_t insn = 0, bool commutes = true) {
+    return Pattern{flags_t(id), true, op, tag, insn, commutes};
 }
 
-bool commutes(const Def* def) {
-    auto op = Axm::isa<core::wrap>(def);
-    return !op || op.id() != core::wrap::sub;
+/// The whole annex.
+template<class Id>
+constexpr Pattern annex(Op op, Tag tag) {
+    return Pattern{Annex::base<Id>(), false, op, tag};
+}
+
+// clang-format off
+/// The program side of the rule set: which `core`/`mem` axioms isel covers.
+constexpr Pattern patterns_[] = {
+    // The members of an annex select different instructions.
+    member(core::wrap::add,  Op::WrapAdd,  Tag::Bin, Annex::Base<add>),
+    member(core::wrap::sub,  Op::WrapSub,  Tag::Bin, Annex::Base<sub>,  false),
+    member(core::wrap::mul,  Op::WrapMul,  Tag::Bin, Annex::Base<imul>),
+    member(core::wrap::shl,  Op::WrapShl,  Tag::Bin, 0,                false),
+    member(core::bit2::and_, Op::BitAnd,   Tag::Bin, Annex::Base<and_>),
+    member(core::bit2::or_,  Op::BitOr,    Tag::Bin, Annex::Base<or_>),
+    member(core::bit2::xor_, Op::BitXor,   Tag::Bin, Annex::Base<xor_>),
+    member(core::bit2::nand, Op::BitNand,  Tag::Bin),
+    member(core::bit2::nor,  Op::BitNor,   Tag::Bin),
+    member(core::bit2::nxor, Op::BitNxor,  Tag::Bin),
+    member(core::shr::a,     Op::ShrA,     Tag::Bin, 0,                false),
+    member(core::shr::l,     Op::ShrL,     Tag::Bin, 0,                false),
+    member(core::nat::add,   Op::NatAdd,   Tag::Bin),
+    member(core::nat::sub,   Op::NatSub,   Tag::Bin, 0,                false),
+    member(core::nat::mul,   Op::NatMul,   Tag::Bin),
+    member(core::nat::div,   Op::NatDiv,   Tag::Bin),
+    member(core::nat::rem,   Op::NatRem,   Tag::Bin),
+
+    // One axiom per instruction.
+    annex<core::icmp>    (Op::Icmp,      Tag::Cmp),
+    annex<core::ncmp>    (Op::Ncmp,      Tag::Cmp),
+    annex<core::conv>    (Op::Conv,      Tag::Unary),
+    annex<core::idx>     (Op::Idx,       Tag::Unary),
+    annex<core::idx2nat> (Op::Idx2Nat,   Tag::Unary),
+    annex<core::bitcast> (Op::Bitcast,   Tag::Unary),
+    annex<core::rem>     (Op::Rem,       Tag::Unary),
+    annex<core::div>     (Op::Div,       Tag::Div),
+    annex<mem::lea>      (Op::LeaOffset, Tag::Lea),
+    annex<mem::load>     (Op::Load,      Tag::Load),
+    annex<mem::store>    (Op::Store,     Tag::Store),
+    annex<mem::mslot>    (Op::Slot,      Tag::None),
+    annex<mem::assume>   (Op::Assume,    Tag::None),
+};
+// clang-format on
+
+/// The pattern of @p def, or `nullptr` if isel does not cover it.
+const Pattern* pattern(const Def* def) {
+    auto [axm, curry, _] = Axm::get(def);
+    if (!axm || curry) return nullptr;
+    for (const auto& p : patterns_)
+        if (p.member ? axm->flags() == p.flags : axm->base() == p.flags) return &p;
+    return nullptr;
+}
+
+/// Does @p def, matched by @p p, have a memory-operand form (read-modify-write if @p rmw)?
+bool has_mem_form(const Pattern& p, const Def* def, bool rmw) {
+    auto s = Idx::isa_lit(def->type());
+    if (!p.insn || !s || !is_reg_size(*s)) return false;
+    // `imul` has neither an 8-bit nor a read-modify-write form.
+    return p.op != Op::WrapMul || (!rmw && reg_width(*s) >= 16);
 }
 
 /// The continuation whose `mem.M` chain @p m is on.
@@ -201,7 +271,9 @@ std::optional<nat_t> offset(const App* lea) {
 
 /// The x86 ALU instruction for the old_world() operation @p def; it has a memory operand.
 const Def* alu(World& w, const Def* def) {
-    return w.app(w.annex(*alu_id(def, false)), w.lit_nat(*Idx::isa_lit(def->type())));
+    auto p = pattern(def);
+    assert(p && p->insn);
+    return w.app(w.annex(p->insn), w.lit_nat(*Idx::isa_lit(def->type())));
 }
 
 } // namespace
@@ -259,13 +331,7 @@ constexpr u16 pack(W... w) {
 }
 
 template<class... W>
-constexpr Rule rule(Op op,
-                    Form form,
-                    Ty type,
-                    pbqp::Cost cost,
-                    std::string_view name,
-                    const Def* (ISel::*build)(const Def*, const Alt&),
-                    W... w) {
+constexpr Rule rule(Op op, Form form, Ty type, pbqp::Cost cost, std::string_view name, BuildFn build, W... w) {
     return Rule{op, form, type, cost, u8(sizeof...(W)), pack(w...), name, build};
 }
 
@@ -361,54 +427,6 @@ constexpr Rule rules_[] = {
 };
 // clang-format on
 
-/// @p op is a shift, whose immediate operand may be any literal.
-bool is_shift(Op op) { return op == Op::WrapShl || op == Op::ShrA || op == Op::ShrL; }
-
-std::optional<Op> bin_op(const Def* def) {
-    if (auto w = Axm::isa<core::wrap>(def)) {
-        switch (w.id()) {
-            case core::wrap::add: return Op::WrapAdd;
-            case core::wrap::sub: return Op::WrapSub;
-            case core::wrap::mul: return Op::WrapMul;
-            case core::wrap::shl: return Op::WrapShl;
-        }
-        return {};
-    }
-    if (auto b = Axm::isa<core::bit2>(def)) {
-        switch (b.id()) {
-            case core::bit2::and_: return Op::BitAnd;
-            case core::bit2::or_: return Op::BitOr;
-            case core::bit2::xor_: return Op::BitXor;
-            case core::bit2::nand: return Op::BitNand;
-            case core::bit2::nor: return Op::BitNor;
-            case core::bit2::nxor: return Op::BitNxor;
-            default: return {};
-        }
-    }
-    if (auto s = Axm::isa<core::shr>(def)) return s.id() == core::shr::a ? Op::ShrA : Op::ShrL;
-    return {};
-}
-
-Op nat_op(core::nat id) {
-    switch (id) {
-        case core::nat::add: return Op::NatAdd;
-        case core::nat::sub: return Op::NatSub;
-        case core::nat::mul: return Op::NatMul;
-        case core::nat::div: return Op::NatDiv;
-        case core::nat::rem: return Op::NatRem;
-    }
-    std::unreachable();
-}
-
-std::optional<Op> unary_op(const Def* def) {
-    if (Axm::isa<core::conv>(def)) return Op::Conv;
-    if (Axm::isa<core::idx>(def)) return Op::Idx;
-    if (Axm::isa<core::idx2nat>(def)) return Op::Idx2Nat;
-    if (Axm::isa<core::bitcast>(def)) return Op::Bitcast;
-    if (Axm::isa<core::rem>(def)) return Op::Rem;
-    return {};
-}
-
 Want ri(const Def* def) { return Lit::isa(def) && fits_imm(def) ? Want::Imm : Want::Reg; }
 
 } // namespace
@@ -490,12 +508,10 @@ const Def* ISel::build_bin_rm(const Def* root, const Alt& alt) {
 }
 
 const Def* ISel::build_cmp(const Def* root, const Alt& alt) {
-    auto& w   = new_world();
-    auto a    = hole(alt.demands[0].def);
-    auto b    = hole(alt.demands[1].def, alt.demands[1].want);
-    auto op   = Axm::isa<core::icmp>(root);
-    auto code = op ? cc(op.id()) : cc(Axm::as<core::ncmp>(root).id());
-    return w.call<x86::cc>(*code, bin<cmp>(w, a, b));
+    auto& w = new_world();
+    auto a  = hole(alt.demands[0].def);
+    auto b  = hole(alt.demands[1].def, alt.demands[1].want);
+    return w.call(*cc(root), bin<cmp>(w, a, b));
 }
 
 const Def* ISel::build_nat(const Def* root, const Alt& alt) {
@@ -505,7 +521,8 @@ const Def* ISel::build_nat(const Def* root, const Alt& alt) {
     switch (Axm::as<core::nat>(root).id()) {
         case core::nat::add: return bin<add>(w, a, b);
         case core::nat::mul: return bin<imul>(w, a, b);
-        case core::nat::sub: return w.call<cmovcc>(2, Defs{bin<cmp>(w, a, b), bin<sub>(w, a, b), reg(w, w.lit_i64(0))});
+        case core::nat::sub:
+            return w.call(x86::cmovcc::b, Defs{bin<cmp>(w, a, b), bin<sub>(w, a, b), reg(w, w.lit_i64(0))});
         case core::nat::div: return divrem<div, 0>(w, a, b);
         case core::nat::rem: return divrem<div, 1>(w, a, b);
     }
@@ -574,16 +591,18 @@ const Def* ISel::build_select(const Def* root, const Alt& alt) {
     auto x    = hole(alt.demands[0].def);
     auto y    = hole(alt.demands[1].def);
     auto c    = hole(alt.demands[2].def);
-    auto code = 5_n;
+    auto code = x86::cmovcc::ne;
     auto fl   = rr<test>(w, c, c);
-    if (auto app = c->isa<App>(); app && app->axm() && app->axm()->flags() == Annex::Base<x86::cc>)
-        code = *Lit::isa(app->callee()->as<App>()->arg()), fl = app->arg();
+    if (auto cond = Axm::isa<x86::cc>(c)) {
+        code = cmovcc_of(cond.sub());
+        fl   = cond->arg();
+    }
     // `cmov` has no 8-bit form.
     if (reg_width(size) < 16) {
         auto ext = [&](const Def* v) { return reg(w, zext(w.lit_i32(), v)); };
-        return w.call<trunc>(size, w.call<cmovcc>(code, Defs{fl, ext(x), ext(y)}));
+        return w.call<trunc>(size, w.call(code, Defs{fl, ext(x), ext(y)}));
     }
-    return w.call<cmovcc>(code, Defs{fl, x, y});
+    return w.call(code, Defs{fl, x, y});
 }
 
 size_t ISel::append(Op op, Form form, Alts& alts, Defs operands) const {
@@ -657,74 +676,73 @@ void ISel::match(const Def* def, Alts& alts) const {
 
     auto app = def->isa<App>();
     if (!app) return;
+    auto ptrn = pattern(app);
+    if (!ptrn) return;
 
-    if (auto lea = Axm::isa<mem::lea>(app)) {
-        auto [p, i] = lea->args<2>();
-        if (offset(app)) {
-            append(Op::LeaOffset, Form::Reg, alts, {p});
-        } else {
-            auto size = elem_size(app);
-            append(size == 1 || size == 2 || size == 4 || size == 8 ? Op::LeaScale : Op::LeaMul, Form::Reg, alts,
-                   {p, i});
+    switch (ptrn->tag) {
+        case Tag::Lea: {
+            auto [base, i] = app->args<2>();
+            if (offset(app)) {
+                append(ptrn->op, Form::Reg, alts, {base});
+            } else {
+                auto size = elem_size(app);
+                append(size == 1 || size == 2 || size == 4 || size == 8 ? Op::LeaScale : Op::LeaMul, Form::Reg, alts,
+                       {base, i});
+            }
+            return;
         }
-    } else if (auto ld = Axm::isa<mem::load>(app)) {
-        if (xsize(app->type()->proj(2, 1))) append(Op::Load, Form::Reg, alts, {ld->arg(2, 1)});
-    } else if (auto st = Axm::isa<mem::store>(app)) {
-        auto [m, p, x] = st->args<3>();
-        if (!xsize(x->type())) return;
-        append(Op::Store, Form::Reg, alts, {p, x});
-        append(Op::Store, Form::Imm, alts, {p, x});
-        if (auto u = x->isa<App>(); u && uses(u) == 1 && alu_id(u, true) && uses(u->arg()) == 1) {
+        case Tag::Load:
+            if (xsize(app->type()->proj(2, 1))) append(ptrn->op, Form::Reg, alts, {app->arg(2, 1)});
+            return;
+        case Tag::Store: {
+            auto [m, p, x] = app->args<3>();
+            if (!xsize(x->type())) return;
+            append(ptrn->op, Form::Reg, alts, {p, x});
+            append(ptrn->op, Form::Imm, alts, {p, x});
+            auto u = x->isa<App>();
+            if (!u || uses(u) != 1 || uses(u->arg()) != 1) return;
+            auto up = pattern(u);
+            if (!up || !has_mem_form(*up, u, true)) return;
             auto [a, b] = u->args<2>();
             for (auto [v, other, v_is_a] : {std::tuple{a, b, true}, std::tuple{b, a, false}}) {
-                if (!v_is_a && !commutes(u)) break;
+                if (!v_is_a && !up->commutes) break;
                 // The load's memory has no other user, so nothing lies between load and store.
                 if (auto ld = sole_load(v);
                     ld && v != other && ld->arg(2, 1) == p && ld->proj(2, 0) == m && uses(m) == 1)
                     append_store_mr(alts, p, x, u, ld, v, other);
             }
+            return;
         }
-    } else if (auto op = bin_op(app)) {
-        auto [a, b] = app->args<2>();
-        auto sh     = is_shift(*op);
-        append(*op, Form::Reg, alts, {a, b});
-        if (!append(*op, Form::Imm, alts, {a, b}) && !sh && commutes(app)) append(*op, Form::Imm, alts, {b, a});
-
-        if (!alu_id(app, false) || uses(app->arg()) != 1) return;
-        for (auto [v, other, v_is_a] : {std::tuple{b, a, false}, std::tuple{a, b, true}}) {
-            if (v_is_a && !commutes(app)) break;
-            auto ld = sole_load(v);
-            if (!ld || v == other) continue;
-            // The replacement sits at the load, so the other operand must be available there.
-            auto bb   = chain(ld->arg(2, 0));
-            auto done = DefSet();
-            if (bb && other->in_scope(bb) && !depends(other, ld, done)) append_bin_rm(*op, alts, other, v, ld);
+        case Tag::Bin: {
+            auto [a, b] = app->args<2>();
+            append(ptrn->op, Form::Reg, alts, {a, b});
+            if (!append(ptrn->op, Form::Imm, alts, {a, b}) && ptrn->commutes) append(ptrn->op, Form::Imm, alts, {b, a});
+            if (!has_mem_form(*ptrn, app, false) || uses(app->arg()) != 1) return;
+            for (auto [v, other, v_is_a] : {std::tuple{b, a, false}, std::tuple{a, b, true}}) {
+                if (v_is_a && !ptrn->commutes) break;
+                auto ld = sole_load(v);
+                if (!ld || v == other) continue;
+                // The replacement sits at the load, so the other operand must be available there.
+                auto bb   = chain(ld->arg(2, 0));
+                auto done = DefSet();
+                if (bb && other->in_scope(bb) && !depends(other, ld, done)) append_bin_rm(ptrn->op, alts, other, v, ld);
+            }
+            return;
         }
-    } else if (auto ic = Axm::isa<core::icmp>(app)) {
-        if (!cc(ic.id())) return;
-        auto [a, b] = app->args<2>();
-        append(Op::Icmp, Form::Reg, alts, {a, b});
-        append(Op::Icmp, Form::Imm, alts, {a, b});
-    } else if (auto nc = Axm::isa<core::ncmp>(app)) {
-        if (!cc(nc.id())) return;
-        auto [a, b] = app->args<2>();
-        append(Op::Ncmp, Form::Reg, alts, {a, b});
-        append(Op::Ncmp, Form::Imm, alts, {a, b});
-    } else if (auto n = Axm::isa<core::nat>(app)) {
-        auto op     = nat_op(n.id());
-        auto [a, b] = app->args<2>();
-        append(op, Form::Reg, alts, {a, b});
-        if (op != Op::NatDiv && op != Op::NatRem)
-            if (!append(op, Form::Imm, alts, {a, b}) && op != Op::NatSub) append(op, Form::Imm, alts, {b, a});
-    } else if (auto op = unary_op(app)) {
-        append(*op, Form::Reg, alts, {app->arg()});
-    } else if (auto op = Axm::isa<core::div>(app)) {
-        auto [x, y] = op->arg(2, 1)->projs<2>();
-        append(Op::Div, Form::Reg, alts, {x, y});
-    } else if (Axm::isa<mem::mslot>(app)) {
-        append(Op::Slot, Form::Reg, alts, Defs{});
-    } else if (Axm::isa<mem::assume>(app)) {
-        append(Op::Assume, Form::Reg, alts, Defs{});
+        case Tag::Cmp: {
+            if (!cc(app)) return;
+            auto [a, b] = app->args<2>();
+            append(ptrn->op, Form::Reg, alts, {a, b});
+            append(ptrn->op, Form::Imm, alts, {a, b});
+            return;
+        }
+        case Tag::Unary: append(ptrn->op, Form::Reg, alts, {app->arg()}); return;
+        case Tag::Div: {
+            auto [x, y] = app->arg(2, 1)->projs<2>();
+            append(ptrn->op, Form::Reg, alts, {x, y});
+            return;
+        }
+        case Tag::None: append(ptrn->op, Form::Reg, alts, Defs{}); return;
     }
 }
 

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <ranges>
+#include <utility>
 
 #include <mim/plug/core/core.h>
 
@@ -13,13 +14,20 @@
 
 namespace mim::plug::x86 {
 
-/// General-purpose registers in hardware encoding order.
-enum Reg : size_t { Rax, Rcx, Rdx, Rbx, Rsp, Rbp, Rsi, Rdi, R8, R9, R10, R11, R12, R13, R14, R15, Num_Regs };
+/// The hardware encoding of @p r.
+constexpr size_t encoding(reg r) { return Annex::flags2sub(std::to_underlying(r)); }
+
+constexpr size_t Num_Regs = Annex::num<reg>();
 
 /// System V AMD64 ABI.
-constexpr std::array<size_t, 6> Arg_Regs          = {Rdi, Rsi, Rdx, Rcx, R8, R9};
+// clang-format off
+constexpr std::array<size_t, 6> Arg_Regs = {
+    encoding(reg::rdi), encoding(reg::rsi), encoding(reg::rdx),
+    encoding(reg::rcx), encoding(reg::r8),  encoding(reg::r9),
+};
+// clang-format on
 constexpr std::array<bool, Num_Regs> Caller_Saved = {1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0};
-constexpr bool reserved(size_t r) { return r == Rsp || r == Rbp; }
+constexpr bool reserved(size_t r) { return r == encoding(reg::rsp) || r == encoding(reg::rbp); }
 constexpr size_t Num_Caller_Saved = std::ranges::count(Caller_Saved, true);
 constexpr size_t Num_Allocatable = Num_Regs - size_t(std::ranges::count_if(std::views::iota(0uz, +Num_Regs), reserved));
 
@@ -42,11 +50,7 @@ inline const Def* strip(const Def* def) {
 /// The `f` of `x86.sched f m x`.
 inline const Def* sched_insn(const App* app) { return app->callee()->as<App>()->callee()->as<App>()->arg(); }
 
-inline bool is_sched_cc(const App* app) {
-    if (Axm::isa<sched>(app))
-        if (auto f = sched_insn(app)->isa<App>(); f && f->axm()) return f->axm()->flags() == Annex::Base<cc>;
-    return false;
-}
+inline bool is_sched_cc(const App* app) { return Axm::isa<sched>(app) && Axm::isa<cc, 1>(sched_insn(app)); }
 
 /// The `x86.sched` of an `x86.cc` that yields @p cond, if any.
 inline const App* isa_sched_cc(const Def* cond) {

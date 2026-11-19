@@ -13,7 +13,7 @@ extern con f (m: mem.M 0, a b c n x: I32, return: Cn [mem.M 0, I32]) =
     con head (m: mem.M 0, i acc: I32) =
         con body (m: mem.M 0) = head (m, x86.add (i, 1I32), x86.add (acc, x));
         con exit (m: mem.M 0) = return (m, x86.add (x86.add (x86.add (acc, a), b), c));
-        (exit, body)#(x86.cc 12 (x86.cmp (i, n))) m;
+        (exit, body)#(x86.cc.l (x86.cmp (i, n))) m;
     head (m, 0I32, 0I32);
 
 extern lam _compile (): compile.Phase = compile.phases ff (x86.schedule, x86.spilling, x86.live);

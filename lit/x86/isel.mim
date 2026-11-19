@@ -23,4 +23,4 @@ extern con f (m: mem.M 0, p: mem.Ptr0 «4; I32», i: Idx 4, x: I32, return: Cn [
 // CHECK-DAG: x86.store
 // CHECK-DAG: (x86.shl @ i32)
 // CHECK-DAG: (x86.sar @ i32)
-// CHECK-DAG: (x86.cc 12)
+// CHECK-DAG: x86.cc.l

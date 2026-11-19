@@ -66,7 +66,7 @@ void Liveness::chain(size_t b) {
 
 Liveness::Class Liveness::cls(const Def* value) {
     auto type = value->type();
-    return Axm::isa<Fl>(type) ? Flags : Axm::isa<Spill>(type) ? Stack : Gpr;
+    return Axm::isa<x86::Flags>(type) ? Flags : Axm::isa<Spill>(type) ? Stack : Gpr;
 }
 
 bool Liveness::local(const Def* def) const {
