@@ -119,7 +119,6 @@ const Def* Rewriter::rewrite_imm_Struc  (const Struc*   d) { return world().stru
 const Def* Rewriter::rewrite_imm_Var    (const Var*     d) { return world().var    (rewrite(d->binder())->as_mut());      }
 const Def* Rewriter::rewrite_imm_Top    (const Top*     d) { return world().top    (rewrite(d->type()));                  }
 const Def* Rewriter::rewrite_imm_Bot    (const Bot*     d) { return world().bot    (rewrite(d->type()));                  }
-const Def* Rewriter::rewrite_imm_Join   (const Join*    d) { return world().join   (rewrite(d->ops()));                   }
 const Def* Rewriter::rewrite_imm_Variant(const Variant* d) { return world().variant(rewrite(d->ops()));                   }
 
 const Def* Rewriter::rewrite_imm_Arr (const Arr*  d) { return rewrite_imm_Seq(d); }
@@ -140,8 +139,7 @@ const Def* Rewriter::rewrite_imm_App(const App* d) {
 const Def* Rewriter::rewrite_imm_Inj(const Inj* d) {
     auto new_type  = rewrite(d->type());
     auto new_value = rewrite(d->value());
-    if (d->type()->isa<Variant>()) return world().inj(new_type, d->index(), new_value);
-    return world().inj(new_type, new_value);
+    return world().inj(new_type, d->index(), new_value);
 }
 
 const Def* Rewriter::rewrite_imm_Insert(const Insert* d) {

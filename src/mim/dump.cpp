@@ -205,12 +205,8 @@ std::optional<std::string_view> idx_name(nat_t size) {
 Prec def2prec(Ctx* ctx, const Def* def) {
     if (auto ex = def->isa<Extract>()) return by_name(ctx, ex) ? Prec::Lit : Prec::Extract;
     if (def->isa<Insert>()) return Prec::Ins;
-    if (def->isa<Join>()) return Prec::Union;
-    if (auto inj = def->isa<Inj>()) {
-        if (auto variant = inj->type()->isa<Variant>())
-            return variant->op(inj->index()) == def->world().sigma() ? Prec::Extract : Prec::App;
-        return Prec::Inj;
-    }
+    if (auto inj = def->isa<Inj>())
+        return inj->type()->as<Variant>()->op(inj->index()) == def->world().sigma() ? Prec::Extract : Prec::App;
     if (def->isa<Name>()) return Prec::Inj;
     if (def->isa<Struc>()) return Prec::Prefix;
     if (def->isa<Variant>()) return Prec::Lit; // always parenthesized
@@ -694,17 +690,13 @@ void full(std::ostream& os, Full d) {
         return std::print(os, "{}{}; {}{}", pl, shape(d.ctx(), pack, pack->has_var()), d.op(pack->body()), pr);
     } else if (auto proxy = d->isa<Proxy>()) {
         return std::print(os, "(proxy#{} {})", proxy->tag(), Op::map(d.ctx(), proxy->ops()));
-    } else if (auto join = d->isa<Join>()) {
-        return std::print(os, "{}", Op::map(d.ctx(), join->ops(), " ∪ ", Prec::Union));
     } else if (auto variant = d->isa<Variant>()) {
         return std::print(os, "({})", ctors(d.ctx(), variant));
     } else if (auto inj = d->isa<Inj>()) {
-        if (auto variant = inj->type()->isa<Variant>()) {
-            auto ctor = std::format("{}#{}", d.l(variant, Prec::Extract), inj->index());
-            if (variant->op(inj->index()) == d->world().sigma()) return std::print(os, "{}", ctor);
-            return std::print(os, "{} {}", ctor, d.r(inj->value(), Prec::App));
-        }
-        return std::print(os, "{} inj {}", d.l(inj->value(), Prec::Inj), d.r(inj->type(), Prec::Inj));
+        auto variant = inj->type()->as<Variant>();
+        auto ctor    = std::format("{}#{}", d.l(variant, Prec::Extract), inj->index());
+        if (variant->op(inj->index()) == d->world().sigma()) return std::print(os, "{}", ctor);
+        return std::print(os, "{} {}", ctor, d.r(inj->value(), Prec::App));
     } else if (auto name = d->isa<Name>()) {
         return std::print(os, "{} inj {}", d.l(name->op(), Prec::Inj), d.r(name->nom(), Prec::Inj));
     } else if (auto struc = d->isa<Struc>()) {
@@ -715,16 +707,14 @@ void full(std::ostream& os, Full d) {
         return std::print(os, "{}{}{}", pl, d.op(wrap->op()), pr);
     } else if (auto match = d->isa<Match>(); match && d.ctx() && match->num_arms() != 0) {
         std::print(os, "match {} with", d.op(match->scrutinee()));
-        auto variant = match->scrutinee()->type()->isa<Variant>();
-        auto& tab    = d.ctx()->tab;
+        auto& tab = d.ctx()->tab;
         ++tab;
         for (size_t i = 0; auto arm : match->arms()) {
             auto dom = arm->type()->as<Pi>()->dom();
-            std::print(os, "\n{}| ", tab);
-            // A variant's arms are its constructors, in order; a constructor without payload binds nothing.
-            if (variant) std::print(os, "_{}", i++);
-            auto binds = !variant || dom != d->world().sigma();
-            if (binds && variant) os << ' ';
+            // The arms are the constructors, in order; a constructor without payload binds nothing.
+            std::print(os, "\n{}| _{}", tab, i++);
+            auto binds = dom != d->world().sigma();
+            if (binds) os << ' ';
             if (d.ctx()->arms.contains(arm)) {
                 auto lam = arm->as_mut<Lam>();
                 if (auto var = lam->has_var(); var && !d.ctx()->spelled.emplace(lam).second) unname(d.ctx(), var);

@@ -273,8 +273,8 @@ Ptr<Expr> Parser::sugar_callee(Tok op) {
 
 Ptr<Expr> Parser::parse_match_expr() {
     auto track = tracker();
-    expect(Tag::K_match, "opening match for union destruction");
-    auto scrutinee = parse_expr("destroyed union element");
+    expect(Tag::K_match, "opening match");
+    auto scrutinee = parse_expr("scrutinee of a match expression");
     expect(Tag::K_with, "match");
     Ptrs<MatchExpr::Arm> arms;
     accept(Tag::T_pipe);
@@ -345,6 +345,7 @@ Ptr<Expr> Parser::parse_primary_expr(fe::Cite ctxt) {
         case Tag::K_Rule:    return parse_rule_expr();
         case Tag::K_match:   return parse_match_expr();
         case Tag::T_pipe:    return parse_variant_expr();
+        case Tag::T_hole:    return ptr<HoleExpr>(lex().loc());
         default:
             if (!ctxt) return nullptr;
             syntax_err("primary expression", ctxt);

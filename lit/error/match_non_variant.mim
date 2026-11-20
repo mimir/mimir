@@ -1,0 +1,5 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+lam f (u: Nat): Nat = match u with | x => x;
+// CHECK: error: scrutinee of a match expression must be of variant type
+// CHECK: but it has type `Nat`

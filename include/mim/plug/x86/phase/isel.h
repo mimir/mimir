@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <optional>
 #include <string_view>
 
 #include <pbqp/graph.h>
@@ -19,24 +21,29 @@ enum class Ty : u8 {
     Reg,   ///< What the pattern's root yields, in registers.
     Base,  ///< `x86.Base`.
     Index, ///< `x86.Index`.
+    Lit,   ///< No rule's type, but that of a literal operand.
+    Num,
 };
 
 /// The type of a hole.
 enum class Want : u8 {
     Reg,   ///< A register.
-    Imm,   ///< A literal that fits a sign-extended `i32` immediate; it is a pattern node rather than a hole.
+    Imm,   ///< A literal that fits a sign-extended `i32` immediate.
     Sh,    ///< A literal shift count, which x86 masks; any literal fits.
     Base,  ///< `x86.Base`.
     Index, ///< `x86.Index`.
     Addr,  ///< `Addr i` for any `i`.
+    Num,
 };
+
+/// Does a hole of type @p want take a literal rather than a replacement?
+constexpr bool is_literal(Want want) { return want == Want::Imm || want == Want::Sh; }
 
 /// The operation a rule selects, one per instruction of the pattern surface.
 #define MIM_X86_ISEL_OPS(X) \
     X(Select)               \
     X(LeaOffset)            \
-    X(LeaScale)             \
-    X(LeaMul)               \
+    X(LeaIndex)             \
     X(Load)                 \
     X(Store)                \
     X(WrapAdd)              \
@@ -66,41 +73,69 @@ enum class Want : u8 {
     X(Div)                  \
     X(Slot)                 \
     X(Assume)               \
+    X(Alu)                  \
     X(Num)
 
+/// `Op::Alu` is no instruction: as an inner node, it matches any operation with a read-modify-write memory form.
 enum class Op : u8 {
 #define X(op) op,
     MIM_X86_ISEL_OPS(X)
 #undef X
 };
 
-/// Which operand form a rule builds; the instruction is the same.
-enum class Form : u8 {
-    Reg, ///< All operands in registers, addresses, or flags.
-    Imm, ///< A literal operand whose range the hole type states.
-    Rm,  ///< A load folded into a memory operand.
+/// One position of a rule's pattern in preorder: a hole, or an inner node whose @p arity operands follow it.
+struct Slot {
+    Want want = Want::Reg;
+    Op node   = Op::Num; ///< `Op::Num` for a hole.
+    u8 arity  = 0;
+
+    constexpr Slot() = default;
+    constexpr Slot(Want want)
+        : want(want) {}
+    constexpr Slot(Op node, u8 arity)
+        : node(node)
+        , arity(arity) {}
+
+    constexpr bool is_hole() const { return node == Op::Num; }
+    constexpr bool operator==(const Slot&) const = default;
+};
+
+/// A side condition of a rule beyond what its slots state.
+enum class Cond : u8 {
+    None,
+    Scale,  ///< The elements the root `mem.lea` indexes have a size of 1, 2, 4, or 8.
+    Fold,   ///< The root has a memory operand form and sits at its inner load, so its holes must be available there.
+    Rmw,    ///< The inner load reads the root store's address on the memory the store takes, which nothing else uses.
+    Same,   ///< The root has the register size of its operand.
+    Narrow, ///< The root's register is at most as wide as its operand's, but its size differs.
+    Widen,  ///< The root's register is wider than its operand's.
 };
 
 /// What a match needs of the operand @p def: a hole of type @p want or, if @p inner is set, that inner pattern node.
+/// While matching, @p inner is one plus the index of its Cover; `analyze()` turns it into the id of the inner
+/// alternative.
 struct Demand {
     const Def* def;
-    Want want = Want::Reg;
-    u64 inner = 0;
+    Want want    = Want::Reg;
+    size_t inner = 0;
+
+    bool operator==(const Demand&) const = default;
 };
 
 /// An inner node a match covers, with what it needs of its own operands.
 struct Cover {
     const Def* def;
-    u64 inner;
+    size_t inner = 0;
     fe::Vector<Demand> demands;
 };
 
 struct Rule;
+struct Pattern;
+struct Insn;
 
 /// An alternative of a PBQP node: a match rooted there, or the class of all matches covering it as the same inner node.
 struct Alt {
-    const Rule* rule = nullptr; ///< `nullptr` for an inner alternative.
-    u64 inner        = 0;
+    const Rule* rule = nullptr; ///< `nullptr` for an inner alternative, whose id is its index plus one.
     pbqp::Cost cost  = 0;
     fe::Vector<Demand> demands;
     fe::Vector<Cover> covers;
@@ -111,18 +146,24 @@ using Alts = fe::Vector<Alt>;
 /// Builds the replacement of the match @p alt rooted at the old_world() Def @p root.
 using BuildFn = const Def* (ISel::*)(const Def*, const Alt&);
 
-/// One pattern ↦ replacement: what it selects, its operand forms, holes, cost, and how to build the replacement.
+/// One pattern ↦ replacement: the root's operation, the pattern's slots, the replacement's type, cost, and builder.
 struct Rule {
+    static constexpr size_t Max_Slots = 6;
+
     Op op;
-    Form form;
     Ty type;
     pbqp::Cost cost;
-    u8 num_holes = 0;
-    u16 wants    = 0; ///< 3 bits per hole, see want().
     std::string_view name;
     BuildFn build;
+    Cond cond    = Cond::None;
+    u8 num_slots = 0;
+    std::array<Slot, Max_Slots> slots{};
 
-    Want want(size_t i) const { return Want((wants >> (3 * i)) & 0b111); }
+    constexpr Rule with(Cond c) const {
+        auto res = *this;
+        res.cond = c;
+        return res;
+    }
 };
 ///@}
 
@@ -153,8 +194,8 @@ public:
         auto n = fe::lookup(uses_, def);
         return n ? *n : 0;
     }
-    /// The `mem.load` of old_world() that @p def is the value of, if nothing else uses this value.
-    const App* sole_load(const Def* def) const;
+    /// The memory operation of old_world() that @p def is the value of, if nothing else uses this value.
+    const App* sole_value(const Def* def) const;
     /// The old_world() operand @p def as @p want in new_world().
     const Def* hole(const Def* def, Want want = Want::Reg);
     /// The rewritten @p def with a `Nat` literal as `I64`, for value operands.
@@ -167,23 +208,26 @@ public:
     Address split(const Def* addr);
     /// @p a as a value.
     const Def* materialize(Address a);
-    /// A binary x86 instruction builder.
-    using Insn = const Def* (*)(World&, const Def*, const Def*);
-
-    /// Applies @p insn, going through `i32` for operands narrower than 16 bits.
-    const Def* wide(Insn insn, const Def* type, bool sign, const Def* a, const Def* b);
+    /// Applies @p insn to @p a and @p b, a hole of type @p want; operand sizes it does not support go through `i32`.
+    const Def* call_insn(const Insn& insn, Want want, const Def* a, const Def* b);
+    /// Does the x86 instruction @p insn take operands of `Idx size`?
+    bool supports(flags_t insn, nat_t size);
+    /// Does @p def, matched by @p p, have a memory-operand form (read-modify-write if @p rmw)?
+    bool has_mem_form(const Pattern& p, const Def* def, bool rmw);
 
     const Def* build_lea_off(const Def* root, const Alt& alt);
     const Def* build_lea_idx(const Def* root, const Alt& alt);
     const Def* build_load(const Def* root, const Alt& alt);
     const Def* build_store(const Def* root, const Alt& alt);
     const Def* build_store_mr(const Def* root, const Alt& alt);
-    const Def* build_bin(const Def* root, const Alt& alt);
+    const Def* build_insn(const Def* root, const Alt& alt);
     const Def* build_bin_rm(const Def* root, const Alt& alt);
     const Def* build_cmp(const Def* root, const Alt& alt);
-    const Def* build_nat(const Def* root, const Alt& alt);
-    const Def* build_unary(const Def* root, const Alt& alt);
-    const Def* build_div(const Def* root, const Alt& alt);
+    const Def* build_nat_sub(const Def* root, const Alt& alt);
+    const Def* build_id(const Def* root, const Alt& alt);
+    const Def* build_trunc(const Def* root, const Alt& alt);
+    const Def* build_ext(const Def* root, const Alt& alt);
+    const Def* build_rem(const Def* root, const Alt& alt);
     const Def* build_slot(const Def* root, const Alt& alt);
     const Def* build_assume(const Def* root, const Alt& alt);
     const Def* build_select(const Def* root, const Alt& alt);
@@ -193,27 +237,46 @@ private:
     bool analyze() final;
     /// Counts in `uses_` how often each Def of old_world() occurs as an operand.
     void count(const Def*);
+    /// An operation of old_world() as a pattern node: its `Op`, its operands, and whether they commute.
+    struct Node {
+        const Pattern* ptrn;
+        Op op;
+        DefVec ops;
+    };
+    /// The operands of one pattern node that a match has yet to bind.
+    struct Frame {
+        const Def* node;
+        DefVec ops;
+        size_t next  = 0;
+        size_t cover = size_t(-1); ///< The Cover whose demands they are, or `size_t(-1)` for the root.
+    };
+
+    /// @p def as a pattern node, if a pattern covers it.
+    std::optional<Node> decompose(const Def* def) const;
     /// Appends the matches rooted at @p def to @p alts.
-    void match(const Def* def, Alts& alts) const;
-    /// Appends the alternatives of @p op and @p form that @p operands satisfy; returns how many.
-    size_t append(Op op, Form form, Alts& alts, Defs operands) const;
-    /// Appends the `bin_rm` alternatives folding the load @p ld into @p op.
-    void append_bin_rm(Op op, Alts& alts, const Def* other, const Def* v, const App* ld) const;
-    /// Appends the `store_mr` alternatives folding the load @p ld behind the store of @p u at @p p.
-    void append_store_mr(Alts& alts,
-                         const Def* p,
-                         const Def* x,
-                         const App* u,
-                         const App* ld,
-                         const Def* v,
-                         const Def* other) const;
-    /// The index of the first atomic alternative of @p alts, or `size_t(-1)`.
-    size_t atomic_choice(const Alts& alts) const;
+    void match(const Def* def, Alts& alts);
+    /// Appends the matches of @p rule rooted at @p root, which decomposes to @p node, to @p alts.
+    void append(const Rule& rule, const Def* root, const Node& node, Alts& alts);
+    /// Binds the slots of @p rule from @p i on to the pending operands in @p frames; complete matches go to @p alts.
+    void bind(const Rule& rule, const Def* root, size_t i, Alt alt, fe::Vector<Frame> frames, Alts& alts);
+    /// Pushes @p frame for @p node and binds on; also with swapped operands if they commute and their slots differ.
+    void descend(const Rule& rule,
+                 const Def* root,
+                 size_t i,
+                 Alt alt,
+                 fe::Vector<Frame> frames,
+                 Frame frame,
+                 const Node& node,
+                 Alts& alts);
+    /// The inner node the operand @p def of @p parent stands for, if nothing outside the match uses it.
+    const App* sole(const Frame& parent, const Def* def) const;
+    /// Does the match @p alt rooted at @p root meet the side condition of its rule?
+    bool holds(const Def* root, const Alt& alt);
 #ifdef MIM_ENABLE_CHECKS
     /// Verifies atomic completeness, total conversions, and inner-node coverage over the rule set.
     void check_rules() const;
 #endif
-    /// The node Def @p def stands for: a load stands for its value.
+    /// The node Def @p def stands for: a memory operation stands for its value.
     const Def* key(const Def* def) const;
     /// The chosen alternative of the node @p def.
     const Alt* choice(const Def* def) const;
@@ -230,6 +293,7 @@ private:
     const Def* rewrite_imm_Extract(const Extract*) final;
     const Def* coerce_leaf(const Def*, const Def*) final;
 
+    ankerl::unordered_dense::map<std::pair<flags_t, nat_t>, bool> supports_;
     DefMap<size_t> uses_;
     DefSet counted_;
     DefMap<Alts> alts_;

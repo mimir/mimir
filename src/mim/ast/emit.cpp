@@ -352,7 +352,7 @@ void Expr::emit_body(Emitter& e, const Def* decl) const {
 }
 
 const Def* ErrorExpr::emit_(Emitter&) const { std::unreachable(); }
-const Def* HoleExpr::emit_(Emitter& e) const { return e.world().mut_hole_type(); }
+const Def* HoleExpr::emit_(Emitter& e) const { return e.world().mut_hole(e.world().mut_hole_type()); }
 
 const Def* PathExpr::emit_(Emitter& e) const {
     assert(decl());
@@ -480,16 +480,6 @@ void InfixExpr::emit_body_(Emitter& e, const Def*) const {
     pi_->set_codom(rhs()->emit(e)); // TODO try to immutabilize
 }
 
-/// `a ∪ b ∪ c` is one n-ary Join, so flatten the left spine the left-associative parse built.
-static void emit_union(Emitter& e, const Expr* expr, DefVec& types) {
-    if (auto infix = InfixExpr::isa_op(Tag::T_union, expr)) {
-        emit_union(e, infix->lhs(), types);
-        types.emplace_back(infix->rhs()->emit(e));
-    } else {
-        types.emplace_back(expr->emit(e));
-    }
-}
-
 const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
     auto& w = e.world();
     // A simple path names a field of tup's Sigma before anything the binder resolved it to.
@@ -590,11 +580,6 @@ const Def* InfixExpr::emit_(Emitter& e) const {
     auto& w = e.world();
 
     switch (op().tag()) {
-        case Tag::T_union: {
-            DefVec types;
-            emit_union(e, this, types);
-            return w.join(types);
-        }
         case Tag::T_extract: {
             auto tup = w.implicit_holes(lhs()->emit(e));
             if (auto variant = tup->isa<Variant>()) return emit_ctor(e, variant, rhs());
@@ -663,11 +648,10 @@ Lam* MatchExpr::Arm::emit(Emitter& e, const Def* dom) const {
     auto _ = e.world().push(loc());
     if (ptrn()) {
         auto dom_t = ptrn()->emit_type(e);
-        if (dom && !Check::alpha(dom_t, dom))
+        if (!Check::alpha(dom_t, dom))
             e.error()
                 .e(ptrn()->loc(), "pattern of type `{}` does not match the constructor's payload `{}`", dom_t, dom)
                 .bail();
-        if (!dom) dom = dom_t;
     }
     auto lam = e.world().mut_lam(e.world().pi(dom, e.world().mut_hole_type()));
     if (ptrn()) ptrn()->emit_value(e, lam->var());
@@ -714,34 +698,18 @@ const Def* MatchExpr::emit_variant(Emitter& e, const Def* scrutinee, const Varia
 }
 
 const Def* MatchExpr::emit_(Emitter& e) const {
-    DefVec ops;
-    ops.emplace_back(scrutinee()->emit(e));
-    if (auto variant = ops.front()->isa_type<Variant>()) return emit_variant(e, ops.front(), variant);
-    if (auto nom = ops.front()->isa_type<Nom>())
-        if (auto variant = nom->op()->isa<Variant>();
-            variant && std::ranges::any_of(arms(), [](const auto& arm) { return arm->index() || arm->ctor(); })) {
+    auto scrut = scrutinee()->emit(e);
+    if (auto variant = scrut->isa_type<Variant>()) return emit_variant(e, scrut, variant);
+    if (auto nom = scrut->isa_type<Nom>())
+        if (auto variant = nom->op()->isa<Variant>()) {
             open_nom(e, loc(), nom);
-            return emit_variant(e, e.world().struc(ops.front()), variant);
+            return emit_variant(e, e.world().struc(scrut), variant);
         }
 
-    for (auto arm : arms()) {
-        if (arm->index() || arm->ctor())
-            e.error()
-                .e(arm->loc(), "a constructor pattern needs a variant scrutinee")
-                .n("but the scrutinee has type `{}`", type_of(ops.front()))
-                .bail();
-        ops.emplace_back(arm->emit(e));
-    }
-    auto res = e.world().match(ops);
-
-    // Only a *source* arm is unreachable by mistake; substitution legitimately kills arms of a polymorphic match.
-    auto cases = Match::cases(ops.front());
-    for (size_t i = 0, n = num_arms(); i != n; ++i)
-        if (std::ranges::none_of(cases, [&](const Def* c) { return Match::accepts(ops[i + 1], c); }))
-            e.error().w(arm(i)->loc(), "this arm is unreachable: no case of `{}` matches `{}`", type_of(ops.front()),
-                        ops[i + 1]->isa_type<Pi>()->dom());
-
-    return res;
+    e.error()
+        .e(scrutinee()->loc(), "scrutinee of a match expression must be of variant type")
+        .n("but it has type `{}`", type_of(scrut))
+        .bail();
 }
 
 void PiExpr::Dom::emit_type(Emitter& e) const {

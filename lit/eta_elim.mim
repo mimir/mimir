@@ -14,10 +14,6 @@ axm q: «2; [Idx 1, Nat]»;
 axm i: Idx 2;
 let r_extract_dyn: «N (q#i#0₂); Nat» = f (q#i#0₂);
 
-axm u: Idx 1 ∪ Nat;
-let r_match_join: «N (match u with | x: Idx 1 => x | _: Nat => 0₁); Nat»
-    = f (match u with | x: Idx 1 => x | _: Nat => 0₁);
-
 axm v: | A: Idx 1 | B: Nat;
 let r_match_variant: «N (match v with | A x => x | B _ => 0₁); Nat» = f (match v with | A x => x | B _ => 0₁);
 

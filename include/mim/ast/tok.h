@@ -29,7 +29,6 @@ namespace ast {
     m(Where,   L)       \
     m(Ins,     R)       \
     m(Inj,     R)       \
-    m(Union,   L)       \
     m(Arrow,   R)       \
     m(Pi,      N)       \
     m(Eq,      N)       \
@@ -181,8 +180,8 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_shr,        ">>")              \
     m(T_star,       "*")               \
     m(T_sub,        "-")               \
-    m(T_union,      "∪")               \
     m(T_pipe,       "|")               \
+    m(T_hole,       "?")               \
 
 /// @name Prefix Operator Table
 /// X-macro listing all prefix operators as `m(tag, str)`; they all live at Prec::Prefix.
@@ -217,7 +216,6 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
 /// These have a meaning of their own; InfixExpr::emit_ dispatches on the tag.
 #define MIM_INFIX_CORE(m)         \
     m(T_extract,  "#",   Extract) \
-    m(T_union,    "∪",   Union  ) \
     m(K_inj,      "inj", Inj    ) \
     m(T_arrow_r,  "→",   Arrow  ) \
     m(T_arrow_l,  "←",   Ins    ) \

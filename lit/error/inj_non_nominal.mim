@@ -1,0 +1,5 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+lam f {T: *} (x: Nat): T = x inj T;
+
+// CHECK: {{.*}}inj_non_nominal.mim:3:28-3:34: error: cannot inject into `T`, which is not a nominal type

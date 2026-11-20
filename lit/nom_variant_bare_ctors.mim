@@ -1,0 +1,11 @@
+// RUN: %mim %s
+
+plugin refly;
+
+// No arm names a constructor with a payload, so only the scrutinee's type makes this a match on a variant.
+nom Color = | Red | Green;
+lam hue (c: Color): Nat =
+    match c with
+    | Red   => 0
+    | Green => 1;
+let _ = refly.struc.e (hue Color#Green, 1);
