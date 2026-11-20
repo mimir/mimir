@@ -113,11 +113,15 @@ Done (on `feature/x86`):
 - `x86.isel` follows *Instruction Selection with PBQP*: both sides are data, `rules_` (one entry per pattern ↦ replacement) and `patterns_` (which `core`/`mem` axiom each operation is).
   A `Rule` carries the `Op` of its root, the type of its replacement, its cost, its name, its builder, a side condition `Cond`, and its pattern as `Slot`s in preorder: each is a hole of some `Want` or an inner node (an `Op` and its arity) whose operand slots follow it.
   `Op` has one value per instruction, and one instruction is one row per operand form (`add`, `add_imm`, `add_rm`); `Op::Alu` is a wildcard inner node for any operation with a read-modify-write memory form.
-  `Cond::Fold` (`bin_rm`) requires the root's memory form and the availability of its holes at the folded load; `Cond::Rmw` (`store_mr`) requires that the folded load reads the store's address on the memory the store takes, which nothing else uses.
-  A `Pattern` carries the axiom (or the member of a multi-member annex), its `Op`, the `Tag` that tells `decompose` how to take it apart, the x86 instruction of its memory form, and whether its operands commute.
+  `Cond::Scale` (`lea_index`) requires an element size of 1, 2, 4, or 8, `Cond::Fold` (`bin_rm`) requires the root's memory form and the availability of its holes at the folded load; `Cond::Rmw` (`store_mr`) requires that the folded load reads the store's address on the memory the store takes, which nothing else uses.
+  A `Pattern` carries the axiom (or the member of a multi-member annex; `select_` stands for an `Extract`), its `Op`, the `Tag` that tells `decompose` how to take it apart, its `Insn`, and whether its operands commute.
+  An `Insn` is the x86 instruction with its memory forms (`Mem`: `imul` has no `op m, r`), the result it takes of a pair-valued instruction (`div`), whether narrow operands are sign-extended, and whether the result is complemented (`nand` as `xor` of `and` with all ones).
+  So one builder, `build_insn`, selects every operation that is one instruction (`core.wrap`, `core.bit2`, `core.shr`, `core.nat` but `sub`, `core.div`, `core.rem`); the other builders are one per `Op` and never ask for the axiom again.
+  Which operand sizes an x86 instruction takes is read off the `refly.check` in its codomain (`supports`, memoized per instruction and size): a memory form needs it for the instruction and for `x86.load`, and `call_insn` and `build_select` go through `i32` where it fails.
   `match` decomposes a Def into its `Op` and operands and binds every rule of that `Op` slot by slot (`bind`), trying the swapped operands of a commuting node whenever its two operand subtrees differ; an inner node must be `sole` (its value and its parent's operand tuple have no other user).
   A match is an `Alt` with typed `Demand`s on the operands and the inner nodes it covers (`Cover`).
   `ISel::analyze()` builds the PBQP generically from that: every operation with a match is a node, inner alternatives are the classes of covers with equal demands (resolved bottom-up), edges price `conv` between rule type and hole type, and all-zero edges are left out.
+  Conversion costs are one table `conv_` from rule type (or `Ty::Lit` for a literal operand) to hole type; `key` lets the value projection of any memory operation stand for it.
   The rewrite is generic too: a root alternative's rule builds the replacement, `hole` converts operands to the hole's type, and an inner node defers to the root of its match.
   `atomic_choice` scans the alternatives for an atomic fallback (no inner nodes, holes only `Reg`/`Base`/`Addr`) instead of trusting the table order, a `static_assert` checks that every rule's slots form a tree, and `check_rules` verifies the rule set itself (see *Solvability*).
   `-X x86:isel-dot=<file>` writes the graph in Graphviz DOT format with the chosen options highlighted.
@@ -193,7 +197,6 @@ Instruction selection:
 
 - `isel` still emits size-check failures for non-register sizes (e.g. `core.wrap.add` on `Idx 5`); these need masking or a clear rejection.
 - `isel` emits a `trunc` → `movzx` pair for array indices that `core.legalize_idx` narrowed; it is a mask (`and x, 2^k - 1`), not a no-op, and should become one `and` in PBQP isel.
-- The builders still dispatch on the axiom (`build_bin`, `build_nat`, `build_unary`, `build_div`) instead of reading the x86 instruction off the rule, and "no 8-bit form" is known in three places (`has_mem_form`, `wide` for `imul`, `build_select`).
 - `malloc`/`free`, aggregate loads and stores, `bitcast` of unions or floats, `core.mulrem`, and `math` are not selected; `core.nat.div`/`rem` do not guard against zero like `ll`.
 
 Testing and tooling:
@@ -265,7 +268,7 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 
 - *sole*: an inner node's value has no user outside the match, so the match does not duplicate it; required for loads.
 - *range*: a literal fits its encoding.
-- *size*: the operand size is one the instruction supports; this is the `refly.check` in the instruction's codomain.
+- *size*: the operand size is one the instruction supports; this is the `refly.check` in the instruction's codomain, which isel evaluates for a literal size.
 - *memory order*: nothing may lie between the memory operations a match covers; the matcher rejects such a match before the PBQP is built.
 - *availability*: if the replacement sits at an inner node's place in the memory order (`x86.rm` sits at its load), the other holes must be available there.
 
@@ -289,7 +292,7 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 ### Staging
 
 - Now both sides of the rule set are `constexpr` tables in `isel.cpp`: `rules_`, one entry per operation and operand form with its slots, side condition, cost, and builder, and `patterns_`, one entry per recognized axiom with its `Tag`.
-  `decompose` names no axiom: it switches over `Tag` to extract the operands, so the only code left is the operand extraction, the side conditions a `Tag` implies (`core.icmp`/`core.ncmp` predicate support, register sizes), the choice among the `mem.lea` operations by element size, and the `Cond`s.
+  `decompose` names no axiom: it switches over `Tag` to extract the operands, so the only code left is the operand extraction, the side conditions a `Tag` implies (`core.icmp`/`core.ncmp` predicate support, register sizes), the split of `mem.lea` into a constant offset and a dynamic index, and the `Cond`s.
   The PBQP construction, the rewrite, and the solvability checks are generic over the tables.
 - Later, the rule table is generated from Mim rules (*Pattern Database*); nothing else changes.
 
