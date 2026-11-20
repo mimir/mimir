@@ -1,6 +1,0 @@
-// RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
-
-plugin core;
-
-extern fun f (t: [n: Nat, «n; I32»], i: Idx 2): (Nat, «t#0_2; I32»)#i = return t#i;
-// CHECK: error: cannot lower `(Nat, «{{.*}}; I32»)#{{.*}}`: its component `«{{.*}}; I32»` is not closed

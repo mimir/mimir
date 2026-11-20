@@ -21,17 +21,12 @@ const Def* LowerDynExtract::cast(const Def* type, const Def* val) {
     return w.call<bitcast>(type, val);
 }
 
-bool LowerDynExtract::retype(const Axm* axm) {
-    return mentions(axm->type(), [](const Def* def) { return isa_dyn(def); });
-}
-
 const Def* LowerDynExtract::rewrite_imm_Extract(const Extract* ex) {
     auto& w = new_world();
 
     if (auto dyn = isa_dyn(ex)) {
         auto data = DefVec();
         for (auto t : dyn->tuple()->ops()) {
-            if (!t->is_closed()) fe::throwf("cannot lower `{}`: its component `{}` is not closed", dyn, t);
             auto new_t = rewrite(t);
             if (!w.inhabitant(new_t) && !std::ranges::contains(data, new_t)) data.emplace_back(new_t);
         }

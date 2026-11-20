@@ -18,7 +18,6 @@ private:
     /// Converts the new_world() @p val between a core.Union and one of its cases, whichever way @p type demands.
     const Def* cast(const Def* type, const Def* val);
 
-    bool retype(const Axm*) final;
     const Def* rewrite_imm_Extract(const Extract*) final;
     const Def* rewrite_imm_Insert(const Insert*) final;
     const Def* coerce_leaf(const Def* new_type, const Def* new_val) final;

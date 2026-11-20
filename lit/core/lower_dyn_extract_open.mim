@@ -1,0 +1,8 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+plugin core;
+
+extern fun f (t: [n: Nat, «n; I32»], i: Idx 2): (Nat, «t#0_2; I32»)#i = return t#i;
+// CHECK: extern fun f {{.*}}: core.Union @ 2 (Nat, «{{.*}}; I32») =
+// CHECK: core.bitcast @ Nat
+// CHECK: core.bitcast @ «{{.*}}; I32»
