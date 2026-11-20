@@ -139,6 +139,7 @@ Tok Lexer::lex() {
         if (accept(U'λ')) return tok(Tag::T_lm);
         if (accept( '%')) return tok(Tag::T_rem);
         if (accept( '|')) return tok(Tag::T_pipe);
+        if (accept( '?')) return tok(Tag::T_hole);
         if (accept( ';')) return tok(Tag::T_semicolon);
         if (accept(U'★')) return tok(Tag::T_star);
         if (accept( '*')) return tok(Tag::T_star);

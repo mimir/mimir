@@ -345,6 +345,7 @@ Ptr<Expr> Parser::parse_primary_expr(fe::Cite ctxt) {
         case Tag::K_Rule:    return parse_rule_expr();
         case Tag::K_match:   return parse_match_expr();
         case Tag::T_pipe:    return parse_variant_expr();
+        case Tag::T_hole:    return ptr<HoleExpr>(lex().loc());
         default:
             if (!ctxt) return nullptr;
             syntax_err("primary expression", ctxt);

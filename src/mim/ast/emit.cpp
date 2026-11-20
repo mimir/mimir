@@ -352,7 +352,7 @@ void Expr::emit_body(Emitter& e, const Def* decl) const {
 }
 
 const Def* ErrorExpr::emit_(Emitter&) const { std::unreachable(); }
-const Def* HoleExpr::emit_(Emitter& e) const { return e.world().mut_hole_type(); }
+const Def* HoleExpr::emit_(Emitter& e) const { return e.world().mut_hole(e.world().mut_hole_type()); }
 
 const Def* PathExpr::emit_(Emitter& e) const {
     assert(decl());

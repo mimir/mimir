@@ -149,6 +149,9 @@ lam erased (f: Cn [x y: I32]): Cn [I32, I32] = f;
 /// An implicit domain is written `{...}`; `@` passes one explicitly.
 lam ident {T: *} (x: T): T = x;
 let _ = refly.struc.e (ident 23, ident @Nat 23);
+/// `?` is an explicit hole for inference to fill in, as a term or as a type.
+let _ = refly.struc.e (ident @? 23, ident @Nat 23);
+lam hole_ty (x: ?): Nat = x; // `x: Nat`
 /// `mutual` also groups functions, and `ret p = f $ a; body` binds the result of a continuation-style call.
 mutual
     fun even (n: I32): Bool = core.select (n == 0I32, yes, no) () where

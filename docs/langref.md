@@ -51,7 +51,7 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 ( ) [ ] { }
 ‹ › « »
 → ← => ⊥ ⊤ * □ λ
-= , ; . : @ $ # |
+= , ; . : @ $ # | ?
 + - / % == != < <= > >= << >>
 <eof>
 ```
@@ -405,6 +405,7 @@ e   ::= sign? L (":" e)?
      |  "⊥" (":" e)?
      |  "⊤" (":" e)?
      |  path
+     |  "?"
      |  d+ e
 ```
 
@@ -413,6 +414,7 @@ e   ::= sign? L (":" e)?
   Because `+` and `-` are [infix operators](@ref infix) everywhere else, `f -23` subtracts; pass a negative argument as `f (-23)`.
 - Without an explicit type, numeric literals default to `Nat`.
 - Without an explicit type, `⊥` and `⊤` default to `*`.
+- `?` is a `Hole` whose type is a `Hole` as well, so it stands for a term or a type alike, e.g. `x: ?` or `f @? x`; inference fills it in.
 - `d+ e` is a declaration expression: one or more declarations followed by a final expression `e`, which is the result.
   It is not delimited by any brackets; it simply starts with a declaration keyword such as `let`.
 
