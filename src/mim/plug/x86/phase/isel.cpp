@@ -35,43 +35,6 @@ nat_t trait(core::trait t, const Def* type) {
     type->blame(MIM_X86_BE "type `{}` has no static size or alignment", type).bail();
 }
 
-std::optional<x86::cc> cc(core::icmp id) {
-    // clang-format off
-    switch (id) {
-        case core::icmp::  e: return x86::cc:: e;
-        case core::icmp:: ne: return x86::cc::ne;
-        case core::icmp::ul : return x86::cc:: b;
-        case core::icmp::ule: return x86::cc::be;
-        case core::icmp::ug : return x86::cc:: a;
-        case core::icmp::uge: return x86::cc::ae;
-        case core::icmp::sl : return x86::cc:: l;
-        case core::icmp::sle: return x86::cc::le;
-        case core::icmp::sg : return x86::cc:: g;
-        case core::icmp::sge: return x86::cc::ge;
-        default: return {};
-    }
-    // clang-format on
-}
-
-std::optional<x86::cc> cc(core::ncmp id) {
-    // clang-format off
-    switch (id) {
-        case core::ncmp:: e: return x86::cc:: e;
-        case core::ncmp::ne: return x86::cc::ne;
-        case core::ncmp::l : return x86::cc:: b;
-        case core::ncmp::le: return x86::cc::be;
-        case core::ncmp::g : return x86::cc:: a;
-        case core::ncmp::ge: return x86::cc::ae;
-        default: return {};
-    }
-    // clang-format on
-}
-
-std::optional<x86::cc> cc(const Def* cmp) {
-    if (auto op = Axm::isa<core::icmp>(cmp)) return cc(op.id());
-    return cc(Axm::as<core::ncmp>(cmp).id());
-}
-
 /// The `cmovcc` with the same subtag as @p code.
 x86::cmovcc cmovcc_of(sub_t code) { return static_cast<x86::cmovcc>(Annex::Base<x86::cmovcc> | code); }
 
@@ -107,11 +70,10 @@ bool is_lowered_plugin(const Axm* axm) {
 
 /// How `match` extracts the operands of a pattern.
 enum class Tag : u8 {
-    Lea,    ///< `mem.lea (p, i)`.
+    Lea,    ///< The base `p` of `mem.lea (p, i)` with a constant index `i`.
     Load,   ///< `mem.load (m, p)`.
     Store,  ///< `mem.store (m, p, x)`.
     Bin,    ///< Two operands.
-    Cmp,    ///< Two operands and a supported `core.icmp`/`core.ncmp` predicate.
     Unary,  ///< One operand.
     Div,    ///< Two operands behind the `divrem` tuple.
     None,   ///< No operands.
@@ -142,7 +104,14 @@ struct Pattern {
     Op op;              ///< The operation @p flags selects.
     Tag tag;            ///< How `match` extracts the operands.
     Insn insn     = {};
-    bool commutes = true; ///< An immediate may also be the first operand.
+    bool commutes = true;  ///< An immediate may also be the first operand.
+    bool constant = false; ///< Only a `mem.lea` with a constant index.
+
+    constexpr Pattern only_constant() const {
+        auto res     = *this;
+        res.constant = true;
+        return res;
+    }
 };
 
 namespace {
@@ -188,14 +157,30 @@ constexpr Pattern patterns_[] = {
     member(core::conv::s,    Op::Conv,    Tag::Unary, {.sign = true}, false),
     member(core::conv::u,    Op::Conv,    Tag::Unary, {}, false),
 
+    member(core::icmp::e,    Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::e)},  false),
+    member(core::icmp::ne,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::ne)}, false),
+    member(core::icmp::ul,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::b)},  false),
+    member(core::icmp::ule,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::be)}, false),
+    member(core::icmp::ug,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::a)},  false),
+    member(core::icmp::uge,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::ae)}, false),
+    member(core::icmp::sl,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::l)},  false),
+    member(core::icmp::sle,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::le)}, false),
+    member(core::icmp::sg,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::g)},  false),
+    member(core::icmp::sge,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::ge)}, false),
+    member(core::ncmp::e,    Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::e)},  false),
+    member(core::ncmp::ne,   Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::ne)}, false),
+    member(core::ncmp::l,    Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::b)},  false),
+    member(core::ncmp::le,   Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::be)}, false),
+    member(core::ncmp::g,    Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::a)},  false),
+    member(core::ncmp::ge,   Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::ae)}, false),
+
     // One axiom per instruction.
-    annex<core::icmp>    (Op::Icmp,      Tag::Cmp),
-    annex<core::ncmp>    (Op::Ncmp,      Tag::Cmp),
     annex<core::idx>     (Op::Idx,       Tag::Unary),
     annex<core::idx2nat> (Op::Idx2Nat,   Tag::Unary),
     annex<core::bitcast> (Op::Bitcast,   Tag::Unary),
     annex<core::rem>     (Op::Rem,       Tag::Unary, {.id = Annex::Base<div>, .res = 1}),
-    annex<mem::lea>      (Op::LeaOffset, Tag::Lea),
+    annex<mem::lea>      (Op::LeaOffset, Tag::Lea).only_constant(),
+    annex<mem::lea>      (Op::LeaIndex,  Tag::Bin),
     annex<mem::load>     (Op::Load,      Tag::Load),
     annex<mem::store>    (Op::Store,     Tag::Store),
     annex<mem::mslot>    (Op::Slot,      Tag::None),
@@ -204,16 +189,6 @@ constexpr Pattern patterns_[] = {
 
 constexpr Pattern select_ = {.flags = 0, .member = false, .op = Op::Select, .tag = Tag::Select, .commutes = false};
 // clang-format on
-
-/// The pattern of @p def, or `nullptr` if isel does not cover it.
-const Pattern* pattern(const Def* def) {
-    if (def->isa<Extract>()) return &select_;
-    auto [axm, curry, _] = Axm::get(def);
-    if (!axm || curry) return nullptr;
-    for (const auto& p : patterns_)
-        if (p.member ? axm->flags() == p.flags : axm->base() == p.flags) return &p;
-    return nullptr;
-}
 
 /// The condition of the first `refly.check` in @p def.
 const Def* size_check(const Def* def, DefSet& done) {
@@ -256,13 +231,16 @@ bool depends(const Def* def, const Def* target, DefSet& done) {
     return false;
 }
 
+/// The register size of the x86 `Idx` the old_world() @p type becomes.
+std::optional<nat_t> new_size(const Def* type) {
+    if (Axm::isa<core::Ptr>(type) || type->isa<Nat>()) return 0;
+    if (auto size = Idx::isa(type)) return Lit::isa(size).value_or(0);
+    return {};
+}
+
 /// The size of the x86 `Idx` the old_world() @p type becomes, if it fits a register.
 std::optional<nat_t> xsize(const Def* type) {
-    if (Axm::isa<core::Ptr>(type) || type->isa<Nat>()) return 0;
-    if (auto size = Idx::isa(type)) {
-        auto s = Lit::isa(size).value_or(0);
-        return is_reg_size(s) ? std::optional(s) : std::nullopt;
-    }
+    if (auto s = new_size(type); s && is_reg_size(*s)) return s;
     return {};
 }
 
@@ -287,6 +265,17 @@ std::optional<nat_t> offset(const App* lea) {
         if (j != *l) off += trait(core::trait::size, field);
     }
     return off;
+}
+
+/// The pattern of @p def, or `nullptr` if isel does not cover it.
+const Pattern* pattern(const Def* def) {
+    if (def->isa<Extract>()) return &select_;
+    auto [axm, curry, _] = Axm::get(def);
+    if (!axm || curry) return nullptr;
+    for (const auto& p : patterns_)
+        if ((p.member ? axm->flags() == p.flags : axm->base() == p.flags) && (!p.constant || offset(def->as<App>())))
+            return &p;
+    return nullptr;
 }
 
 /// The x86 ALU instruction for the old_world() operation @p def; it has a memory operand.
@@ -465,10 +454,15 @@ constexpr Rule rules_[] = {
     rule(Op::NatDiv,    Ty::Reg,   1, "nat_div",       &ISel::build_insn, Want::Reg, Want::Reg),
     rule(Op::NatRem,    Ty::Reg,   1, "nat_rem",       &ISel::build_insn, Want::Reg, Want::Reg),
 
-    rule(Op::Conv,      Ty::Reg,   1, "conv",          &ISel::build_conv, Want::Reg),
-    rule(Op::Idx,       Ty::Reg,   1, "idx",           &ISel::build_idx, Want::Reg),
-    rule(Op::Idx2Nat,   Ty::Reg,   1, "idx2nat",       &ISel::build_idx2nat, Want::Reg),
-    rule(Op::Bitcast,   Ty::Reg,   1, "bitcast",       &ISel::build_bitcast, Want::Reg),
+    rule(Op::Conv,      Ty::Reg,   0, "conv_id",       &ISel::build_id, Want::Reg).with(Cond::Same),
+    rule(Op::Conv,      Ty::Reg,   1, "conv_trunc",    &ISel::build_trunc, Want::Reg).with(Cond::Narrow),
+    rule(Op::Conv,      Ty::Reg,   1, "conv_ext",      &ISel::build_ext, Want::Reg).with(Cond::Widen),
+    rule(Op::Idx,       Ty::Reg,   0, "idx",           &ISel::build_id, Want::Reg).with(Cond::Same),
+    rule(Op::Idx2Nat,   Ty::Reg,   0, "idx2nat_id",    &ISel::build_id, Want::Reg).with(Cond::Same),
+    rule(Op::Idx2Nat,   Ty::Reg,   1, "idx2nat_ext",   &ISel::build_ext, Want::Reg).with(Cond::Widen),
+    rule(Op::Bitcast,   Ty::Reg,   0, "bitcast_id",    &ISel::build_id, Want::Reg).with(Cond::Same),
+    rule(Op::Bitcast,   Ty::Reg,   1, "bitcast_trunc", &ISel::build_trunc, Want::Reg).with(Cond::Narrow),
+    rule(Op::Bitcast,   Ty::Reg,   1, "bitcast_ext",   &ISel::build_ext, Want::Reg).with(Cond::Widen),
     rule(Op::Rem,       Ty::Reg,   1, "rem",           &ISel::build_rem, Want::Reg),
 
     rule(Op::Div,       Ty::Reg,   1, "div",           &ISel::build_insn, Want::Reg, Want::Reg),
@@ -546,7 +540,7 @@ const Def* ISel::build_cmp(const Def* root, const Alt& alt) {
     auto& w = new_world();
     auto a  = hole(alt.demands[0].def);
     auto b  = hole(alt.demands[1].def, alt.demands[1].want);
-    return w.call(*cc(root), bin<cmp>(w, a, b));
+    return w.call(pattern(root)->insn.id, bin<cmp>(w, a, b));
 }
 
 const Def* ISel::build_nat_sub(const Def*, const Alt& alt) {
@@ -556,35 +550,17 @@ const Def* ISel::build_nat_sub(const Def*, const Alt& alt) {
     return w.call(x86::cmovcc::b, Defs{bin<cmp>(w, a, b), bin<sub>(w, a, b), reg(w, w.lit_i64(0))});
 }
 
-const Def* ISel::build_conv(const Def* root, const Alt& alt) {
+const Def* ISel::build_id(const Def*, const Alt& alt) { return hole(alt.demands[0].def); }
+
+const Def* ISel::build_trunc(const Def* root, const Alt& alt) {
+    return new_world().call<trunc>(*Idx::isa_lit(rewrite(root->type())), hole(alt.demands[0].def));
+}
+
+const Def* ISel::build_ext(const Def* root, const Alt& alt) {
     auto& w  = new_world();
+    auto dst = *Idx::isa_lit(rewrite(root->type()));
     auto x   = hole(alt.demands[0].def);
-    auto src = Idx::isa_lit(x->type());
-    auto dst = Idx::isa_lit(rewrite(root->type()));
-    if (!src || !dst) return nullptr;
-    if (*src == *dst) return x;
-    if (reg_width(*src) >= reg_width(*dst)) return w.call<trunc>(*dst, x);
-    return pattern(root)->insn.sign ? w.call<movsx>(*dst, x) : w.call<movzx>(*dst, x);
-}
-
-const Def* ISel::build_idx(const Def* root, const Alt& alt) {
-    return rewrite(root->type()) == new_world().type_i64() ? hole(alt.demands[0].def) : nullptr;
-}
-
-const Def* ISel::build_idx2nat(const Def*, const Alt& alt) {
-    auto x = hole(alt.demands[0].def);
-    return Idx::isa_lit(x->type()) == 0 ? x : zext(new_world().lit_i64(), x);
-}
-
-const Def* ISel::build_bitcast(const Def* root, const Alt& alt) {
-    auto& w  = new_world();
-    auto x   = hole(alt.demands[0].def);
-    auto dst = rewrite(root->type());
-    if (x->type() == dst) return x;
-    auto s = Idx::isa_lit(x->type());
-    auto d = Idx::isa_lit(dst);
-    if (!s || !d) return nullptr;
-    return reg_width(*s) >= reg_width(*d) ? w.call<trunc>(*d, x) : w.call<movzx>(*d, x);
+    return pattern(root)->insn.sign ? w.call<movsx>(dst, x) : w.call<movzx>(dst, x);
 }
 
 const Def* ISel::build_rem(const Def* root, const Alt& alt) {
@@ -641,11 +617,7 @@ std::optional<ISel::Node> ISel::decompose(const Def* def) const {
             auto [x, y] = ex->tuple()->projs<2>();
             return node({x, y, index});
         }
-        case Tag::Lea: {
-            auto [base, i] = app->args<2>();
-            if (offset(app)) return node({base});
-            return Node{ptrn, Op::LeaIndex, {base, i}};
-        }
+        case Tag::Lea: return node({app->arg(2, 0)});
         case Tag::Load:
             if (!xsize(app->type()->proj(2, 1))) return {};
             return node({app->arg(2, 1)});
@@ -654,9 +626,6 @@ std::optional<ISel::Node> ISel::decompose(const Def* def) const {
             if (!xsize(x->type())) return {};
             return node({p, x});
         }
-        case Tag::Cmp:
-            if (!cc(app)) return {};
-            [[fallthrough]];
         case Tag::Bin: {
             auto [a, b] = app->args<2>();
             return node({a, b});
@@ -743,6 +712,15 @@ const App* ISel::sole(const Frame& parent, const Def* def) const {
 bool ISel::holds(const Def* root, const Alt& alt) {
     switch (alt.rule->cond) {
         case Cond::None: return true;
+        case Cond::Same:
+        case Cond::Narrow:
+        case Cond::Widen: {
+            auto src = new_size(alt.demands[0].def->type());
+            auto dst = new_size(root->type());
+            if (!src || !dst) return false;
+            if (*src == *dst) return alt.rule->cond == Cond::Same;
+            return alt.rule->cond == (reg_width(*src) >= reg_width(*dst) ? Cond::Narrow : Cond::Widen);
+        }
         case Cond::Scale: {
             auto size = elem_size(root->as<App>());
             return size == 1 || size == 2 || size == 4 || size == 8;

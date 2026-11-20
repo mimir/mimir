@@ -103,9 +103,12 @@ struct Slot {
 /// A side condition of a rule beyond what its slots state.
 enum class Cond : u8 {
     None,
-    Scale, ///< The elements the root `mem.lea` indexes have a size of 1, 2, 4, or 8.
-    Fold,  ///< The root has a memory operand form and sits at its inner load, so its holes must be available there.
-    Rmw,   ///< The inner load reads the root store's address on the memory the store takes, which nothing else uses.
+    Scale,  ///< The elements the root `mem.lea` indexes have a size of 1, 2, 4, or 8.
+    Fold,   ///< The root has a memory operand form and sits at its inner load, so its holes must be available there.
+    Rmw,    ///< The inner load reads the root store's address on the memory the store takes, which nothing else uses.
+    Same,   ///< The root has the register size of its operand.
+    Narrow, ///< The root's register is at most as wide as its operand's, but its size differs.
+    Widen,  ///< The root's register is wider than its operand's.
 };
 
 /// What a match needs of the operand @p def: a hole of type @p want or, if @p inner is set, that inner pattern node.
@@ -221,10 +224,9 @@ public:
     const Def* build_bin_rm(const Def* root, const Alt& alt);
     const Def* build_cmp(const Def* root, const Alt& alt);
     const Def* build_nat_sub(const Def* root, const Alt& alt);
-    const Def* build_conv(const Def* root, const Alt& alt);
-    const Def* build_idx(const Def* root, const Alt& alt);
-    const Def* build_idx2nat(const Def* root, const Alt& alt);
-    const Def* build_bitcast(const Def* root, const Alt& alt);
+    const Def* build_id(const Def* root, const Alt& alt);
+    const Def* build_trunc(const Def* root, const Alt& alt);
+    const Def* build_ext(const Def* root, const Alt& alt);
     const Def* build_rem(const Def* root, const Alt& alt);
     const Def* build_slot(const Def* root, const Alt& alt);
     const Def* build_assume(const Def* root, const Alt& alt);

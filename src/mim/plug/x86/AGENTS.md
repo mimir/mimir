@@ -52,7 +52,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 
 - `x86.cc` and `x86.cmovcc` are families in hardware encoding order (`x86.cc.o` = 0, …, `x86.cc.g` = 15), so a code is a subtag rather than an operand: C++ compares `Axm::base()` and reads `Axm::sub()`.
 - `x86.cc.l: Flags → Bool` is `setcc` as a value and `jcc` as a branch condition.
-- `core.icmp` maps onto `x86.cc.<c> (x86.cmp (a, b))` for `e`, `ne`, `sl`, `sle`, `sg`, `sge`, `ul`, `ule`, `ug`, `uge`; the other predicates are rejected for now.
+- `core.icmp` maps onto `x86.cc.<c> (x86.cmp (a, b))` for `e`, `ne`, `sl`, `sle`, `sg`, `sge`, `ul`, `ule`, `ug`, `uge`, one `patterns_` row per predicate with its condition code as the `Insn`; the other predicates have no row and are rejected for now.
 
 ## Status
 
@@ -113,10 +113,11 @@ Done (on `feature/x86`):
 - `x86.isel` follows *Instruction Selection with PBQP*: both sides are data, `rules_` (one entry per pattern ↦ replacement) and `patterns_` (which `core`/`mem` axiom each operation is).
   A `Rule` carries the `Op` of its root, the type of its replacement, its cost, its name, its builder, a side condition `Cond`, and its pattern as `Slot`s in preorder: each is a hole of some `Want` or an inner node (an `Op` and its arity) whose operand slots follow it.
   `Op` has one value per instruction, and one instruction is one row per operand form (`add`, `add_imm`, `add_rm`); `Op::Alu` is a wildcard inner node for any operation with a read-modify-write memory form.
-  `Cond::Scale` (`lea_index`) requires an element size of 1, 2, 4, or 8, `Cond::Fold` (`bin_rm`) requires the root's memory form and the availability of its holes at the folded load; `Cond::Rmw` (`store_mr`) requires that the folded load reads the store's address on the memory the store takes, which nothing else uses.
+  `Cond::Scale` (`lea_index`) requires an element size of 1, 2, 4, or 8; `Cond::Same`, `Cond::Narrow`, and `Cond::Widen` compare the register sizes of a conversion's operand and result and pick the identity, `trunc`, or `movzx`/`movsx`; `Cond::Fold` (`bin_rm`) requires the root's memory form and the availability of its holes at the folded load; `Cond::Rmw` (`store_mr`) requires that the folded load reads the store's address on the memory the store takes, which nothing else uses.
   A `Pattern` carries the axiom (or the member of a multi-member annex; `select_` stands for an `Extract`), its `Op`, the `Tag` that tells `decompose` how to take it apart, its `Insn`, and whether its operands commute.
   An `Insn` is the x86 instruction with its memory forms (`Mem`: `imul` has no `op m, r`), the result it takes of a pair-valued instruction (`div`), whether narrow operands are sign-extended, and whether the result is complemented (`nand` as `xor` of `and` with all ones).
-  So one builder, `build_insn`, selects every operation that is one instruction (`core.wrap`, `core.bit2`, `core.shr`, `core.nat` but `sub`, `core.div`, `core.rem`); the other builders are one per `Op` and never ask for the axiom again.
+  So one builder, `build_insn`, selects every operation that is one instruction (`core.wrap`, `core.bit2`, `core.shr`, `core.nat` but `sub`, `core.div`, `core.rem`); `build_id`, `build_trunc`, and `build_ext` select the conversions (`core.conv`, `core.bitcast`, `core.idx`, `core.idx2nat`), and no builder asks for the axiom again.
+  A pattern row may be limited to a `mem.lea` with a constant index (`only_constant`), so `mem.lea` has one row for `Op::LeaOffset` and one for `Op::LeaIndex`.
   Which operand sizes an x86 instruction takes is read off the `refly.check` in its codomain (`supports`, memoized per instruction and size): a memory form needs it for the instruction and for `x86.load`, and `call_insn` and `build_select` go through `i32` where it fails.
   `match` decomposes a Def into its `Op` and operands and binds every rule of that `Op` slot by slot (`bind`), trying the swapped operands of a commuting node whenever its two operand subtrees differ; an inner node must be `sole` (its value and its parent's operand tuple have no other user).
   A match is an `Alt` with typed `Demand`s on the operands and the inner nodes it covers (`Cover`).
@@ -292,7 +293,8 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 ### Staging
 
 - Now both sides of the rule set are `constexpr` tables in `isel.cpp`: `rules_`, one entry per operation and operand form with its slots, side condition, cost, and builder, and `patterns_`, one entry per recognized axiom with its `Tag`.
-  `decompose` names no axiom: it switches over `Tag` to extract the operands, so the only code left is the operand extraction, the side conditions a `Tag` implies (`core.icmp`/`core.ncmp` predicate support, register sizes), the split of `mem.lea` into a constant offset and a dynamic index, and the `Cond`s.
+  `decompose` names no axiom: it switches over `Tag` to extract the operands, so the only code left is the operand extraction, the register sizes a `Tag` implies, the `Cond`s, and the builders of replacements that are more than one instruction (`nat.sub`, `select`, `slot`, `assume`, and the `negate`/`res`/`sign` flags of an `Insn`).
+  Writing replacements as Mim terms is the next step; it also brings `Ty::Flags`, so that `select` fuses with a `cmp` by PBQP choice.
   The PBQP construction, the rewrite, and the solvability checks are generic over the tables.
 - Later, the rule table is generated from Mim rules (*Pattern Database*); nothing else changes.
 
