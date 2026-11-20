@@ -111,25 +111,27 @@ Done (on `feature/x86`):
   - A non-external callee is emitted as a local function `<name>_<gid>`; an external declaration is called by its symbol.
 - `x86.cmovcc.l (f, x, y)` yields `y` if `l` holds, like `(x, y)#cond`.
 - `x86.isel` follows *Instruction Selection with PBQP*: both sides are data, `rules_` (one entry per pattern ↦ replacement) and `patterns_` (which `core`/`mem` axiom each operation is).
-  A `Rule` carries `op`, `form`, the type of its replacement, its cost, packed hole `Want`s, its name, and its builder.
-  `Op` has one value per instruction and `Form` distinguishes a register, an immediate, and a folded memory operand, so one instruction is one row per operand form.
-  A `Pattern` carries the axiom (or the member of a multi-member annex), its `Op`, the `Tag` that tells `match` how to take it apart, the x86 instruction of its memory form, and whether an immediate may also be the first operand.
-  `match` is then a single switch over `Tag`; it appends a node's matches as `Alt`s with typed `Demand`s on the operands and the inner nodes they cover (`Cover`).
-  `ISel::analyze()` builds the PBQP generically from that: every operation with a match is a node, inner alternatives are derived from the covers, edges price `conv` between rule type and hole type, and all-zero edges are left out.
+  A `Rule` carries the `Op` of its root, the type of its replacement, its cost, its name, its builder, a side condition `Cond`, and its pattern as `Slot`s in preorder: each is a hole of some `Want` or an inner node (an `Op` and its arity) whose operand slots follow it.
+  `Op` has one value per instruction, and one instruction is one row per operand form (`add`, `add_imm`, `add_rm`); `Op::Alu` is a wildcard inner node for any operation with a read-modify-write memory form.
+  `Cond::Fold` (`bin_rm`) requires the root's memory form and the availability of its holes at the folded load; `Cond::Rmw` (`store_mr`) requires that the folded load reads the store's address on the memory the store takes, which nothing else uses.
+  A `Pattern` carries the axiom (or the member of a multi-member annex), its `Op`, the `Tag` that tells `decompose` how to take it apart, the x86 instruction of its memory form, and whether its operands commute.
+  `match` decomposes a Def into its `Op` and operands and binds every rule of that `Op` slot by slot (`bind`), trying the swapped operands of a commuting node whenever its two operand subtrees differ; an inner node must be `sole` (its value and its parent's operand tuple have no other user).
+  A match is an `Alt` with typed `Demand`s on the operands and the inner nodes it covers (`Cover`).
+  `ISel::analyze()` builds the PBQP generically from that: every operation with a match is a node, inner alternatives are the classes of covers with equal demands (resolved bottom-up), edges price `conv` between rule type and hole type, and all-zero edges are left out.
   The rewrite is generic too: a root alternative's rule builds the replacement, `hole` converts operands to the hole's type, and an inner node defers to the root of its match.
-  `atomic_choice` scans the alternatives for an atomic fallback (no inner nodes, holes only `Reg`/`Base`/`Addr`) instead of trusting the table order, and `check_rules` verifies the rule set itself (see *Solvability*).
+  `atomic_choice` scans the alternatives for an atomic fallback (no inner nodes, holes only `Reg`/`Base`/`Addr`) instead of trusting the table order, a `static_assert` checks that every rule's slots form a tree, and `check_rules` verifies the rule set itself (see *Solvability*).
   `-X x86:isel-dot=<file>` writes the graph in Graphviz DOT format with the chosen options highlighted.
 - `Want::Sh` is a shift count: any literal, since x86 masks it, where `Want::Imm` must fit a sign-extended `i32`.
 - `x86.emit` prints a literal operand as `$c` (it must fit a sign-extended `i32`) and rejects one where the instruction needs a register.
 - Address rules: constant indices and struct offsets go into `disp`, one dynamic index with an element size of 1, 2, 4, or 8 into `index`/`scale` (otherwise `imul`), and a second dynamic index or a `disp` beyond `i32` materializes the prefix with `lea` or `add`.
 - `bin_rm` folds a sole load into `add`/`sub`/`and`/`or`/`xor`/`imul` as `x86.rm f (m, a, addr)` (`op r, addr`): the user moves to the load's place in the memory order, so its other operand must be in scope of the load's block and must not depend on the load.
-  `store_mr` folds a store right behind the load (the load's memory has no other user) of an operation on the loaded value to the same address into `x86.mr f (m, addr, b)` (`op addr, r/imm`; not `imul`).
+  `store_mr`/`store_mr_imm` fold a store right behind the load (the load's memory has no other user) of an operation on the loaded value to the same address into `x86.mr f (m, addr, b)` (`op addr, r/imm`; not `imul`).
   `cmp`/`test` do not fold since `x86.schedule` rematerializes them per consumer, and `div` does not since `cltd` clobbers the index register.
 - `x86.div`/`idiv` yield quotient and remainder as a pair, so a quotient and a remainder of the same operands share one instruction; `x86.slot n` reserves `n` frame bytes on the `mem.M` chain; `trunc` to a non-power-of-two size is an unsigned remainder.
 - `isel` widens 8-bit and `Bool` multiplications to `i32` (`movzx`, `imul`, `trunc`), since `imul` has no 8-bit form.
 - Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/emit_pbqp.mim` (competing folds), `lit/x86/sched.mim`, `lit/x86/sched_join.mim` (one placement in the dominator), `lit/x86/sched_loop.mim` (hoisting), `lit/x86/sched_remat.mim`, `lit/x86/sched_closed_tuple.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/sched_no_chain.mim`, `lit/x86/live_loop.mim`, `lit/x86/live_call.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`, `lit/x86/spill_loop.mim` (live-through values spilled outside the loop), `lit/x86/spill_phi.mim` (memory φ), `lit/x86/spill_ssa.mim` (new φ for a reloaded value), `lit/x86/spill_call.mim` (callee-saved limit), `lit/x86/constrain.mim` (also at `k = 3`), `lit/x86/color.mim` (fixed results, a value across a call; also at `k = 3`); `lit/x86/emit_cf.mim` also runs at `k = 3`.
 
-Known gaps and bugs, as of 2026-11-19.
+Known gaps and bugs, as of 2026-11-20.
 
 Open bugs and risks (wrong code or a crash is possible, or only a later check catches it):
 
@@ -191,6 +193,7 @@ Instruction selection:
 
 - `isel` still emits size-check failures for non-register sizes (e.g. `core.wrap.add` on `Idx 5`); these need masking or a clear rejection.
 - `isel` emits a `trunc` → `movzx` pair for array indices that `core.legalize_idx` narrowed; it is a mask (`and x, 2^k - 1`), not a no-op, and should become one `and` in PBQP isel.
+- The builders still dispatch on the axiom (`build_bin`, `build_nat`, `build_unary`, `build_div`) instead of reading the x86 instruction off the rule, and "no 8-bit form" is known in three places (`has_mem_form`, `wide` for `imul`, `build_select`).
 - `malloc`/`free`, aggregate loads and stores, `bitcast` of unions or floats, `core.mulrem`, and `math` are not selected; `core.nat.div`/`rem` do not guard against zero like `ll`.
 
 Testing and tooling:
@@ -270,7 +273,7 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 
 - *Atomic completeness*: every operation has a rule with no inner nodes, an operand form, and holes only in `Reg`/`Base`/`Addr`; it is the fallback cover, and *total conversions* ensures its type is usable as a value.
 - *Total conversions*: every type a rule may have converts to a register (`Addr` via `x86.lea`, a literal via `x86.mov`, flags via `setcc`), and every hole type is reachable from some rule type.
-- *Composability* (the paper's Def. 12) is implemented for the inner nodes only: a rule that folds a `mem.load` needs an atomic rule for that load, since the inner node must be coverable on its own.
+- *Composability* (the paper's Def. 12) is implemented for the inner nodes only: every inner slot of a rule needs an atomic rule for its `Op` (for `Op::Alu`, for every operation with a memory form), since the inner node must be coverable on its own.
   The general successor cut of a multi-node pattern is not checked yet; a cut at a typed hole is a rule boundary already.
 - `check_rules()` runs these over the whole rule set on every `analyze()` in a checked build (`MIM_ENABLE_CHECKS`, on by default in Debug) and reports the offending rule by name.
 - The solver deletes forbidden options and propagates the deletion, which is the paper's infinity propagation.
@@ -285,8 +288,8 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 
 ### Staging
 
-- Now both sides of the rule set are `constexpr` tables in `isel.cpp`: `rules_`, one entry per operation and operand form with its holes, cost, and builder, and `patterns_`, one entry per recognized axiom with its `Tag`.
-  `match` names no axiom: it switches over `Tag` to extract the operands, so the only code left is the operand extraction and the side conditions a `Tag` implies (`core.icmp`/`core.ncmp` predicate support, the sole-load checks).
+- Now both sides of the rule set are `constexpr` tables in `isel.cpp`: `rules_`, one entry per operation and operand form with its slots, side condition, cost, and builder, and `patterns_`, one entry per recognized axiom with its `Tag`.
+  `decompose` names no axiom: it switches over `Tag` to extract the operands, so the only code left is the operand extraction, the side conditions a `Tag` implies (`core.icmp`/`core.ncmp` predicate support, register sizes), the choice among the `mem.lea` operations by element size, and the `Cond`s.
   The PBQP construction, the rewrite, and the solvability checks are generic over the tables.
 - Later, the rule table is generated from Mim rules (*Pattern Database*); nothing else changes.
 
