@@ -151,7 +151,6 @@ bool LowerVariant::retype(const Axm* axm) {
 const Def* LowerVariant::rewrite_imm_Variant(const Variant* variant) { return layout(variant).type; }
 
 const Def* LowerVariant::rewrite_imm_Inj(const Inj* inj) {
-    if (inj->type()->isa<Join>()) fe::throwf("cannot lower injection `{}` into a union; run join2variant first", inj);
     auto variant = inj->type()->isa_imm<Variant>();
     if (!variant) return RWPhase::rewrite_imm_Inj(inj);
     return encode(layout(variant), inj->index(), rewrite(inj->value()));

@@ -143,7 +143,6 @@ Tok Lexer::lex() {
         if (accept(U'★')) return tok(Tag::T_star);
         if (accept( '*')) return tok(Tag::T_star);
         if (accept( ':')) return tok(Tag::T_colon);
-        if (accept(U'∪')) return tok(Tag::T_union);
         // clang-format on
 
         if (accept('.')) {

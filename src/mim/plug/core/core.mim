@@ -346,6 +346,13 @@ anx lam Select {T: □} (cond: Bool, t f: T): T = (f, t)#cond;
 ///
 /// ## Phases
 ///
+/// ### lower_dyn_extract
+///
+/// Lowers each type `(T_0, ..., T_{n-1})#i` of a dynamic Extract to the core.Union of its components (mim::plug::core::LowerDynExtract).
+/// The union needs no tag, since the index `i` that selects the case is at hand wherever such a value is.
+///
+axm lower_dyn_extract: compile.Phase;
+///
 /// ### lower_variant
 ///
 /// Lowers each Variant `| T_0 | ... | T_{n-1}` to a representation without sum types (mim::plug::core::LowerVariant).

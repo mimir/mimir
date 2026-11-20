@@ -51,7 +51,7 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 ( ) [ ] { }
 ‹ › « »
 → ← => ⊥ ⊤ * □ λ
-= , ; . : @ $ # | ∪
+= , ; . : @ $ # |
 + - / % == != < <= > >= << >>
 <eof>
 ```
@@ -469,6 +469,8 @@ arity ::= e
   All of them fuse into **one** array of shape `(m, n)`, whose index binds every axis at once, so `t#i#j` and `t#(i, j)` are the same Extract - except through a [mutable sigma](@ref mutsigma) of one component.
   The exception is a dimension whose extent depends on an earlier index, as in `«i: n, j: s#i; body»`: a shape lists extents, not functions of preceding indices, so such a nest stays one array per axis.
 - `e#e` extracts a component by index, `e#I` by [field name](@ref field).
+  A dynamic index `i` into `t: [T₀, …, Tₙ₋₁]` yields the type `(T₀, …, Tₙ₋₁)#i`, which is just `T` if all `Tₖ` are `T`.
+  The `Tₖ` must live on one type level.
 - `tuple#index ← value` yields a **new** aggregate with `index` replaced by `value`; it does not mutate `tuple`.
   A `#` on the left is mandatory: without a component to update there is nothing to insert into.
 - `←` updates the component at the _whole_ `#`-path, so `t#i#j#k ← v` denotes the outer aggregate `t`.
@@ -512,35 +514,25 @@ lam g (t: «2; One»): One = t#(1₂, 0₁); // the `0₁` axis folds away, so t
 
 `←` is unaffected: writing the component rebuilds the whole 1-tuple either way, so `t#(1₂, 0₁) ← v` and `t#1₂#0₁ ← v` do agree.
 
-#### Unions
+#### Variants {#variant}
 
 ```ebnf
-e   ::= e "∪" e
-     |  e "inj" e
+e   ::= "|" (I (":" e)? ("|" I (":" e)?)*)?
      |  "match" e "with" "|"? arm ("|" arm)*
 arm ::= p "=>" e
      |  (I | L) p? "=>" e
 ```
 
-- `e ∪ e` forms a union type.
-- `e inj e` injects a value into a union type.
-- `match e with | p => e | ...` eliminates a union value.
-
-#### Variants {#variant}
-
-```ebnf
-e   ::= "|" (I (":" e)? ("|" I (":" e)?)*)?
-```
-
 - `| I₀: e₀ | ... | Iₙ₋₁: eₙ₋₁` forms a variant type: a sum whose cases are _positional_.
   A constructor without `: e` carries `[]`, and a lone `|` is the empty variant.
-- Unlike `∪`, nothing is sorted, deduplicated, or flattened: `| A | B | C` has three cases where `[] ∪ [] ∪ []` is just `[]`, and `| A: Nat | B: Nat` keeps both.
+- Every constructor is a case of its own, even with the same payload: `| A | B | C` has three cases, and `| A: Nat | B: Nat` two.
 - A variant is a type like any other and may be anonymous; `rec` makes it recursive, and a `mutual` block mutually recursive.
 - Its last payload extends as far right as it can, and `|` never starts an application argument: write `f (| A | B)`, and parenthesize a variant inside a `match` arm.
 - `T#I` or `T#n` on a variant type `T` selects a case by constructor name or by index, counting from `0`.
   That is a value for a `[]` payload, and a function from the payload into `T` otherwise.
 - Like an application, `#` first fills the implicit domains of its left-hand side with holes, so for `nom Opt {T: *} = | None | Some: T`, `Opt#Some 23` infers `T`.
-- In a `match` on a variant, each arm names a constructor or gives its index, optionally followed by a pattern for its payload.
+- `match e with | arm | ...` eliminates a variant value; its scrutinee must be of variant type.
+  Each arm names a constructor or gives its index, optionally followed by a pattern for its payload.
   `| 1 (h, t) => e` selects the same case as `| Cons (h, t) => e`, just as `T#1` and `T#Cons` do.
   Every constructor needs an arm; a second arm for the same one is unreachable and warned about.
 - Constructor names are looked up in the scrutinee's _type_, so any scrutinee works, not just an annotated variable.
@@ -578,6 +570,10 @@ e   ::= "«" e "»"
   `f #x` extracts rather than applies, so pass a singleton as `f (#x)`.
 
 #### Nominal Newtypes {#nominal}
+
+```ebnf
+e   ::= e "inj" e
+```
 
 A `nom` declaration is the one place where Mim is not structurally typed: two `nom`s over the same underlying type are still distinct types.
 
@@ -671,12 +667,11 @@ A `+`/`-` sign is part of the [literal](@ref lit) rather than an operator and so
 |   9 | `Eq`      | none  | `e == e`, `e != e`                   |                                                                                                                                   |
 |  10 | `Pi`      |   -   | _pseudo_                             | Bounds the domain of a `λ`/`Fn`/`t → e` binder so it stops before the `→`. A `Cn`-style binder has no `→` and uses `Bot` instead. |
 |  11 | `Arrow`   | right | `e → e`                              | Also bounds the codomain after a `→`.                                                                                             |
-|  12 | `Union`   | left  | `e ∪ e`                              |                                                                                                                                   |
-|  13 | `Inj`     | right | `e inj e`                            | Weaker than `∪`, so `x inj A ∪ B` is `x inj (A ∪ B)`.                                                                             |
-|  14 | `Ins`     | right | `e("#"e)+ ← e`                       | Also bounds a declaration's `: codom` slot, which ends at `=` and so takes everything short of a `where`.                         |
-|  15 | `Where`   | left  | `e where d* end`                     | The loosest surface operator.                                                                                                     |
-|  16 | `Bot`     |   -   | _pseudo_                             | A complete expression; the default bound, and the only one a trailing `where` fits into.                                          |
-|  17 | `Err`     |   -   | _pseudo_                             | Below everything; the parser's "no operator seen yet" sentinel.                                                                   |
+|  12 | `Inj`     | right | `e inj e`                            |                                                                                                                                   |
+|  13 | `Ins`     | right | `e("#"e)+ ← e`                       | Also bounds a declaration's `: codom` slot, which ends at `=` and so takes everything short of a `where`.                         |
+|  14 | `Where`   | left  | `e where d* end`                     | The loosest surface operator.                                                                                                     |
+|  15 | `Bot`     |   -   | _pseudo_                             | A complete expression; the default bound, and the only one a trailing `where` fits into.                                          |
+|  16 | `Err`     |   -   | _pseudo_                             | Below everything; the parser's "no operator seen yet" sentinel.                                                                   |
 
 ## Summary: Functions and Types
 
@@ -828,23 +823,12 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 - an application of an [axiom](@ref decl) runs its normalizer once the curry counter hits `0`
 - an application of a `{T: *} → e` inserts a `Hole` per implicit argument
 
-### Unions
-
-- `T ∪ ⊥` -> `T` - the unit of a join is dropped
-- `T ∪ ⊤` -> `⊤`
-- `A ∪ A` -> `A`; the operands are flattened and sorted, so `∪` is commutative, associative, and idempotent
-- an empty join is `⊥`, and a one-element one is its operand
-- `x inj T` -> `x` if `T` is not a union type
-- `match (T inj x) with ...` -> the arm handling `T` - a constructor fixes the active case
-- each case is handled by the **first** arm accepting it, so the arms are _not_ sorted; an arm accepts a case if its domain is that case, or a union containing it
-- a `match` whose scrutinee is not a union is the degenerate one-case union and reduces right away
-- an arm handling no case is dropped; a case handled by no arm is an error
-
 ### Variants
 
-- a variant is never sorted, deduplicated, or flattened; an empty or one-case variant stays a variant
+- a one-case variant stays a variant, while the empty one is `⊥`
 - `match (T#i x) with ...` -> the arm for case `i`
 - the arms of a `match` on a variant are in the order of its cases, one each
+- all arms of a `match` on a variant agree on their codomain, which is the type of the `match`; an arm into `⊥` fits any
 
 ### Singletons
 
