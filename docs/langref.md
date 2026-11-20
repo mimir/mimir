@@ -514,22 +514,13 @@ lam g (t: «2; One»): One = t#(1₂, 0₁); // the `0₁` axis folds away, so t
 
 `←` is unaffected: writing the component rebuilds the whole 1-tuple either way, so `t#(1₂, 0₁) ← v` and `t#1₂#0₁ ← v` do agree.
 
-#### Match
-
-```ebnf
-e   ::= e "inj" e
-     |  "match" e "with" "|"? arm ("|" arm)*
-arm ::= p "=>" e
-     |  (I | L) p? "=>" e
-```
-
-- `e inj T` wraps a value into the [nominal type](@ref nominal) `T`.
-- `match e with | p => e | ...` eliminates a [variant](@ref variant) value; its scrutinee must be of variant type.
-
 #### Variants {#variant}
 
 ```ebnf
 e   ::= "|" (I (":" e)? ("|" I (":" e)?)*)?
+     |  "match" e "with" "|"? arm ("|" arm)*
+arm ::= p "=>" e
+     |  (I | L) p? "=>" e
 ```
 
 - `| I₀: e₀ | ... | Iₙ₋₁: eₙ₋₁` forms a variant type: a sum whose cases are _positional_.
@@ -540,7 +531,8 @@ e   ::= "|" (I (":" e)? ("|" I (":" e)?)*)?
 - `T#I` or `T#n` on a variant type `T` selects a case by constructor name or by index, counting from `0`.
   That is a value for a `[]` payload, and a function from the payload into `T` otherwise.
 - Like an application, `#` first fills the implicit domains of its left-hand side with holes, so for `nom Opt {T: *} = | None | Some: T`, `Opt#Some 23` infers `T`.
-- In a `match` on a variant, each arm names a constructor or gives its index, optionally followed by a pattern for its payload.
+- `match e with | arm | ...` eliminates a variant value; its scrutinee must be of variant type.
+  Each arm names a constructor or gives its index, optionally followed by a pattern for its payload.
   `| 1 (h, t) => e` selects the same case as `| Cons (h, t) => e`, just as `T#1` and `T#Cons` do.
   Every constructor needs an arm; a second arm for the same one is unreachable and warned about.
 - Constructor names are looked up in the scrutinee's _type_, so any scrutinee works, not just an annotated variable.
@@ -578,6 +570,10 @@ e   ::= "«" e "»"
   `f #x` extracts rather than applies, so pass a singleton as `f (#x)`.
 
 #### Nominal Newtypes {#nominal}
+
+```ebnf
+e   ::= e "inj" e
+```
 
 A `nom` declaration is the one place where Mim is not structurally typed: two `nom`s over the same underlying type are still distinct types.
 
