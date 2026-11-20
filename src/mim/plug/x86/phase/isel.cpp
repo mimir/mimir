@@ -12,6 +12,7 @@
 #include <mim/plug/ll/autogen.h>
 #include <mim/plug/math/math.h>
 #include <mim/plug/mem/mem.h>
+#include <mim/plug/refly/refly.h>
 
 #include "mim/plug/x86/x86.h"
 
@@ -27,48 +28,11 @@ nat_t reg_width(nat_t size) { return std::bit_ceil(std::max<nat_t>(Idx::size2bit
 
 bool fits_i32(s64 disp) { return INT32_MIN <= disp && disp <= INT32_MAX; }
 
-bool is_reg_size(nat_t size) { return size == 2 || size == Idx::bitwidth2size(reg_width(size)); }
+bool is_reg_size(nat_t size) { return size == 2 || size == core::widen_idx(size); }
 
 nat_t trait(core::trait t, const Def* type) {
     if (auto n = Lit::isa(core::op(t, type))) return *n;
     type->blame(MIM_X86_BE "type `{}` has no static size or alignment", type).bail();
-}
-
-std::optional<x86::cc> cc(core::icmp id) {
-    // clang-format off
-    switch (id) {
-        case core::icmp::  e: return x86::cc:: e;
-        case core::icmp:: ne: return x86::cc::ne;
-        case core::icmp::ul : return x86::cc:: b;
-        case core::icmp::ule: return x86::cc::be;
-        case core::icmp::ug : return x86::cc:: a;
-        case core::icmp::uge: return x86::cc::ae;
-        case core::icmp::sl : return x86::cc:: l;
-        case core::icmp::sle: return x86::cc::le;
-        case core::icmp::sg : return x86::cc:: g;
-        case core::icmp::sge: return x86::cc::ge;
-        default: return {};
-    }
-    // clang-format on
-}
-
-std::optional<x86::cc> cc(core::ncmp id) {
-    // clang-format off
-    switch (id) {
-        case core::ncmp:: e: return x86::cc:: e;
-        case core::ncmp::ne: return x86::cc::ne;
-        case core::ncmp::l : return x86::cc:: b;
-        case core::ncmp::le: return x86::cc::be;
-        case core::ncmp::g : return x86::cc:: a;
-        case core::ncmp::ge: return x86::cc::ae;
-        default: return {};
-    }
-    // clang-format on
-}
-
-std::optional<x86::cc> cc(const Def* cmp) {
-    if (auto op = Axm::isa<core::icmp>(cmp)) return cc(op.id());
-    return cc(Axm::as<core::ncmp>(cmp).id());
 }
 
 /// The `cmovcc` with the same subtag as @p code.
@@ -91,24 +55,6 @@ const Def* bin(World& w, const Def* a, const Def* b) {
     return w.call<Id>(Defs{reg(w, a), ri(w, b)});
 }
 
-/// `op r, r`.
-template<class Id>
-const Def* rr(World& w, const Def* a, const Def* b) {
-    return w.call<Id>(Defs{reg(w, a), reg(w, b)});
-}
-
-/// Result @p I of `div r` or `idiv r`: quotient or remainder.
-template<class Id, size_t I>
-const Def* divrem(World& w, const Def* a, const Def* b) {
-    return rr<Id>(w, a, b)->proj(2, I);
-}
-
-/// A shift by `cl` or an immediate.
-template<class Id>
-const Def* shift(World& w, const Def* a, const Def* b) {
-    return w.call<Id>(Defs{reg(w, a), b});
-}
-
 /// All bits of @p type set.
 const Def* ones(World& w, const Def* type) {
     auto s = *Idx::isa_lit(type);
@@ -120,94 +66,143 @@ bool is_lowered_plugin(const Axm* axm) {
     return p == core::Plugin_Id || p == mem::Plugin_Id || p == math::Plugin_Id;
 }
 
+} // namespace
+
 /// How `match` extracts the operands of a pattern.
 enum class Tag : u8 {
-    Lea,   ///< `mem.lea (p, i)`.
-    Load,  ///< `mem.load (m, p)`.
-    Store, ///< `mem.store (m, p, x)`.
-    Bin,   ///< Two operands; the value may come from a folded load.
-    Cmp,   ///< Two operands and a supported `core.icmp`/`core.ncmp` predicate.
-    Unary, ///< One operand.
-    Div,   ///< Two operands behind the `divrem` tuple.
-    None,  ///< No operands.
+    Lea,    ///< The base `p` of `mem.lea (p, i)` with a constant index `i`.
+    Load,   ///< `mem.load (m, p)`.
+    Store,  ///< `mem.store (m, p, x)`.
+    Bin,    ///< Two operands.
+    Unary,  ///< One operand.
+    Div,    ///< Two operands behind the `divrem` tuple.
+    None,   ///< No operands.
+    Select, ///< `(x, y)#c`, an `Extract` rather than an axiom.
 };
 
-/// A program-side operation `match` recognizes: its axiom, the `Op` it selects, and how to take it apart.
-struct Pattern {
-    flags_t flags;        ///< The axiom, or the whole annex if `member` is `false`.
-    bool member = true;   ///< @p flags names one member of the annex.
-    Op op;                ///< The operation @p flags selects.
-    Tag tag;              ///< How `match` extracts the operands.
-    flags_t insn  = 0;    ///< The x86 ALU instruction of its memory form, or 0 if it has none.
-    bool commutes = true; ///< An immediate may also be the first operand.
+/// The memory operand forms of a pattern's x86 instruction.
+enum class Mem : u8 {
+    None,
+    Rm,  ///< `op r, m`.
+    Rmw, ///< `op r, m` and `op m, r`.
 };
+
+/// The x86 side of a pattern, for the builders that apply one instruction.
+struct Insn {
+    flags_t id  = 0; ///< The x86 instruction.
+    Mem mem     = Mem::None;
+    s8 res      = -1;    ///< The result of a pair-valued instruction, or -1.
+    bool sign   = false; ///< Operands narrower than any size the instruction supports are sign-extended.
+    bool negate = false; ///< The result is complemented.
+};
+
+/// A program-side operation `match` recognizes: its axiom, the `Op` it selects, how to take it apart, and its
+/// instruction.
+struct Pattern {
+    flags_t flags;      ///< The axiom, or the whole annex if `member` is `false`.
+    bool member = true; ///< @p flags names one member of the annex.
+    Op op;              ///< The operation @p flags selects.
+    Tag tag;            ///< How `match` extracts the operands.
+    Insn insn     = {};
+    bool commutes = true;  ///< An immediate may also be the first operand.
+    bool constant = false; ///< Only a `mem.lea` with a constant index.
+
+    constexpr Pattern only_constant() const {
+        auto res     = *this;
+        res.constant = true;
+        return res;
+    }
+};
+
+namespace {
 
 /// One member of a multi-member annex.
 template<class Id>
-constexpr Pattern member(Id id, Op op, Tag tag, flags_t insn = 0, bool commutes = true) {
+constexpr Pattern member(Id id, Op op, Tag tag, Insn insn = {}, bool commutes = true) {
     return Pattern{flags_t(id), true, op, tag, insn, commutes};
 }
 
 /// The whole annex.
 template<class Id>
-constexpr Pattern annex(Op op, Tag tag) {
-    return Pattern{Annex::base<Id>(), false, op, tag};
+constexpr Pattern annex(Op op, Tag tag, Insn insn = {}) {
+    return Pattern{Annex::base<Id>(), false, op, tag, insn, false};
 }
 
 // clang-format off
 /// The program side of the rule set: which `core`/`mem` axioms isel covers.
 constexpr Pattern patterns_[] = {
     // The members of an annex select different instructions.
-    member(core::wrap::add,  Op::WrapAdd,  Tag::Bin, Annex::Base<add>),
-    member(core::wrap::sub,  Op::WrapSub,  Tag::Bin, Annex::Base<sub>,  false),
-    member(core::wrap::mul,  Op::WrapMul,  Tag::Bin, Annex::Base<imul>),
-    member(core::wrap::shl,  Op::WrapShl,  Tag::Bin, 0,                false),
-    member(core::bit2::and_, Op::BitAnd,   Tag::Bin, Annex::Base<and_>),
-    member(core::bit2::or_,  Op::BitOr,    Tag::Bin, Annex::Base<or_>),
-    member(core::bit2::xor_, Op::BitXor,   Tag::Bin, Annex::Base<xor_>),
-    member(core::bit2::nand, Op::BitNand,  Tag::Bin),
-    member(core::bit2::nor,  Op::BitNor,   Tag::Bin),
-    member(core::bit2::nxor, Op::BitNxor,  Tag::Bin),
-    member(core::shr::a,     Op::ShrA,     Tag::Bin, 0,                false),
-    member(core::shr::l,     Op::ShrL,     Tag::Bin, 0,                false),
-    member(core::nat::add,   Op::NatAdd,   Tag::Bin),
-    member(core::nat::sub,   Op::NatSub,   Tag::Bin, 0,                false),
-    member(core::nat::mul,   Op::NatMul,   Tag::Bin),
-    member(core::nat::div,   Op::NatDiv,   Tag::Bin),
-    member(core::nat::rem,   Op::NatRem,   Tag::Bin),
+    member(core::wrap::add,  Op::WrapAdd, Tag::Bin,   {.id = Annex::Base<add>,  .mem = Mem::Rmw}),
+    member(core::wrap::sub,  Op::WrapSub, Tag::Bin,   {.id = Annex::Base<sub>,  .mem = Mem::Rmw}, false),
+    // `imul` has no `op m, r` form; the low bits of a product do not depend on how the operands were extended.
+    member(core::wrap::mul,  Op::WrapMul, Tag::Bin,   {.id = Annex::Base<imul>, .mem = Mem::Rm}),
+    member(core::wrap::shl,  Op::WrapShl, Tag::Bin,   {.id = Annex::Base<shl>}, false),
+    member(core::bit2::and_, Op::BitAnd,  Tag::Bin,   {.id = Annex::Base<and_>, .mem = Mem::Rmw}),
+    member(core::bit2::or_,  Op::BitOr,   Tag::Bin,   {.id = Annex::Base<or_>,  .mem = Mem::Rmw}),
+    member(core::bit2::xor_, Op::BitXor,  Tag::Bin,   {.id = Annex::Base<xor_>, .mem = Mem::Rmw}),
+    member(core::bit2::nand, Op::BitNand, Tag::Bin,   {.id = Annex::Base<and_>, .negate = true}),
+    member(core::bit2::nor,  Op::BitNor,  Tag::Bin,   {.id = Annex::Base<or_>,  .negate = true}),
+    member(core::bit2::nxor, Op::BitNxor, Tag::Bin,   {.id = Annex::Base<xor_>, .negate = true}),
+    member(core::shr::a,     Op::ShrA,    Tag::Bin,   {.id = Annex::Base<sar>}, false),
+    member(core::shr::l,     Op::ShrL,    Tag::Bin,   {.id = Annex::Base<shr>}, false),
+    member(core::nat::add,   Op::NatAdd,  Tag::Bin,   {.id = Annex::Base<add>}),
+    member(core::nat::sub,   Op::NatSub,  Tag::Bin,   {}, false),
+    member(core::nat::mul,   Op::NatMul,  Tag::Bin,   {.id = Annex::Base<imul>}),
+    member(core::nat::div,   Op::NatDiv,  Tag::Bin,   {.id = Annex::Base<div>,  .res = 0}, false),
+    member(core::nat::rem,   Op::NatRem,  Tag::Bin,   {.id = Annex::Base<div>,  .res = 1}, false),
+    member(core::div::udiv,  Op::Div,     Tag::Div,   {.id = Annex::Base<div>,  .res = 0}, false),
+    member(core::div::urem,  Op::Div,     Tag::Div,   {.id = Annex::Base<div>,  .res = 1}, false),
+    member(core::div::sdiv,  Op::Div,     Tag::Div,   {.id = Annex::Base<idiv>, .res = 0, .sign = true}, false),
+    member(core::div::srem,  Op::Div,     Tag::Div,   {.id = Annex::Base<idiv>, .res = 1, .sign = true}, false),
+    member(core::conv::s,    Op::Conv,    Tag::Unary, {.sign = true}, false),
+    member(core::conv::u,    Op::Conv,    Tag::Unary, {}, false),
+
+    member(core::icmp::e,    Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::e)},  false),
+    member(core::icmp::ne,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::ne)}, false),
+    member(core::icmp::ul,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::b)},  false),
+    member(core::icmp::ule,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::be)}, false),
+    member(core::icmp::ug,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::a)},  false),
+    member(core::icmp::uge,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::ae)}, false),
+    member(core::icmp::sl,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::l)},  false),
+    member(core::icmp::sle,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::le)}, false),
+    member(core::icmp::sg,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::g)},  false),
+    member(core::icmp::sge,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::ge)}, false),
+    member(core::ncmp::e,    Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::e)},  false),
+    member(core::ncmp::ne,   Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::ne)}, false),
+    member(core::ncmp::l,    Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::b)},  false),
+    member(core::ncmp::le,   Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::be)}, false),
+    member(core::ncmp::g,    Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::a)},  false),
+    member(core::ncmp::ge,   Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::ae)}, false),
 
     // One axiom per instruction.
-    annex<core::icmp>    (Op::Icmp,      Tag::Cmp),
-    annex<core::ncmp>    (Op::Ncmp,      Tag::Cmp),
-    annex<core::conv>    (Op::Conv,      Tag::Unary),
     annex<core::idx>     (Op::Idx,       Tag::Unary),
     annex<core::idx2nat> (Op::Idx2Nat,   Tag::Unary),
     annex<core::bitcast> (Op::Bitcast,   Tag::Unary),
-    annex<core::rem>     (Op::Rem,       Tag::Unary),
-    annex<core::div>     (Op::Div,       Tag::Div),
-    annex<mem::lea>      (Op::LeaOffset, Tag::Lea),
+    annex<core::rem>     (Op::Rem,       Tag::Unary, {.id = Annex::Base<div>, .res = 1}),
+    annex<mem::lea>      (Op::LeaOffset, Tag::Lea).only_constant(),
+    annex<mem::lea>      (Op::LeaIndex,  Tag::Bin),
     annex<mem::load>     (Op::Load,      Tag::Load),
     annex<mem::store>    (Op::Store,     Tag::Store),
     annex<mem::mslot>    (Op::Slot,      Tag::None),
     annex<mem::assume>   (Op::Assume,    Tag::None),
 };
+
+constexpr Pattern select_ = {.flags = 0, .member = false, .op = Op::Select, .tag = Tag::Select, .commutes = false};
 // clang-format on
 
-/// The pattern of @p def, or `nullptr` if isel does not cover it.
-const Pattern* pattern(const Def* def) {
-    auto [axm, curry, _] = Axm::get(def);
-    if (!axm || curry) return nullptr;
-    for (const auto& p : patterns_)
-        if (p.member ? axm->flags() == p.flags : axm->base() == p.flags) return &p;
+/// The condition of the first `refly.check` in @p def.
+const Def* size_check(const Def* def, DefSet& done) {
+    if (auto check = Axm::isa<refly::check>(def)) return check->arg(3, 0);
+    if (!done.emplace(def).second) return nullptr;
+    for (auto op : def->ops())
+        if (auto cond = op ? size_check(op, done) : nullptr) return cond;
     return nullptr;
 }
 
-/// Does @p def, matched by @p p, have a memory-operand form (read-modify-write if @p rmw)?
-bool has_mem_form(const Pattern& p, const Def* def, bool rmw) {
-    auto s = Idx::isa_lit(def->type());
-    if (!p.insn || !s || !is_reg_size(*s)) return false;
-    // `imul` has neither an 8-bit nor a read-modify-write form.
-    return p.op != Op::WrapMul || (!rmw && reg_width(*s) >= 16);
+/// Is @p def a memory operation, whose value is its second result?
+bool mem_valued(const Def* def) {
+    auto t = def->type();
+    return t->num_projs() == 2 && Axm::isa<core::M>(t->proj(2, 0));
 }
 
 /// The continuation whose `mem.M` chain @p m is on.
@@ -236,13 +231,16 @@ bool depends(const Def* def, const Def* target, DefSet& done) {
     return false;
 }
 
+/// The register size of the x86 `Idx` the old_world() @p type becomes.
+std::optional<nat_t> new_size(const Def* type) {
+    if (Axm::isa<core::Ptr>(type) || type->isa<Nat>()) return 0;
+    if (auto size = Idx::isa(type)) return Lit::isa(size).value_or(0);
+    return {};
+}
+
 /// The size of the x86 `Idx` the old_world() @p type becomes, if it fits a register.
 std::optional<nat_t> xsize(const Def* type) {
-    if (Axm::isa<core::Ptr>(type) || type->isa<Nat>()) return 0;
-    if (auto size = Idx::isa(type)) {
-        auto s = Lit::isa(size).value_or(0);
-        return is_reg_size(s) ? std::optional(s) : std::nullopt;
-    }
+    if (auto s = new_size(type); s && is_reg_size(*s)) return s;
     return {};
 }
 
@@ -269,21 +267,52 @@ std::optional<nat_t> offset(const App* lea) {
     return off;
 }
 
+/// The pattern of @p def, or `nullptr` if isel does not cover it.
+const Pattern* pattern(const Def* def) {
+    if (def->isa<Extract>()) return &select_;
+    auto [axm, curry, _] = Axm::get(def);
+    if (!axm || curry) return nullptr;
+    for (const auto& p : patterns_)
+        if ((p.member ? axm->flags() == p.flags : axm->base() == p.flags) && (!p.constant || offset(def->as<App>())))
+            return &p;
+    return nullptr;
+}
+
 /// The x86 ALU instruction for the old_world() operation @p def; it has a memory operand.
 const Def* alu(World& w, const Def* def) {
     auto p = pattern(def);
-    assert(p && p->insn);
-    return w.app(w.annex(p->insn), w.lit_nat(*Idx::isa_lit(def->type())));
+    assert(p && p->insn.mem != Mem::None);
+    return w.app(w.annex(p->insn.id), w.lit_nat(*Idx::isa_lit(def->type())));
 }
 
 } // namespace
 
-const Def* ISel::wide(Insn insn, const Def* type, bool sign, const Def* a, const Def* b) {
+bool ISel::supports(flags_t insn, nat_t size) {
+    if (auto res = supports_.find({insn, size}); res != supports_.end()) return res->second;
     auto& w   = new_world();
-    auto size = Idx::isa_lit(type);
-    if (!size || reg_width(*size) >= 16) return insn(w, a, b);
-    auto ext = [&](const Def* x) { return sign ? w.call<movsx>(w.lit_i32(), reg(w, x)) : zext(w.lit_i32(), x); };
-    return w.call<trunc>(*size, insn(w, ext(a), ext(b)));
+    auto pi   = w.annex(insn)->type()->as<Pi>();
+    auto var  = pi->has_var();
+    auto done = DefSet();
+    // The `refly.check` in its codomain states the sizes it supports.
+    auto cond                      = size_check(pi->codom(), done);
+    return supports_[{insn, size}] = !var || !cond || VarRewriter(var, w.lit_nat(size)).rewrite(cond) == w.lit_tt();
+}
+
+bool ISel::has_mem_form(const Pattern& p, const Def* def, bool rmw) {
+    auto s = Idx::isa_lit(def->type());
+    return p.insn.mem >= (rmw ? Mem::Rmw : Mem::Rm) && s && supports(Annex::Base<load>, *s) && supports(p.insn.id, *s);
+}
+
+const Def* ISel::call_insn(const Insn& insn, Want want, const Def* a, const Def* b) {
+    auto& w   = new_world();
+    auto call = [&](const Def* x, const Def* y) {
+        auto r = w.call(insn.id, Defs{reg(w, x), is_literal(want) ? y : reg(w, y)});
+        return insn.res < 0 ? r : r->proj(2, insn.res);
+    };
+    auto size = Idx::isa_lit(a->type());
+    if (!size || supports(insn.id, core::widen_idx(*size))) return call(a, b);
+    auto ext = [&](const Def* x) { return insn.sign ? w.call<movsx>(w.lit_i32(), reg(w, x)) : zext(w.lit_i32(), x); };
+    return w.call<trunc>(*size, call(ext(a), ext(b)));
 }
 
 namespace {
@@ -292,25 +321,23 @@ namespace {
  * Costs
  */
 
-/// Cost of converting a replacement of type @p from into a hole of type @p want.
-pbqp::Cost conv(Ty from, Want want) {
-    switch (want) {
-        case Want::Reg: return from == Ty::Reg ? 0 : 1;
-        case Want::Imm: return pbqp::Cost::inf();
-        case Want::Sh: return pbqp::Cost::inf();
-        case Want::Base: return from == Ty::Index ? 1 : 0;
-        case Want::Index: return from == Ty::Index ? 0 : pbqp::Cost::inf();
-        case Want::Addr: return 0;
-    }
-    std::unreachable();
-}
+constexpr pbqp::Cost Inf = pbqp::Cost::inf();
 
-/// Cost of the operand @p def, which is no node, in a hole of type @p want: a literal that is no immediate and not
-/// part of an address needs a `mov`.
-pbqp::Cost leaf(const Def* def, Want want) {
-    if (!Lit::isa(def)) return conv(Ty::Reg, want);
-    return want == Want::Reg ? 1 : want == Want::Index ? pbqp::Cost::inf() : 0;
-}
+// clang-format off
+/// Cost of converting a replacement or operand of type `Ty` (row) into a hole of type `Want` (column).
+constexpr pbqp::Cost conv_[size_t(Ty::Num)][size_t(Want::Num)] = {
+    //          Reg  Imm  Sh   Base Index Addr
+    /* Reg   */ {0,  Inf, Inf, 0,   Inf,  0},
+    /* Base  */ {1,  Inf, Inf, 0,   Inf,  0},
+    /* Index */ {1,  Inf, Inf, 1,   0,    0},
+    /* Lit   */ {1,  0,   0,   0,   Inf,  0},
+};
+// clang-format on
+
+pbqp::Cost conv(Ty from, Want want) { return conv_[size_t(from)][size_t(want)]; }
+
+/// Cost of the operand @p def, which is no node, in a hole of type @p want.
+pbqp::Cost leaf(const Def* def, Want want) { return conv(Lit::isa(def) ? Ty::Lit : Ty::Reg, want); }
 
 /// Does @p def satisfy a hole of type @p want that requires a literal?
 bool literal(const Def* def, Want want) { return Lit::isa(def) && (want == Want::Sh || fits_imm(def)); }
@@ -319,28 +346,40 @@ bool literal(const Def* def, Want want) { return Lit::isa(def) && (want == Want:
  * Rules
  */
 
-constexpr u64 Load = 1; ///< The inner node `mem.load (m, p: Addr i)`.
-constexpr u64 Alu  = 2; ///< The inner node of the value a `store_mr` folds into.
-
-template<class... W>
-constexpr u16 pack(W... w) {
-    u16 res  = 0;
-    size_t i = 0;
-    ((res |= u16(w) << (3 * i++)), ...);
-    return res;
+template<class... S>
+constexpr Rule rule(Op op, Ty type, pbqp::Cost cost, std::string_view name, BuildFn build, S... slots) {
+    static_assert(sizeof...(S) <= Rule::Max_Slots);
+    return Rule{op, type, cost, name, build, Cond::None, u8(sizeof...(S)), {Slot(slots)...}};
 }
 
-template<class... W>
-constexpr Rule rule(Op op, Form form, Ty type, pbqp::Cost cost, std::string_view name, BuildFn build, W... w) {
-    return Rule{op, form, type, cost, u8(sizeof...(W)), pack(w...), name, build};
+/// The end of the subtree of slots that starts at @p i, or beyond `num_slots` if the slots are malformed.
+constexpr size_t skip(const Rule& r, size_t i) {
+    if (i >= r.num_slots) return r.num_slots + 1;
+    auto n = r.slots[i++].arity;
+    while (n-- != 0)
+        i = skip(r, i);
+    return i;
+}
+
+/// Are the two operand subtrees starting at @p i equal, so that swapping the operands yields no other match?
+constexpr bool symmetric(const Rule& r, size_t i) {
+    auto j = skip(r, i);
+    auto k = skip(r, j);
+    return std::equal(r.slots.begin() + i, r.slots.begin() + j, r.slots.begin() + j, r.slots.begin() + k);
+}
+
+constexpr bool well_formed(const Rule& r) {
+    size_t i = 0;
+    while (i < r.num_slots)
+        i = skip(r, i);
+    return i == r.num_slots;
 }
 
 /// An atomic rule has no inner nodes and only holes that every rule type can fill.
 constexpr bool atomic(const Rule& r) {
-    if (r.form != Form::Reg) return false;
-    for (size_t i = 0; i != r.num_holes; ++i) {
-        auto want = r.want(i);
-        if (want != Want::Reg && want != Want::Base && want != Want::Addr) return false;
+    for (size_t i = 0; i != r.num_slots; ++i) {
+        auto s = r.slots[i];
+        if (!s.is_hole() || (s.want != Want::Reg && s.want != Want::Base && s.want != Want::Addr)) return false;
     }
     return true;
 }
@@ -359,75 +398,85 @@ constexpr std::string_view op_name(Op op) {
 /// The rule set: one entry per pattern ↦ replacement.
 constexpr Rule rules_[] = {
     // An address is an operand form, not a value.
-    rule(Op::LeaOffset, Form::Reg, Ty::Base,  0, "lea_off_base",  &ISel::build_lea_off, Want::Base),
-    rule(Op::LeaOffset, Form::Reg, Ty::Index, 0, "lea_off_index", &ISel::build_lea_off, Want::Index),
-    rule(Op::LeaScale,  Form::Reg, Ty::Index, 0, "lea_index",     &ISel::build_lea_idx, Want::Base, Want::Reg),
-    rule(Op::LeaMul,    Form::Reg, Ty::Index, 1, "lea_index_mul", &ISel::build_lea_idx, Want::Base, Want::Reg),
+    rule(Op::LeaOffset, Ty::Base,  0, "lea_off_base",  &ISel::build_lea_off, Want::Base),
+    rule(Op::LeaOffset, Ty::Index, 0, "lea_off_index", &ISel::build_lea_off, Want::Index),
+    rule(Op::LeaIndex,  Ty::Index, 0, "lea_index",     &ISel::build_lea_idx, Want::Base, Want::Reg).with(Cond::Scale),
+    rule(Op::LeaIndex,  Ty::Index, 1, "lea_index_mul", &ISel::build_lea_idx, Want::Base, Want::Reg),
 
-    rule(Op::Load,  Form::Reg, Ty::Reg, 1, "load",      &ISel::build_load, Want::Addr),
-    rule(Op::Store, Form::Reg, Ty::Reg, 1, "store",     &ISel::build_store, Want::Addr, Want::Reg),
-    rule(Op::Store, Form::Imm, Ty::Reg, 1, "store_imm", &ISel::build_store, Want::Addr, Want::Imm),
-    rule(Op::Store, Form::Rm,  Ty::Reg, 1, "store_mr",  &ISel::build_store_mr),
+    rule(Op::Load,      Ty::Reg,   1, "load",          &ISel::build_load, Want::Addr),
+    rule(Op::Store,     Ty::Reg,   1, "store",         &ISel::build_store, Want::Addr, Want::Reg),
+    rule(Op::Store,     Ty::Reg,   1, "store_imm",     &ISel::build_store, Want::Addr, Want::Imm),
+    rule(Op::Store,     Ty::Reg,   1, "store_mr",      &ISel::build_store_mr, Want::Addr, Slot(Op::Alu, 2), Slot(Op::Load, 1), Want::Addr, Want::Reg).with(Cond::Rmw),
+    rule(Op::Store,     Ty::Reg,   1, "store_mr_imm",  &ISel::build_store_mr, Want::Addr, Slot(Op::Alu, 2), Slot(Op::Load, 1), Want::Addr, Want::Imm).with(Cond::Rmw),
 
-    rule(Op::WrapAdd, Form::Reg, Ty::Reg, 1, "add",       &ISel::build_bin, Want::Reg, Want::Reg),
-    rule(Op::WrapAdd, Form::Imm, Ty::Reg, 1, "add_imm",   &ISel::build_bin, Want::Reg, Want::Imm),
-    rule(Op::WrapAdd, Form::Rm,  Ty::Reg, 1, "add_rm",    &ISel::build_bin_rm, Want::Reg, Want::Reg),
-    rule(Op::WrapSub, Form::Reg, Ty::Reg, 1, "sub",       &ISel::build_bin, Want::Reg, Want::Reg),
-    rule(Op::WrapSub, Form::Imm, Ty::Reg, 1, "sub_imm",   &ISel::build_bin, Want::Reg, Want::Imm),
-    rule(Op::WrapSub, Form::Rm,  Ty::Reg, 1, "sub_rm",    &ISel::build_bin_rm, Want::Reg, Want::Reg),
-    rule(Op::WrapMul, Form::Reg, Ty::Reg, 1, "mul",       &ISel::build_bin, Want::Reg, Want::Reg),
-    rule(Op::WrapMul, Form::Imm, Ty::Reg, 1, "mul_imm",   &ISel::build_bin, Want::Reg, Want::Imm),
-    rule(Op::WrapMul, Form::Rm,  Ty::Reg, 1, "mul_rm",    &ISel::build_bin_rm, Want::Reg, Want::Reg),
-    rule(Op::WrapShl, Form::Reg, Ty::Reg, 1, "shl",       &ISel::build_bin, Want::Reg, Want::Reg),
-    rule(Op::WrapShl, Form::Imm, Ty::Reg, 1, "shl_imm",   &ISel::build_bin, Want::Reg, Want::Sh),
-    rule(Op::BitAnd,  Form::Reg, Ty::Reg, 1, "and",       &ISel::build_bin, Want::Reg, Want::Reg),
-    rule(Op::BitAnd,  Form::Imm, Ty::Reg, 1, "and_imm",   &ISel::build_bin, Want::Reg, Want::Imm),
-    rule(Op::BitAnd,  Form::Rm,  Ty::Reg, 1, "and_rm",    &ISel::build_bin_rm, Want::Reg, Want::Reg),
-    rule(Op::BitOr,   Form::Reg, Ty::Reg, 1, "or",        &ISel::build_bin, Want::Reg, Want::Reg),
-    rule(Op::BitOr,   Form::Imm, Ty::Reg, 1, "or_imm",    &ISel::build_bin, Want::Reg, Want::Imm),
-    rule(Op::BitOr,   Form::Rm,  Ty::Reg, 1, "or_rm",     &ISel::build_bin_rm, Want::Reg, Want::Reg),
-    rule(Op::BitXor,  Form::Reg, Ty::Reg, 1, "xor",       &ISel::build_bin, Want::Reg, Want::Reg),
-    rule(Op::BitXor,  Form::Imm, Ty::Reg, 1, "xor_imm",   &ISel::build_bin, Want::Reg, Want::Imm),
-    rule(Op::BitXor,  Form::Rm,  Ty::Reg, 1, "xor_rm",    &ISel::build_bin_rm, Want::Reg, Want::Reg),
-    rule(Op::BitNand, Form::Reg, Ty::Reg, 1, "nand",      &ISel::build_bin, Want::Reg, Want::Reg),
-    rule(Op::BitNand, Form::Imm, Ty::Reg, 1, "nand_imm",  &ISel::build_bin, Want::Reg, Want::Imm),
-    rule(Op::BitNor,  Form::Reg, Ty::Reg, 1, "nor",       &ISel::build_bin, Want::Reg, Want::Reg),
-    rule(Op::BitNor,  Form::Imm, Ty::Reg, 1, "nor_imm",   &ISel::build_bin, Want::Reg, Want::Imm),
-    rule(Op::BitNxor, Form::Reg, Ty::Reg, 1, "nxor",      &ISel::build_bin, Want::Reg, Want::Reg),
-    rule(Op::BitNxor, Form::Imm, Ty::Reg, 1, "nxor_imm",  &ISel::build_bin, Want::Reg, Want::Imm),
-    rule(Op::ShrL,    Form::Reg, Ty::Reg, 1, "shr",       &ISel::build_bin, Want::Reg, Want::Reg),
-    rule(Op::ShrL,    Form::Imm, Ty::Reg, 1, "shr_imm",   &ISel::build_bin, Want::Reg, Want::Sh),
-    rule(Op::ShrA,    Form::Reg, Ty::Reg, 1, "sar",       &ISel::build_bin, Want::Reg, Want::Reg),
-    rule(Op::ShrA,    Form::Imm, Ty::Reg, 1, "sar_imm",   &ISel::build_bin, Want::Reg, Want::Sh),
+    rule(Op::WrapAdd,   Ty::Reg,   1, "add",           &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::WrapAdd,   Ty::Reg,   1, "add_imm",       &ISel::build_insn, Want::Reg, Want::Imm),
+    rule(Op::WrapAdd,   Ty::Reg,   1, "add_rm",        &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
+    rule(Op::WrapSub,   Ty::Reg,   1, "sub",           &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::WrapSub,   Ty::Reg,   1, "sub_imm",       &ISel::build_insn, Want::Reg, Want::Imm),
+    rule(Op::WrapSub,   Ty::Reg,   1, "sub_rm",        &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
+    rule(Op::WrapMul,   Ty::Reg,   1, "mul",           &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::WrapMul,   Ty::Reg,   1, "mul_imm",       &ISel::build_insn, Want::Reg, Want::Imm),
+    rule(Op::WrapMul,   Ty::Reg,   1, "mul_rm",        &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
+    rule(Op::WrapShl,   Ty::Reg,   1, "shl",           &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::WrapShl,   Ty::Reg,   1, "shl_imm",       &ISel::build_insn, Want::Reg, Want::Sh),
+    rule(Op::BitAnd,    Ty::Reg,   1, "and",           &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::BitAnd,    Ty::Reg,   1, "and_imm",       &ISel::build_insn, Want::Reg, Want::Imm),
+    rule(Op::BitAnd,    Ty::Reg,   1, "and_rm",        &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
+    rule(Op::BitOr,     Ty::Reg,   1, "or",            &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::BitOr,     Ty::Reg,   1, "or_imm",        &ISel::build_insn, Want::Reg, Want::Imm),
+    rule(Op::BitOr,     Ty::Reg,   1, "or_rm",         &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
+    rule(Op::BitXor,    Ty::Reg,   1, "xor",           &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::BitXor,    Ty::Reg,   1, "xor_imm",       &ISel::build_insn, Want::Reg, Want::Imm),
+    rule(Op::BitXor,    Ty::Reg,   1, "xor_rm",        &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
+    rule(Op::BitNand,   Ty::Reg,   1, "nand",          &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::BitNand,   Ty::Reg,   1, "nand_imm",      &ISel::build_insn, Want::Reg, Want::Imm),
+    rule(Op::BitNor,    Ty::Reg,   1, "nor",           &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::BitNor,    Ty::Reg,   1, "nor_imm",       &ISel::build_insn, Want::Reg, Want::Imm),
+    rule(Op::BitNxor,   Ty::Reg,   1, "nxor",          &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::BitNxor,   Ty::Reg,   1, "nxor_imm",      &ISel::build_insn, Want::Reg, Want::Imm),
+    rule(Op::ShrL,      Ty::Reg,   1, "shr",           &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::ShrL,      Ty::Reg,   1, "shr_imm",       &ISel::build_insn, Want::Reg, Want::Sh),
+    rule(Op::ShrA,      Ty::Reg,   1, "sar",           &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::ShrA,      Ty::Reg,   1, "sar_imm",       &ISel::build_insn, Want::Reg, Want::Sh),
 
-    rule(Op::Icmp, Form::Reg, Ty::Reg, 2, "cmp",     &ISel::build_cmp, Want::Reg, Want::Reg),
-    rule(Op::Icmp, Form::Imm, Ty::Reg, 2, "cmp_imm", &ISel::build_cmp, Want::Reg, Want::Imm),
-    rule(Op::Ncmp, Form::Reg, Ty::Reg, 2, "ncmp",     &ISel::build_cmp, Want::Reg, Want::Reg),
-    rule(Op::Ncmp, Form::Imm, Ty::Reg, 2, "ncmp_imm", &ISel::build_cmp, Want::Reg, Want::Imm),
+    rule(Op::Icmp,      Ty::Reg,   2, "cmp",           &ISel::build_cmp, Want::Reg, Want::Reg),
+    rule(Op::Icmp,      Ty::Reg,   2, "cmp_imm",       &ISel::build_cmp, Want::Reg, Want::Imm),
+    rule(Op::Ncmp,      Ty::Reg,   2, "ncmp",          &ISel::build_cmp, Want::Reg, Want::Reg),
+    rule(Op::Ncmp,      Ty::Reg,   2, "ncmp_imm",      &ISel::build_cmp, Want::Reg, Want::Imm),
 
-    rule(Op::NatAdd, Form::Reg, Ty::Reg, 1, "nat_add",     &ISel::build_nat, Want::Reg, Want::Reg),
-    rule(Op::NatAdd, Form::Imm, Ty::Reg, 1, "nat_add_imm", &ISel::build_nat, Want::Reg, Want::Imm),
-    rule(Op::NatSub, Form::Reg, Ty::Reg, 1, "nat_sub",     &ISel::build_nat, Want::Reg, Want::Reg),
-    rule(Op::NatSub, Form::Imm, Ty::Reg, 1, "nat_sub_imm", &ISel::build_nat, Want::Reg, Want::Imm),
-    rule(Op::NatMul, Form::Reg, Ty::Reg, 1, "nat_mul",     &ISel::build_nat, Want::Reg, Want::Reg),
-    rule(Op::NatMul, Form::Imm, Ty::Reg, 1, "nat_mul_imm", &ISel::build_nat, Want::Reg, Want::Imm),
-    rule(Op::NatDiv, Form::Reg, Ty::Reg, 1, "nat_div",     &ISel::build_nat, Want::Reg, Want::Reg),
-    rule(Op::NatRem, Form::Reg, Ty::Reg, 1, "nat_rem",     &ISel::build_nat, Want::Reg, Want::Reg),
+    rule(Op::NatAdd,    Ty::Reg,   1, "nat_add",       &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::NatAdd,    Ty::Reg,   1, "nat_add_imm",   &ISel::build_insn, Want::Reg, Want::Imm),
+    rule(Op::NatSub,    Ty::Reg,   1, "nat_sub",       &ISel::build_nat_sub, Want::Reg, Want::Reg),
+    rule(Op::NatSub,    Ty::Reg,   1, "nat_sub_imm",   &ISel::build_nat_sub, Want::Reg, Want::Imm),
+    rule(Op::NatMul,    Ty::Reg,   1, "nat_mul",       &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::NatMul,    Ty::Reg,   1, "nat_mul_imm",   &ISel::build_insn, Want::Reg, Want::Imm),
+    rule(Op::NatDiv,    Ty::Reg,   1, "nat_div",       &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::NatRem,    Ty::Reg,   1, "nat_rem",       &ISel::build_insn, Want::Reg, Want::Reg),
 
-    rule(Op::Conv,    Form::Reg, Ty::Reg, 1, "conv",     &ISel::build_unary, Want::Reg),
-    rule(Op::Idx,     Form::Reg, Ty::Reg, 1, "idx",      &ISel::build_unary, Want::Reg),
-    rule(Op::Idx2Nat, Form::Reg, Ty::Reg, 1, "idx2nat",  &ISel::build_unary, Want::Reg),
-    rule(Op::Bitcast, Form::Reg, Ty::Reg, 1, "bitcast",  &ISel::build_unary, Want::Reg),
-    rule(Op::Rem,     Form::Reg, Ty::Reg, 1, "rem",      &ISel::build_unary, Want::Reg),
+    rule(Op::Conv,      Ty::Reg,   0, "conv_id",       &ISel::build_id, Want::Reg).with(Cond::Same),
+    rule(Op::Conv,      Ty::Reg,   1, "conv_trunc",    &ISel::build_trunc, Want::Reg).with(Cond::Narrow),
+    rule(Op::Conv,      Ty::Reg,   1, "conv_ext",      &ISel::build_ext, Want::Reg).with(Cond::Widen),
+    rule(Op::Idx,       Ty::Reg,   0, "idx",           &ISel::build_id, Want::Reg).with(Cond::Same),
+    rule(Op::Idx2Nat,   Ty::Reg,   0, "idx2nat_id",    &ISel::build_id, Want::Reg).with(Cond::Same),
+    rule(Op::Idx2Nat,   Ty::Reg,   1, "idx2nat_ext",   &ISel::build_ext, Want::Reg).with(Cond::Widen),
+    rule(Op::Bitcast,   Ty::Reg,   0, "bitcast_id",    &ISel::build_id, Want::Reg).with(Cond::Same),
+    rule(Op::Bitcast,   Ty::Reg,   1, "bitcast_trunc", &ISel::build_trunc, Want::Reg).with(Cond::Narrow),
+    rule(Op::Bitcast,   Ty::Reg,   1, "bitcast_ext",   &ISel::build_ext, Want::Reg).with(Cond::Widen),
+    rule(Op::Rem,       Ty::Reg,   1, "rem",           &ISel::build_rem, Want::Reg),
 
-    rule(Op::Div,    Form::Reg, Ty::Reg, 1, "div",    &ISel::build_div, Want::Reg, Want::Reg),
-    rule(Op::Slot,   Form::Reg, Ty::Reg, 1, "slot",   &ISel::build_slot),
-    rule(Op::Assume, Form::Reg, Ty::Reg, 0, "assume", &ISel::build_assume),
-    rule(Op::Select, Form::Reg, Ty::Reg, 1, "select", &ISel::build_select, Want::Reg, Want::Reg, Want::Reg),
+    rule(Op::Div,       Ty::Reg,   1, "div",           &ISel::build_insn, Want::Reg, Want::Reg),
+    rule(Op::Slot,      Ty::Reg,   1, "slot",          &ISel::build_slot),
+    rule(Op::Assume,    Ty::Reg,   0, "assume",        &ISel::build_assume),
+    rule(Op::Select,    Ty::Reg,   1, "select",        &ISel::build_select, Want::Reg, Want::Reg, Want::Reg),
 };
 // clang-format on
 
-Want ri(const Def* def) { return Lit::isa(def) && fits_imm(def) ? Want::Imm : Want::Reg; }
+static_assert(std::ranges::all_of(rules_, well_formed));
+
+constexpr bool has_atomic(Op op) {
+    return std::ranges::any_of(rules_, [op](const Rule& r) { return r.op == op && atomic(r); });
+}
 
 } // namespace
 
@@ -444,7 +493,7 @@ const Def* ISel::build_lea_idx(const Def* root, const Alt& alt) {
     auto size = elem_size(root->as<App>());
     auto x    = hole(i);
     if (auto n = Idx::isa_lit(i->type()); n && *n != 0) x = zext(w.lit_i64(), x);
-    if (size == 1 || size == 2 || size == 4 || size == 8) return addr({a.base, x, u8(size), a.disp});
+    if (alt.rule->cond == Cond::Scale) return addr({a.base, x, u8(size), a.disp});
     return addr({a.base, bin<imul>(w, x, w.lit_i64(size)), 1, a.disp});
 }
 
@@ -468,34 +517,14 @@ const Def* ISel::build_store_mr(const Def* root, const Alt& alt) {
     return w.call<mr>(alu(w, u), Defs{rewrite(ld->as<App>()->arg(2, 0)), hole(p, Want::Addr), b});
 }
 
-const Def* ISel::build_bin(const Def* root, const Alt& alt) {
-    auto& w  = new_world();
-    auto app = root->as<App>();
-    auto a   = hole(alt.demands[0].def, alt.demands[0].want);
-    auto b   = hole(alt.demands[1].def, alt.demands[1].want);
-    if (auto op = Axm::isa<core::wrap>(app)) {
-        switch (op.id()) {
-            case core::wrap::add: return bin<add>(w, a, b);
-            case core::wrap::sub: return bin<sub>(w, a, b);
-            // The low bits of a product do not depend on how the operands were extended.
-            case core::wrap::mul: return wide(bin<imul>, app->type(), false, a, b);
-            case core::wrap::shl: return shift<shl>(w, a, b);
-        }
-    } else if (auto op = Axm::isa<core::bit2>(app)) {
-        // clang-format off
-        switch (op.id()) {
-            case core::bit2::and_: return bin<and_>(w, a, b);
-            case core::bit2::or_:  return bin<or_> (w, a, b);
-            case core::bit2::xor_: return bin<xor_>(w, a, b);
-            case core::bit2::nand: return bin<xor_>(w, bin<and_>(w, a, b), ones(w, a->type()));
-            case core::bit2::nor:  return bin<xor_>(w, bin<or_ >(w, a, b), ones(w, a->type()));
-            case core::bit2::nxor: return bin<xor_>(w, bin<xor_>(w, a, b), ones(w, a->type()));
-            default: return nullptr;
-        }
-        // clang-format on
-    }
-    auto op = Axm::as<core::shr>(app);
-    return op.id() == core::shr::a ? shift<sar>(w, a, b) : shift<shr>(w, a, b);
+const Def* ISel::build_insn(const Def* root, const Alt& alt) {
+    auto& w    = new_world();
+    auto& insn = pattern(root)->insn;
+    auto a     = hole(alt.demands[0].def, alt.demands[0].want);
+    auto b     = hole(alt.demands[1].def, alt.demands[1].want);
+    auto res   = call_insn(insn, alt.demands[1].want, a, b);
+    if (insn.negate) res = bin<xor_>(w, res, ones(w, a->type()));
+    return mem_valued(root) ? w.tuple({rewrite(root->as<App>()->arg(2, 0)), res}) : res;
 }
 
 const Def* ISel::build_bin_rm(const Def* root, const Alt& alt) {
@@ -511,66 +540,34 @@ const Def* ISel::build_cmp(const Def* root, const Alt& alt) {
     auto& w = new_world();
     auto a  = hole(alt.demands[0].def);
     auto b  = hole(alt.demands[1].def, alt.demands[1].want);
-    return w.call(*cc(root), bin<cmp>(w, a, b));
+    return w.call(pattern(root)->insn.id, bin<cmp>(w, a, b));
 }
 
-const Def* ISel::build_nat(const Def* root, const Alt& alt) {
+const Def* ISel::build_nat_sub(const Def*, const Alt& alt) {
     auto& w = new_world();
     auto a  = hole(alt.demands[0].def);
     auto b  = hole(alt.demands[1].def, alt.demands[1].want);
-    switch (Axm::as<core::nat>(root).id()) {
-        case core::nat::add: return bin<add>(w, a, b);
-        case core::nat::mul: return bin<imul>(w, a, b);
-        case core::nat::sub:
-            return w.call(x86::cmovcc::b, Defs{bin<cmp>(w, a, b), bin<sub>(w, a, b), reg(w, w.lit_i64(0))});
-        case core::nat::div: return divrem<div, 0>(w, a, b);
-        case core::nat::rem: return divrem<div, 1>(w, a, b);
-    }
-    std::unreachable();
+    return w.call(x86::cmovcc::b, Defs{bin<cmp>(w, a, b), bin<sub>(w, a, b), reg(w, w.lit_i64(0))});
 }
 
-const Def* ISel::build_unary(const Def* root, const Alt& alt) {
+const Def* ISel::build_id(const Def*, const Alt& alt) { return hole(alt.demands[0].def); }
+
+const Def* ISel::build_trunc(const Def* root, const Alt& alt) {
+    return new_world().call<trunc>(*Idx::isa_lit(rewrite(root->type())), hole(alt.demands[0].def));
+}
+
+const Def* ISel::build_ext(const Def* root, const Alt& alt) {
     auto& w  = new_world();
-    auto app = root->as<App>();
+    auto dst = *Idx::isa_lit(rewrite(root->type()));
     auto x   = hole(alt.demands[0].def);
-    if (auto op = Axm::isa<core::conv>(app)) {
-        auto src = Idx::isa_lit(x->type());
-        auto dst = Idx::isa_lit(rewrite(app->type()));
-        if (!src || !dst) return nullptr;
-        if (*src == *dst) return x;
-        if (reg_width(*src) >= reg_width(*dst)) return w.call<trunc>(*dst, x);
-        return op.id() == core::conv::s ? w.call<movsx>(*dst, x) : w.call<movzx>(*dst, x);
-    } else if (Axm::isa<core::idx>(app)) {
-        return rewrite(app->type()) == w.type_i64() ? x : nullptr;
-    } else if (Axm::isa<core::idx2nat>(app)) {
-        return Idx::isa_lit(x->type()) == 0 ? x : zext(w.lit_i64(), x);
-    } else if (Axm::isa<core::bitcast>(app)) {
-        auto src = Idx::isa_lit(x->type());
-        auto dst = Idx::isa_lit(rewrite(app->type()));
-        if (x->type() == rewrite(app->type())) return x;
-        if (!src || !dst) return nullptr;
-        return reg_width(*src) >= reg_width(*dst) ? w.call<trunc>(*dst, x) : w.call<movzx>(*dst, x);
-    }
-    auto op = Axm::as<core::rem>(app);
-    auto d  = w.lit(x->type(), *Lit::isa(op->decurry()->arg()));
-    return wide(divrem<div, 1>, x->type(), false, x, d);
+    return pattern(root)->insn.sign ? w.call<movsx>(dst, x) : w.call<movzx>(dst, x);
 }
 
-const Def* ISel::build_div(const Def* root, const Alt& alt) {
-    auto& w   = new_world();
-    auto op   = Axm::as<core::div>(root);
-    auto x    = hole(alt.demands[0].def);
-    auto y    = hole(alt.demands[1].def);
-    auto type = x->type();
-    const Def* res;
-    switch (op.id()) {
-        case core::div::udiv: res = wide(divrem<div, 0>, type, false, x, y); break;
-        case core::div::urem: res = wide(divrem<div, 1>, type, false, x, y); break;
-        case core::div::sdiv: res = wide(divrem<idiv, 0>, type, true, x, y); break;
-        case core::div::srem: res = wide(divrem<idiv, 1>, type, true, x, y); break;
-        default: std::unreachable();
-    }
-    return w.tuple({rewrite(op->arg(2, 0)), res});
+const Def* ISel::build_rem(const Def* root, const Alt& alt) {
+    auto& insn = pattern(root)->insn;
+    auto x     = hole(alt.demands[0].def);
+    auto d     = new_world().lit(x->type(), *Lit::isa(Axm::as<core::rem>(root)->decurry()->arg()));
+    return call_insn(insn, Want::Reg, x, d);
 }
 
 const Def* ISel::build_slot(const Def* root, const Alt&) {
@@ -592,158 +589,162 @@ const Def* ISel::build_select(const Def* root, const Alt& alt) {
     auto y    = hole(alt.demands[1].def);
     auto c    = hole(alt.demands[2].def);
     auto code = x86::cmovcc::ne;
-    auto fl   = rr<test>(w, c, c);
+    auto fl   = w.call<test>(Defs{reg(w, c), reg(w, c)});
     if (auto cond = Axm::isa<x86::cc>(c)) {
         code = cmovcc_of(cond.sub());
         fl   = cond->arg();
     }
-    // `cmov` has no 8-bit form.
-    if (reg_width(size) < 16) {
+    if (!supports(flags_t(code), size)) {
         auto ext = [&](const Def* v) { return reg(w, zext(w.lit_i32(), v)); };
         return w.call<trunc>(size, w.call(code, Defs{fl, ext(x), ext(y)}));
     }
     return w.call(code, Defs{fl, x, y});
 }
 
-size_t ISel::append(Op op, Form form, Alts& alts, Defs operands) const {
-    size_t n = 0;
-    for (const auto& rule : rules_) {
-        if (rule.op != op || rule.form != form) continue;
-        assert(operands.size() == rule.num_holes);
-        auto alt = Alt();
-        alt.rule = &rule;
-        alt.cost = rule.cost;
-        bool ok  = true;
-        for (size_t i = 0; ok && i != rule.num_holes; ++i) {
-            auto want = rule.want(i);
-            if ((want == Want::Imm || want == Want::Sh) && !literal(operands[i], want))
-                ok = false;
-            else
-                alt.demands.emplace_back(Demand{operands[i], want});
-        }
-        if (ok) {
-            alts.emplace_back(std::move(alt));
-            ++n;
-        }
-    }
-    return n;
-}
-
-void ISel::append_bin_rm(Op op, Alts& alts, const Def* other, const Def* v, const App* ld) const {
-    for (const auto& rule : rules_) {
-        if (rule.op != op || rule.form != Form::Rm) continue;
-        auto alt = Alt();
-        alt.rule = &rule;
-        alt.cost = rule.cost;
-        alt.demands.emplace_back(Demand{other, Want::Reg});
-        alt.demands.emplace_back(Demand{v, Want::Reg, Load});
-        alt.covers.emplace_back(Cover{ld, Load, {{ld->arg(2, 1), Want::Addr}}});
-        alts.emplace_back(std::move(alt));
-    }
-}
-
-void ISel::append_store_mr(Alts& alts,
-                           const Def* p,
-                           const Def* x,
-                           const App* u,
-                           const App* ld,
-                           const Def* v,
-                           const Def* other) const {
-    for (const auto& rule : rules_) {
-        if (rule.op != Op::Store || rule.form != Form::Rm) continue;
-        auto alt = Alt();
-        alt.rule = &rule;
-        alt.cost = rule.cost;
-        alt.demands.emplace_back(Demand{p, Want::Addr});
-        alt.demands.emplace_back(Demand{x, Want::Reg, Alu});
-        alt.covers.emplace_back(Cover{u, Alu, {{v, Want::Reg, Load}, {other, ri(other)}}});
-        alt.covers.emplace_back(Cover{ld, Load, {{ld->arg(2, 1), Want::Addr}}});
-        alts.emplace_back(std::move(alt));
-    }
-}
-
-/// Appends the matches rooted at @p def to @p alts.
-void ISel::match(const Def* def, Alts& alts) const {
-    if (auto ex = def->isa<Extract>()) {
-        auto index = ex->index();
-        if (xsize(ex->type()) && Idx::isa_lit(index->type()) == 2 && !Lit::isa(index)
-            && ex->tuple()->num_projs() == 2) {
-            auto [x, y] = ex->tuple()->projs<2>();
-            append(Op::Select, Form::Reg, alts, {x, y, index});
-        }
-        return;
-    }
-
-    auto app = def->isa<App>();
-    if (!app) return;
-    auto ptrn = pattern(app);
-    if (!ptrn) return;
+std::optional<ISel::Node> ISel::decompose(const Def* def) const {
+    auto ptrn = pattern(def);
+    if (!ptrn) return {};
+    auto app  = def->isa<App>();
+    auto node = [&](DefVec ops) { return Node{ptrn, ptrn->op, std::move(ops)}; };
 
     switch (ptrn->tag) {
-        case Tag::Lea: {
-            auto [base, i] = app->args<2>();
-            if (offset(app)) {
-                append(ptrn->op, Form::Reg, alts, {base});
-            } else {
-                auto size = elem_size(app);
-                append(size == 1 || size == 2 || size == 4 || size == 8 ? Op::LeaScale : Op::LeaMul, Form::Reg, alts,
-                       {base, i});
-            }
-            return;
+        case Tag::Select: {
+            auto ex    = def->as<Extract>();
+            auto index = ex->index();
+            if (!xsize(ex->type()) || Idx::isa_lit(index->type()) != 2 || Lit::isa(index)
+                || ex->tuple()->num_projs() != 2)
+                return {};
+            auto [x, y] = ex->tuple()->projs<2>();
+            return node({x, y, index});
         }
+        case Tag::Lea: return node({app->arg(2, 0)});
         case Tag::Load:
-            if (xsize(app->type()->proj(2, 1))) append(ptrn->op, Form::Reg, alts, {app->arg(2, 1)});
-            return;
+            if (!xsize(app->type()->proj(2, 1))) return {};
+            return node({app->arg(2, 1)});
         case Tag::Store: {
-            auto [m, p, x] = app->args<3>();
-            if (!xsize(x->type())) return;
-            append(ptrn->op, Form::Reg, alts, {p, x});
-            append(ptrn->op, Form::Imm, alts, {p, x});
-            auto u = x->isa<App>();
-            if (!u || uses(u) != 1 || uses(u->arg()) != 1) return;
-            auto up = pattern(u);
-            if (!up || !has_mem_form(*up, u, true)) return;
-            auto [a, b] = u->args<2>();
-            for (auto [v, other, v_is_a] : {std::tuple{a, b, true}, std::tuple{b, a, false}}) {
-                if (!v_is_a && !up->commutes) break;
-                // The load's memory has no other user, so nothing lies between load and store.
-                if (auto ld = sole_load(v);
-                    ld && v != other && ld->arg(2, 1) == p && ld->proj(2, 0) == m && uses(m) == 1)
-                    append_store_mr(alts, p, x, u, ld, v, other);
-            }
-            return;
+            auto [_, p, x] = app->args<3>();
+            if (!xsize(x->type())) return {};
+            return node({p, x});
         }
         case Tag::Bin: {
             auto [a, b] = app->args<2>();
-            append(ptrn->op, Form::Reg, alts, {a, b});
-            if (!append(ptrn->op, Form::Imm, alts, {a, b}) && ptrn->commutes) append(ptrn->op, Form::Imm, alts, {b, a});
-            if (!has_mem_form(*ptrn, app, false) || uses(app->arg()) != 1) return;
-            for (auto [v, other, v_is_a] : {std::tuple{b, a, false}, std::tuple{a, b, true}}) {
-                if (v_is_a && !ptrn->commutes) break;
-                auto ld = sole_load(v);
-                if (!ld || v == other) continue;
-                // The replacement sits at the load, so the other operand must be available there.
-                auto bb   = chain(ld->arg(2, 0));
-                auto done = DefSet();
-                if (bb && other->in_scope(bb) && !depends(other, ld, done)) append_bin_rm(ptrn->op, alts, other, v, ld);
-            }
-            return;
+            return node({a, b});
         }
-        case Tag::Cmp: {
-            if (!cc(app)) return;
-            auto [a, b] = app->args<2>();
-            append(ptrn->op, Form::Reg, alts, {a, b});
-            append(ptrn->op, Form::Imm, alts, {a, b});
-            return;
-        }
-        case Tag::Unary: append(ptrn->op, Form::Reg, alts, {app->arg()}); return;
+        case Tag::Unary: return node({app->arg()});
         case Tag::Div: {
             auto [x, y] = app->arg(2, 1)->projs<2>();
-            append(ptrn->op, Form::Reg, alts, {x, y});
-            return;
+            return node({x, y});
         }
-        case Tag::None: append(ptrn->op, Form::Reg, alts, Defs{}); return;
+        case Tag::None: return node({});
     }
+    std::unreachable();
+}
+
+void ISel::match(const Def* def, Alts& alts) {
+    if (auto node = decompose(def))
+        for (const auto& rule : rules_)
+            if (rule.op == node->op) append(rule, def, *node, alts);
+}
+
+void ISel::append(const Rule& rule, const Def* root, const Node& node, Alts& alts) {
+    auto alt = Alt();
+    alt.rule = &rule;
+    alt.cost = rule.cost;
+    descend(rule, root, 0, std::move(alt), {}, Frame{root, node.ops}, node, alts);
+}
+
+void ISel::descend(const Rule& rule,
+                   const Def* root,
+                   size_t i,
+                   Alt alt,
+                   fe::Vector<Frame> frames,
+                   Frame frame,
+                   const Node& node,
+                   Alts& alts) {
+    if (node.ptrn->commutes && frame.ops.size() == 2 && !symmetric(rule, i)) {
+        auto swapped = frames;
+        swapped.emplace_back(Frame{frame.node, {frame.ops[1], frame.ops[0]}, 0, frame.cover});
+        frames.emplace_back(std::move(frame));
+        bind(rule, root, i, alt, std::move(frames), alts);
+        bind(rule, root, i, std::move(alt), std::move(swapped), alts);
+    } else {
+        frames.emplace_back(std::move(frame));
+        bind(rule, root, i, std::move(alt), std::move(frames), alts);
+    }
+}
+
+void ISel::bind(const Rule& rule, const Def* root, size_t i, Alt alt, fe::Vector<Frame> frames, Alts& alts) {
+    while (!frames.empty() && frames.back().next == frames.back().ops.size())
+        frames.pop_back();
+    if (frames.empty()) {
+        if (i == rule.num_slots && holds(root, alt)) alts.emplace_back(std::move(alt));
+        return;
+    }
+    if (i == rule.num_slots) return;
+
+    auto& f       = frames.back();
+    auto def      = f.ops[f.next++];
+    auto slot     = rule.slots[i];
+    auto& demands = f.cover == size_t(-1) ? alt.demands : alt.covers[f.cover].demands;
+    if (slot.is_hole()) {
+        if (is_literal(slot.want) && !literal(def, slot.want)) return;
+        demands.emplace_back(Demand{def, slot.want});
+        return bind(rule, root, i + 1, std::move(alt), std::move(frames), alts);
+    }
+
+    auto app  = sole(f, def);
+    auto node = app ? decompose(app) : std::nullopt;
+    if (!node || node->ops.size() != slot.arity) return;
+    if (slot.node == Op::Alu ? !has_mem_form(*node->ptrn, app, true) : node->op != slot.node) return;
+    auto c = alt.covers.size();
+    demands.emplace_back(Demand{def, Want::Reg, c + 1});
+    alt.covers.emplace_back(Cover{app, 0, {}});
+    descend(rule, root, i + 1, std::move(alt), std::move(frames), Frame{app, node->ops, 0, c}, *node, alts);
+}
+
+const App* ISel::sole(const Frame& parent, const Def* def) const {
+    if (auto app = parent.node->isa<App>(); !app || uses(app->arg()) != 1) return nullptr;
+    if (std::ranges::count(parent.ops, def) != 1) return nullptr;
+    if (key(def) != def) return sole_value(def);
+    return uses(def) == 1 ? def->isa<App>() : nullptr;
+}
+
+bool ISel::holds(const Def* root, const Alt& alt) {
+    switch (alt.rule->cond) {
+        case Cond::None: return true;
+        case Cond::Same:
+        case Cond::Narrow:
+        case Cond::Widen: {
+            auto src = new_size(alt.demands[0].def->type());
+            auto dst = new_size(root->type());
+            if (!src || !dst) return false;
+            if (*src == *dst) return alt.rule->cond == Cond::Same;
+            return alt.rule->cond == (reg_width(*src) >= reg_width(*dst) ? Cond::Narrow : Cond::Widen);
+        }
+        case Cond::Scale: {
+            auto size = elem_size(root->as<App>());
+            return size == 1 || size == 2 || size == 4 || size == 8;
+        }
+        case Cond::Fold: {
+            if (!has_mem_form(*pattern(root), root, false)) return false;
+            // The replacement sits at the load, so the other operands must be available there.
+            auto ld = alt.covers.back().def->as<App>();
+            auto bb = chain(ld->arg(2, 0));
+            if (!bb) return false;
+            for (const auto& d : alt.demands) {
+                auto done = DefSet();
+                if (!d.inner && (!d.def->in_scope(bb) || depends(d.def, ld, done))) return false;
+            }
+            return true;
+        }
+        case Cond::Rmw: {
+            // The load's memory has no other user, so nothing lies between load and store.
+            auto [m, p, _] = root->as<App>()->args<3>();
+            auto ld        = alt.covers.back().def->as<App>();
+            return ld->arg(2, 1) == p && ld->proj(2, 0) == m && uses(m) == 1;
+        }
+    }
+    std::unreachable();
 }
 
 /*
@@ -770,18 +771,28 @@ bool ISel::analyze() {
     }
 
     // Each inner node of a match becomes an alternative of the node it covers; equal ones are one class.
+    // A cover's operands follow it in preorder, so their classes are known before its own.
+    auto resolve = [](const Alt& alt, fe::Vector<Demand>& demands) {
+        for (auto& d : demands)
+            if (d.inner) d.inner = alt.covers[d.inner - 1].inner;
+    };
     for (auto def : nodes)
-        for (size_t i = 0, e = alts_[def].size(); i != e; ++i)
-            for (size_t j = 0, n = alts_[def][i].covers.size(); j != n; ++j) {
-                auto cover  = alts_[def][i].covers[j];
+        for (auto& alt : alts_[def]) {
+            for (size_t j = alt.covers.size(); j-- != 0;) {
+                auto& cover = alt.covers[j];
+                resolve(alt, cover.demands);
                 auto& inner = alts_.at(cover.def);
-                if (std::ranges::none_of(inner, [&](const Alt& a) { return !a.rule && a.inner == cover.inner; })) {
-                    auto alt    = Alt();
-                    alt.inner   = cover.inner;
-                    alt.demands = std::move(cover.demands);
-                    inner.emplace_back(std::move(alt));
+                auto same   = [&](const Alt& a) { return !a.rule && std::ranges::equal(a.demands, cover.demands); };
+                auto i      = std::ranges::find_if(inner, same);
+                cover.inner = size_t(i - inner.begin()) + 1;
+                if (i == inner.end()) {
+                    auto a    = Alt();
+                    a.demands = cover.demands;
+                    inner.emplace_back(std::move(a));
                 }
             }
+            resolve(alt, alt.demands);
+        }
 
     auto graph = pbqp::Graph();
     auto ids   = DefMap<pbqp::NodeId>();
@@ -811,7 +822,7 @@ bool ISel::analyze() {
                 for (const auto& d : alts[i].demands) {
                     if (key(d.def) != op) continue;
                     if (d.inner)
-                        c += !o.rule && o.inner == d.inner ? 0 : pbqp::Cost::inf();
+                        c += !o.rule && j + 1 == d.inner ? 0 : pbqp::Cost::inf();
                     else
                         c += o.rule ? conv(o.rule->type, d.want) : pbqp::Cost::inf();
                 }
@@ -822,21 +833,22 @@ bool ISel::analyze() {
         }
     }
 
-    auto atomic = pbqp::Choices(graph.num_nodes(), 0);
+    auto fallback = pbqp::Choices(graph.num_nodes(), 0);
     for (auto def : nodes) {
-        auto i           = atomic_choice(alts_[def]);
-        atomic[ids[def]] = i == size_t(-1) ? 0 : i;
+        auto i             = std::ranges::find_if(alts_[def], [](const Alt& a) { return a.rule && atomic(*a.rule); });
+        auto found         = i != alts_[def].end();
+        fallback[ids[def]] = found ? size_t(i - alts_[def].begin()) : 0;
 #ifdef MIM_ENABLE_CHECKS
-        if (i == size_t(-1)) fe::throwf("x86 isel: `{}` has no atomic rule", def);
+        if (!found) fe::throwf("x86 isel: `{}` has no atomic rule", def);
 #endif
     }
 #ifdef MIM_ENABLE_CHECKS
-    if (pbqp::evaluate(graph, atomic).is_inf()) fe::throwf("the atomic rules must cover the program");
+    if (pbqp::evaluate(graph, fallback).is_inf()) fe::throwf("the atomic rules must cover the program");
 #endif
     auto sol = pbqp::solve(graph);
     log().d("x86 isel: {} nodes, {} edges, cost {}", graph.num_nodes(), graph.num_edges(), sol.cost.value());
     // RN is a heuristic, but the atomic rules always remain a valid cover.
-    const auto& picked = sol.feasible() ? sol.choices : atomic;
+    const auto& picked = sol.feasible() ? sol.choices : fallback;
     if (auto d = arg_value(args(), "isel-dot")) {
         auto out = Out(std::string(*d));
         auto& os = *out.os();
@@ -853,45 +865,31 @@ bool ISel::analyze() {
     return false;
 }
 
-size_t ISel::atomic_choice(const Alts& alts) const {
-    for (size_t i = 0; i != alts.size(); ++i)
-        if (alts[i].rule && atomic(*alts[i].rule)) return i;
-    return size_t(-1);
-}
-
 #ifdef MIM_ENABLE_CHECKS
 void ISel::check_rules() const {
     for (const auto& r : rules_) {
         if (conv(r.type, Want::Reg).is_inf())
             fe::throwf("x86 isel: rule `{}` yields a value that does not convert to a register", r.name);
-        for (size_t i = 0; i != r.num_holes; ++i) {
-            auto want = r.want(i);
-            if (want == Want::Imm || want == Want::Sh) continue; // satisfied by a literal, not a rule type
+        for (size_t i = 0; i != r.num_slots; ++i) {
+            auto s = r.slots[i];
+            if (!s.is_hole()) {
+                if (s.node != Op::Alu && !has_atomic(s.node))
+                    fe::throwf("x86 isel: `{}` folds `{}`, but no atomic rule selects it", r.name, op_name(s.node));
+                for (const auto& p : patterns_)
+                    if (s.node == Op::Alu && p.insn.mem == Mem::Rmw && !has_atomic(p.op))
+                        fe::throwf("x86 isel: `{}` folds `{}`, but no atomic rule selects it", r.name, op_name(p.op));
+                continue;
+            }
+            if (is_literal(s.want)) continue; // satisfied by a literal, not a rule type
             bool ok = false;
             for (auto ty : {Ty::Reg, Ty::Base, Ty::Index})
-                if (!conv(ty, want).is_inf()) ok = true;
+                if (!conv(ty, s.want).is_inf()) ok = true;
             if (!ok) fe::throwf("x86 isel: no rule type converts to a hole of `{}`", r.name);
         }
     }
 
-    std::array<bool, size_t(Op::Num)> seen{};
-    for (const auto& r : rules_) {
-        if (seen[size_t(r.op)]) continue;
-        seen[size_t(r.op)] = true;
-        bool ok            = false;
-        for (const auto& x : rules_)
-            if (x.op == r.op && atomic(x)) ok = true;
-        if (!ok) fe::throwf("x86 isel: no atomic rule for `{}`", op_name(r.op));
-    }
-
-    // The only inner nodes the rules span are loads, so `Op::Load` must itself be coverable by a rule.
-    for (const auto& r : rules_) {
-        if (r.form != Form::Rm) continue;
-        bool ok = false;
-        for (const auto& x : rules_)
-            if (x.op == Op::Load && atomic(x)) ok = true;
-        if (!ok) fe::throwf("x86 isel: `{}` folds a load, but no atomic rule selects one", r.name);
-    }
+    for (const auto& r : rules_)
+        if (!has_atomic(r.op)) fe::throwf("x86 isel: no atomic rule for `{}`", op_name(r.op));
 }
 #endif
 
@@ -905,16 +903,15 @@ void ISel::count(const Def* def) {
     }
 }
 
-const App* ISel::sole_load(const Def* def) const {
-    if (auto ex = def->isa<Extract>(); ex && uses(def) == 1 && Lit::isa(ex->index()) == 1)
-        if (auto ld = ex->tuple()->isa<App>(); ld && Axm::isa<mem::load>(ld) && uses(ld) == 2)
-            if (auto m = ld->proj(2, 0); m && uses(m) != 0) return ld;
+const App* ISel::sole_value(const Def* def) const {
+    if (auto app = key(def)->isa<App>(); app != def && uses(def) == 1 && uses(app) == 2)
+        if (auto m = app->proj(2, 0); m && uses(m) != 0) return app;
     return nullptr;
 }
 
 const Def* ISel::key(const Def* def) const {
     if (auto ex = def->isa<Extract>(); ex && Lit::isa(ex->index()) == 1)
-        if (auto ld = ex->tuple()->isa<App>(); ld && Axm::isa<mem::load>(ld)) return ld;
+        if (auto app = ex->tuple()->isa<App>(); app && pattern(app) && mem_valued(app)) return app;
     return def;
 }
 
@@ -952,9 +949,9 @@ const Def* ISel::hole(const Def* def, Want want) {
 
 const Def* ISel::convert(const Def* x, Ty from, Want want) {
     auto& w = new_world();
-    if (from == Ty::Reg) return want == Want::Reg ? reg(w, x) : want == Want::Imm || want == Want::Sh ? x : addr({x});
+    if (from == Ty::Reg) return want == Want::Reg ? reg(w, x) : is_literal(want) ? x : addr({x});
     auto a = split(x);
-    if (want == Want::Reg || want == Want::Imm || want == Want::Sh) return reg(w, materialize(a));
+    if (want == Want::Reg || is_literal(want)) return reg(w, materialize(a));
     return want == Want::Base && a.index ? addr({materialize(a)}) : x;
 }
 
