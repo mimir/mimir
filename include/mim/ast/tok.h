@@ -181,6 +181,7 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_star,       "*")               \
     m(T_sub,        "-")               \
     m(T_pipe,       "|")               \
+    m(T_hole,       "?")               \
 
 /// @name Prefix Operator Table
 /// X-macro listing all prefix operators as `m(tag, str)`; they all live at Prec::Prefix.

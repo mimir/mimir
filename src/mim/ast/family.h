@@ -130,6 +130,7 @@
     case Tag::K_ret:     /*RetExpr*/             \
     case Tag::C_SEQ:     /*SeqExpr, SingleExpr*/ \
     case Tag::D_brckt_l: /*SigmaExpr*/           \
+    case Tag::T_hole:    /*HoleExpr*/            \
     case Tag::D_paren_l  /*TupleExpr*/
 
 #define C_CURRIED_P       \
