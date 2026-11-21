@@ -1,7 +1,6 @@
 #pragma once
 
 #include "mim/def.h"
-#include "mim/lam.h"
 
 namespace mim {
 
@@ -26,13 +25,6 @@ public:
     MIM_PROJ(dom, const)
     MIM_PROJ(codom, const)
     ///@}
-
-    /// Peels the codomains of a curried Pi chain off @p type down to a Rho; `nullptr` if it ends elsewhere.
-    static const Rho* isa_family(const Def* type) {
-        while (auto pi = type->isa<Pi>())
-            type = pi->codom();
-        return type->isa<Rho>();
-    }
 
     /// @name Setters
     /// @see @ref set_ops "Setting Ops"

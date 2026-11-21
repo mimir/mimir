@@ -23,7 +23,6 @@ Plugin-specific notes live in `plug/AGENTS.md` and below; phase-specific ones in
 - `Rho`/`Rule`/`Fire` mirror `Pi`/`Lam`/`App`; a Rule's Var binds its meta variables (`Rule::meta`), which matching determines.
   `rule I (dom)* (meta): …` is sugar for `anx lam I (dom)* = rl (meta): …`: the curried Lams make a family that whoever uses it instantiates; their parameters are never matched.
 - Meta variables never occur in a `Rho`, so the type of `r ▷ x` does not depend on the match.
-- A Lam whose type ends in a `Rho` is an opaque annex (`Annexes::opaque`): phases must never rewrite a pattern.
 - Patterns are normalized like any term (`a + a` becomes `2 * a`), which is also how they match normalized programs.
 
 ## Analysis and RWPhase (`phase.cpp`)

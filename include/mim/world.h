@@ -241,11 +241,8 @@ public:
         const auto& sym2flags() const { return sym2flags_; }
         /// The flags of the annex @p def, if it is one.
         const flags_t* flags(const Def* d) const { return d->is_annex() ? fe::lookup(def2flags_, d) : nullptr; }
-        /// Like flags() but only for an Axm, a non-Lam mutable, or a rule family - whose identity phases must preserve.
-        const flags_t* opaque(const Def* d) const {
-            if (!d->is_annex()) return nullptr;
-            return d->isa<Axm>() || !d->isa_mut<Lam>() || Rho::isa_family(d->type()) ? flags(d) : nullptr;
-        }
+        /// Like flags() but only for an Axm or a non-Lam mutable - whose identity phases must preserve.
+        const flags_t* opaque(const Def* d) const { return d->isa<Axm>() || !d->isa_mut<Lam>() ? flags(d) : nullptr; }
         size_t size() const { return flags2entry_.size(); }
         ///@}
 
