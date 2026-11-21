@@ -2,10 +2,11 @@
 
 #include <cctype>
 
-#include <map>
 #include <print>
 #include <ranges>
-#include <set>
+#include <span>
+
+#include <fe/hash.h>
 
 #include <mim/driver.h>
 #include <mim/plugin.h>
@@ -116,6 +117,21 @@ size_t num_insns(const Def* def, DefSet& done) {
     return n;
 }
 
+/// A ref with its owner, the node it is an operand of (0 for the root, `k + 1` for cover `k`).
+struct RefInfo {
+    u8 cover;
+    u8 owner;
+    Ref kind;
+};
+
+/// The shape of an lhs that a matcher records; covers are in walk order until `Code::match` puts them into preorder.
+struct Shape {
+    std::vector<u32> covers;
+    std::vector<RefInfo> refs;
+    std::vector<x86::rules::Use> uses;
+    std::vector<std::pair<u32, u32>> swaps; ///< The operands of each commuting node.
+};
+
 class Table {
 public:
     /// The axioms in @p def whose two operands a rule may also match swapped.
@@ -132,14 +148,28 @@ public:
                 collect(op);
     }
 
+    /// Puts the rewrites with the same root next to each other, in their order.
+    void sort() { std::ranges::stable_sort(rewrites_, {}, &Rewrite::root); }
     void dump(std::ostream& os) const;
 
 private:
+    /// Rejects a rule set that cannot cover every program: each root needs an atomic rule and each hole a filler.
+    void check(const std::vector<Shape>&, const std::vector<size_t>& ids) const;
+
     struct Node {
         Kind kind;
         u64 val = 0;
         std::vector<u32> ops;
-        auto operator<=>(const Node&) const = default;
+        bool operator==(const Node&) const = default;
+
+        struct Hash {
+            size_t operator()(const Node& n) const noexcept {
+                auto h = fe::hash_combine(size_t(n.kind), n.val);
+                for (auto op : n.ops)
+                    h = fe::hash_combine(h, op);
+                return h;
+            }
+        };
     };
 
     struct Meta {
@@ -181,21 +211,28 @@ private:
         marks_[nodes_[id].val] = want;
         return id;
     }
+    /// The register operand @p op, which may also be an immediate of type `x86::rules::literal_of(want)`.
+    u32 widened(const Def* op, Want want) {
+        auto id = node(op);
+        if (nodes_[id].kind != Kind::Hole) op->blame("x86_isel: `{}` must be a meta variable", op).bail();
+        marks_[nodes_[id].val] = want;
+        return id;
+    }
 
     size_t num_metas() const { return var_ ? var_->num_projs() : 0; }
 
     DefSet seen_;
-    std::map<u64, Want> marks_; ///< The marker of each meta variable of the current rule.
+    ankerl::unordered_dense::map<u64, Want> marks_; ///< The marker of each meta variable of the current rule.
     const Var* var_ = nullptr;
     DefMap<u32> def2node_;
-    std::map<Node, u32> node2id_;
+    ankerl::unordered_dense::map<Node, u32, Node::Hash> node2id_;
     std::vector<Node> nodes_;
     std::vector<std::string> comments_;
     std::vector<Rewrite> rewrites_;
     std::vector<Conversion> conversions_;
-    std::set<flags_t> commutes_;
+    ankerl::unordered_dense::set<flags_t> commutes_;
     friend class Code;
-    friend std::string sig(const Table&, u32, const std::vector<Meta>&);
+    friend std::string sig(const Table&, u32, const std::vector<Meta>&, bool);
 };
 
 void Table::add(const Rule* rule) {
@@ -313,13 +350,10 @@ void Table::guard(const Def* g, std::vector<Meta>& metas) {
 
     if (auto imm = Axm::isa<x86_isel::imm>(g))
         set(imm->arg(), Want::Reg, Want::Imm);
-    else if (auto sh = Axm::isa<x86_isel::sh>(g))
-        set(sh->arg(), Want::Reg, Want::Sh);
     else if (auto lit = Axm::isa<x86_isel::lit>(g))
         set(lit->arg(), Want::Param, Want::Lit);
     else
-        g->blame("x86_isel: guard `{}` is no conjunction of `x86_isel.imm`, `x86_isel.sh`, and `x86_isel.lit`", g)
-            .bail();
+        g->blame("x86_isel: guard `{}` is no conjunction of `x86_isel.imm` and `x86_isel.lit`", g).bail();
 }
 
 u32 Table::node(const Def* def) {
@@ -342,6 +376,8 @@ u32 Table::node_(const Def* def) {
     if (auto addr = Axm::isa<x86_isel::addr>(def)) return marked(addr->arg(), Want::Addr);
     if (auto reg = Axm::isa<x86_isel::reg>(def)) return marked(reg->arg(), Want::Reg);
     if (auto nat = Axm::isa<x86_isel::nat>(def)) return marked(nat->arg(), Want::Reg);
+    if (auto ri = Axm::isa<x86_isel::reg_imm>(def)) return widened(ri->arg(), Want::RegImm);
+    if (auto rs = Axm::isa<x86_isel::reg_sh>(def)) return widened(rs->arg(), Want::RegSh);
     if (auto scaled = Axm::isa<x86_isel::scaled>(def)) return marked(scaled->arg(), Want::Scaled);
     if (auto ptr = Axm::isa<x86_isel::ptr>(def)) return node(ptr->arg());
     if (auto axm = def->isa<Axm>()) return make({Kind::Axm, axm->flags(), {}}, axm->sym().str());
@@ -391,26 +427,11 @@ u32 Table::make(Node node, std::string comment) {
 /// Emits C++ that matches and builds the terms of the node pool of a Table.
 class Code {
 public:
-    /// The shape of an lhs that a matcher records; covers are in walk order until `finish` puts them into preorder.
-    /// A ref with its owner, the node it is an operand of (0 for the root, `k + 1` for cover `k`).
-    struct RefInfo {
-        u8 cover;
-        u8 owner;
-        Ref kind;
-    };
-
-    struct Shape {
-        std::vector<u32> covers;
-        std::vector<RefInfo> refs;
-        std::vector<x86::rules::Use> uses;
-        std::vector<std::pair<u32, u32>> swaps; ///< The operands of each commuting node.
-    };
-
     Code(std::ostream& os, const Table& table)
         : os_(os)
         , t_(table) {}
 
-    Shape match(size_t id, u32 lhs, const std::vector<u32>& types);
+    Shape match(size_t id, u32 lhs, std::span<const u32> types);
     void build(u32 rhs);
 
 private:
@@ -423,12 +444,20 @@ private:
     std::string fresh(char prefix) { return std::format("{}{}", prefix, next_++); }
     const Table::Node& node(u32 n) const { return t_.nodes_[n]; }
     const std::string& comment(u32 n) const { return t_.comments_[n]; }
+    /// Is the type @p n a `core.Ptr`, whose casts the matcher looks through?
+    bool is_ptr(u32 n) const {
+        const auto& x = node(n);
+        if (x.kind != Kind::App) return false;
+        const auto& f = node(x.ops[0]);
+        return f.kind == Kind::Axm && f.val == Annex::base<core::Ptr>();
+    }
     bool inner(u32 n) const { return !in_type_ && node(n).kind == Kind::App && node(n).val & Inner && n != root_; }
     /// Binds @p expr to a fresh variable, unless it is one.
     std::string name(const std::string& expr);
-    void match(u32 n, const std::string& expr);
+    /// Matches @p n against @p expr; on the root's callee @p spine, isel already checked the axiom.
+    void match(u32 n, const std::string& expr, bool spine = false);
     void match_inner(u32 n, const std::string& expr);
-    void match_app(u32 n, const std::string& expr);
+    void match_app(u32 n, const std::string& expr, bool spine = false);
     void match2(u32 n, const std::string& expr, std::string_view isa, std::string_view op0, std::string_view op1);
     void ref(u32 n, const std::string& expr, Ref kind);
     std::string build_(u32 n);
@@ -440,14 +469,14 @@ private:
     u32 root_     = 0;
     u8 owner_     = 0;
     std::vector<bool> bound_;
-    std::map<u32, std::string> cover_vars_;
-    const std::vector<u32>* types_ = nullptr;
-    std::map<u32, std::string> built_;
+    ankerl::unordered_dense::map<u32, std::string> cover_vars_;
+    std::span<const u32> types_;
+    ankerl::unordered_dense::map<u32, std::string> built_;
     Shape shape_;
 };
 
-Code::Shape Code::match(size_t id, u32 lhs, const std::vector<u32>& types) {
-    types_ = &types;
+Shape Code::match(size_t id, u32 lhs, std::span<const u32> types) {
+    types_ = types;
     std::println(os_,
                  "inline bool match_{}(const Def* def, [[maybe_unused]] u32 swap, [[maybe_unused]] const Def** m, "
                  "[[maybe_unused]] const Def** r) {{",
@@ -490,8 +519,8 @@ void Code::walk(u32 lhs) {
     root_  = lhs;
     shape_ = {};
     cover_vars_.clear();
-    bound_.assign(types_->size(), false);
-    match(lhs, "def");
+    bound_.assign(types_.size(), false);
+    match(lhs, "def", true);
 }
 
 std::string Code::name(const std::string& expr) {
@@ -531,13 +560,13 @@ void Code::match_inner(u32 n, const std::string& e) {
     owner_ = outer;
 }
 
-void Code::match_app(u32 n, const std::string& e) {
+void Code::match_app(u32 n, const std::string& e, bool spine) {
     const auto& x = node(n);
-    if (in_type_ || !(x.val & Commutes)) return match2(n, e, "isa<App>()", "callee", "arg");
-    auto app = fresh('d');
+    auto app      = fresh('d');
     line("auto {} = {}->isa<App>();", app, e);
     line("if (!{}) return false;", app);
-    match(x.ops[0], app + "->callee()");
+    match(x.ops[0], app + "->callee()", spine);
+    if (in_type_ || !(x.val & Commutes)) return match(x.ops[1], app + "->arg()");
     auto arg = name(app + "->arg()");
     auto bit = shape_.swaps.size();
     auto& t  = node(x.ops[1]);
@@ -547,24 +576,27 @@ void Code::match_app(u32 n, const std::string& e) {
     match(t.ops[1], std::format("{}->proj(2, ~swap >> {} & 1)", arg, bit));
 }
 
-void Code::match(u32 n, const std::string& e) {
+void Code::match(u32 n, const std::string& e, bool spine) {
     const auto& x = node(n);
     switch (x.kind) {
         case Kind::Hole: {
             auto i = x.val;
             if (!in_type_) shape_.uses.emplace_back(x86::rules::Use{owner_, u8(i), false});
+            auto ptr = is_ptr(types_[i]);
             if (bound_[i]) {
-                line("if (m[{}] != {}) return false;", i, e);
+                line("if (m[{}] != {}) return false;", i, ptr ? std::format("strip_ptr_cast({})", e) : e);
                 return;
             }
             bound_[i] = true;
             line("m[{}] = {};", i, e);
             auto outer = std::exchange(in_type_, true);
-            match((*types_)[i], std::format("m[{}]->type()", i));
+            match(types_[i], std::format("m[{}]->type()", i));
             in_type_ = outer;
+            if (ptr) line("m[{0}] = strip_ptr_cast(m[{0}]);", i);
             return;
         }
         case Kind::Axm: {
+            if (spine) return;
             auto d = name(e);
             line("if (!{0}->isa<Axm>() || {0}->flags() != {1:#x}) return false; // {2}", d, x.val, comment(n));
             return;
@@ -581,7 +613,7 @@ void Code::match(u32 n, const std::string& e) {
         case Kind::Nat: line("if (!{}->isa<Nat>()) return false;", e); return;
         case Kind::Idx: line("if (!{}->isa<Idx>()) return false;", e); return;
         case Kind::App: {
-            if (!inner(n)) return match_app(n, e);
+            if (!inner(n)) return match_app(n, e, spine);
             auto d = name(e);
             if (!cover_vars_.contains(n)) ref(n, d, Ref::Value);
             return match_inner(n, d);
@@ -668,8 +700,36 @@ std::string Code::build_(u32 n) {
     return built_[n] = res;
 }
 
+/// Hashes an lhs followed by the types of its meta variables.
+struct LhsHash {
+    size_t operator()(const std::vector<u32>& v) const noexcept {
+        size_t h = 0;
+        for (auto x : v)
+            h = fe::hash_combine(h, x);
+        return h;
+    }
+};
+
 /// The signature of the subpattern @p n under @p metas: equal ones match the same terms.
-std::string sig(const Table& t, u32 n, const std::vector<Table::Meta>& metas);
+/// If @p reg, a RegImm or RegSh hole is a Reg.
+std::string sig(const Table& t, u32 n, const std::vector<Table::Meta>& metas, bool reg);
+
+void Table::check(const std::vector<Shape>& shapes, const std::vector<size_t>& ids) const {
+    auto chains = x86::rules::Chains(conversions_);
+    auto atomic = ankerl::unordered_dense::set<flags_t>();
+    for (size_t i = 0, e = rewrites_.size(); i != e; ++i) {
+        const auto& r = rewrites_[i];
+        if (chains.conv(r.type, Want::Reg) == x86::rules::Inf)
+            fe::throwf("x86_isel: rule `{}` yields a value that does not convert to a register", r.name);
+        for (auto m : r.metas)
+            if (!x86::rules::is_param(m.want) && !x86::rules::is_literal(m.want) && !chains.reachable(m.want))
+                fe::throwf("x86_isel: no rule type converts to a hole of `{}`", r.name);
+        auto total = [&](Meta m) { return x86::rules::is_param(m.want) || chains.total(m.want); };
+        if (shapes[ids[i]].covers.empty() && std::ranges::all_of(r.metas, total)) atomic.emplace(r.root);
+    }
+    for (const auto& r : rewrites_)
+        if (!atomic.contains(r.root)) fe::throwf("x86_isel: no atomic rule shares the root of `{}`", r.name);
+}
 
 void Table::dump(std::ostream& os) const {
     std::println(os, "// Generated by `x86_isel.gen`; do not edit.");
@@ -678,23 +738,26 @@ void Table::dump(std::ostream& os) const {
     std::println(os, "#include <mim/world.h>");
     std::println(os);
     std::println(os, "#include \"mim/plug/x86/rule_table.h\"");
+    std::println(os, "#include \"mim/plug/x86/x86.h\"");
     std::println(os);
     std::println(os, "namespace mim::plug::x86::rules {{");
     std::println(os);
 
     auto code     = Code(os, *this);
-    auto matchers = std::map<std::pair<u32, std::vector<u32>>, size_t>();
-    auto shapes   = std::vector<Code::Shape>();
+    auto matchers = ankerl::unordered_dense::map<std::vector<u32>, size_t, LhsHash>();
+    auto shapes   = std::vector<Shape>();
     auto ids      = std::vector<size_t>();
     for (const auto& r : rewrites_) {
-        auto types = std::vector<u32>();
+        auto types = std::vector<u32>{r.lhs};
         for (auto m : r.metas)
             types.emplace_back(m.type);
-        auto [i, fresh] = matchers.emplace(std::pair(r.lhs, types), matchers.size());
-        if (fresh) shapes.emplace_back(code.match(i->second, r.lhs, types));
+        auto [i, fresh] = matchers.emplace(types, matchers.size());
+        if (fresh) shapes.emplace_back(code.match(i->second, r.lhs, std::span(types).subspan(1)));
         ids.emplace_back(i->second);
     }
-    auto built = std::set<u32>();
+    check(shapes, ids);
+
+    auto built = ankerl::unordered_dense::set<u32>();
     for (const auto& r : rewrites_)
         if (built.emplace(r.rhs).second) code.build(r.rhs);
     for (const auto& c : conversions_)
@@ -731,6 +794,12 @@ void Table::dump(std::ostream& os) const {
             std::println(os, "    {{{}, Ref::{}}},", r.cover, refs[size_t(r.kind)]);
     std::println(os, "}};");
     std::println(os);
+    auto max = [&](auto f) { return std::ranges::max(shapes | std::views::transform(f)); };
+    std::println(os, "inline constexpr size_t Max_Refs   = {};", max([](const Shape& s) { return s.refs.size(); }));
+    std::println(os, "inline constexpr size_t Max_Covers = {};", max([](const Shape& s) { return s.covers.size(); }));
+    std::println(os, "inline constexpr size_t Max_Metas  = {};",
+                 std::ranges::max(rewrites_ | std::views::transform([](const Rewrite& r) { return r.metas.size(); })));
+    std::println(os);
     std::println(os, "inline constexpr Matcher matchers[] = {{");
     size_t num_uses = 1, num_refs = 1;
     for (size_t i = 0; i != shapes.size(); ++i) {
@@ -748,18 +817,32 @@ void Table::dump(std::ostream& os) const {
     for (size_t i = 0, e = rewrites_.size(); i != e; ++i) {
         const auto& r = rewrites_[i];
         const auto& s = shapes[ids[i]];
-        u32 swaps     = 0;
-        for (size_t b = 0; b != s.swaps.size(); ++b)
-            if (sig(*this, s.swaps[b].first, r.metas) != sig(*this, s.swaps[b].second, r.metas)) swaps |= 1u << b;
+        u32 swaps = 0, reg_swaps = 0;
+        for (size_t b = 0; b != s.swaps.size(); ++b) {
+            auto [x, y] = s.swaps[b];
+            if (sig(*this, x, r.metas, false) != sig(*this, y, r.metas, false)) swaps |= 1u << b;
+            if (sig(*this, x, r.metas, true) != sig(*this, y, r.metas, true)) reg_swaps |= 1u << b;
+        }
         size_t maps = 0;
         if (r.mapped != u32(-1)) {
             auto k = std::ranges::find(s.covers, nodes_[r.mapped].ops[0]) - s.covers.begin();
             if (size_t(k) == s.covers.size()) fe::throwf("x86_isel: `{}` maps the memory of no inner node", r.name);
             maps = k + 1;
         }
-        std::println(os, "    {{\"{}\", {}, {:#x}, Ty::{}, &matchers[{}], &build_{}, {}, {}, {:#x}, {}}}, // {}",
-                     r.name, r.cost, r.root, name(r.type), ids[i], r.rhs, first, r.metas.size(), swaps, maps, r.rho);
+        std::println(os, "    {{\"{}\", {}, {:#x}, Ty::{}, &matchers[{}], &build_{}, {}, {}, {:#x}, {:#x}, {}}}, // {}",
+                     r.name, r.cost, r.root, name(r.type), ids[i], r.rhs, first, r.metas.size(), swaps,
+                     swaps & ~reg_swaps, maps, r.rho);
         first += r.metas.size();
+    }
+    std::println(os, "}};");
+    std::println(os);
+    std::println(os, "inline constexpr Root roots[] = {{");
+    for (size_t i = 0, e = rewrites_.size(); i != e;) {
+        auto j = i;
+        while (j != e && rewrites_[j].root == rewrites_[i].root)
+            ++j;
+        std::println(os, "    {{{:#x}, {}, {}}},", rewrites_[i].root, i, j - i);
+        i = j;
     }
     std::println(os, "}};");
     std::println(os);
@@ -770,17 +853,23 @@ void Table::dump(std::ostream& os) const {
         std::println(os, "    {{\"{}\", {}, Ty::{}, Ty::{}, {}, &build_{}}}, // {}", c.name, c.cost, name(c.from),
                      name(c.to), c.arity, c.rhs, c.rho);
     std::println(os, "}};");
+    std::println(os);
+    std::println(os, "inline constexpr Chains chains{{conversions}};");
     std::println(os, "// clang-format on");
     std::println(os);
     std::println(os, "}} // namespace mim::plug::x86::rules");
 }
 
-std::string sig(const Table& t, u32 n, const std::vector<Table::Meta>& metas) {
+std::string sig(const Table& t, u32 n, const std::vector<Table::Meta>& metas, bool reg) {
     const auto& x = t.nodes_[n];
-    if (x.kind == Kind::Hole) return std::format("{}:{}", name(metas[x.val].want), sig(t, metas[x.val].type, metas));
+    if (x.kind == Kind::Hole) {
+        auto w = metas[x.val].want;
+        if (reg && x86::rules::literal_of(w) != w) w = Want::Reg;
+        return std::format("{}:{}", name(w), sig(t, metas[x.val].type, metas, reg));
+    }
     auto res = std::format("{}.{}(", size_t(x.kind), x.val);
     for (auto op : x.ops)
-        res += sig(t, op, metas) + ",";
+        res += sig(t, op, metas, reg) + ",";
     return res + ")";
 }
 
@@ -797,6 +886,7 @@ void Gen::start() {
     table.commutes(world().annex<commutes>());
     for (auto f : flags)
         table.collect(world().annex(f));
+    table.sort();
 
     auto out = Out(std::string(arg_value(args(), "o", "output").value_or("-")));
     table.dump(*out.os());

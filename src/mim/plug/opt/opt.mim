@@ -109,6 +109,7 @@ extern lam _default_compile (): compile.Phase =
 
         // x86
         // By now no Axm pins a continuation's type anymore, so every continuation gets the mem.M to schedule on.
+        compile.cond "x86" (compile.named "ll.drop_hints"),
         compile.cond "x86" mem.add_mem,
         compile.cond "x86" core.legalize_dyn_idx,
         compile.cond "x86" mem.legalize_ptr,

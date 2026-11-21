@@ -17,6 +17,18 @@ namespace clos = mim::plug::clos;
 namespace core = mim::plug::core;
 namespace vecp = mim::plug::vec;
 
+/// Pipeline phase for `ll.drop_hints`.
+class DropHints : public RWPhase {
+public:
+    using RWPhase::RWPhase;
+
+private:
+    const Def* rewrite_imm_App(const App* app) final {
+        if (Axm::isa<vec>(app) || Axm::isa<novec>(app)) return rewrite(app->arg());
+        return RWPhase::rewrite_imm_App(app);
+    }
+};
+
 /// Pipeline phase for `ll.emit`.
 /// Writes the LLVM IR of the fully lowered world to `<world>.ll` (or `a.ll` if the world is unnamed).
 /// The output path can be overridden via [`-X ll:o=<file>`](@ref xarg_ll) or `-X ll:output=<file>`.
@@ -1235,7 +1247,10 @@ MIM_EXPORT void mim_ll_emit_bb(Emitter& e, BB& bb, const Def* def, std::string& 
 
 using namespace mim;
 
-static void reg_phases(Flags2Phases& phases) { Phase::hook<plug::ll::emit, plug::ll::Emit>(phases); }
+static void reg_phases(Flags2Phases& phases) {
+    Phase::hook<plug::ll::emit, plug::ll::Emit>(phases);
+    Phase::hook<plug::ll::drop_hints, plug::ll::DropHints>(phases);
+}
 
 // clang-format off
 static constexpr PluginArg known_args[] = {

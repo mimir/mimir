@@ -13,14 +13,9 @@ nat_t trait(core::trait t, const Def* type) {
 
 /// The byte offset of field @p i of @p sigma.
 nat_t field_offset(const Def* sigma, nat_t i) {
-    nat_t off = 0;
-    for (nat_t j = 0; j <= i; ++j) {
-        auto field = sigma->proj(sigma->num_projs(), j);
-        auto align = trait(core::trait::align, field);
-        off        = fe::pad(off, align);
-        if (j != i) off += trait(core::trait::size, field);
-    }
-    return off;
+    auto fields = sigma->projs();
+    if (auto l = core::layout(Defs(fields).first(i + 1))) return l->offsets[i];
+    sigma->blame("type `{}` has no static size or alignment", sigma).bail();
 }
 
 /// The index @p i at register size: a literal odd `n` of `conv.u n y` is a remainder, a dynamic one is ignored.

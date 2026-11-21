@@ -47,6 +47,15 @@ inline const Def* strip(const Def* def) {
     return def;
 }
 
+/// @p def without the casts between pointer types around it, which `mem.legalize_ptr` inserts and which are no-ops.
+inline const Def* strip_ptr_cast(const Def* def) {
+    while (auto cast = Axm::isa<core::bitcast>(def)) {
+        if (!Axm::isa<core::Ptr>(def->type()) || !Axm::isa<core::Ptr>(cast->arg()->type())) break;
+        def = cast->arg();
+    }
+    return def;
+}
+
 /// The `f` of `x86.sched f m x`.
 inline const Def* sched_insn(const App* app) { return app->callee()->as<App>()->callee()->as<App>()->arg(); }
 

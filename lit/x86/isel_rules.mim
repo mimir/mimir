@@ -6,13 +6,16 @@ plugin x86_isel;
 extern lam _compile (): compile.Phase = x86_isel.gen;
 
 // CHECK:      inline bool match_0(const Def* def,
-// CHECK:          return false; // core.wrap.mul
+// isel already checked the root's axiom, so a matcher starts with its operands.
+// CHECK-NOT:      // core.wrap.add
 // The operands of a commuting node may be swapped.
 // CHECK:          m[1] = {{d[0-9]+}}->proj(2, swap >> 0 & 1);
 // The implicit type argument of `mem.load` is no inner node.
 // CHECK:          return false; // mem.load
 // CHECK-NOT:      r[
 // CHECK:          return false; // core.Ptr
+// A pointer looks through the casts `mem.legalize_ptr` inserts.
+// CHECK:          m[[[P:[0-9]+]]] = strip_ptr_cast(m[[[P]]]);
 // An inner node is captured once and compared where it occurs again.
 // CHECK:          r[2] = [[VAL:d[0-9]+]];
 // CHECK-NEXT:     if ([[VAL]]->tuple() != {{d[0-9]+}}) return false;
@@ -23,56 +26,57 @@ extern lam _compile (): compile.Phase = x86_isel.gen;
 // CHECK:          auto b0 = w.annex({{0x[0-9a-f]+}}); // x86.rm
 // CHECK:          w.implicit_app(b0, {{b[0-9]+}});
 // CHECK:      inline constexpr Want wants[] = {
+// A `Nat` under `x86_isel.nat` is a register and, under `x86_isel.reg_imm`, also an immediate.
+// CHECK:          Want::Reg, Want::RegImm, // nat_alu(core.nat.add): Nat ↝ I64
+// A conversion of equal register sizes is its operand.
+// CHECK:          Want::Param, Want::Reg, // idx(core.idx): I64 ↝ I64
+// A shift count is a register or any literal.
+// CHECK:          Want::Reg, Want::RegSh, // shift(core.shr.l): I8 ↝ I8
+// CHECK:          Want::Param, Want::Reg, Want::Param, Want::Addr, // rm(core.wrap.add): [core.M 0, I8] ↝ [core.M 0, I8]
+// The mode of `core.wrap.mul` is a parameter, the operands are registers and, by the marker `reg_imm`, the second one also an immediate.
+// CHECK:          Want::Param, Want::Reg, Want::RegImm, // mul8(core.wrap.mul): I8 ↝ I8
+// A product with a scale yields its factor as a `Scaled`.
+// CHECK:          Want::Param, Want::Reg, // scale(core.wrap.mul): I64 ↝ [I64, I2]
 // The divisor of `core.rem` is a parameter.
 // CHECK:          Want::Param, Want::Reg, // rem16(core.rem): I16 ↝ I16
-// A conversion of equal register sizes is its operand.
 // CHECK:          Want::Reg, // idx2nat64(core.idx2nat): Nat ↝ I64
-// CHECK-NEXT:     Want::Param, Want::Reg, // idx(core.idx): I64 ↝ I64
 // A size that an operand's type mentions is a parameter.
-// CHECK-NEXT:     Want::Param, Want::Addr, // load_ptr(mem.load): [core.M 0, core.Ptr (I8, 0)] ↝ [core.M 0, I64]
+// CHECK:          Want::Param, Want::Addr, // load_ptr(mem.load): [core.M 0, core.Ptr (I8, 0)] ↝ [core.M 0, I64]
+// A memory is a parameter and a pointer an address.
+// CHECK:          Want::Param, Want::Param, Want::Addr, Want::RegImm, // store(mem.store): core.M 0 ↝ core.M 0
 // CHECK-NEXT:     Want::Param, Want::Addr, Want::Reg, // store_ptr(mem.store): core.M 0 ↝ core.M 0
 // A continuation is a parameter and `lit` makes a `Nat` a literal one.
-// CHECK-NEXT:     Want::Param, Want::Lit, Want::Param, // slot(mem.mslot): ⊥:* ↝ ⊥:*
-// A product with a scale yields its factor as a `Scaled`.
-// CHECK-NEXT:     Want::Param, Want::Reg, // scale2(core.wrap.mul): I64 ↝ [I64, I2]
-// The base pointer of an address is a register, and its index a `Scaled`.
-// CHECK:          Want::Param, Want::Reg, Want::Scaled, Want::Imm, // index_disp(mem.ptradd): core.Ptr (I8, 0) ↝ x86.Addr tt
+// CHECK:          Want::Param, Want::Lit, Want::Param, // slot(mem.mslot): ⊥:* ↝ ⊥:*
+// The base pointer of an address is a register, its index a `Scaled`, and by the guard `imm` its displacement an immediate.
+// CHECK-NEXT:     Want::Param, Want::Reg, Want::Scaled, Want::Imm, // index_disp(mem.ptradd): core.Ptr (I8, 0) ↝ x86.Addr tt
 // CHECK-NEXT:     Want::Param, Want::Reg, Want::Reg, Want::Scaled, // base_index(mem.ptradd): core.Ptr (I8, 0) ↝ x86.Addr tt
-// The mode of `core.wrap.mul` is a parameter, the operands are registers or, by the guard `imm`, an immediate.
-// CHECK:          Want::Param, Want::Reg, Want::Reg, // mul8(core.wrap.mul): I8 ↝ I8
-// CHECK:          Want::Param, Want::Reg, Want::Imm, // mul8(core.wrap.mul): I8 ↝ I8
-// A `Nat` under `x86_isel.nat` is a register or, by the guard `imm`, an immediate.
-// CHECK:          Want::Reg, Want::Reg, // nat_alu(core.nat.add): Nat ↝ I64
-// CHECK-NEXT:     Want::Reg, Want::Imm, // nat_alu(core.nat.add): Nat ↝ I64
-// CHECK:          Want::Reg, Want::Imm, // ncmp(core.ncmp.{{.*}}): Bool ↝ Bool
-// A memory is a parameter and a pointer an address.
-// CHECK:          Want::Param, Want::Param, Want::Addr, Want::Reg, // store(mem.store): core.M 0 ↝ core.M 0
-// CHECK-NEXT:     Want::Param, Want::Param, Want::Addr, Want::Imm, // store(mem.store): core.M 0 ↝ core.M 0
-// CHECK-NEXT:     Want::Param, Want::Reg, Want::Param, Want::Addr, // rm(core.wrap.add): [core.M 0, I8] ↝ [core.M 0, I8]
+// CHECK:      inline constexpr size_t Max_Metas
 // CHECK:      inline constexpr Rewrite rewrites[] = {
+// The operands of `core.nat.add` are the meta variables as a whole, and they still commute, though only for an immediate.
+// CHECK:          {"nat_alu(core.nat.add)", 1, {{.*}}, 2, 0x1, 0x1, 0}, // Nat ↝ I64
 // CHECK:          {"idx(core.idx)", 0, {{0x[0-9a-f]+}}, Ty::Reg, {{.*}} // I64 ↝ I64
-// A scale is part of the address, so it costs nothing, and a product of either order is one.
-// CHECK:          {"scale2(core.wrap.mul)", 0, {{0x[0-9a-f]+}}, Ty::Scaled, {{.*}}, 2, 0x1, 0}, // I64 ↝ [I64, I2]
-// `index_disp` and `base_index` share their matcher, and both may swap their operands.
-// CHECK:          {"index_disp(mem.ptradd)", 0, {{0x[0-9a-f]+}}, Ty::Index, &matchers{{\[}}[[Q:[0-9]+]]{{\]}}, {{.*}}, 4, 0x1, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
-// CHECK-NEXT:     {"base_index(mem.ptradd)", 1, {{0x[0-9a-f]+}}, Ty::Index, &matchers{{\[}}[[Q]]{{\]}}, {{.*}}, 4, 0x1, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
-// A displacement alone yields an `x86.Base`; it shares its matcher with the plain index.
-// CHECK:          {"disp(mem.ptradd)", 0, {{0x[0-9a-f]+}}, Ty::Base, &matchers{{\[}}[[P:[0-9]+]]{{\]}}, {{.*}} // core.Ptr (I8, 0) ↝ x86.Addr ff
-// CHECK-NEXT:     {"index(mem.ptradd)", 0, {{0x[0-9a-f]+}}, Ty::Index, &matchers{{\[}}[[P]]{{\]}}, {{.*}} // core.Ptr (I8, 0) ↝ x86.Addr tt
-// `add` with and without the guard `imm` share their matcher and builder.
-// CHECK-NEXT:     {"alu(core.wrap.add)", 1, {{0x[0-9a-f]+}}, Ty::Reg, &matchers{{\[}}[[M:[0-9]+]]{{\]}}, &build_[[B:[0-9]+]], {{[0-9]+}}, 3, 0x0, 0}, // I8 ↝ I8
-// CHECK:          {"alu(core.wrap.add)", 1, {{0x[0-9a-f]+}}, Ty::Reg, &matchers{{\[}}[[M]]{{\]}}, &build_[[B]], {{[0-9]+}}, 3, 0x1, 0}, // I8 ↝ I8
-// Swapping the operands of `mul8` yields no other match, but with the guard `imm` it does.
-// CHECK:          {"mul8(core.wrap.mul)", 4, {{0x[0-9a-f]+}}, Ty::Reg, &matchers{{\[}}[[X:[0-9]+]]{{\]}}, &build_[[W:[0-9]+]], {{[0-9]+}}, 3, 0x0, 0}, // I8 ↝ I8
-// CHECK-NOT:      {"alu(core.wrap.mul)", {{.*}} // I8 ↝ I8
-// CHECK:          {"alu(core.wrap.mul)", 1, {{.*}} // I16 ↝ I16
-// CHECK:          {"mul8(core.wrap.mul)", 4, {{0x[0-9a-f]+}}, Ty::Reg, &matchers{{\[}}[[X]]{{\]}}, &build_[[W]], {{[0-9]+}}, 3, 0x1, 0}, // I8 ↝ I8
 // The logical instructions also take `Bool`.
 // CHECK:          {"alu(core.bit2.and)", 1, {{.*}} // Bool ↝ Bool
-// The operands of `core.nat.add` are the meta variables as a whole, and they still commute.
-// CHECK:          {"nat_alu(core.nat.add)", 1, {{.*}}, 2, 0x0, 0}, // Nat ↝ I64
-// CHECK-NEXT:     {"nat_alu(core.nat.add)", 1, {{.*}}, 2, 0x1, 0}, // Nat ↝ I64
+// One rule per size covers the register and the immediate form; swapping only yields another match with an immediate.
+// CHECK:          {"alu(core.wrap.add)", 1, {{0x[0-9a-f]+}}, Ty::Reg, {{.*}}, 3, 0x1, 0x1, 0}, // I8 ↝ I8
+// CHECK-NEXT:     {"alu(core.wrap.add)", 1, {{.*}} // I16 ↝ I16
 // The rhs of `rm` replaces the load's memory, cover 0, and yields the register of its value.
-// CHECK:          {"rm(core.wrap.add)", 1, {{0x[0-9a-f]+}}, Ty::Reg, {{.*}}, 4, 0x1, 1}, // [core.M 0, I8] ↝ [core.M 0, I8]
+// CHECK:          {"rm(core.wrap.add)", 1, {{0x[0-9a-f]+}}, Ty::Reg, {{.*}}, 4, 0x1, 0x0, 1}, // [core.M 0, I8] ↝ [core.M 0, I8]
+// CHECK:          {"mul8(core.wrap.mul)", 4, {{0x[0-9a-f]+}}, Ty::Reg, {{.*}}, 3, 0x1, 0x1, 0}, // I8 ↝ I8
+// CHECK-NOT:      {"alu(core.wrap.mul)", {{.*}} // I8 ↝ I8
+// CHECK:          {"alu(core.wrap.mul)", 1, {{.*}} // I16 ↝ I16
+// A scale is part of the address, so it costs nothing, and a product of either order is one.
+// CHECK:          {"scale(core.wrap.mul)", 0, {{0x[0-9a-f]+}}, Ty::Scaled, {{.*}}, 2, 0x1, 0x0, 0}, // I64 ↝ [I64, I2]
 // CHECK-NOT:      {"rm(core.wrap.mul)", {{.*}} // [core.M 0, I8]
-// CHECK:          {"mr(mem.store)", 1, {{.*}}, 4, 0x1, 0}, // core.M 0 ↝ core.M 0
+// CHECK:          {"mr(mem.store)", 1, {{.*}}, 4, 0x1, 0x0, 0}, // core.M 0 ↝ core.M 0
+// `index_disp` and `base_index` share their matcher, and both may swap their operands.
+// CHECK:          {"index_disp(mem.ptradd)", 0, {{0x[0-9a-f]+}}, Ty::Index, &matchers{{\[}}[[Q:[0-9]+]]{{\]}}, {{.*}}, 4, 0x1, 0x0, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
+// CHECK-NEXT:     {"base_index(mem.ptradd)", 1, {{0x[0-9a-f]+}}, Ty::Index, &matchers{{\[}}[[Q]]{{\]}}, {{.*}}, 4, 0x1, 0x0, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
+// A displacement alone yields an `x86.Base`; it shares its matcher with the plain index.
+// CHECK-NEXT:     {"disp(mem.ptradd)", 0, {{0x[0-9a-f]+}}, Ty::Base, &matchers{{\[}}[[P:[0-9]+]]{{\]}}, {{.*}} // core.Ptr (I8, 0) ↝ x86.Addr ff
+// CHECK-NEXT:     {"index(mem.ptradd)", 0, {{0x[0-9a-f]+}}, Ty::Index, &matchers{{\[}}[[P]]{{\]}}, {{.*}} // core.Ptr (I8, 0) ↝ x86.Addr tt
+// The rules of a root are adjacent, and `roots` indexes them.
+// CHECK:      inline constexpr Root roots[] = {
+// CHECK-NEXT:     {0x0, 0, {{[1-9][0-9]*}}},
+// The conversions close into the cheapest chains at compile time.
+// CHECK:      inline constexpr Chains chains{conversions};

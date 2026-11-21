@@ -4,6 +4,7 @@
 #include <optional>
 #include <print>
 #include <ranges>
+#include <span>
 
 #include <pbqp/dot.h>
 #include <pbqp/solver.h>
@@ -11,7 +12,6 @@
 #include <mim/plugin.h>
 
 #include <mim/plug/core/core.h>
-#include <mim/plug/ll/autogen.h>
 #include <mim/plug/math/math.h>
 #include <mim/plug/mem/mem.h>
 
@@ -25,15 +25,6 @@ namespace core = mim::plug::core;
 namespace mem  = mim::plug::mem;
 
 namespace {
-
-/// @p def without the casts between pointer types around it, which `mem.legalize_ptr` inserts and which are no-ops.
-const Def* strip_ptr_cast(const Def* def) {
-    while (auto cast = Axm::isa<core::bitcast>(def)) {
-        if (!Axm::isa<core::Ptr>(def->type()) || !Axm::isa<core::Ptr>(cast->arg()->type())) break;
-        def = cast->arg();
-    }
-    return def;
-}
 
 bool is_lowered_plugin(const Axm* axm) {
     auto p = axm->plugin();
@@ -67,24 +58,19 @@ bool depends(const Def* def, const Def* target, DefSet& done) {
     return false;
 }
 
-/// The rules of `x86_isel` by their root axiom.
-const auto& gen_roots() {
-    static const auto roots = [] {
-        auto res = ankerl::unordered_dense::map<flags_t, std::vector<const rules::Rewrite*>>();
-        for (const auto& r : rules::rewrites)
-            res[r.root].emplace_back(&r);
-        return res;
-    }();
-    return roots;
+/// The rewrites with the root axiom @p flags.
+std::span<const rules::Rewrite> rewrites(flags_t flags) {
+    auto i = std::ranges::lower_bound(rules::roots, flags, {}, &rules::Root::flags);
+    if (i == std::ranges::end(rules::roots) || i->flags != flags) return {};
+    return std::span(rules::rewrites).subspan(i->first, i->num);
 }
 
 /// The root of the rules covering @p def: its axiom, or `0` for an Extract at a dynamic index.
 std::optional<flags_t> root_of(const Def* def) {
-    if (strip_ptr_cast(def) != def) return {};
     if (auto ex = def->isa<Extract>()) return Lit::isa(ex->index()) ? std::nullopt : std::optional<flags_t>(0);
     auto [axm, curry, _] = Axm::get(def);
     if (!axm || curry) return {};
-    if (gen_roots().contains(axm->flags())) return axm->flags();
+    if (!rewrites(axm->flags()).empty()) return axm->flags();
     return {};
 }
 
@@ -94,64 +80,9 @@ std::optional<flags_t> root_of(const Def* def) {
 
 constexpr pbqp::Cost Inf = pbqp::Cost::inf();
 
-#define X(_) +1
-constexpr size_t Num_Tys = 0 MIM_X86_RULE_TYS(X);
-#undef X
+pbqp::Cost cost(u32 c) { return c == rules::Inf ? Inf : pbqp::Cost(c); }
 
-/// The cheapest chains of conversion rules between two non-terminals: their costs and each chain's first conversion.
-struct Chains {
-    std::array<std::array<pbqp::Cost, Num_Tys>, Num_Tys> cost;
-    std::array<std::array<const rules::Conversion*, Num_Tys>, Num_Tys> first{};
-
-    Chains() {
-        for (size_t i = 0; i != Num_Tys; ++i)
-            for (size_t j = 0; j != Num_Tys; ++j)
-                cost[i][j] = i == j ? pbqp::Cost(0) : Inf;
-        for (const auto& c : rules::conversions)
-            if (auto& d = cost[size_t(c.from)][size_t(c.to)]; pbqp::Cost(c.cost) < d) {
-                d                                   = pbqp::Cost(c.cost);
-                first[size_t(c.from)][size_t(c.to)] = &c;
-            }
-        for (size_t k = 0; k != Num_Tys; ++k)
-            for (size_t i = 0; i != Num_Tys; ++i)
-                for (size_t j = 0; j != Num_Tys; ++j)
-                    if (auto c = cost[i][k] + cost[k][j]; c < cost[i][j]) cost[i][j] = c, first[i][j] = first[i][k];
-    }
-};
-
-const Chains& chains() {
-    static const auto res = Chains();
-    return res;
-}
-
-/// Does a value of non-terminal @p ty fill a hole of type @p want as it is?
-bool fills(Ty ty, Want want) {
-    switch (want) {
-        case Want::Reg: return ty == Ty::Reg;
-        case Want::Base: return ty == Ty::Base;
-        case Want::Index: return ty == Ty::Index;
-        case Want::Addr: return ty == Ty::Base || ty == Ty::Index;
-        case Want::Scaled: return ty == Ty::Scaled;
-        default: return false;
-    }
-}
-
-/// The non-terminal that @p from converts to most cheaply for a hole of type @p want, and the cost.
-std::pair<Ty, pbqp::Cost> target(Ty from, Want want) {
-    auto res = std::pair(from, Inf);
-    for (size_t t = 0; t != Num_Tys; ++t)
-        if (auto c = chains().cost[size_t(from)][t]; fills(Ty(t), want) && c < res.second) res = {Ty(t), c};
-    return res;
-}
-
-/// Does a hole of type @p want take a literal rather than a replacement?
-bool is_literal(Want want) { return want == Want::Imm || want == Want::Sh; }
-
-/// Cost of converting a replacement or operand of non-terminal @p from into a hole of type @p want.
-pbqp::Cost conv(Ty from, Want want) {
-    if (is_literal(want)) return from == Ty::Lit ? 0 : Inf;
-    return target(from, want).second;
-}
+pbqp::Cost conv(Ty from, Want want) { return cost(rules::chains.conv(from, want)); }
 
 /// Cost of the operand @p def, which is no node, in a hole of type @p want.
 pbqp::Cost leaf(const Def* def, Want want) { return conv(Lit::isa(def) ? Ty::Lit : Ty::Reg, want); }
@@ -159,43 +90,25 @@ pbqp::Cost leaf(const Def* def, Want want) { return conv(Lit::isa(def) ? Ty::Lit
 /// Does @p def satisfy a hole of type @p want that requires a literal?
 bool literal(const Def* def, Want want) { return Lit::isa(def) && (want == Want::Sh || fits_imm(def)); }
 
+/// The hole of type @p want that @p def fills: a RegImm or RegSh is an immediate if @p def is a literal that fits.
+Want resolve(const Def* def, Want want) {
+    if (auto l = rules::literal_of(want); l != want) return literal(def, l) ? l : Want::Reg;
+    return want;
+}
+
 /*
  * Rules
  */
 
 Want want_of(const rules::Rewrite& r, size_t i) { return rules::wants[r.wants + i]; }
 
-/// Is a meta variable that @p w wants bound to its rewrite rather than an operand?
-bool is_param(Want w) { return w == Want::Param || w == Want::Lit; }
-
 /// An atomic rule has no inner nodes and only holes that every non-terminal converts into.
 bool atomic(const rules::Rewrite& r) {
     if (r.match->num_covers != 0) return false;
     for (size_t i = 0; i != r.num_metas; ++i)
-        if (auto w = want_of(r, i); !is_param(w))
-            for (size_t t = 0; t != Num_Tys; ++t)
-                if (conv(Ty(t), w).is_inf()) return false;
+        if (auto w = want_of(r, i); !rules::is_param(w) && !rules::chains.total(w)) return false;
     return true;
 }
-
-#ifdef MIM_ENABLE_CHECKS
-/// Verifies atomic completeness, total conversions, and inner-node coverage over the rule set.
-void check_rules() {
-    for (const auto& r : rules::rewrites) {
-        if (conv(r.type, Want::Reg).is_inf())
-            fe::throwf("x86 isel: rule `{}` yields a value that does not convert to a register", r.name);
-        for (size_t i = 0; i != r.num_metas; ++i) {
-            auto w = want_of(r, i);
-            if (is_param(w) || is_literal(w)) continue; // no rule type fills it
-            auto fills = [w](size_t t) { return Ty(t) != Ty::Lit && !conv(Ty(t), w).is_inf(); };
-            if (!std::ranges::any_of(std::views::iota(0uz, Num_Tys), fills))
-                fe::throwf("x86 isel: no rule type converts to a hole of `{}`", r.name);
-        }
-        if (!std::ranges::any_of(gen_roots().at(r.root), [](auto a) { return atomic(*a); }))
-            fe::throwf("x86 isel: no atomic rule shares the root of `{}`", r.name);
-    }
-}
-#endif
 
 } // namespace
 
@@ -210,8 +123,8 @@ void ISel::append(const rules::Rewrite& rule, const Def* root, Alts& alts) {
 
 void ISel::append(const rules::Rewrite& r, const Def* root, u32 swap, Alts& alts) {
     const auto& m = *r.match;
-    auto metas    = DefVec(r.num_metas);
-    auto refs     = DefVec(m.num_refs);
+    auto metas    = std::array<const Def*, rules::Max_Metas>{};
+    auto refs     = std::array<const Def*, rules::Max_Refs>{};
     if (!m.fn(root, swap, metas.data(), refs.data())) return;
 
     auto alt = Alt();
@@ -226,7 +139,7 @@ void ISel::append(const rules::Rewrite& r, const Def* root, u32 swap, Alts& alts
     }
 
     // A pure inner node that something else uses is looked through: the match takes its operands but not the node.
-    auto parent = fe::Vector<u8>(m.num_covers);
+    auto parent = std::array<u8, rules::Max_Covers>{};
     auto owner  = [&](u8 o) {
         while (o != 0 && alt.covers[o - 1].through)
             o = parent[o - 1];
@@ -234,6 +147,7 @@ void ISel::append(const rules::Rewrite& r, const Def* root, u32 swap, Alts& alts
     };
     auto node    = [&](u8 o) { return o == 0 ? root : alt.covers[o - 1].def; };
     auto demands = [&](u8 o) -> auto& { return o == 0 ? alt.demands : alt.covers[o - 1].demands; };
+    bool imm     = false;
     for (size_t j = 0; j != m.num_uses; ++j) {
         auto u = rules::all_uses[m.uses + j];
         auto o = owner(u.owner);
@@ -253,12 +167,16 @@ void ISel::append(const rules::Rewrite& r, const Def* root, u32 swap, Alts& alts
             if (!Lit::isa(metas[u.index])) return;
         } else if (w != Want::Param) {
             auto def = metas[u.index];
-            if (is_literal(w) && !literal(def, w)) return;
-            demands(o).emplace_back(Demand{def, w});
+            auto rw  = resolve(def, w);
+            if (rules::is_literal(rw) && !literal(def, rw)) return;
+            imm |= rw != w && rw != Want::Reg;
+            demands(o).emplace_back(Demand{def, rw});
         }
     }
+    // Without an immediate, such a swap yields a match that another swap already did.
+    if ((swap & r.imm_swaps) && !imm) return;
     if (!holds(alt)) return;
-    alt.metas = std::move(metas);
+    alt.metas = DefVec(metas.begin(), metas.begin() + r.num_metas);
     alts.emplace_back(std::move(alt));
 }
 
@@ -266,7 +184,7 @@ const Def* ISel::build(const Alt& alt) {
     const auto& r = *alt.rule;
     auto holes    = DefVec(r.num_metas, [&](size_t i) {
         auto w = want_of(r, i);
-        return is_param(w) ? rewrite(alt.metas[i]) : hole(alt.metas[i], w);
+        return rules::is_param(w) ? rewrite(alt.metas[i]) : hole(alt.metas[i], resolve(alt.metas[i], w));
     });
     auto res      = r.build(new_world(), holes.data());
     if (!r.maps) return res;
@@ -277,8 +195,8 @@ const Def* ISel::build(const Alt& alt) {
 void ISel::match(const Def* def, Alts& alts) {
     auto r = root_of(def);
     if (!r) return;
-    for (auto rule : gen_roots().at(*r))
-        append(*rule, def, alts);
+    for (const auto& rule : rewrites(*r))
+        append(rule, def, alts);
 }
 
 const App* ISel::sole(const Def* parent, const Def* def) const {
@@ -307,9 +225,6 @@ bool ISel::holds(const Alt& alt) {
  */
 
 bool ISel::analyze() {
-#ifdef MIM_ENABLE_CHECKS
-    check_rules();
-#endif
     for (auto mut : old_world().externals().muts())
         count(mut);
 
@@ -442,7 +357,6 @@ const App* ISel::sole_value(const Def* def) const {
 }
 
 const Def* ISel::key(const Def* def) const {
-    def = strip_ptr_cast(def);
     if (auto ex = def->isa<Extract>(); ex && Lit::isa(ex->index()) == 1)
         if (auto app = ex->tuple()->isa<App>(); app && root_of(app) && mem_valued(app)) return app;
     return def;
@@ -475,18 +389,17 @@ const Def* ISel::selected(const Def* def) {
 }
 
 const Def* ISel::hole(const Def* def, Want want) {
-    auto stripped = strip_ptr_cast(def);
-    if (auto alt = choice(stripped); alt && alt->rule) return convert(select(stripped), alt->rule->type, want);
+    if (auto alt = choice(def); alt && alt->rule) return convert(select(def), alt->rule->type, want);
     return convert(val(def), Ty::Reg, want);
 }
 
 const Def* ISel::convert(const Def* x, Ty from, Want want) {
-    if (is_literal(want)) return x;
+    if (rules::is_literal(want)) return x;
     auto& w = new_world();
     if (from == Ty::Reg && Lit::isa(x)) from = Ty::Lit;
-    auto to = target(from, want).first;
+    auto to = rules::chains.target(from, want).first;
     for (auto t = from; t != to;) {
-        auto c     = chains().first[size_t(t)][size_t(to)];
+        auto c     = &rules::conversions[rules::chains.first[size_t(t)][size_t(to)]];
         auto holes = x->projs(c->arity);
         x          = c->build(w, holes.data());
         t          = c->to;
@@ -525,8 +438,6 @@ const Def* ISel::rewrite_imm_App(const App* app) {
     if (Axm::isa<core::M>(app)) return w.call<core::M>(w.lit_nat_0());
     if (auto res = selected(app)) return res;
     if (auto ptr = strip_ptr_cast(app); ptr != app) return rewrite(ptr);
-    // Loop hints for LLVM.
-    if (Axm::isa<ll::vec>(app) || Axm::isa<ll::novec>(app)) return rewrite(app->arg());
 
     if (auto axm = app->axm(); axm && is_lowered_plugin(axm) && !app->type()->isa<Pi>() && !app->type()->isa<Type>()
                                && !app->type()->isa<Nat>())
