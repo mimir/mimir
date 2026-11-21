@@ -1,0 +1,9 @@
+// RUN: %mim %s
+plugin x86;
+plugin refly;
+
+// The conversions fold a literal, so a widened immediate stays one.
+let _ = refly.struc.e (x86.movzx i32 200I8, 200I32);
+let _ = refly.struc.e (x86.movsx i32 200I8, 4294967240I32);
+let _ = refly.struc.e (x86.movsx i64 1I8, 1I64);
+let _ = refly.struc.e (x86.trunc i8 300I32, 44I8);

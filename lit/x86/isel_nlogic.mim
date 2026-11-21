@@ -1,0 +1,17 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin core;
+plugin x86;
+import compile;
+
+extern lam _compile (): compile.Phase = compile.phases ff (compile.named "x86.isel");
+
+extern lam f (a b: I8): I8 = core.bit2.nor 0 (a, b);
+extern lam g (a b: Bool): Bool = core.bit2.nxor 0 (a, b);
+
+// x86 has no negated logical instructions: complement with an `xor` of all ones.
+// CHECK-NOT: core.bit2
+// CHECK-DAG: let [[OR:_[0-9]+]] = x86.or @ i8
+// CHECK-DAG: x86.xor @ i8 ([[OR]], 255I8);
+// CHECK-DAG: let [[XOR:_[0-9]+]] = x86.xor @ 2
+// CHECK-DAG: x86.xor @ 2 ([[XOR]], tt);

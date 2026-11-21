@@ -74,17 +74,9 @@ enum class Tag : u8 {
     Select, ///< `(x, y)#c`, an `Extract` rather than an axiom.
 };
 
-/// The memory operand forms of a pattern's x86 instruction.
-enum class Mem : u8 {
-    None,
-    Rm,  ///< `op r, m`.
-    Rmw, ///< `op r, m` and `op m, r`.
-};
-
 /// The x86 side of a pattern, for the builders that apply one instruction.
 struct Insn {
-    flags_t id  = 0; ///< The x86 instruction.
-    Mem mem     = Mem::None;
+    flags_t id  = 0;     ///< The x86 instruction.
     s8 res      = -1;    ///< The result of a pair-valued instruction, or -1.
     bool sign   = false; ///< Operands narrower than any size the instruction supports are sign-extended.
     bool negate = false; ///< The result is complemented.
@@ -126,14 +118,14 @@ constexpr Pattern annex(Op op, Tag tag, Insn insn = {}) {
 /// The program side of the rule set: which `core`/`mem` axioms isel covers.
 constexpr Pattern patterns_[] = {
     // The members of an annex select different instructions.
-    member(core::wrap::add,  Op::WrapAdd, Tag::Bin,   {.id = Annex::Base<add>,  .mem = Mem::Rmw}),
-    member(core::wrap::sub,  Op::WrapSub, Tag::Bin,   {.id = Annex::Base<sub>,  .mem = Mem::Rmw}, false),
-    // `imul` has no `op m, r` form; the low bits of a product do not depend on how the operands were extended.
-    member(core::wrap::mul,  Op::WrapMul, Tag::Bin,   {.id = Annex::Base<imul>, .mem = Mem::Rm}),
+    member(core::wrap::add,  Op::WrapAdd, Tag::Bin,   {.id = Annex::Base<add>}),
+    member(core::wrap::sub,  Op::WrapSub, Tag::Bin,   {.id = Annex::Base<sub>}, false),
+    // The low bits of a product do not depend on how the operands were extended.
+    member(core::wrap::mul,  Op::WrapMul, Tag::Bin,   {.id = Annex::Base<imul>}),
     member(core::wrap::shl,  Op::WrapShl, Tag::Bin,   {.id = Annex::Base<shl>}, false),
-    member(core::bit2::and_, Op::BitAnd,  Tag::Bin,   {.id = Annex::Base<and_>, .mem = Mem::Rmw}),
-    member(core::bit2::or_,  Op::BitOr,   Tag::Bin,   {.id = Annex::Base<or_>,  .mem = Mem::Rmw}),
-    member(core::bit2::xor_, Op::BitXor,  Tag::Bin,   {.id = Annex::Base<xor_>, .mem = Mem::Rmw}),
+    member(core::bit2::and_, Op::BitAnd,  Tag::Bin,   {.id = Annex::Base<and_>}),
+    member(core::bit2::or_,  Op::BitOr,   Tag::Bin,   {.id = Annex::Base<or_>}),
+    member(core::bit2::xor_, Op::BitXor,  Tag::Bin,   {.id = Annex::Base<xor_>}),
     member(core::bit2::nand, Op::BitNand, Tag::Bin,   {.id = Annex::Base<and_>, .negate = true}),
     member(core::bit2::nor,  Op::BitNor,  Tag::Bin,   {.id = Annex::Base<or_>,  .negate = true}),
     member(core::bit2::nxor, Op::BitNxor, Tag::Bin,   {.id = Annex::Base<xor_>, .negate = true}),
@@ -272,13 +264,6 @@ const Pattern* pattern(const Def* def) {
     return nullptr;
 }
 
-/// The x86 ALU instruction for the old_world() operation @p def; it has a memory operand.
-const Def* alu(World& w, const Def* def) {
-    auto p = pattern(def);
-    assert(p && p->insn.mem != Mem::None);
-    return w.app(w.annex(p->insn.id), w.lit_nat(*Idx::isa_lit(def->type())));
-}
-
 } // namespace
 
 bool ISel::supports(flags_t insn, nat_t size) {
@@ -290,11 +275,6 @@ bool ISel::supports(flags_t insn, nat_t size) {
     // The `refly.check` in its codomain states the sizes it supports.
     auto cond                      = size_check(pi->codom(), done);
     return supports_[{insn, size}] = !var || !cond || VarRewriter(var, w.lit_nat(size)).rewrite(cond) == w.lit_tt();
-}
-
-bool ISel::has_mem_form(const Pattern& p, const Def* def, bool rmw) {
-    auto s = Idx::isa_lit(def->type());
-    return p.insn.mem >= (rmw ? Mem::Rmw : Mem::Rm) && s && supports(Annex::Base<load>, *s) && supports(p.insn.id, *s);
 }
 
 const Def* ISel::call_insn(const Insn& insn, Want want, const Def* a, const Def* b) {
@@ -343,38 +323,14 @@ bool literal(const Def* def, Want want) { return Lit::isa(def) && (want == Want:
 template<class... S>
 constexpr Rule rule(Op op, Ty type, pbqp::Cost cost, std::string_view name, BuildFn build, S... slots) {
     static_assert(sizeof...(S) <= Rule::Max_Slots);
-    return Rule{op, type, cost, name, build, Cond::None, u8(sizeof...(S)), {Slot(slots)...}};
-}
-
-/// The end of the subtree of slots that starts at @p i, or beyond `num_slots` if the slots are malformed.
-constexpr size_t skip(const Rule& r, size_t i) {
-    if (i >= r.num_slots) return r.num_slots + 1;
-    auto n = r.slots[i++].arity;
-    while (n-- != 0)
-        i = skip(r, i);
-    return i;
-}
-
-/// Are the two operand subtrees starting at @p i equal, so that swapping the operands yields no other match?
-constexpr bool symmetric(const Rule& r, size_t i) {
-    auto j = skip(r, i);
-    auto k = skip(r, j);
-    return std::equal(r.slots.begin() + i, r.slots.begin() + j, r.slots.begin() + j, r.slots.begin() + k);
-}
-
-constexpr bool well_formed(const Rule& r) {
-    size_t i = 0;
-    while (i < r.num_slots)
-        i = skip(r, i);
-    return i == r.num_slots;
+    return Rule{op, type, cost, name, build, Cond::None, u8(sizeof...(S)), {slots...}};
 }
 
 /// An atomic rule has no inner nodes and only holes that every rule type can fill.
-constexpr bool atomic(const Rule& r) {
-    for (size_t i = 0; i != r.num_slots; ++i) {
-        auto s = r.slots[i];
-        if (!s.is_hole() || (s.want != Want::Reg && s.want != Want::Base && s.want != Want::Addr)) return false;
-    }
+bool atomic(const Rule& r) {
+    if (r.gen && r.gen->match->num_covers != 0) return false;
+    for (size_t i = 0; i != r.num_slots; ++i)
+        if (auto w = r.slots[i]; w != Want::Reg && w != Want::Base && w != Want::Addr) return false;
     return true;
 }
 
@@ -400,39 +356,31 @@ constexpr Rule rules_[] = {
     rule(Op::Load,      Ty::Reg,   1, "load",          &ISel::build_load, Want::Addr),
     rule(Op::Store,     Ty::Reg,   1, "store",         &ISel::build_store, Want::Addr, Want::Reg),
     rule(Op::Store,     Ty::Reg,   1, "store_imm",     &ISel::build_store, Want::Addr, Want::Imm),
-    rule(Op::Store,     Ty::Reg,   1, "store_mr",      &ISel::build_store_mr, Want::Addr, Slot(Op::Alu, 2), Slot(Op::Load, 1), Want::Addr, Want::Reg).with(Cond::Rmw),
-    rule(Op::Store,     Ty::Reg,   1, "store_mr_imm",  &ISel::build_store_mr, Want::Addr, Slot(Op::Alu, 2), Slot(Op::Load, 1), Want::Addr, Want::Imm).with(Cond::Rmw),
 
-    rule(Op::WrapAdd,   Ty::Reg,   1, "add",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Ungenerated),
-    rule(Op::WrapAdd,   Ty::Reg,   1, "add_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Ungenerated),
-    rule(Op::WrapAdd,   Ty::Reg,   1, "add_rm",        &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
-    rule(Op::WrapSub,   Ty::Reg,   1, "sub",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Ungenerated),
-    rule(Op::WrapSub,   Ty::Reg,   1, "sub_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Ungenerated),
-    rule(Op::WrapSub,   Ty::Reg,   1, "sub_rm",        &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
-    rule(Op::WrapMul,   Ty::Reg,   1, "mul",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Ungenerated),
-    rule(Op::WrapMul,   Ty::Reg,   1, "mul_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Ungenerated),
-    rule(Op::WrapMul,   Ty::Reg,   1, "mul_rm",        &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
-    rule(Op::WrapShl,   Ty::Reg,   1, "shl",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Ungenerated),
-    rule(Op::WrapShl,   Ty::Reg,   1, "shl_imm",       &ISel::build_insn, Want::Reg, Want::Sh).with(Cond::Ungenerated),
-    rule(Op::BitAnd,    Ty::Reg,   1, "and",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Ungenerated),
-    rule(Op::BitAnd,    Ty::Reg,   1, "and_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Ungenerated),
-    rule(Op::BitAnd,    Ty::Reg,   1, "and_rm",        &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
-    rule(Op::BitOr,     Ty::Reg,   1, "or",            &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Ungenerated),
-    rule(Op::BitOr,     Ty::Reg,   1, "or_imm",        &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Ungenerated),
-    rule(Op::BitOr,     Ty::Reg,   1, "or_rm",         &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
-    rule(Op::BitXor,    Ty::Reg,   1, "xor",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Ungenerated),
-    rule(Op::BitXor,    Ty::Reg,   1, "xor_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Ungenerated),
-    rule(Op::BitXor,    Ty::Reg,   1, "xor_rm",        &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
-    rule(Op::BitNand,   Ty::Reg,   1, "nand",          &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::BitNand,   Ty::Reg,   1, "nand_imm",      &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::BitNor,    Ty::Reg,   1, "nor",           &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::BitNor,    Ty::Reg,   1, "nor_imm",       &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::BitNxor,   Ty::Reg,   1, "nxor",          &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::BitNxor,   Ty::Reg,   1, "nxor_imm",      &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::ShrL,      Ty::Reg,   1, "shr",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Ungenerated),
-    rule(Op::ShrL,      Ty::Reg,   1, "shr_imm",       &ISel::build_insn, Want::Reg, Want::Sh).with(Cond::Ungenerated),
-    rule(Op::ShrA,      Ty::Reg,   1, "sar",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Ungenerated),
-    rule(Op::ShrA,      Ty::Reg,   1, "sar_imm",       &ISel::build_insn, Want::Reg, Want::Sh).with(Cond::Ungenerated),
+    rule(Op::WrapAdd,   Ty::Reg,   1, "add",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
+    rule(Op::WrapAdd,   Ty::Reg,   1, "add_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
+    rule(Op::WrapSub,   Ty::Reg,   1, "sub",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
+    rule(Op::WrapSub,   Ty::Reg,   1, "sub_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
+    rule(Op::WrapMul,   Ty::Reg,   1, "mul",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
+    rule(Op::WrapMul,   Ty::Reg,   1, "mul_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
+    rule(Op::WrapShl,   Ty::Reg,   1, "shl",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
+    rule(Op::WrapShl,   Ty::Reg,   1, "shl_imm",       &ISel::build_insn, Want::Reg, Want::Sh).with(Cond::Dyn),
+    rule(Op::BitAnd,    Ty::Reg,   1, "and",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
+    rule(Op::BitAnd,    Ty::Reg,   1, "and_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
+    rule(Op::BitOr,     Ty::Reg,   1, "or",            &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
+    rule(Op::BitOr,     Ty::Reg,   1, "or_imm",        &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
+    rule(Op::BitXor,    Ty::Reg,   1, "xor",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
+    rule(Op::BitXor,    Ty::Reg,   1, "xor_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
+    rule(Op::BitNand,   Ty::Reg,   1, "nand",          &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
+    rule(Op::BitNand,   Ty::Reg,   1, "nand_imm",      &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
+    rule(Op::BitNor,    Ty::Reg,   1, "nor",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
+    rule(Op::BitNor,    Ty::Reg,   1, "nor_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
+    rule(Op::BitNxor,   Ty::Reg,   1, "nxor",          &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
+    rule(Op::BitNxor,   Ty::Reg,   1, "nxor_imm",      &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
+    rule(Op::ShrL,      Ty::Reg,   1, "shr",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
+    rule(Op::ShrL,      Ty::Reg,   1, "shr_imm",       &ISel::build_insn, Want::Reg, Want::Sh).with(Cond::Dyn),
+    rule(Op::ShrA,      Ty::Reg,   1, "sar",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
+    rule(Op::ShrA,      Ty::Reg,   1, "sar_imm",       &ISel::build_insn, Want::Reg, Want::Sh).with(Cond::Dyn),
 
     rule(Op::Icmp,      Ty::Reg,   2, "cmp",           &ISel::build_cmp, Want::Reg, Want::Reg),
     rule(Op::Icmp,      Ty::Reg,   2, "cmp_imm",       &ISel::build_cmp, Want::Reg, Want::Imm),
@@ -466,12 +414,6 @@ constexpr Rule rules_[] = {
 };
 // clang-format on
 
-static_assert(std::ranges::all_of(rules_, well_formed));
-
-constexpr bool has_atomic(Op op) {
-    return std::ranges::any_of(rules_, [op](const Rule& r) { return r.op == op && atomic(r); });
-}
-
 /*
  * Generated Rules
  */
@@ -497,10 +439,16 @@ std::vector<Rule> make_generated() {
         });
         if (p == std::end(patterns_)) fe::throwf("x86 isel: no pattern for the root of rule `{}`", r.name);
         auto type = r.head == Annex::Base<x86::addr> ? Ty::Base : r.head == Annex::Base<index> ? Ty::Index : Ty::Reg;
-        auto rule
-            = Rule{.op = p->op, .type = type, .cost = r.cost, .name = r.name, .build = &ISel::build_gen, .gen = &r};
+        auto rule = Rule{.op    = p->op,
+                         .type  = type,
+                         .cost  = r.cost,
+                         .name  = r.name,
+                         .build = &ISel::build_gen,
+                         .cond  = r.maps ? Cond::Fold : Cond::None,
+                         .gen   = &r};
         for (size_t i = 0; i != r.num_metas; ++i)
-            if (auto w = want_of(r, i); w != rules::Want::Param) rule.slots[rule.num_slots++] = Slot(want(w));
+            if (auto w = want_of(r, i); w != rules::Want::Param && rule.num_slots != Rule::Max_Slots)
+                rule.slots[rule.num_slots++] = want(w);
         res.emplace_back(rule);
     }
     return res;
@@ -512,33 +460,62 @@ const std::vector<Rule>& generated() {
     return rules;
 }
 
+#ifdef MIM_ENABLE_CHECKS
+bool has_atomic(Op op) {
+    auto is = [op](const Rule& r) { return r.op == op && atomic(r); };
+    return std::ranges::any_of(rules_, is) || std::ranges::any_of(generated(), is);
+}
+#endif
+
 } // namespace
 
-void ISel::append_gen(const Rule& rule, const Def* root, const Node& node, Alts& alts) {
-    const auto& r = *rule.gen;
-    auto swaps    = node.ptrn->commutes && rule.num_slots == 2 && rule.slots[0] != rule.slots[1];
-    for (bool swap : {false, true}) {
-        if (swap && !swaps) break;
-        auto metas = DefVec(r.num_metas, [](size_t) { return nullptr; });
-        if (!r.match(root, swap, metas.data())) continue;
-
-        auto alt = Alt();
-        alt.rule = &rule;
-        alt.cost = rule.cost;
-        auto ok  = true;
-        for (size_t i = 0; i != r.num_metas && ok; ++i) {
-            auto def = metas[i];
-            if (!def) ok = false;
-            if (auto w = want_of(r, i); ok && w != rules::Want::Param) {
-                ok = !is_literal(want(w)) || literal(def, want(w));
-                alt.demands.emplace_back(Demand{def, want(w)});
-            }
-        }
-        if (!ok || !holds(root, alt)) continue;
-        alt.metas  = std::move(metas);
-        generated_ = true;
-        alts.emplace_back(std::move(alt));
+void ISel::append_gen(const Rule& rule, const Def* root, Alts& alts) {
+    auto swaps = rule.gen->swaps;
+    // Ascending subsets of `swaps`.
+    for (u32 swap = 0;; swap = ((swap | ~swaps) + 1) & swaps) {
+        append_gen(rule, root, swap, alts);
+        if (swap == swaps) break;
     }
+}
+
+void ISel::append_gen(const Rule& rule, const Def* root, u32 swap, Alts& alts) {
+    const auto& r = *rule.gen;
+    const auto& m = *r.match;
+    auto metas    = DefVec(r.num_metas, [](size_t) { return nullptr; });
+    auto refs     = DefVec(m.num_refs, [](size_t) { return nullptr; });
+    if (!m.fn(root, swap, metas.data(), refs.data())) return;
+
+    auto alt = Alt();
+    alt.rule = &rule;
+    alt.cost = rule.cost;
+    alt.covers.resize(m.num_covers, Cover{nullptr, 0, {}});
+    for (size_t j = 0; j != m.num_refs; ++j) {
+        auto info                  = rules::all_refs[m.refs + j];
+        auto ex                    = refs[j]->isa<Extract>();
+        auto cover                 = ex ? ex->tuple() : refs[j];
+        alt.covers[info.cover].def = cover;
+        if (info.kind == rules::Ref::Mem && uses(refs[j]) != 1) return;
+    }
+
+    auto node    = [&](u8 owner) { return owner == 0 ? root : alt.covers[owner - 1].def; };
+    auto demands = [&](u8 owner) -> auto& { return owner == 0 ? alt.demands : alt.covers[owner - 1].demands; };
+    for (size_t j = 0; j != m.num_uses; ++j) {
+        auto u = rules::all_uses[m.uses + j];
+        if (u.ref) {
+            auto def   = refs[u.index];
+            auto c     = rules::all_refs[m.refs + u.index].cover;
+            auto cover = alt.covers[c].def;
+            if (sole(node(u.owner), def) != cover || !decompose(cover)) return;
+            demands(u.owner).emplace_back(Demand{def, Want::Reg, size_t(c) + 1});
+        } else if (auto w = want_of(r, u.index); w != rules::Want::Param) {
+            auto def = metas[u.index];
+            if (is_literal(want(w)) && !literal(def, want(w))) return;
+            demands(u.owner).emplace_back(Demand{def, want(w)});
+        }
+    }
+    if (!holds(root, alt)) return;
+    alt.metas = std::move(metas);
+    alts.emplace_back(std::move(alt));
 }
 
 const Def* ISel::build_gen(const Def*, const Alt& alt) {
@@ -547,7 +524,10 @@ const Def* ISel::build_gen(const Def*, const Alt& alt) {
         auto w = want_of(r, i);
         return w == rules::Want::Param ? rewrite(alt.metas[i]) : hole(alt.metas[i], want(w));
     });
-    return r.build(new_world(), holes.data());
+    auto res      = r.build(new_world(), holes.data());
+    if (!r.maps) return res;
+    map(alt.covers[r.maps - 1].def, res);
+    return res->proj(2, 1);
 }
 
 const Def* ISel::build_lea_off(const Def* root, const Alt& alt) {
@@ -578,15 +558,6 @@ const Def* ISel::build_store(const Def* root, const Alt& alt) {
     return new_world().call<store>(Defs{rewrite(m), hole(p, Want::Addr), hole(x, alt.demands[1].want)});
 }
 
-const Def* ISel::build_store_mr(const Def* root, const Alt& alt) {
-    auto& w        = new_world();
-    auto [_, p, u] = root->as<App>()->args<3>();
-    auto ld        = alt.covers[1].def;
-    auto other     = alt.covers[0].demands[1];
-    auto b         = hole(other.def, other.want);
-    return w.call<mr>(alu(w, u), Defs{rewrite(ld->as<App>()->arg(2, 0)), hole(p, Want::Addr), b});
-}
-
 const Def* ISel::build_insn(const Def* root, const Alt& alt) {
     auto& w    = new_world();
     auto& insn = pattern(root)->insn;
@@ -595,15 +566,6 @@ const Def* ISel::build_insn(const Def* root, const Alt& alt) {
     auto res   = call_insn(insn, alt.demands[1].want, a, b);
     if (insn.negate) res = bin<xor_>(w, res, ones(w, a->type()));
     return mem_valued(root) ? w.tuple({rewrite(root->as<App>()->arg(2, 0)), res}) : res;
-}
-
-const Def* ISel::build_bin_rm(const Def* root, const Alt& alt) {
-    auto& w     = new_world();
-    auto ld     = alt.covers[0].def->as<App>();
-    auto [m, p] = ld->args<2>();
-    auto res    = w.call<rm>(alu(w, root), Defs{rewrite(m), hole(alt.demands[0].def), hole(p, Want::Addr)});
-    map(ld, res);
-    return res->proj(2, 1);
 }
 
 const Def* ISel::build_cmp(const Def* root, const Alt& alt) {
@@ -713,72 +675,35 @@ std::optional<ISel::Node> ISel::decompose(const Def* def) const {
 void ISel::match(const Def* def, Alts& alts) {
     auto node = decompose(def);
     if (!node) return;
-    generated_ = false;
     for (const auto& rule : generated())
-        if (rule.op == node->op) append_gen(rule, def, *node, alts);
+        if (rule.op == node->op) append_gen(rule, def, alts);
     for (const auto& rule : rules_)
         if (rule.op == node->op) append(rule, def, *node, alts);
 }
 
 void ISel::append(const Rule& rule, const Def* root, const Node& node, Alts& alts) {
-    auto alt = Alt();
-    alt.rule = &rule;
-    alt.cost = rule.cost;
-    descend(rule, root, 0, std::move(alt), {}, Frame{root, node.ops}, node, alts);
-}
-
-void ISel::descend(const Rule& rule,
-                   const Def* root,
-                   size_t i,
-                   Alt alt,
-                   fe::Vector<Frame> frames,
-                   Frame frame,
-                   const Node& node,
-                   Alts& alts) {
-    if (node.ptrn->commutes && frame.ops.size() == 2 && !symmetric(rule, i)) {
-        auto swapped = frames;
-        swapped.emplace_back(Frame{frame.node, {frame.ops[1], frame.ops[0]}, 0, frame.cover});
-        frames.emplace_back(std::move(frame));
-        bind(rule, root, i, alt, std::move(frames), alts);
-        bind(rule, root, i, std::move(alt), std::move(swapped), alts);
-    } else {
-        frames.emplace_back(std::move(frame));
-        bind(rule, root, i, std::move(alt), std::move(frames), alts);
+    if (node.ops.size() != rule.num_slots) return;
+    auto swaps = node.ptrn->commutes && rule.num_slots == 2 && rule.slots[0] != rule.slots[1];
+    for (bool swap : {false, true}) {
+        if (swap && !swaps) break;
+        auto alt = Alt();
+        alt.rule = &rule;
+        alt.cost = rule.cost;
+        auto ok  = true;
+        for (size_t i = 0; i != rule.num_slots && ok; ++i) {
+            auto def  = node.ops[swap ? 1 - i : i];
+            auto want = rule.slots[i];
+            ok        = !is_literal(want) || literal(def, want);
+            alt.demands.emplace_back(Demand{def, want});
+        }
+        if (ok && holds(root, alt)) alts.emplace_back(std::move(alt));
     }
 }
 
-void ISel::bind(const Rule& rule, const Def* root, size_t i, Alt alt, fe::Vector<Frame> frames, Alts& alts) {
-    while (!frames.empty() && frames.back().next == frames.back().ops.size())
-        frames.pop_back();
-    if (frames.empty()) {
-        if (i == rule.num_slots && holds(root, alt)) alts.emplace_back(std::move(alt));
-        return;
-    }
-    if (i == rule.num_slots) return;
-
-    auto& f       = frames.back();
-    auto def      = f.ops[f.next++];
-    auto slot     = rule.slots[i];
-    auto& demands = f.cover == size_t(-1) ? alt.demands : alt.covers[f.cover].demands;
-    if (slot.is_hole()) {
-        if (is_literal(slot.want) && !literal(def, slot.want)) return;
-        demands.emplace_back(Demand{def, slot.want});
-        return bind(rule, root, i + 1, std::move(alt), std::move(frames), alts);
-    }
-
-    auto app  = sole(f, def);
-    auto node = app ? decompose(app) : std::nullopt;
-    if (!node || node->ops.size() != slot.arity) return;
-    if (slot.node == Op::Alu ? !has_mem_form(*node->ptrn, app, true) : node->op != slot.node) return;
-    auto c = alt.covers.size();
-    demands.emplace_back(Demand{def, Want::Reg, c + 1});
-    alt.covers.emplace_back(Cover{app, 0, {}});
-    descend(rule, root, i + 1, std::move(alt), std::move(frames), Frame{app, node->ops, 0, c}, *node, alts);
-}
-
-const App* ISel::sole(const Frame& parent, const Def* def) const {
-    if (auto app = parent.node->isa<App>(); !app || uses(app->arg()) != 1) return nullptr;
-    if (std::ranges::count(parent.ops, def) != 1) return nullptr;
+const App* ISel::sole(const Def* parent, const Def* def) const {
+    auto ops = decompose(parent);
+    if (auto app = parent->isa<App>(); !app || !ops || uses(app->arg()) != 1) return nullptr;
+    if (std::ranges::count(ops->ops, def) != 1) return nullptr;
     if (key(def) != def) return sole_value(def);
     return uses(def) == 1 ? def->isa<App>() : nullptr;
 }
@@ -786,7 +711,10 @@ const App* ISel::sole(const Frame& parent, const Def* def) const {
 bool ISel::holds(const Def* root, const Alt& alt) {
     switch (alt.rule->cond) {
         case Cond::None: return true;
-        case Cond::Ungenerated: return !generated_;
+        case Cond::Dyn: {
+            auto size = Idx::isa(root->type());
+            return size && !Lit::isa(size);
+        }
         case Cond::Same:
         case Cond::Narrow:
         case Cond::Widen: {
@@ -801,9 +729,7 @@ bool ISel::holds(const Def* root, const Alt& alt) {
             return size == 1 || size == 2 || size == 4 || size == 8;
         }
         case Cond::Fold: {
-            if (!has_mem_form(*pattern(root), root, false)) return false;
-            // The replacement sits at the load, so the other operands must be available there.
-            auto ld = alt.covers.back().def->as<App>();
+            auto ld = alt.covers[alt.rule->gen->maps - 1].def->as<App>();
             auto bb = chain(ld->arg(2, 0));
             if (!bb) return false;
             for (const auto& d : alt.demands) {
@@ -811,12 +737,6 @@ bool ISel::holds(const Def* root, const Alt& alt) {
                 if (!d.inner && (!d.def->in_scope(bb) || depends(d.def, ld, done))) return false;
             }
             return true;
-        }
-        case Cond::Rmw: {
-            // The load's memory has no other user, so nothing lies between load and store.
-            auto [m, p, _] = root->as<App>()->args<3>();
-            auto ld        = alt.covers.back().def->as<App>();
-            return ld->arg(2, 1) == p && ld->proj(2, 0) == m && uses(m) == 1;
         }
     }
     std::unreachable();
@@ -948,24 +868,16 @@ void ISel::check_rules() const {
         if (conv(r.type, Want::Reg).is_inf())
             fe::throwf("x86 isel: rule `{}` yields a value that does not convert to a register", r.name);
         for (size_t i = 0; i != r.num_slots; ++i) {
-            auto s = r.slots[i];
-            if (!s.is_hole()) {
-                if (s.node != Op::Alu && !has_atomic(s.node))
-                    fe::throwf("x86 isel: `{}` folds `{}`, but no atomic rule selects it", r.name, op_name(s.node));
-                for (const auto& p : patterns_)
-                    if (s.node == Op::Alu && p.insn.mem == Mem::Rmw && !has_atomic(p.op))
-                        fe::throwf("x86 isel: `{}` folds `{}`, but no atomic rule selects it", r.name, op_name(p.op));
-                continue;
-            }
-            if (is_literal(s.want)) continue; // satisfied by a literal, not a rule type
+            auto w = r.slots[i];
+            if (is_literal(w)) continue; // satisfied by a literal, not a rule type
             bool ok = false;
             for (auto ty : {Ty::Reg, Ty::Base, Ty::Index})
-                if (!conv(ty, s.want).is_inf()) ok = true;
+                if (!conv(ty, w).is_inf()) ok = true;
             if (!ok) fe::throwf("x86 isel: no rule type converts to a hole of `{}`", r.name);
         }
     }
 
-    for (const auto& r : rules_)
+    for (const auto& r : all)
         if (!has_atomic(r.op)) fe::throwf("x86 isel: no atomic rule for `{}`", op_name(r.op));
 }
 #endif

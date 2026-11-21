@@ -75,43 +75,24 @@ constexpr bool is_literal(Want want) { return want == Want::Imm || want == Want:
     X(Div)                  \
     X(Slot)                 \
     X(Assume)               \
-    X(Alu)                  \
     X(Num)
 
-/// `Op::Alu` is no instruction: as an inner node, it matches any operation with a read-modify-write memory form.
 enum class Op : u8 {
 #define X(op) op,
     MIM_X86_ISEL_OPS(X)
 #undef X
 };
 
-/// One position of a rule's pattern in preorder: a hole, or an inner node whose @p arity operands follow it.
-struct Slot {
-    Want want = Want::Reg;
-    Op node   = Op::Num; ///< `Op::Num` for a hole.
-    u8 arity  = 0;
-
-    constexpr Slot() = default;
-    constexpr Slot(Want want)
-        : want(want) {}
-    constexpr Slot(Op node, u8 arity)
-        : node(node)
-        , arity(arity) {}
-
-    constexpr bool is_hole() const { return node == Op::Num; }
-    constexpr bool operator==(const Slot&) const = default;
-};
-
 /// A side condition of a rule beyond what its slots state.
 enum class Cond : u8 {
     None,
     Scale,  ///< The elements the root `mem.lea` indexes have a size of 1, 2, 4, or 8.
-    Fold,   ///< The root has a memory operand form and sits at its inner load, so its holes must be available there.
-    Rmw,    ///< The inner load reads the root store's address on the memory the store takes, which nothing else uses.
+    Fold,   ///< The replacement sits at the inner node whose memory it replaces, so the root's holes must be available
+            ///< there.
     Same,   ///< The root has the register size of its operand.
     Narrow, ///< The root's register is at most as wide as its operand's, but its size differs.
     Widen,  ///< The root's register is wider than its operand's.
-    Ungenerated, ///< No rule of `x86_isel` matches the root.
+    Dyn,    ///< The root's `Idx` has no literal size, so it becomes `I64`, which no rule of `x86_isel` states.
 };
 
 /// What a match needs of the operand @p def: a hole of type @p want or, if @p inner is set, that inner pattern node.
@@ -150,7 +131,8 @@ using Alts = fe::Vector<Alt>;
 /// Builds the replacement of the match @p alt rooted at the old_world() Def @p root.
 using BuildFn = const Def* (ISel::*)(const Def*, const Alt&);
 
-/// One pattern ↦ replacement: the root's operation, the pattern's slots, the replacement's type, cost, and builder.
+/// One pattern ↦ replacement: the root's operation, the holes of its operands, the replacement's type, cost, and
+/// builder. A rule of `x86_isel` may also have inner nodes; its holes are those of its operand meta variables.
 struct Rule {
     static constexpr size_t Max_Slots = 6;
 
@@ -161,7 +143,7 @@ struct Rule {
     BuildFn build;
     Cond cond    = Cond::None;
     u8 num_slots = 0;
-    std::array<Slot, Max_Slots> slots{};
+    std::array<Want, Max_Slots> slots{};
     const rules::Rewrite* gen = nullptr; ///< The rule of `x86_isel` this one stems from.
 
     constexpr Rule with(Cond c) const {
@@ -217,16 +199,12 @@ public:
     const Def* call_insn(const Insn& insn, Want want, const Def* a, const Def* b);
     /// Does the x86 instruction @p insn take operands of `Idx size`?
     bool supports(flags_t insn, nat_t size);
-    /// Does @p def, matched by @p p, have a memory-operand form (read-modify-write if @p rmw)?
-    bool has_mem_form(const Pattern& p, const Def* def, bool rmw);
 
     const Def* build_lea_off(const Def* root, const Alt& alt);
     const Def* build_lea_idx(const Def* root, const Alt& alt);
     const Def* build_load(const Def* root, const Alt& alt);
     const Def* build_store(const Def* root, const Alt& alt);
-    const Def* build_store_mr(const Def* root, const Alt& alt);
     const Def* build_insn(const Def* root, const Alt& alt);
-    const Def* build_bin_rm(const Def* root, const Alt& alt);
     const Def* build_cmp(const Def* root, const Alt& alt);
     const Def* build_nat_sub(const Def* root, const Alt& alt);
     const Def* build_id(const Def* root, const Alt& alt);
@@ -250,35 +228,19 @@ private:
         Op op;
         DefVec ops;
     };
-    /// The operands of one pattern node that a match has yet to bind.
-    struct Frame {
-        const Def* node;
-        DefVec ops;
-        size_t next  = 0;
-        size_t cover = size_t(-1); ///< The Cover whose demands they are, or `size_t(-1)` for the root.
-    };
 
     /// @p def as a pattern node, if a pattern covers it.
     std::optional<Node> decompose(const Def* def) const;
     /// Appends the matches rooted at @p def to @p alts.
     void match(const Def* def, Alts& alts);
-    /// Appends the matches of the generated @p rule rooted at @p root, which decomposes to @p node, to @p alts.
-    void append_gen(const Rule& rule, const Def* root, const Node& node, Alts& alts);
+    /// Appends the matches of the generated @p rule rooted at @p root to @p alts.
+    void append_gen(const Rule& rule, const Def* root, Alts& alts);
+    /// Appends the match of the generated @p rule rooted at @p root with the commuting nodes in @p swap swapped.
+    void append_gen(const Rule& rule, const Def* root, u32 swap, Alts& alts);
     /// Appends the matches of @p rule rooted at @p root, which decomposes to @p node, to @p alts.
     void append(const Rule& rule, const Def* root, const Node& node, Alts& alts);
-    /// Binds the slots of @p rule from @p i on to the pending operands in @p frames; complete matches go to @p alts.
-    void bind(const Rule& rule, const Def* root, size_t i, Alt alt, fe::Vector<Frame> frames, Alts& alts);
-    /// Pushes @p frame for @p node and binds on; also with swapped operands if they commute and their slots differ.
-    void descend(const Rule& rule,
-                 const Def* root,
-                 size_t i,
-                 Alt alt,
-                 fe::Vector<Frame> frames,
-                 Frame frame,
-                 const Node& node,
-                 Alts& alts);
     /// The inner node the operand @p def of @p parent stands for, if nothing outside the match uses it.
-    const App* sole(const Frame& parent, const Def* def) const;
+    const App* sole(const Def* parent, const Def* def) const;
     /// Does the match @p alt rooted at @p root meet the side condition of its rule?
     bool holds(const Def* root, const Alt& alt);
 #ifdef MIM_ENABLE_CHECKS
@@ -309,7 +271,6 @@ private:
     DefMap<size_t> choices_;
     Def2Def roots_; ///< inner node → root of the match covering it
     Def2Def repls_;
-    bool generated_ = false; ///< Did a generated rule match the Def that match() is at?
 };
 
 } // namespace mim::plug::x86::phase
