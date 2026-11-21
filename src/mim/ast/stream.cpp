@@ -158,7 +158,19 @@ void DeclExpr::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 void TypeExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "Type {}", S(tab, level())); }
-void RuleExpr::stream(fe::Tab& tab, std::ostream& os) const { std::print(os, "Rule {}", S(tab, dom())); }
+void RuleExpr::stream(fe::Tab& tab, std::ostream& os) const {
+    std::print(os, "{}", Tag::K_rl);
+    if (!meta()) std::print(os, " ()");
+    stream_body(tab, os);
+}
+
+void RuleExpr::stream_body(fe::Tab& tab, std::ostream& os) const {
+    if (meta()) std::print(os, " {}", S(tab, meta()));
+    std::print(os, ": {}", S(tab, lhs()));
+    if (auto tt = guard()->isa<PrimaryExpr>(); !tt || tt->tag() != Tag::K_tt)
+        std::print(os, " when {}", S(tab, guard()));
+    std::print(os, " => {}", S(tab, rhs()));
+}
 
 void PrefixExpr::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}{}", Tok::tag2str(op().tag()), S(tab, rhs()));
@@ -312,11 +324,26 @@ void UseDecl::stream(fe::Tab& tab, std::ostream& os) const {
     os << ';';
 }
 
+/// `rule I (dom)* (meta): r` is sugar for `anx lam I (dom)* = rl (meta): r`, so `anx` goes without saying.
+static void stream_rule(fe::Tab& tab, std::ostream& os, const Mods& mods, Dbg dbg, auto doms, const RuleExpr* rule) {
+    if (mods.resolved_vis() == Vis::Priv) std::print(os, "{} ", vis2str(Vis::Priv));
+    std::print(os, "{} {}", rule->is_norm() ? Tag::K_norm : Tag::K_rule, dbg);
+    for (auto dom : doms)
+        std::print(os, " {}", S(tab, dom.get()));
+    rule->stream_body(tab, os);
+    os << ';';
+}
+
 void LetDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    if (auto rule = value()->isa<RuleExpr>(); rule && is_anx())
+        if (auto id = ptrn()->isa<IdPtrn>(); id && !id->type())
+            return stream_rule(tab, os, mods(), id->dbg(), fe::View<Ptr<LamDecl::Dom>>(), rule);
     std::print(os, "{}let {} = {};", mods(), S(tab, ptrn()), S(tab, value()));
 }
 
 void RecDecl::stream(fe::Tab& tab, std::ostream& os) const {
+    if (auto lam = isa<LamDecl>(); lam && lam->tag() == Tag::K_lam && is_anx() && !lam->codom() && lam->body())
+        if (auto rule = lam->body()->isa<RuleExpr>()) return stream_rule(tab, os, mods(), dbg(), lam->doms(), rule);
     std::print(os, "{}", mods());
     stream_(tab, os);
     os << ';';
@@ -371,14 +398,6 @@ void LamDecl::stream_(fe::Tab& tab, std::ostream& os) const {
             std::print(os, " = {}", S(tab, body()));
         }
     }
-}
-
-void RuleDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{}{} {} {}: {}", mods(), is_norm() ? Tag::K_norm : Tag::K_rule, dbg(), S(tab, var()),
-               S(tab, lhs()));
-    if (auto tt = guard()->isa<PrimaryExpr>(); !tt || tt->tag() != Tag::K_tt)
-        std::print(os, " when {}", S(tab, guard()));
-    std::print(os, " => {};", S(tab, rhs()));
 }
 
 } // namespace mim::ast

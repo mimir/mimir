@@ -1,0 +1,19 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin core;
+
+// The family parameter `s` is chosen by whoever instantiates the family, here by inference from the argument.
+rule eq {s: Nat} (a: Idx s): (a, a) => tt;
+// An explicit family parameter.
+rule dup (n: Nat) (a: Idx n): a => (a, a);
+
+extern lam same (x: I32): Bool = eq ▷ (x, x);
+extern lam differ (x y: I32): Bool = eq ▷ (x, y);
+extern lam twice (x: I8): «2; I8» = dup i8 ▷ x;
+
+// CHECK-LABEL: extern lam differ
+// CHECK-NEXT:  (rl (a: I32): ‹2; a› => tt) ▷ {{.*}};
+// CHECK-LABEL: extern lam same ({{.*}}: I32): Bool =
+// CHECK-NEXT:  tt;
+// CHECK-LABEL: extern lam twice (x: I8): «2; I8» =
+// CHECK-NEXT:  ‹2; x›;

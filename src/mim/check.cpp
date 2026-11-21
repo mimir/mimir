@@ -499,15 +499,41 @@ const Def* Pi::infer(const Def* dom, const Def* codom) {
     return w.type(w.level({dom, codom}));
 }
 
-const Def* Reform::infer(const Def* dom) { return dom->unfold_type(); }
+const Def* Rho::infer(const Def* dom, const Def* codom) { return Pi::infer(dom, codom); }
+
+const Def* Rule::check_guard(const Def* guard) {
+    if (auto res = Check::coerce(guard->world().type_bool(), guard)) return res;
+    guard->blame("guard of a rewrite rule is of type `{}` but must be of type `Bool`", type_of(guard)).bail();
+}
 
 /*
  * Def::check
  */
 
+namespace {
+
+const Def* check_rule(const Rule* rule, size_t i, const Def* def) {
+    if (i == 0) return def;
+    if (i == 1) {
+        if (auto lhs = Check::coerce(rule->dom(), def)) return lhs;
+        def->blame("left-hand side of a rewrite rule is not assignable to its domain")
+            .n("expected `{}`, got `{}`", rule->dom(), type_of(def))
+            .bail();
+    }
+    if (i == 2) return Rule::check_guard(def);
+    assert(i == 3);
+    if (auto rhs = Check::coerce(rule->codom(), def)) return rhs;
+    def->blame("right-hand side of a rewrite rule is not assignable to its codomain")
+        .n("expected `{}`, got `{}`", rule->codom(), type_of(def))
+        .bail();
+}
+
+} // namespace
+
 const Def* Def::check(size_t i, const Def* def) {
+    if (auto rule = isa<Rule>()) return check_rule(rule, i, def);
     auto lam = isa<Lam>();
-    if (!lam) return def; // TODO Pi/Sigma/Arr/Rule accept any op for now
+    if (!lam) return def; // TODO Pi/Sigma/Arr/Rho accept any op for now
 
     if (i == 0) {
         if (auto filter = Check::coerce(world().type_bool(), def)) return filter;
@@ -552,23 +578,16 @@ const Def* Def::check() {
                 type()->blame("declared sort of variant does not match inferred sort `{}`", t).bail();
             return t;
         }
-        case MutNode::Rule: {
-            auto rule = as<Rule>();
-            auto t1   = rule->lhs()->unfold_type();
-            auto t2   = rule->rhs()->unfold_type();
-            if (!Check::alpha(t1, t2))
-                type()
-                    ->blame("type mismatch between rule sides: lhs has type `{}` but rhs has type `{}`", t1, t2)
-                    .bail();
-            if (!Check::coerce(w.type_bool(), rule->guard()))
-                rule->guard()
-                    ->blame("condition of a rewrite rule is of type `{}` but must be of type `Bool`",
-                            type_of(rule->guard()))
-                    .bail();
-            return type();
+        case MutNode::Rho: {
+            auto rho = as<Rho>();
+            auto t   = Rho::infer(rho->dom(), rho->codom());
+            if (!pending && !Check::alpha(t, type()))
+                type()->blame("declared sort of rule type does not match inferred sort `{}`", t).bail();
+            return t;
         }
-        // A Lam's ops are checked one by one in Def::check(size_t, const Def*).
+        // A Lam's and a Rule's ops are checked one by one in Def::check(size_t, const Def*).
         case MutNode::Lam:
+        case MutNode::Rule:
         case MutNode::Pack:
         case MutNode::Hole: return type();
     }

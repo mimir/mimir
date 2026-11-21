@@ -373,8 +373,19 @@ const Def* TypeExpr::emit_(Emitter& e) const {
 }
 
 const Def* RuleExpr::emit_(Emitter& e) const {
-    auto m = dom()->emit(e);
-    return e.world().reform(m);
+    auto& w   = e.world();
+    auto rule = w.mut_rule(w.rho(w.mut_hole_type(), w.mut_hole_type()));
+    rule->set_meta(meta() ? meta()->emit_type(e) : w.sigma());
+    if (meta()) emit_var(e, meta(), rule);
+    rule->set_lhs(lhs()->emit(e));
+    rule->set_guard(guard()->emit(e));
+    rule->set_rhs(rhs()->emit(e));
+    if (auto rho = rule->type(); is_norm() && !Check::alpha(rho->dom(), rho->codom()))
+        e.error()
+            .e(loc(), "a normalizing rule must not change the type")
+            .n("its left-hand side has type `{}` but its right-hand side has type `{}`", rho->dom(), rho->codom())
+            .bail();
+    return rule;
 }
 
 const Def* PrimaryExpr::emit_(Emitter& e) const {
@@ -635,6 +646,8 @@ const Def* InfixExpr::emit_(Emitter& e) const {
 
     switch (op().tag()) {
         case Tag::T_arrow_r: return w.pi(l, r);
+        case Tag::T_leadsto: return w.rho(l, r);
+        case Tag::T_fire: return w.fire(w.implicit_holes(l), r);
         case Tag::T_at: return w.app(l, r);
         case Tag::K_inj:
             r = w.implicit_holes(r);
@@ -1097,18 +1110,6 @@ void LamDecl::emit_body(Emitter& e) const {
         lam->externalize();
     }
     e.attach(annex_, sub_, dbg().sym(), def_);
-}
-
-void RuleDecl::emit(Emitter& e) const {
-    auto _      = e.world().push(loc());
-    auto meta_t = e.world().reform(var()->emit_type(e));
-    auto rule   = e.world().mut_rule(meta_t)->set(dbg());
-    var()->emit_value(e, rule->var());
-    auto l = lhs()->emit(e);
-    auto r = rhs()->emit(e);
-    auto g = guard()->emit(e);
-    rule->set(l, r, g);
-    def_ = rule;
 }
 
 } // namespace mim::ast
