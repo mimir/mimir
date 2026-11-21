@@ -1,0 +1,35 @@
+// RUN: %mim %s -X x86_isel:o=- | %FileCheck %s
+
+plugin compile;
+plugin x86_isel;
+
+extern lam _compile (): compile.Phase = x86_isel.gen;
+
+// CHECK: inline constexpr Node nodes[] = {
+// CHECK: {Kind::Axm, 0, {{[0-9]+}}, {{0x[0-9a-f]+}}}, // core.wrap.add
+// CHECK: {Kind::Axm, 0, {{[0-9]+}}, {{0x[0-9a-f]+}}}, // x86.add
+// The mode of `core.wrap.add` is a parameter, the operands are registers or, by the guard `imm`, an immediate.
+// CHECK:      inline constexpr Meta metas[] = {
+// CHECK-NEXT:     {Want::Param, 0},
+// CHECK-NEXT:     {Want::Reg, [[I8:[0-9]+]]},
+// CHECK-NEXT:     {Want::Reg, [[I8]]},
+// CHECK-NEXT:     {Want::Param, 0},
+// CHECK-NEXT:     {Want::Reg, {{[0-9]+}}},
+// CHECK-NEXT:     {Want::Reg, {{[0-9]+}}},
+// CHECK-NEXT:     {Want::Param, 0},
+// CHECK-NEXT:     {Want::Reg, {{[0-9]+}}},
+// CHECK-NEXT:     {Want::Reg, {{[0-9]+}}},
+// CHECK-NEXT:     {Want::Param, 0},
+// CHECK-NEXT:     {Want::Reg, {{[0-9]+}}},
+// CHECK-NEXT:     {Want::Reg, {{[0-9]+}}},
+// CHECK-NEXT:     {Want::Param, 0},
+// CHECK-NEXT:     {Want::Reg, [[I8]]},
+// CHECK-NEXT:     {Want::Imm, [[I8]]},
+// CHECK:      inline constexpr Rewrite rewrites[] = {
+// CHECK-NEXT:     {"add", 1, [[ADD:[0-9]+]], [[X86ADD:[0-9]+]], 0, 3}, // I8 ↝ I8
+// CHECK:          {"add_imm", 1, [[ADD]], [[X86ADD]], {{[0-9]+}}, 3}, // I8 ↝ I8
+// `imul` has no 8-bit form.
+// CHECK-NOT:      {"mul", {{.*}} // I8 ↝ I8
+// CHECK:          {"mul", 1, {{.*}} // I16 ↝ I16
+// CHECK:          {"sar_imm", 1, {{.*}}, 2}, // I64 ↝ I64
+// CHECK-NEXT: };

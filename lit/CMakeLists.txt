@@ -97,6 +97,11 @@ if(NVIDIA_SMI)
     endif()
 endif()
 
+set(MIM_X86_PY False)
+if(MIM_X86)
+    set(MIM_X86_PY True)
+endif()
+
 configure_file(lit.site.cfg.py.in lit.site.cfg.py @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/cmake/stage-lit-tests.cmake.in" "${CMAKE_CURRENT_BINARY_DIR}/stage-lit-tests.cmake" @ONLY)
 

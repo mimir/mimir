@@ -1,0 +1,77 @@
+/// # The x86_isel Plugin {#x86_isel}
+///
+/// @see mim::plug::x86_isel
+///
+/// [TOC]
+///
+/// The instruction-selection rules of the `x86` backend.
+/// `gen` writes them as C++ tables that the `x86` plugin compiles in, so the compiler itself never loads this plugin.
+///
+/// ## Dependencies
+///
+plugin core;
+import compile;
+import x86;
+///
+/// ## Guards
+///
+/// A guard is `tt` after instantiation or a conjunction of these atoms on meta variables.
+///
+/// ### imm
+///
+/// A literal that fits a sign-extended 32-bit immediate; stuck on anything but a literal.
+///
+axm imm: {s: Nat} → Idx s → Bool, normalize_imm;
+///
+/// ### sh
+///
+/// A literal shift count; x86 masks it, so any literal fits.
+///
+axm sh: {s: Nat} → Idx s → Bool, normalize_sh;
+///
+/// ## Rules
+///
+/// Each family takes the operand size; the instance tuples fix the sizes its instruction supports.
+/// A meta variable that the right-hand side uses and no other meta variable's type mentions is an operand.
+///
+/// ### ALU
+///
+rule add     (s: Nat) (m: Nat, a b: Idx s): core.wrap.add m (a, b)             => x86.add (a, b);
+rule add_imm (s: Nat) (m: Nat, a b: Idx s): core.wrap.add m (a, b) when imm b  => x86.add (a, b);
+rule sub     (s: Nat) (m: Nat, a b: Idx s): core.wrap.sub m (a, b)             => x86.sub (a, b);
+rule sub_imm (s: Nat) (m: Nat, a b: Idx s): core.wrap.sub m (a, b) when imm b  => x86.sub (a, b);
+rule mul     (s: Nat) (m: Nat, a b: Idx s): core.wrap.mul m (a, b)             => x86.imul (a, b);
+rule mul_imm (s: Nat) (m: Nat, a b: Idx s): core.wrap.mul m (a, b) when imm b  => x86.imul (a, b);
+rule and     (s: Nat) (m: Nat, a b: Idx s): core.bit2.and m (a, b)             => x86.and (a, b);
+rule and_imm (s: Nat) (m: Nat, a b: Idx s): core.bit2.and m (a, b) when imm b  => x86.and (a, b);
+rule or      (s: Nat) (m: Nat, a b: Idx s): core.bit2.or m (a, b)              => x86.or (a, b);
+rule or_imm  (s: Nat) (m: Nat, a b: Idx s): core.bit2.or m (a, b) when imm b   => x86.or (a, b);
+rule xor     (s: Nat) (m: Nat, a b: Idx s): core.bit2.xor m (a, b)             => x86.xor (a, b);
+rule xor_imm (s: Nat) (m: Nat, a b: Idx s): core.bit2.xor m (a, b) when imm b  => x86.xor (a, b);
+rule shl     (s: Nat) (m: Nat, a b: Idx s): core.wrap.shl m (a, b)             => x86.shl (a, b);
+rule shl_imm (s: Nat) (m: Nat, a b: Idx s): core.wrap.shl m (a, b) when sh b   => x86.shl (a, b);
+rule shr     (s: Nat) (a b: Idx s):         core.shr.l (a, b)                  => x86.shr (a, b);
+rule shr_imm (s: Nat) (a b: Idx s):         core.shr.l (a, b) when sh b        => x86.shr (a, b);
+rule sar     (s: Nat) (a b: Idx s):         core.shr.a (a, b)                  => x86.sar (a, b);
+rule sar_imm (s: Nat) (a b: Idx s):         core.shr.a (a, b) when sh b        => x86.sar (a, b);
+///
+/// `imul` has no 8-bit form.
+///
+anx let alu = (
+    add i8, add i16, add i32, add i64, add_imm i8, add_imm i16, add_imm i32, add_imm i64,
+    sub i8, sub i16, sub i32, sub i64, sub_imm i8, sub_imm i16, sub_imm i32, sub_imm i64,
+    mul i16, mul i32, mul i64, mul_imm i16, mul_imm i32, mul_imm i64,
+    and i8, and i16, and i32, and i64, and_imm i8, and_imm i16, and_imm i32, and_imm i64,
+    or i8, or i16, or i32, or i64, or_imm i8, or_imm i16, or_imm i32, or_imm i64,
+    xor i8, xor i16, xor i32, xor i64, xor_imm i8, xor_imm i16, xor_imm i32, xor_imm i64,
+    shl i8, shl i16, shl i32, shl i64, shl_imm i8, shl_imm i16, shl_imm i32, shl_imm i64,
+    shr i8, shr i16, shr i32, shr i64, shr_imm i8, shr_imm i16, shr_imm i32, shr_imm i64,
+    sar i8, sar i16, sar i32, sar i64, sar_imm i8, sar_imm i16, sar_imm i32, sar_imm i64);
+///
+/// ## Phases
+///
+/// ### gen
+///
+/// Writes the closed rules of this plugin as C++ tables (mim::plug::x86::rules) to `-X x86_isel:o=<file>`, or to stdout.
+///
+axm gen: compile.Phase;

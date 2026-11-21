@@ -296,7 +296,11 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
   `decompose` names no axiom: it switches over `Tag` to extract the operands, so the only code left is the operand extraction, the register sizes a `Tag` implies, the `Cond`s, and the builders of replacements that are more than one instruction (`nat.sub`, `select`, `slot`, `assume`, and the `negate`/`res`/`sign` flags of an `Insn`).
   Writing replacements as Mim terms is the next step; it also brings `Ty::Flags`, so that `select` fuses with a `cmp` by PBQP choice.
   The PBQP construction, the rewrite, and the solvability checks are generic over the tables.
-- Later, the rule table is generated from Mim rules (*Pattern Database*); nothing else changes.
+- The rules move to Mim: the plugin `x86_isel` (`src/mim/plug/x86_isel/x86_isel.mim`) holds rule families, their instance tuples, and the phase `x86_isel.gen`, which writes every closed rule reachable from its annexes to `build/include/mim/plug/x86/isel_rules.h` (types in `rule_table.h`); `isel.cpp` includes it but does not use it yet.
+  The generator derives what a rule wants of each meta variable: a meta the rhs does not use or another meta's type mentions is a `Param`, otherwise its type gives `Reg`/`Base`/`Index`/`Addr` and the guard atoms `x86_isel.imm`/`sh` give `Imm`/`Sh`; any other guard is an error, and a guard of `ff` drops the instance.
+  A rule costs the number of saturated x86 instructions in its rhs, addresses excluded.
+- The build runs `mim` with `x86_isel` loaded as a module, so `x86` and `x86_isel` exist only if `MIM_X86` (neither `MIM_STATIC_PLUGINS` nor `MIM_NATIVE_MIM`); lit then excludes `lit/x86/` and drops the `x86_64-linux` feature.
+  Generating needs `x86.mim` but not `libmim_x86`.
 
 ### Open points
 

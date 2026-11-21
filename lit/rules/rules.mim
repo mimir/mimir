@@ -5,6 +5,7 @@ plugin core;
 rule same (a: Nat): (a, a) => a;
 rule pick (a b: Nat): (a, b) when core.ncmp.g (a, b) => a;
 rule closed: (23, 42) => 42;
+rule mid (a b c: Nat): (a, (b, c)) => b;
 
 extern lam nonlinear (x: Nat): Nat = same ▷ (x, x);
 extern lam differ (x y: Nat): Nat = same ▷ (x, y);
@@ -12,9 +13,12 @@ extern lam holds (): Nat = pick ▷ (7, 3);
 extern lam fails (): Nat = pick ▷ (1, 3);
 extern lam lit (): Nat = closed ▷ (23, 42);
 extern lam inline (x: Nat): Nat = (rl (): (x, 3) => 4) ▷ (x, 3);
+extern lam eta (x: Nat, p: [Nat, Nat]): Nat = mid ▷ (x, p);
 
 // CHECK-LABEL: extern lam differ
 // CHECK-NEXT:  (rl (a: Nat): ‹2; a› => a) ▷ {{.*}};
+// CHECK-LABEL: extern lam eta ({{.*}}: Nat, (b{{.*}}: Nat, {{.*}}) as p{{.*}}){{.*}}: Nat =
+// CHECK-NEXT:  b{{.*}};
 // CHECK-LABEL: extern lam fails (): Nat =
 // CHECK-NEXT:  (rl {{.*}} when core.ncmp.Gle {{.*}}) ▷ (1, 3);
 // CHECK-LABEL: extern lam holds (): Nat =

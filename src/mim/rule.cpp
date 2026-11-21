@@ -25,6 +25,15 @@ public:
         // Hash-consing makes a pattern without Var%s match only itself.
         if (ptrn->local_vars().empty()) return false;
 
+        // η: a tuple pattern matches any term of its type by its projections.
+        if (auto tuple = ptrn->isa<Tuple>(); tuple && !term->isa<Tuple>()) {
+            if (!match(ptrn->type(), term->type())) return false;
+            auto n = tuple->num_ops();
+            for (size_t i = 0; i != n; ++i)
+                if (!match(tuple->op(i), term->proj(n, i))) return false;
+            return true;
+        }
+
         // Only the same node can match, and a Var or an Axm only itself.
         if (ptrn->isa_mut() || ptrn->isa<Var>() || ptrn->isa<Axm>() || ptrn->node() != term->node()
             || ptrn->flags() != term->flags() || ptrn->num_ops() != term->num_ops())

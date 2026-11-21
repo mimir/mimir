@@ -14,6 +14,8 @@
 #include <mim/plug/mem/mem.h>
 #include <mim/plug/refly/refly.h>
 
+#include "mim/plug/x86/imm.h"
+#include "mim/plug/x86/isel_rules.h"
 #include "mim/plug/x86/x86.h"
 
 namespace mim::plug::x86::phase {
@@ -22,11 +24,6 @@ namespace core = mim::plug::core;
 namespace mem  = mim::plug::mem;
 
 namespace {
-
-/// Width of the register holding an `Idx size`.
-nat_t reg_width(nat_t size) { return std::bit_ceil(std::max<nat_t>(Idx::size2bitwidth(size), 8)); }
-
-bool fits_i32(s64 disp) { return INT32_MIN <= disp && disp <= INT32_MAX; }
 
 bool is_reg_size(nat_t size) { return size == 2 || size == core::widen_idx(size); }
 
@@ -39,10 +36,7 @@ nat_t trait(core::trait t, const Def* type) {
 x86::cmovcc cmovcc_of(sub_t code) { return static_cast<x86::cmovcc>(Annex::Base<x86::cmovcc> | code); }
 
 /// Does the old_world() or new_world() literal @p lit fit a sign-extended 32-bit immediate?
-bool fits_imm(const Def* lit) {
-    auto s = Idx::isa_lit(lit->type());
-    return (s && reg_width(*s) < 64) || fits_i32(*Lit::isa(lit));
-}
+bool fits_imm(const Def* lit) { return x86::fits_imm(Idx::isa_lit(lit->type()), *Lit::isa(lit)); }
 
 /// @p x in a register.
 const Def* reg(World& w, const Def* x) { return Lit::isa(x) ? w.call<mov>(x) : x; }
@@ -473,6 +467,13 @@ constexpr Rule rules_[] = {
 // clang-format on
 
 static_assert(std::ranges::all_of(rules_, well_formed));
+
+constexpr bool in_pools(const rules::Rewrite& r) {
+    return r.lhs < std::size(rules::nodes) && r.rhs < std::size(rules::nodes)
+        && r.metas + r.num_metas <= std::size(rules::metas);
+}
+
+static_assert(std::ranges::all_of(rules::rewrites, in_pools));
 
 constexpr bool has_atomic(Op op) {
     return std::ranges::any_of(rules_, [op](const Rule& r) { return r.op == op && atomic(r); });

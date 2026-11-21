@@ -607,19 +607,21 @@ private:
 /// `rl meta: lhs when guard => rhs`; RuleExpr::is_norm, if it stems from a `norm` declaration.
 class RuleExpr : public Expr {
 public:
-    RuleExpr(Loc loc, Ptr<Ptrn> meta, Ptr<Expr> lhs, Ptr<Expr> guard, Ptr<Expr> rhs, bool is_norm)
+    RuleExpr(Loc loc, Ptr<Ptrn> meta, Ptr<Expr> lhs, Ptr<Expr> guard, Ptr<Expr> rhs, bool is_norm, Sym name)
         : Expr(loc)
         , meta_(meta)
         , lhs_(lhs)
         , guard_(guard)
         , rhs_(rhs)
-        , is_norm_(is_norm) {}
+        , is_norm_(is_norm)
+        , name_(name) {}
 
     const Ptrn* meta() const { return meta_.get(); } ///< `nullptr` if there are no meta variables.
     const Expr* lhs() const { return lhs_.get(); }
     const Expr* guard() const { return guard_.get(); }
     const Expr* rhs() const { return rhs_.get(); }
     bool is_norm() const { return is_norm_; }
+    Sym name() const { return name_; } ///< The name of the `rule` declaration, if any.
 
     void bind(Scopes&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
@@ -634,6 +636,7 @@ private:
     Ptr<Expr> guard_;
     Ptr<Expr> rhs_;
     bool is_norm_;
+    Sym name_;
 };
 
 // prefix/infix

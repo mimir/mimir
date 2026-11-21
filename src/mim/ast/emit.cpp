@@ -375,6 +375,7 @@ const Def* TypeExpr::emit_(Emitter& e) const {
 const Def* RuleExpr::emit_(Emitter& e) const {
     auto& w   = e.world();
     auto rule = w.mut_rule(w.rho(w.mut_hole_type(), w.mut_hole_type()));
+    rule->set(name());
     rule->set_meta(meta() ? meta()->emit_type(e) : w.sigma());
     if (meta()) emit_var(e, meta(), rule);
     rule->set_lhs(lhs()->emit(e));
