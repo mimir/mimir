@@ -28,14 +28,22 @@ extern lam _compile (): compile.Phase = x86_isel.gen;
 // CHECK:      inline constexpr Want wants[] = {
 // CHECK-NEXT:     Want::Param, Want::Reg, Want::Reg, // mul8: I8 ↝ I8
 // CHECK-NEXT:     Want::Param, Want::Reg, Want::Imm, // mul8_imm: I8 ↝ I8
+// The base pointer of an address is a register.
+// CHECK-NEXT:     Want::Param, Want::Param, Want::Reg, Want::Reg, Want::Imm, // index2_disp: core.Ptr (I8, 0) ↝ x86.Addr tt
 // A memory is a parameter and a pointer an address.
 // CHECK:          Want::Param, Want::Reg, Want::Param, Want::Addr, // add_rm: [core.M 0, I8] ↝ [core.M 0, I8]
 // CHECK:      inline constexpr Rewrite rewrites[] = {
 // Swapping the operands of `mul8` yields no other match, but of `mul8_imm` it does.
 // CHECK-NEXT:     {"mul8", 4, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers[0], &build_[[W]], 0, 3, 0x0, 0}, // I8 ↝ I8
 // CHECK-NEXT:     {"mul8_imm", 4, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers[0], &build_[[W]], 3, 3, 0x1, 0}, // I8 ↝ I8
+// An index and a displacement are part of the address, so they cost nothing; both commuting nodes may swap.
+// CHECK-NEXT:     {"index2_disp", 0, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers[1], &build_{{[0-9]+}}, 6, 5, 0x3, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
+// CHECK:          {"index2", 0, {{.*}}, 3, 0x1, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
+// A displacement alone yields an `x86.Base`; it shares its matcher with the plain index.
+// CHECK:          {"disp", 0, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers{{\[}}[[P:[0-9]+]]{{\]}}, {{.*}} // core.Ptr (I8, 0) ↝ x86.Addr ff
+// CHECK-NEXT:     {"index", 0, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers{{\[}}[[P]]{{\]}}, {{.*}} // core.Ptr (I8, 0) ↝ x86.Addr tt
 // `add` and `add_imm` share their matcher and builder.
-// CHECK-NEXT:     {"add", 1, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers{{\[}}[[M:[0-9]+]]{{\]}}, &build_[[B:[0-9]+]], 6, 3, 0x0, 0}, // I8 ↝ I8
+// CHECK-NEXT:     {"add", 1, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers{{\[}}[[M:[0-9]+]]{{\]}}, &build_[[B:[0-9]+]], {{[0-9]+}}, 3, 0x0, 0}, // I8 ↝ I8
 // CHECK:          {"add_imm", 1, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers{{\[}}[[M]]{{\]}}, &build_[[B]], {{[0-9]+}}, 3, 0x1, 0}, // I8 ↝ I8
 // CHECK-NOT:      {"mul", {{.*}} // I8 ↝ I8
 // CHECK:          {"mul", 1, {{.*}} // I16 ↝ I16

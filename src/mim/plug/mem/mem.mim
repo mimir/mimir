@@ -90,6 +90,13 @@ axm mslot: [*, a: Nat] as Ta → Fn [M a, size: Nat] → [M a, Ptr Ta];
 /// Performs address computation by offsetting the passed pointer with index `i`.
 axm lea: {n: Nat, Ts: «n; *», a: Nat} → [Ptr («j: n; Ts#j», a), i: Idx n] → Ptr (Ts#i, a), normalize_lea;
 ///
+/// ### ptradd
+///
+/// Offsets the byte pointer `p` by `off` bytes, modulo 2^64.
+/// Backends that pick their own layout lower `lea` to it.
+/// Nested offsets add up, so `p` is never a `ptradd` itself.
+axm ptradd: {a: Nat} → [p: Ptr (I8, a), off: I64] → Ptr (I8, a), normalize_ptradd;
+///
 /// ### decay
 ///
 /// Pointer to the first element of an array, akin to C's array-to-pointer decay.
@@ -151,3 +158,9 @@ axm seo: compile.Phase;
 /// Rewrites `mem.alloc` / `mem.slot` into `mem.malloc` / `mem.mslot`.
 ///
 axm alloc2malloc_repl: compile.Phase;
+///
+/// ### legalize_ptr
+///
+/// Prepares a lowered world for a native backend (mim::plug::mem::phase::LegalizePtr): every pointer becomes a byte pointer `Ptr (I8, a)`, cast to its access type where an operation needs one, and `lea` becomes `ptradd` by a byte offset.
+///
+axm legalize_ptr: compile.Phase;

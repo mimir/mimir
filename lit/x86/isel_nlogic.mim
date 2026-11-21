@@ -1,10 +1,11 @@
 // RUN: %mim %s -o - | %FileCheck %s
 
 plugin core;
+plugin mem;
 plugin x86;
 import compile;
 
-extern lam _compile (): compile.Phase = compile.phases ff (compile.named "x86.isel");
+extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_ptr, compile.named "x86.isel");
 
 extern lam f (a b: I8): I8 = core.bit2.nor 0 (a, b);
 extern lam g (a b: Bool): Bool = core.bit2.nxor 0 (a, b);

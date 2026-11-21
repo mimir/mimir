@@ -27,9 +27,13 @@ namespace {
 
 bool is_reg_size(nat_t size) { return size == 2 || size == core::widen_idx(size); }
 
-nat_t trait(core::trait t, const Def* type) {
-    if (auto n = Lit::isa(core::op(t, type))) return *n;
-    type->blame(MIM_X86_BE "type `{}` has no static size or alignment", type).bail();
+/// @p def without the casts between pointer types around it, which `mem.legalize_ptr` inserts and which are no-ops.
+const Def* strip(const Def* def) {
+    while (auto cast = Axm::isa<core::bitcast>(def)) {
+        if (!Axm::isa<core::Ptr>(def->type()) || !Axm::isa<core::Ptr>(cast->arg()->type())) break;
+        def = cast->arg();
+    }
+    return def;
 }
 
 /// The `cmovcc` with the same subtag as @p code.
@@ -49,12 +53,6 @@ const Def* bin(World& w, const Def* a, const Def* b) {
     return w.call<Id>(Defs{reg(w, a), ri(w, b)});
 }
 
-/// All bits of @p type set.
-const Def* ones(World& w, const Def* type) {
-    auto s = *Idx::isa_lit(type);
-    return w.lit(type, s == 0 ? ~0_n : s - 1);
-}
-
 bool is_lowered_plugin(const Axm* axm) {
     auto p = axm->plugin();
     return p == core::Plugin_Id || p == mem::Plugin_Id || p == math::Plugin_Id;
@@ -64,7 +62,6 @@ bool is_lowered_plugin(const Axm* axm) {
 
 /// How `match` extracts the operands of a pattern.
 enum class Tag : u8 {
-    Lea,    ///< The base `p` of `mem.lea (p, i)` with a constant index `i`.
     Load,   ///< `mem.load (m, p)`.
     Store,  ///< `mem.store (m, p, x)`.
     Bin,    ///< Two operands.
@@ -76,10 +73,9 @@ enum class Tag : u8 {
 
 /// The x86 side of a pattern, for the builders that apply one instruction.
 struct Insn {
-    flags_t id  = 0;     ///< The x86 instruction.
-    s8 res      = -1;    ///< The result of a pair-valued instruction, or -1.
-    bool sign   = false; ///< Operands narrower than any size the instruction supports are sign-extended.
-    bool negate = false; ///< The result is complemented.
+    flags_t id = 0;     ///< The x86 instruction.
+    s8 res     = -1;    ///< The result of a pair-valued instruction, or -1.
+    bool sign  = false; ///< Operands narrower than any size the instruction supports are sign-extended.
 };
 
 /// A program-side operation `match` recognizes: its axiom, the `Op` it selects, how to take it apart, and its
@@ -90,14 +86,7 @@ struct Pattern {
     Op op;              ///< The operation @p flags selects.
     Tag tag;            ///< How `match` extracts the operands.
     Insn insn     = {};
-    bool commutes = true;  ///< An immediate may also be the first operand.
-    bool constant = false; ///< Only a `mem.lea` with a constant index.
-
-    constexpr Pattern only_constant() const {
-        auto res     = *this;
-        res.constant = true;
-        return res;
-    }
+    bool commutes = true; ///< An immediate may also be the first operand.
 };
 
 namespace {
@@ -117,20 +106,20 @@ constexpr Pattern annex(Op op, Tag tag, Insn insn = {}) {
 // clang-format off
 /// The program side of the rule set: which `core`/`mem` axioms isel covers.
 constexpr Pattern patterns_[] = {
+    // The rules of `x86_isel` select these.
+    member(core::wrap::add,  Op::WrapAdd, Tag::Bin),
+    member(core::wrap::sub,  Op::WrapSub, Tag::Bin),
+    member(core::wrap::mul,  Op::WrapMul, Tag::Bin),
+    member(core::wrap::shl,  Op::WrapShl, Tag::Bin),
+    member(core::bit2::and_, Op::BitAnd,  Tag::Bin),
+    member(core::bit2::or_,  Op::BitOr,   Tag::Bin),
+    member(core::bit2::xor_, Op::BitXor,  Tag::Bin),
+    member(core::bit2::nand, Op::BitNand, Tag::Bin),
+    member(core::bit2::nor,  Op::BitNor,  Tag::Bin),
+    member(core::bit2::nxor, Op::BitNxor, Tag::Bin),
+    member(core::shr::a,     Op::ShrA,    Tag::Bin),
+    member(core::shr::l,     Op::ShrL,    Tag::Bin),
     // The members of an annex select different instructions.
-    member(core::wrap::add,  Op::WrapAdd, Tag::Bin,   {.id = Annex::Base<add>}),
-    member(core::wrap::sub,  Op::WrapSub, Tag::Bin,   {.id = Annex::Base<sub>}, false),
-    // The low bits of a product do not depend on how the operands were extended.
-    member(core::wrap::mul,  Op::WrapMul, Tag::Bin,   {.id = Annex::Base<imul>}),
-    member(core::wrap::shl,  Op::WrapShl, Tag::Bin,   {.id = Annex::Base<shl>}, false),
-    member(core::bit2::and_, Op::BitAnd,  Tag::Bin,   {.id = Annex::Base<and_>}),
-    member(core::bit2::or_,  Op::BitOr,   Tag::Bin,   {.id = Annex::Base<or_>}),
-    member(core::bit2::xor_, Op::BitXor,  Tag::Bin,   {.id = Annex::Base<xor_>}),
-    member(core::bit2::nand, Op::BitNand, Tag::Bin,   {.id = Annex::Base<and_>, .negate = true}),
-    member(core::bit2::nor,  Op::BitNor,  Tag::Bin,   {.id = Annex::Base<or_>,  .negate = true}),
-    member(core::bit2::nxor, Op::BitNxor, Tag::Bin,   {.id = Annex::Base<xor_>, .negate = true}),
-    member(core::shr::a,     Op::ShrA,    Tag::Bin,   {.id = Annex::Base<sar>}, false),
-    member(core::shr::l,     Op::ShrL,    Tag::Bin,   {.id = Annex::Base<shr>}, false),
     member(core::nat::add,   Op::NatAdd,  Tag::Bin,   {.id = Annex::Base<add>}),
     member(core::nat::sub,   Op::NatSub,  Tag::Bin,   {}, false),
     member(core::nat::mul,   Op::NatMul,  Tag::Bin,   {.id = Annex::Base<imul>}),
@@ -165,12 +154,10 @@ constexpr Pattern patterns_[] = {
     annex<core::idx2nat> (Op::Idx2Nat,   Tag::Unary),
     annex<core::bitcast> (Op::Bitcast,   Tag::Unary),
     annex<core::rem>     (Op::Rem,       Tag::Unary, {.id = Annex::Base<div>, .res = 1}),
-    annex<mem::lea>      (Op::LeaOffset, Tag::Lea).only_constant(),
-    annex<mem::lea>      (Op::LeaIndex,  Tag::Bin),
+    annex<mem::ptradd>   (Op::Ptradd,    Tag::Bin),
     annex<mem::load>     (Op::Load,      Tag::Load),
     annex<mem::store>    (Op::Store,     Tag::Store),
     annex<mem::mslot>    (Op::Slot,      Tag::None),
-    annex<mem::assume>   (Op::Assume,    Tag::None),
 };
 
 constexpr Pattern select_ = {.flags = 0, .member = false, .op = Op::Select, .tag = Tag::Select, .commutes = false};
@@ -230,37 +217,14 @@ std::optional<nat_t> xsize(const Def* type) {
     return {};
 }
 
-/// Size of the elements the array `mem.lea` @p lea indexes.
-nat_t elem_size(const App* lea) {
-    auto [elem, _] = Axm::as<core::Ptr>(lea->type())->args<2>();
-    return trait(core::trait::size, elem);
-}
-
-/// The constant byte offset of the `mem.lea` @p lea, unless its index is dynamic.
-std::optional<nat_t> offset(const App* lea) {
-    auto [p, i]       = Axm::as<mem::lea>(lea)->args<2>();
-    auto [pointee, _] = Axm::as<core::Ptr>(p->type())->args<2>();
-    auto l            = Lit::isa(i);
-    if (pointee->isa<Arr>()) return l ? std::optional(*l * elem_size(lea)) : std::nullopt;
-    if (!l) i->blame(MIM_X86_BE "index `{}` into `{}` must be a literal", i, pointee).bail();
-    nat_t off = 0;
-    for (nat_t j = 0; j <= *l; ++j) {
-        auto field = pointee->proj(pointee->num_projs(), j);
-        auto align = trait(core::trait::align, field);
-        off        = (off + align - 1) / align * align;
-        if (j != *l) off += trait(core::trait::size, field);
-    }
-    return off;
-}
-
 /// The pattern of @p def, or `nullptr` if isel does not cover it.
 const Pattern* pattern(const Def* def) {
+    if (strip(def) != def) return nullptr;
     if (def->isa<Extract>()) return &select_;
     auto [axm, curry, _] = Axm::get(def);
     if (!axm || curry) return nullptr;
     for (const auto& p : patterns_)
-        if ((p.member ? axm->flags() == p.flags : axm->base() == p.flags) && (!p.constant || offset(def->as<App>())))
-            return &p;
+        if ((p.member ? axm->flags() == p.flags : axm->base() == p.flags)) return &p;
     return nullptr;
 }
 
@@ -347,40 +311,9 @@ constexpr std::string_view op_name(Op op) {
 // clang-format off
 /// The rule set: one entry per pattern ↦ replacement.
 constexpr Rule rules_[] = {
-    // An address is an operand form, not a value.
-    rule(Op::LeaOffset, Ty::Base,  0, "lea_off_base",  &ISel::build_lea_off, Want::Base),
-    rule(Op::LeaOffset, Ty::Index, 0, "lea_off_index", &ISel::build_lea_off, Want::Index),
-    rule(Op::LeaIndex,  Ty::Index, 0, "lea_index",     &ISel::build_lea_idx, Want::Base, Want::Reg).with(Cond::Scale),
-    rule(Op::LeaIndex,  Ty::Index, 1, "lea_index_mul", &ISel::build_lea_idx, Want::Base, Want::Reg),
-
     rule(Op::Load,      Ty::Reg,   1, "load",          &ISel::build_load, Want::Addr),
     rule(Op::Store,     Ty::Reg,   1, "store",         &ISel::build_store, Want::Addr, Want::Reg),
     rule(Op::Store,     Ty::Reg,   1, "store_imm",     &ISel::build_store, Want::Addr, Want::Imm),
-
-    rule(Op::WrapAdd,   Ty::Reg,   1, "add",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
-    rule(Op::WrapAdd,   Ty::Reg,   1, "add_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
-    rule(Op::WrapSub,   Ty::Reg,   1, "sub",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
-    rule(Op::WrapSub,   Ty::Reg,   1, "sub_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
-    rule(Op::WrapMul,   Ty::Reg,   1, "mul",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
-    rule(Op::WrapMul,   Ty::Reg,   1, "mul_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
-    rule(Op::WrapShl,   Ty::Reg,   1, "shl",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
-    rule(Op::WrapShl,   Ty::Reg,   1, "shl_imm",       &ISel::build_insn, Want::Reg, Want::Sh).with(Cond::Dyn),
-    rule(Op::BitAnd,    Ty::Reg,   1, "and",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
-    rule(Op::BitAnd,    Ty::Reg,   1, "and_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
-    rule(Op::BitOr,     Ty::Reg,   1, "or",            &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
-    rule(Op::BitOr,     Ty::Reg,   1, "or_imm",        &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
-    rule(Op::BitXor,    Ty::Reg,   1, "xor",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
-    rule(Op::BitXor,    Ty::Reg,   1, "xor_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
-    rule(Op::BitNand,   Ty::Reg,   1, "nand",          &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
-    rule(Op::BitNand,   Ty::Reg,   1, "nand_imm",      &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
-    rule(Op::BitNor,    Ty::Reg,   1, "nor",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
-    rule(Op::BitNor,    Ty::Reg,   1, "nor_imm",       &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
-    rule(Op::BitNxor,   Ty::Reg,   1, "nxor",          &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
-    rule(Op::BitNxor,   Ty::Reg,   1, "nxor_imm",      &ISel::build_insn, Want::Reg, Want::Imm).with(Cond::Dyn),
-    rule(Op::ShrL,      Ty::Reg,   1, "shr",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
-    rule(Op::ShrL,      Ty::Reg,   1, "shr_imm",       &ISel::build_insn, Want::Reg, Want::Sh).with(Cond::Dyn),
-    rule(Op::ShrA,      Ty::Reg,   1, "sar",           &ISel::build_insn, Want::Reg, Want::Reg).with(Cond::Dyn),
-    rule(Op::ShrA,      Ty::Reg,   1, "sar_imm",       &ISel::build_insn, Want::Reg, Want::Sh).with(Cond::Dyn),
 
     rule(Op::Icmp,      Ty::Reg,   2, "cmp",           &ISel::build_cmp, Want::Reg, Want::Reg),
     rule(Op::Icmp,      Ty::Reg,   2, "cmp_imm",       &ISel::build_cmp, Want::Reg, Want::Imm),
@@ -409,7 +342,6 @@ constexpr Rule rules_[] = {
 
     rule(Op::Div,       Ty::Reg,   1, "div",           &ISel::build_insn, Want::Reg, Want::Reg),
     rule(Op::Slot,      Ty::Reg,   1, "slot",          &ISel::build_slot),
-    rule(Op::Assume,    Ty::Reg,   0, "assume",        &ISel::build_assume),
     rule(Op::Select,    Ty::Reg,   1, "select",        &ISel::build_select, Want::Reg, Want::Reg, Want::Reg),
 };
 // clang-format on
@@ -488,7 +420,7 @@ void ISel::append_gen(const Rule& rule, const Def* root, u32 swap, Alts& alts) {
     auto alt = Alt();
     alt.rule = &rule;
     alt.cost = rule.cost;
-    alt.covers.resize(m.num_covers, Cover{nullptr, 0, {}});
+    alt.covers.resize(m.num_covers, Cover{nullptr, 0, {}, false});
     for (size_t j = 0; j != m.num_refs; ++j) {
         auto info                  = rules::all_refs[m.refs + j];
         auto ex                    = refs[j]->isa<Extract>();
@@ -497,20 +429,34 @@ void ISel::append_gen(const Rule& rule, const Def* root, u32 swap, Alts& alts) {
         if (info.kind == rules::Ref::Mem && uses(refs[j]) != 1) return;
     }
 
-    auto node    = [&](u8 owner) { return owner == 0 ? root : alt.covers[owner - 1].def; };
-    auto demands = [&](u8 owner) -> auto& { return owner == 0 ? alt.demands : alt.covers[owner - 1].demands; };
+    // A pure inner node that something else uses is looked through: the match takes its operands but not the node.
+    auto parent = std::vector<u8>(m.num_covers, 0);
+    auto owner  = [&](u8 o) {
+        while (o != 0 && alt.covers[o - 1].through)
+            o = parent[o - 1];
+        return o;
+    };
+    auto node    = [&](u8 o) { return o == 0 ? root : alt.covers[o - 1].def; };
+    auto demands = [&](u8 o) -> auto& { return o == 0 ? alt.demands : alt.covers[o - 1].demands; };
     for (size_t j = 0; j != m.num_uses; ++j) {
         auto u = rules::all_uses[m.uses + j];
+        auto o = owner(u.owner);
         if (u.ref) {
-            auto def   = refs[u.index];
-            auto c     = rules::all_refs[m.refs + u.index].cover;
-            auto cover = alt.covers[c].def;
-            if (sole(node(u.owner), def) != cover || !decompose(cover)) return;
-            demands(u.owner).emplace_back(Demand{def, Want::Reg, size_t(c) + 1});
+            auto def  = refs[u.index];
+            auto c    = rules::all_refs[m.refs + u.index].cover;
+            auto& cov = alt.covers[c];
+            parent[c] = o;
+            if (!decompose(cov.def)) return;
+            if (sole(node(u.owner), def) != cov.def) {
+                if (mem_valued(cov.def) || c + 1u == r.maps) return;
+                cov.through = true;
+                continue;
+            }
+            demands(o).emplace_back(Demand{def, Want::Reg, size_t(c) + 1});
         } else if (auto w = want_of(r, u.index); w != rules::Want::Param) {
             auto def = metas[u.index];
             if (is_literal(want(w)) && !literal(def, want(w))) return;
-            demands(u.owner).emplace_back(Demand{def, want(w)});
+            demands(o).emplace_back(Demand{def, want(w)});
         }
     }
     if (!holds(root, alt)) return;
@@ -530,23 +476,6 @@ const Def* ISel::build_gen(const Def*, const Alt& alt) {
     return res->proj(2, 1);
 }
 
-const Def* ISel::build_lea_off(const Def* root, const Alt& alt) {
-    auto a = split(hole(alt.demands[0].def, alt.demands[0].want));
-    a.disp += *offset(root->as<App>());
-    return addr(a);
-}
-
-const Def* ISel::build_lea_idx(const Def* root, const Alt& alt) {
-    auto& w   = new_world();
-    auto i    = alt.demands[1].def;
-    auto a    = split(hole(alt.demands[0].def, Want::Base));
-    auto size = elem_size(root->as<App>());
-    auto x    = hole(i);
-    if (auto n = Idx::isa_lit(i->type()); n && *n != 0) x = zext(w.lit_i64(), x);
-    if (alt.rule->cond == Cond::Scale) return addr({a.base, x, u8(size), a.disp});
-    return addr({a.base, bin<imul>(w, x, w.lit_i64(size)), 1, a.disp});
-}
-
 const Def* ISel::build_load(const Def* root, const Alt&) {
     auto [m, p] = root->as<App>()->args<2>();
     auto size   = *xsize(root->type()->proj(2, 1));
@@ -564,7 +493,6 @@ const Def* ISel::build_insn(const Def* root, const Alt& alt) {
     auto a     = hole(alt.demands[0].def, alt.demands[0].want);
     auto b     = hole(alt.demands[1].def, alt.demands[1].want);
     auto res   = call_insn(insn, alt.demands[1].want, a, b);
-    if (insn.negate) res = bin<xor_>(w, res, ones(w, a->type()));
     return mem_valued(root) ? w.tuple({rewrite(root->as<App>()->arg(2, 0)), res}) : res;
 }
 
@@ -604,15 +532,10 @@ const Def* ISel::build_rem(const Def* root, const Alt& alt) {
 
 const Def* ISel::build_slot(const Def* root, const Alt&) {
     auto& w        = new_world();
-    auto op        = Axm::as<mem::mslot>(root);
-    auto [T, _]    = op->decurry()->args<2>();
-    auto [msz, k]  = op->args<2>();
+    auto [msz, k]  = Axm::as<mem::mslot>(root)->args<2>();
     auto [m, size] = msz->projs<2>();
-    auto n         = Lit::isa(size).value_or(trait(core::trait::size, T));
-    return w.app(rewrite(k), w.call<slot>(n, rewrite(m)));
+    return w.app(rewrite(k), w.call<slot>(*Lit::isa(size), rewrite(m)));
 }
-
-const Def* ISel::build_assume(const Def* root, const Alt&) { return rewrite(root->as<App>()->arg(2, 0)); }
 
 const Def* ISel::build_select(const Def* root, const Alt& alt) {
     auto& w   = new_world();
@@ -649,7 +572,6 @@ std::optional<ISel::Node> ISel::decompose(const Def* def) const {
             auto [x, y] = ex->tuple()->projs<2>();
             return node({x, y, index});
         }
-        case Tag::Lea: return node({app->arg(2, 0)});
         case Tag::Load:
             if (!xsize(app->type()->proj(2, 1))) return {};
             return node({app->arg(2, 1)});
@@ -675,8 +597,9 @@ std::optional<ISel::Node> ISel::decompose(const Def* def) const {
 void ISel::match(const Def* def, Alts& alts) {
     auto node = decompose(def);
     if (!node) return;
-    for (const auto& rule : generated())
-        if (rule.op == node->op) append_gen(rule, def, alts);
+    if (auto axm = std::get<0>(Axm::get(def)))
+        for (const auto& rule : generated())
+            if (rule.gen->root == axm->flags()) append_gen(rule, def, alts);
     for (const auto& rule : rules_)
         if (rule.op == node->op) append(rule, def, *node, alts);
 }
@@ -704,17 +627,13 @@ const App* ISel::sole(const Def* parent, const Def* def) const {
     auto ops = decompose(parent);
     if (auto app = parent->isa<App>(); !app || !ops || uses(app->arg()) != 1) return nullptr;
     if (std::ranges::count(ops->ops, def) != 1) return nullptr;
-    if (key(def) != def) return sole_value(def);
+    if (def->isa<Extract>() && key(def) != def) return sole_value(def);
     return uses(def) == 1 ? def->isa<App>() : nullptr;
 }
 
 bool ISel::holds(const Def* root, const Alt& alt) {
     switch (alt.rule->cond) {
         case Cond::None: return true;
-        case Cond::Dyn: {
-            auto size = Idx::isa(root->type());
-            return size && !Lit::isa(size);
-        }
         case Cond::Same:
         case Cond::Narrow:
         case Cond::Widen: {
@@ -723,10 +642,6 @@ bool ISel::holds(const Def* root, const Alt& alt) {
             if (!src || !dst) return false;
             if (*src == *dst) return alt.rule->cond == Cond::Same;
             return alt.rule->cond == (reg_width(*src) >= reg_width(*dst) ? Cond::Narrow : Cond::Widen);
-        }
-        case Cond::Scale: {
-            auto size = elem_size(root->as<App>());
-            return size == 1 || size == 2 || size == 4 || size == 8;
         }
         case Cond::Fold: {
             auto ld = alt.covers[alt.rule->gen->maps - 1].def->as<App>();
@@ -775,6 +690,7 @@ bool ISel::analyze() {
         for (auto& alt : alts_[def]) {
             for (size_t j = alt.covers.size(); j-- != 0;) {
                 auto& cover = alt.covers[j];
+                if (cover.through) continue;
                 resolve(alt, cover.demands);
                 auto& inner = alts_.at(cover.def);
                 auto same   = [&](const Alt& a) { return !a.rule && std::ranges::equal(a.demands, cover.demands); };
@@ -855,7 +771,7 @@ bool ISel::analyze() {
         auto c        = picked[ids[def]];
         choices_[def] = c;
         for (const auto& cover : alts_[def][c].covers)
-            roots_[cover.def] = def;
+            if (!cover.through) roots_[cover.def] = def;
     }
     return false;
 }
@@ -899,6 +815,7 @@ const App* ISel::sole_value(const Def* def) const {
 }
 
 const Def* ISel::key(const Def* def) const {
+    def = strip(def);
     if (auto ex = def->isa<Extract>(); ex && Lit::isa(ex->index()) == 1)
         if (auto app = ex->tuple()->isa<App>(); app && pattern(app) && mem_valued(app)) return app;
     return def;
@@ -931,8 +848,8 @@ const Def* ISel::selected(const Def* def) {
 }
 
 const Def* ISel::hole(const Def* def, Want want) {
-    if (auto alt = choice(def); alt && alt->rule && alt->rule->type != Ty::Reg)
-        return convert(select(def), alt->rule->type, want);
+    if (auto alt = choice(strip(def)); alt && alt->rule && alt->rule->type != Ty::Reg)
+        return convert(select(strip(def)), alt->rule->type, want);
     return convert(val(def), Ty::Reg, want);
 }
 
@@ -1007,6 +924,7 @@ const Def* ISel::rewrite_imm_App(const App* app) {
     if (Axm::isa<core::M>(app)) return w.call<core::M>(w.lit_nat_0());
     if (auto size = Idx::isa(app); size && !Lit::isa(size)) return w.type_i64();
     if (auto res = selected(app)) return res;
+    if (auto ptr = strip(app); ptr != app) return rewrite(ptr);
     // Loop hints for LLVM.
     if (Axm::isa<ll::vec>(app) || Axm::isa<ll::novec>(app)) return rewrite(app->arg());
 

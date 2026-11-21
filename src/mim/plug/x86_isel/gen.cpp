@@ -124,8 +124,16 @@ private:
     u32 node_(const Def*);
     u32 make(Node, std::string comment = {});
     u32 hole(u64 i) { return make({Kind::Hole, i, {}}); }
+    /// The pointer meta variable @p p as an operand of type @p want.
+    u32 marked(const Def* p, Want want) {
+        auto id = node(p);
+        if (nodes_[id].kind != Kind::Hole) p->blame("x86_isel: `{}` must be a meta variable", p).bail();
+        marks_[nodes_[id].val] = want;
+        return id;
+    }
 
     DefSet seen_;
+    std::map<u64, Want> marks_; ///< The marker of each meta variable of the current rule.
     const Var* var_   = nullptr;
     size_t num_metas_ = 0;
     DefMap<u32> def2node_;
@@ -143,8 +151,9 @@ void Table::add(const Rule* rule) {
     if (!rule->is_closed()) rule->blame("x86_isel: rule `{}` is not closed", rule).bail();
     if (rule->guard() == rule->world().lit_ff()) return;
 
-    var_        = rule->has_var();
-    num_metas_  = var_ ? var_->num_projs() : 0;
+    var_       = rule->has_var();
+    num_metas_ = var_ ? var_->num_projs() : 0;
+    marks_.clear();
     auto lhs    = rule->lhs();
     auto mapped = u32(-1);
     // `(m, e)`: the memory `m` of an inner node of `e` becomes that of the rhs.
@@ -184,7 +193,11 @@ std::vector<Table::Meta> Table::metas(const Rule* rule) {
             if (Idx::isa(type)) {
                 want = Want::Reg;
             } else if (Axm::isa<core::Ptr>(type)) {
-                want = Want::Addr;
+                auto mark = marks_.find(i);
+                if (mark == marks_.end())
+                    rule->blame("x86_isel: pointer `{}` of `{}` is no `x86_isel.addr` or `x86_isel.reg`", meta, rule)
+                        .bail();
+                want = mark->second;
             } else if (Axm::isa<core::M>(type)) {
                 want = Want::Param;
             } else if (auto addr = Axm::isa<x86::Addr>(type)) {
@@ -245,7 +258,8 @@ u32 Table::node_(const Def* def) {
     if (auto ex = def->isa<Extract>(); ex && var_ && ex->tuple() == var_)
         if (auto i = Lit::isa(ex->index())) return hole(*i);
 
-    if (auto addr = Axm::isa<x86_isel::addr>(def)) return node(addr->arg());
+    if (auto addr = Axm::isa<x86_isel::addr>(def)) return marked(addr->arg(), Want::Addr);
+    if (auto reg = Axm::isa<x86_isel::reg>(def)) return marked(reg->arg(), Want::Reg);
     if (auto axm = def->isa<Axm>()) return make({Kind::Axm, axm->flags(), {}}, axm->sym().str());
     if (auto lit = def->isa<Lit>()) return make({Kind::Lit, lit->get(), {node(lit->type())}});
     if (def->isa<Nat>()) return make({Kind::Nat, 0, {}});

@@ -39,6 +39,12 @@ axm sh: {s: Nat} → Idx s → Bool, normalize_sh;
 ///
 axm addr: {T: *, a: Nat} → mem.Ptr (T, a) → x86.Base;
 ///
+/// ### reg
+///
+/// The pointer `p` in a register.
+///
+axm reg: {T: *, a: Nat} → mem.Ptr (T, a) → I64;
+///
 /// ## Commutativity
 ///
 /// The operations whose two operands a rule also matches swapped.
@@ -101,6 +107,24 @@ rule or_mr_imm  (s: Nat) (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): le
 rule xor_mr     (s: Nat) (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); mem.store (mm, p, core.bit2.xor k (v, b))            => x86.mr (x86.xor @ s) (m, addr p, b);
 rule xor_mr_imm (s: Nat) (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); mem.store (mm, p, core.bit2.xor k (v, b)) when imm b => x86.mr (x86.xor @ s) (m, addr p, b);
 ///
+/// ### Addresses
+///
+/// The offset of a `mem.ptradd` is the index and displacement of an address, also if something else uses its parts.
+/// Of two matches that cost the same, isel keeps the first, so larger patterns come first.
+///
+rule index2_disp (m n: Nat, p: mem.Ptr0 I8, i c: I64): mem.ptradd (p, core.wrap.add m (core.wrap.mul n (i, 2I64), c)) when imm c => x86.index (x86.addr (core.conv.u i32 c, reg p)) (i, x86.scale_2);
+rule index4_disp (m n: Nat, p: mem.Ptr0 I8, i c: I64): mem.ptradd (p, core.wrap.add m (core.wrap.mul n (i, 4I64), c)) when imm c => x86.index (x86.addr (core.conv.u i32 c, reg p)) (i, x86.scale_4);
+rule index8_disp (m n: Nat, p: mem.Ptr0 I8, i c: I64): mem.ptradd (p, core.wrap.add m (core.wrap.mul n (i, 8I64), c)) when imm c => x86.index (x86.addr (core.conv.u i32 c, reg p)) (i, x86.scale_8);
+rule base_index2 (m n: Nat, p: mem.Ptr0 I8, x i: I64): mem.ptradd (p, core.wrap.add m (x, core.wrap.mul n (i, 2I64)))            => x86.index (x86.addr (0I32, x86.lea (x86.index (x86.addr (0I32, reg p)) (x, x86.scale_1)))) (i, x86.scale_2);
+rule base_index4 (m n: Nat, p: mem.Ptr0 I8, x i: I64): mem.ptradd (p, core.wrap.add m (x, core.wrap.mul n (i, 4I64)))            => x86.index (x86.addr (0I32, x86.lea (x86.index (x86.addr (0I32, reg p)) (x, x86.scale_1)))) (i, x86.scale_4);
+rule base_index8 (m n: Nat, p: mem.Ptr0 I8, x i: I64): mem.ptradd (p, core.wrap.add m (x, core.wrap.mul n (i, 8I64)))            => x86.index (x86.addr (0I32, x86.lea (x86.index (x86.addr (0I32, reg p)) (x, x86.scale_1)))) (i, x86.scale_8);
+rule index2      (m: Nat, p: mem.Ptr0 I8, i: I64):     mem.ptradd (p, core.wrap.mul m (i, 2I64))                                 => x86.index (x86.addr (0I32, reg p)) (i, x86.scale_2);
+rule index4      (m: Nat, p: mem.Ptr0 I8, i: I64):     mem.ptradd (p, core.wrap.mul m (i, 4I64))                                 => x86.index (x86.addr (0I32, reg p)) (i, x86.scale_4);
+rule index8      (m: Nat, p: mem.Ptr0 I8, i: I64):     mem.ptradd (p, core.wrap.mul m (i, 8I64))                                 => x86.index (x86.addr (0I32, reg p)) (i, x86.scale_8);
+rule index_disp  (m: Nat, p: mem.Ptr0 I8, i c: I64):   mem.ptradd (p, core.wrap.add m (i, c))                         when imm c => x86.index (x86.addr (core.conv.u i32 c, reg p)) (i, x86.scale_1);
+rule disp        (p: mem.Ptr0 I8, c: I64):             mem.ptradd (p, c)                                              when imm c => x86.addr (core.conv.u i32 c, reg p);
+rule index       (p: mem.Ptr0 I8, i: I64):             mem.ptradd (p, i)                                                         => x86.index (x86.addr (0I32, reg p)) (i, x86.scale_1);
+///
 /// ## Instances
 ///
 /// `imul` has no 8-bit form, so `mul8` widens to `i32`; the logical instructions also take `Bool`.
@@ -119,6 +143,7 @@ anx let alu = (
     shl i8, shl i16, shl i32, shl i64, shl_imm i8, shl_imm i16, shl_imm i32, shl_imm i64,
     shr i8, shr i16, shr i32, shr i64, shr_imm i8, shr_imm i16, shr_imm i32, shr_imm i64,
     sar i8, sar i16, sar i32, sar i64, sar_imm i8, sar_imm i16, sar_imm i32, sar_imm i64);
+anx let addresses = (index2_disp, index4_disp, index8_disp, base_index2, base_index4, base_index8, index2, index4, index8, index_disp, disp, index);
 ///
 /// `imul` has no `op m, r` form.
 ///

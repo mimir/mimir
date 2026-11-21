@@ -44,8 +44,7 @@ constexpr bool is_literal(Want want) { return want == Want::Imm || want == Want:
 /// The operation a rule selects, one per instruction of the pattern surface.
 #define MIM_X86_ISEL_OPS(X) \
     X(Select)               \
-    X(LeaOffset)            \
-    X(LeaIndex)             \
+    X(Ptradd)               \
     X(Load)                 \
     X(Store)                \
     X(WrapAdd)              \
@@ -74,7 +73,6 @@ constexpr bool is_literal(Want want) { return want == Want::Imm || want == Want:
     X(Rem)                  \
     X(Div)                  \
     X(Slot)                 \
-    X(Assume)               \
     X(Num)
 
 enum class Op : u8 {
@@ -86,13 +84,11 @@ enum class Op : u8 {
 /// A side condition of a rule beyond what its slots state.
 enum class Cond : u8 {
     None,
-    Scale,  ///< The elements the root `mem.lea` indexes have a size of 1, 2, 4, or 8.
     Fold,   ///< The replacement sits at the inner node whose memory it replaces, so the root's holes must be available
             ///< there.
     Same,   ///< The root has the register size of its operand.
     Narrow, ///< The root's register is at most as wide as its operand's, but its size differs.
     Widen,  ///< The root's register is wider than its operand's.
-    Dyn,    ///< The root's `Idx` has no literal size, so it becomes `I64`, which no rule of `x86_isel` states.
 };
 
 /// What a match needs of the operand @p def: a hole of type @p want or, if @p inner is set, that inner pattern node.
@@ -111,6 +107,7 @@ struct Cover {
     const Def* def;
     size_t inner = 0;
     fe::Vector<Demand> demands;
+    bool through = false; ///< The match only looks through it, since something else uses it.
 };
 
 struct Rule;
@@ -200,8 +197,6 @@ public:
     /// Does the x86 instruction @p insn take operands of `Idx size`?
     bool supports(flags_t insn, nat_t size);
 
-    const Def* build_lea_off(const Def* root, const Alt& alt);
-    const Def* build_lea_idx(const Def* root, const Alt& alt);
     const Def* build_load(const Def* root, const Alt& alt);
     const Def* build_store(const Def* root, const Alt& alt);
     const Def* build_insn(const Def* root, const Alt& alt);
@@ -212,7 +207,6 @@ public:
     const Def* build_ext(const Def* root, const Alt& alt);
     const Def* build_rem(const Def* root, const Alt& alt);
     const Def* build_slot(const Def* root, const Alt& alt);
-    const Def* build_assume(const Def* root, const Alt& alt);
     const Def* build_select(const Def* root, const Alt& alt);
     /// Builds the rhs of a generated rule.
     const Def* build_gen(const Def* root, const Alt& alt);

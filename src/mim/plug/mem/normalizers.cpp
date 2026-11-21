@@ -11,6 +11,17 @@ const Def* normalize_lea(const Def*, const Def*, const Def* arg) {
     return {};
 }
 
+const Def* normalize_ptradd(const Def* type, const Def* callee, const Def* arg) {
+    auto& w       = type->world();
+    auto [p, off] = arg->projs<2>();
+    if (Lit::isa(off) == 0) return p;
+    if (auto inner = Axm::isa<ptradd>(p)) {
+        auto [q, o] = inner->args<2>();
+        return w.app(callee, w.tuple({q, w.call(core::wrap::add, 0, Defs{o, off})}));
+    }
+    return {};
+}
+
 const Def* normalize_load(const Def* type, const Def*, const Def* arg) {
     auto& world     = type->world();
     auto [mem, ptr] = arg->projs<2>();
