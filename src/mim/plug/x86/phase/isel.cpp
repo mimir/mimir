@@ -301,7 +301,7 @@ std::vector<Rule> make_generated() {
         auto type = r.head == Annex::Base<x86::addr> ? Ty::Base : r.head == Annex::Base<index> ? Ty::Index : Ty::Reg;
         auto rule = Rule{.op    = p->op,
                          .type  = type,
-                         .cost  = r.cost,
+                         .cost  = pbqp::Cost(r.cost),
                          .name  = r.name,
                          .build = &ISel::build_gen,
                          .cond  = r.maps ? Cond::Fold : Cond::None,
