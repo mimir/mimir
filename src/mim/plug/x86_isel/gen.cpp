@@ -21,11 +21,12 @@
 namespace mim::plug::x86_isel {
 
 using x86::rules::Ref;
+using x86::rules::Ty;
 using x86::rules::Want;
 
 namespace {
 
-enum class Kind : u8 { Hole, Axm, Lit, Nat, Idx, App, Tuple, Pack, Extract, Sigma, Arr };
+enum class Kind : u8 { Hole, Axm, Lit, Nat, Idx, App, Tuple, Pack, Extract, Sigma, Arr, Pi, Bot };
 
 /// Flags of an App node.
 enum : u64 {
@@ -36,6 +37,45 @@ enum : u64 {
 
 /// Flag of an Extract node: it is the memory of a memory operation.
 constexpr u64 Mem = 1;
+
+constexpr std::string_view name(Ty ty) {
+    switch (ty) {
+#define X(t) \
+    case Ty::t: return #t;
+        MIM_X86_RULE_TYS(X)
+#undef X
+    }
+    std::unreachable();
+}
+
+/// What an operand of @p type is: `Base`, `Index`, `Addr` for either, `Scaled` for `[I64, I2]`, else `Reg`.
+Want classify(const Def* type) {
+    if (auto addr = Axm::isa<x86::Addr>(type)) {
+        auto i = Lit::isa(addr->arg());
+        return !i ? Want::Addr : *i ? Want::Index : Want::Base;
+    }
+    auto& w = type->world();
+    if (type == w.sigma({w.type_i64(), w.type_idx(4)})) return Want::Scaled;
+    return Want::Reg;
+}
+
+/// The non-terminal of a value of @p type in @p rule.
+Ty nonterminal(const Rule* rule, const Def* type) {
+    switch (classify(type)) {
+        case Want::Base: return Ty::Base;
+        case Want::Index: return Ty::Index;
+        case Want::Scaled: return Ty::Scaled;
+        case Want::Reg: return Ty::Reg;
+        default: rule->blame("x86_isel: `{}` must fix its address form in `{}`", type, rule).bail();
+    }
+}
+
+/// The non-terminal the rhs of @p rule yields; that of a memory operation is its value.
+Ty type(const Rule* rule) {
+    auto type = rule->rhs()->type();
+    if (type->num_projs() == 2 && Axm::isa<core::M>(type->proj(2, 0))) type = type->proj(2, 1);
+    return nonterminal(rule, type);
+}
 
 constexpr std::string_view name(Want want) {
     switch (want) {
@@ -107,11 +147,21 @@ private:
         u32 type;
     };
 
+    struct Conversion {
+        std::string name;
+        std::string rho;
+        size_t cost;
+        Ty from, to;
+        u32 rhs;
+        size_t arity;
+    };
+
     struct Rewrite {
         std::string name;
-        std::string type;
+        std::string rho;
         size_t cost;
-        flags_t root, head;
+        flags_t root;
+        Ty type;
         u32 lhs, rhs;
         u32 mapped; ///< The memory Extract the rhs replaces, or `u32(-1)`.
         std::vector<Meta> metas;
@@ -124,10 +174,10 @@ private:
     u32 node_(const Def*);
     u32 make(Node, std::string comment = {});
     u32 hole(u64 i) { return make({Kind::Hole, i, {}}); }
-    /// The pointer meta variable @p p as an operand of type @p want.
-    u32 marked(const Def* p, Want want) {
-        auto id = node(p);
-        if (nodes_[id].kind != Kind::Hole) p->blame("x86_isel: `{}` must be a meta variable", p).bail();
+    /// The meta variable @p meta under a marker, as an operand of type @p want.
+    u32 marked(const Def* meta, Want want) {
+        auto id = node(meta);
+        if (nodes_[id].kind != Kind::Hole) meta->blame("x86_isel: `{}` must be a meta variable", meta).bail();
         marks_[nodes_[id].val] = want;
         return id;
     }
@@ -141,6 +191,7 @@ private:
     std::vector<Node> nodes_;
     std::vector<std::string> comments_;
     std::vector<Rewrite> rewrites_;
+    std::vector<Conversion> conversions_;
     std::set<flags_t> commutes_;
     friend class Code;
     friend std::string sig(const Table&, u32, const std::vector<Meta>&);
@@ -156,22 +207,42 @@ void Table::add(const Rule* rule) {
     marks_.clear();
     auto lhs    = rule->lhs();
     auto mapped = u32(-1);
+    if (var_ && lhs == var_) {
+        auto from = var_->type();
+        if (!Idx::isa(from) && classify(from) == Want::Reg)
+            rule->blame("x86_isel: the meta variable of conversion `{}` must be a register or a non-terminal", rule)
+                .bail();
+        // `x86_isel.lit x` makes it a conversion of a literal.
+        auto literal = Axm::isa<x86_isel::lit>(rule->guard()) && Axm::isa<x86_isel::lit>(rule->guard())->arg() == var_;
+        if (!literal && rule->guard() != rule->world().lit_tt())
+            rule->blame("x86_isel: the guard of conversion `{}` is no `x86_isel.lit` of its meta variable", rule)
+                .bail();
+        auto done = DefSet();
+        conversions_.emplace_back(Conversion{.name  = rule->sym().str(),
+                                             .rho   = std::format("{} ↝ {}", rule->dom(), rule->codom()),
+                                             .cost  = num_insns(rule->rhs(), done),
+                                             .from  = literal ? Ty::Lit : nonterminal(rule, from),
+                                             .to    = type(rule),
+                                             .rhs   = node(rule->rhs()),
+                                             .arity = num_metas_});
+        var_ = nullptr;
+        return;
+    }
     // `(m, e)`: the memory `m` of an inner node of `e` becomes that of the rhs.
     if (auto t = lhs->isa<Tuple>(); t && t->num_ops() == 2 && Axm::isa<core::M>(t->op(0)->type())) {
         mapped = node(t->op(0));
         lhs    = t->op(1);
     }
     auto [root, _, __] = Axm::get(lhs);
-    if (!root) rule->blame("x86_isel: the lhs of `{}` must apply an axiom", rule).bail();
-    auto head = std::get<0>(Axm::get(rule->rhs()));
-    if (head && Annex::flags2plugin(head->flags()) != x86::Plugin_Id) head = nullptr;
+    if (!root && !lhs->isa<Extract>())
+        rule->blame("x86_isel: the lhs of `{}` must apply an axiom or extract", rule).bail();
 
     auto done = DefSet();
     rewrites_.emplace_back(Rewrite{.name   = rule->sym().str(),
-                                   .type   = std::format("{} ↝ {}", rule->dom(), rule->codom()),
+                                   .rho    = std::format("{} ↝ {}", rule->dom(), rule->codom()),
                                    .cost   = num_insns(rule->rhs(), done),
-                                   .root   = root->flags(),
-                                   .head   = head ? head->flags() : 0,
+                                   .root   = root ? root->flags() : 0,
+                                   .type   = type(rule),
                                    .lhs    = node(lhs),
                                    .rhs    = node(rule->rhs()),
                                    .mapped = mapped,
@@ -192,7 +263,8 @@ std::vector<Table::Meta> Table::metas(const Rule* rule) {
         auto want = Want::Param;
         if (!param) {
             if (Idx::isa(type)) {
-                want = Want::Reg;
+                auto mark = marks_.find(i);
+                want      = mark == marks_.end() ? Want::Reg : mark->second;
             } else if (type->isa<Nat>()) {
                 auto mark = marks_.find(i);
                 want      = mark == marks_.end() ? Want::Param : mark->second;
@@ -202,11 +274,10 @@ std::vector<Table::Meta> Table::metas(const Rule* rule) {
                     rule->blame("x86_isel: pointer `{}` of `{}` is no `x86_isel.addr` or `x86_isel.reg`", meta, rule)
                         .bail();
                 want = mark->second;
-            } else if (Axm::isa<core::M>(type)) {
+            } else if (Axm::isa<core::M>(type) || type->isa<Pi>()) {
                 want = Want::Param;
-            } else if (auto addr = Axm::isa<x86::Addr>(type)) {
-                auto i = Lit::isa(addr->arg());
-                want   = !i ? Want::Addr : *i ? Want::Index : Want::Base;
+            } else if (Axm::isa<x86::Addr>(type)) {
+                want = classify(type);
             } else {
                 rule->blame("x86_isel: meta variable `{}` of `{}` has type `{}`, which is no operand", meta, rule, type)
                     .bail();
@@ -228,22 +299,25 @@ void Table::guard(const Def* g, std::vector<Meta>& metas) {
         return;
     }
 
-    auto set = [&](const Def* meta, Want want) {
+    auto set = [&](const Def* meta, Want from, Want to) {
         if (auto nat = Axm::isa<x86_isel::nat>(meta)) meta = nat->arg();
         for (size_t i = 0; i != num_metas_; ++i)
-            if (var_->proj(num_metas_, i) == meta && metas[i].want == Want::Reg) {
-                metas[i].want = want;
+            if (var_->proj(num_metas_, i) == meta && metas[i].want == from) {
+                metas[i].want = to;
                 return;
             }
-        g->blame("x86_isel: guard `{}` must constrain an operand of type `Idx s`", g).bail();
+        g->blame("x86_isel: guard `{}` must constrain an operand of type `Idx s` or, for `lit`, a `Nat`", g).bail();
     };
 
     if (auto imm = Axm::isa<x86_isel::imm>(g))
-        set(imm->arg(), Want::Imm);
+        set(imm->arg(), Want::Reg, Want::Imm);
     else if (auto sh = Axm::isa<x86_isel::sh>(g))
-        set(sh->arg(), Want::Sh);
+        set(sh->arg(), Want::Reg, Want::Sh);
+    else if (auto lit = Axm::isa<x86_isel::lit>(g))
+        set(lit->arg(), Want::Param, Want::Lit);
     else
-        g->blame("x86_isel: guard `{}` is no conjunction of `x86_isel.imm` and `x86_isel.sh`", g).bail();
+        g->blame("x86_isel: guard `{}` is no conjunction of `x86_isel.imm`, `x86_isel.sh`, and `x86_isel.lit`", g)
+            .bail();
 }
 
 u32 Table::node(const Def* def) {
@@ -266,6 +340,8 @@ u32 Table::node_(const Def* def) {
     if (auto addr = Axm::isa<x86_isel::addr>(def)) return marked(addr->arg(), Want::Addr);
     if (auto reg = Axm::isa<x86_isel::reg>(def)) return marked(reg->arg(), Want::Reg);
     if (auto nat = Axm::isa<x86_isel::nat>(def)) return marked(nat->arg(), Want::Reg);
+    if (auto scaled = Axm::isa<x86_isel::scaled>(def)) return marked(scaled->arg(), Want::Scaled);
+    if (auto ptr = Axm::isa<x86_isel::ptr>(def)) return node(ptr->arg());
     if (auto axm = def->isa<Axm>()) return make({Kind::Axm, axm->flags(), {}}, axm->sym().str());
     if (auto lit = def->isa<Lit>()) return make({Kind::Lit, lit->get(), {node(lit->type())}});
     if (def->isa<Nat>()) return make({Kind::Nat, 0, {}});
@@ -288,6 +364,8 @@ u32 Table::node_(const Def* def) {
     }
     if (auto pack = def->isa_imm<Pack>()) return make({Kind::Pack, 0, {node(pack->arity()), node(pack->body())}});
     if (auto arr = def->isa_imm<Arr>()) return make({Kind::Arr, 0, {node(arr->arity()), node(arr->body())}});
+    if (auto pi = def->isa_imm<Pi>()) return make({Kind::Pi, pi->is_implicit(), {node(pi->dom()), node(pi->codom())}});
+    if (def->isa<Bot>()) return make({Kind::Bot, 0, {}});
 
     auto ops = std::vector<u32>();
     if (def->isa<Tuple>() || def->isa_imm<Sigma>())
@@ -517,6 +595,8 @@ void Code::match(u32 n, const std::string& e) {
         }
         case Kind::Pack: return match2(n, e, "isa_imm<Pack>()", "arity", "body");
         case Kind::Arr: return match2(n, e, "isa_imm<Arr>()", "arity", "body");
+        case Kind::Pi: return match2(n, e, "isa_imm<Pi>()", "dom", "codom");
+        case Kind::Bot: line("if (!{}->isa<Bot>()) return false;", e); return;
         case Kind::Sigma: {
             auto sigma = fresh('d');
             line("auto {} = {}->isa_imm<Sigma>();", sigma, e);
@@ -576,6 +656,8 @@ std::string Code::build_(u32 n) {
         case Kind::Arr: line("auto {} = w.arr({}, {});", res, ops[0], ops[1]); break;
         case Kind::Tuple: line("auto {} = w.tuple({{{}}});", res, fe::Join(ops, ", ")); break;
         case Kind::Sigma: line("auto {} = w.sigma({{{}}});", res, fe::Join(ops, ", ")); break;
+        case Kind::Pi: line("auto {} = w.pi({}, {}, {});", res, ops[0], ops[1], x.val != 0); break;
+        case Kind::Bot: line("auto {} = w.bot(w.type());", res); break;
         case Kind::Hole: std::unreachable();
     }
     return built_[n] = res;
@@ -610,6 +692,8 @@ void Table::dump(std::ostream& os) const {
     auto built = std::set<u32>();
     for (const auto& r : rewrites_)
         if (built.emplace(r.rhs).second) code.build(r.rhs);
+    for (const auto& c : conversions_)
+        if (built.emplace(c.rhs).second) code.build(c.rhs);
 
     std::println(os, "// clang-format off");
     std::println(os, "inline constexpr Want wants[] = {{");
@@ -619,7 +703,7 @@ void Table::dump(std::ostream& os) const {
         std::print(os, "   ");
         for (auto m : r.metas)
             std::print(os, " Want::{},", name(m.want));
-        std::println(os, " // {}: {}", r.name, r.type);
+        std::println(os, " // {}: {}", r.name, r.rho);
         num_wants += r.metas.size();
     }
     // An empty array is ill-formed.
@@ -668,10 +752,18 @@ void Table::dump(std::ostream& os) const {
             if (size_t(k) == s.covers.size()) fe::throwf("x86_isel: `{}` maps the memory of no inner node", r.name);
             maps = k + 1;
         }
-        std::println(os, "    {{\"{}\", {}, {:#x}, {:#x}, &matchers[{}], &build_{}, {}, {}, {:#x}, {}}}, // {}", r.name,
-                     r.cost, r.root, r.head, ids[i], r.rhs, first, r.metas.size(), swaps, maps, r.type);
+        std::println(os, "    {{\"{}\", {}, {:#x}, Ty::{}, &matchers[{}], &build_{}, {}, {}, {:#x}, {}}}, // {}",
+                     r.name, r.cost, r.root, name(r.type), ids[i], r.rhs, first, r.metas.size(), swaps, maps, r.rho);
         first += r.metas.size();
     }
+    std::println(os, "}};");
+    std::println(os);
+    // An empty array is ill-formed.
+    if (conversions_.empty()) fe::throwf("x86_isel: there is no conversion");
+    std::println(os, "inline constexpr Conversion conversions[] = {{");
+    for (const auto& c : conversions_)
+        std::println(os, "    {{\"{}\", {}, Ty::{}, Ty::{}, {}, &build_{}}}, // {}", c.name, c.cost, name(c.from),
+                     name(c.to), c.arity, c.rhs, c.rho);
     std::println(os, "}};");
     std::println(os, "// clang-format on");
     std::println(os);

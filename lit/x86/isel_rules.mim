@@ -33,7 +33,7 @@ extern lam _compile (): compile.Phase = x86_isel.gen;
 // CHECK-NEXT:     Want::Reg, Want::Imm, // nat_add_imm: Nat ↝ I64
 // The divisor of `core.rem` is a parameter.
 // CHECK:          Want::Param, Want::Reg, // rem16: I16 ↝ I16
-// A conversion of equal register sizes is its operand, and a marker is no head.
+// A conversion of equal register sizes is its operand.
 // CHECK:          Want::Reg, // idx2nat64: Nat ↝ I64
 // CHECK-NEXT:     Want::Param, Want::Reg, // idx: I64 ↝ I64
 // A size that an operand's type mentions is a parameter.
@@ -41,36 +41,55 @@ extern lam _compile (): compile.Phase = x86_isel.gen;
 // CHECK-NEXT:     Want::Param, Want::Param, Want::Addr, Want::Reg, // store: core.M 0 ↝ core.M 0
 // CHECK-NEXT:     Want::Param, Want::Param, Want::Addr, Want::Imm, // store_imm: core.M 0 ↝ core.M 0
 // CHECK-NEXT:     Want::Param, Want::Addr, Want::Reg, // store_ptr: core.M 0 ↝ core.M 0
-// The base pointer of an address is a register.
-// CHECK-NEXT:     Want::Param, Want::Param, Want::Reg, Want::Reg, Want::Imm, // index2_disp: core.Ptr (I8, 0) ↝ x86.Addr tt
+// A continuation is a parameter and `lit` makes a `Nat` a literal one.
+// CHECK-NEXT:     Want::Param, Want::Lit, Want::Param, // slot: ⊥:* ↝ ⊥:*
+// A product with a scale yields its factor as a `Scaled`.
+// CHECK-NEXT:     Want::Param, Want::Reg, // scale2: I64 ↝ [I64, I2]
+// The base pointer of an address is a register, and its index a `Scaled`.
+// CHECK:          Want::Param, Want::Reg, Want::Scaled, Want::Imm, // index_disp: core.Ptr (I8, 0) ↝ x86.Addr tt
+// CHECK-NEXT:     Want::Param, Want::Reg, Want::Reg, Want::Scaled, // base_index: core.Ptr (I8, 0) ↝ x86.Addr tt
 // CHECK:          Want::Reg, Want::Imm, // ncmp_imm: Bool ↝ Bool
 // A memory is a parameter and a pointer an address.
 // CHECK:          Want::Param, Want::Reg, Want::Param, Want::Addr, // add_rm: [core.M 0, I8] ↝ [core.M 0, I8]
 // CHECK:      inline constexpr Rewrite rewrites[] = {
 // Swapping the operands of `mul8` yields no other match, but of `mul8_imm` it does.
-// CHECK-NEXT:     {"mul8", 4, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers[0], &build_[[W]], 0, 3, 0x0, 0}, // I8 ↝ I8
-// CHECK-NEXT:     {"mul8_imm", 4, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers[0], &build_[[W]], 3, 3, 0x1, 0}, // I8 ↝ I8
+// CHECK-NEXT:     {"mul8", 4, {{0x[0-9a-f]+}}, Ty::Reg, &matchers[0], &build_[[W]], 0, 3, 0x0, 0}, // I8 ↝ I8
+// CHECK-NEXT:     {"mul8_imm", 4, {{0x[0-9a-f]+}}, Ty::Reg, &matchers[0], &build_[[W]], 3, 3, 0x1, 0}, // I8 ↝ I8
 // The operands of `core.nat.add` are the meta variables as a whole, and they still commute.
 // CHECK-NEXT:     {"nat_add", 1, {{.*}}, 2, 0x0, 0}, // Nat ↝ I64
 // CHECK-NEXT:     {"nat_add_imm", 1, {{.*}}, 2, 0x1, 0}, // Nat ↝ I64
-// An index and a displacement are part of the address, so they cost nothing; both commuting nodes may swap.
-// CHECK:          {"idx", 0, {{0x[0-9a-f]+}}, 0x0, {{.*}} // I64 ↝ I64
-// CHECK:          {"index2_disp", 0, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers[{{[0-9]+}}], &build_{{[0-9]+}}, {{[0-9]+}}, 5, 0x3, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
-// CHECK:          {"index2", 0, {{.*}}, 3, 0x1, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
+// CHECK:          {"idx", 0, {{0x[0-9a-f]+}}, Ty::Reg, {{.*}} // I64 ↝ I64
+// A scale is part of the address, so it costs nothing, and a product of either order is one.
+// CHECK:          {"scale2", 0, {{0x[0-9a-f]+}}, Ty::Scaled, {{.*}}, 2, 0x1, 0}, // I64 ↝ [I64, I2]
+// `index_disp` and `base_index` share their matcher, and both may swap their operands.
+// CHECK:          {"index_disp", 0, {{0x[0-9a-f]+}}, Ty::Index, &matchers{{\[}}[[Q:[0-9]+]]{{\]}}, {{.*}}, 4, 0x1, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
+// CHECK-NEXT:     {"base_index", 1, {{0x[0-9a-f]+}}, Ty::Index, &matchers{{\[}}[[Q]]{{\]}}, {{.*}}, 4, 0x1, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
 // A displacement alone yields an `x86.Base`; it shares its matcher with the plain index.
-// CHECK:          {"disp", 0, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers{{\[}}[[P:[0-9]+]]{{\]}}, {{.*}} // core.Ptr (I8, 0) ↝ x86.Addr ff
-// CHECK-NEXT:     {"index", 0, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers{{\[}}[[P]]{{\]}}, {{.*}} // core.Ptr (I8, 0) ↝ x86.Addr tt
+// CHECK:          {"disp", 0, {{0x[0-9a-f]+}}, Ty::Base, &matchers{{\[}}[[P:[0-9]+]]{{\]}}, {{.*}} // core.Ptr (I8, 0) ↝ x86.Addr ff
+// CHECK-NEXT:     {"index", 0, {{0x[0-9a-f]+}}, Ty::Index, &matchers{{\[}}[[P]]{{\]}}, {{.*}} // core.Ptr (I8, 0) ↝ x86.Addr tt
 // `add` and `add_imm` share their matcher and builder.
-// CHECK-NEXT:     {"add", 1, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers{{\[}}[[M:[0-9]+]]{{\]}}, &build_[[B:[0-9]+]], {{[0-9]+}}, 3, 0x0, 0}, // I8 ↝ I8
-// CHECK:          {"add_imm", 1, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers{{\[}}[[M]]{{\]}}, &build_[[B]], {{[0-9]+}}, 3, 0x1, 0}, // I8 ↝ I8
+// CHECK-NEXT:     {"add", 1, {{0x[0-9a-f]+}}, Ty::Reg, &matchers{{\[}}[[M:[0-9]+]]{{\]}}, &build_[[B:[0-9]+]], {{[0-9]+}}, 3, 0x0, 0}, // I8 ↝ I8
+// CHECK:          {"add_imm", 1, {{0x[0-9a-f]+}}, Ty::Reg, &matchers{{\[}}[[M]]{{\]}}, &build_[[B]], {{[0-9]+}}, 3, 0x1, 0}, // I8 ↝ I8
 // CHECK-NOT:      {"mul", {{.*}} // I8 ↝ I8
 // CHECK:          {"mul", 1, {{.*}} // I16 ↝ I16
 // The logical instructions also take `Bool`.
 // CHECK:          {"and", 1, {{.*}} // Bool ↝ Bool
-// The rhs of `add_rm` replaces the load's memory, cover 0.
-// CHECK:          {"add_rm", 1, {{.*}}, 4, 0x1, 1}, // [core.M 0, I8] ↝ [core.M 0, I8]
+// The rhs of `add_rm` replaces the load's memory, cover 0, and yields the register of its value.
+// CHECK:          {"add_rm", 1, {{0x[0-9a-f]+}}, Ty::Reg, {{.*}}, 4, 0x1, 1}, // [core.M 0, I8] ↝ [core.M 0, I8]
 // CHECK-NOT:      {"mul_rm", {{.*}} // [core.M 0, I8]
 // CHECK:          {"add_mr", 1, {{.*}}, 4, 0x1, 0}, // core.M 0 ↝ core.M 0
 // CHECK:          {"xor_mr_imm", 1, {{.*}}, 4, 0x1, 0}, // core.M 0 ↝ core.M 0
 // CHECK-COUNT-3:  {"xor_mr_imm", 1, {{.*}}, 4, 0x1, 0}, // core.M 0 ↝ core.M 0
+// CHECK-NEXT: };
+// A rule whose lhs is all of its meta variables converts between non-terminals; an address costs nothing, a `lea` one.
+// The builder of `unscale` takes both projections of a `Scaled`.
+// CHECK:          inline constexpr Conversion conversions[] = {
+// CHECK-NEXT:     {"base", 0, Ty::Reg, Ty::Base, 1, &build_[[BASE:[0-9]+]]}, // I64 ↝ x86.Addr ff
+// A literal is an absolute address for free and takes a `mov` into a register.
+// CHECK-NEXT:     {"abs", 0, Ty::Lit, Ty::Base, 1, &build_[[BASE]]}, // I64 ↝ x86.Addr ff
+// CHECK-NEXT:     {"mov", 1, Ty::Lit, Ty::Reg, 1, &build_{{[0-9]+}}}, // I64 ↝ I64
+// CHECK-NEXT:     {"scale1", 0, Ty::Reg, Ty::Scaled, 1, &build_{{[0-9]+}}}, // I64 ↝ [I64, I2]
+// CHECK-NEXT:     {"unscale", 1, Ty::Scaled, Ty::Reg, 2, &build_{{[0-9]+}}}, // [I64, I2] ↝ I64
+// CHECK-NEXT:     {"lea", 1, Ty::Base, Ty::Reg, 1, &build_{{[0-9]+}}}, // x86.Addr ff ↝ I64
+// CHECK-NEXT:     {"lea", 1, Ty::Index, Ty::Reg, 1, &build_{{[0-9]+}}}, // x86.Addr tt ↝ I64
 // CHECK-NEXT: };

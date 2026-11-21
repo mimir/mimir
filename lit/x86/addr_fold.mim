@@ -1,0 +1,11 @@
+// RUN: %mim %s
+plugin x86;
+plugin refly;
+
+// A literal base folds into the displacement if the sum fits, else it goes into a register.
+let _ = refly.struc.e (x86.addr (4I32, 8I64), x86.addr (12I32, 0I64));
+let _ = refly.struc.e (x86.addr (1I32, 2147483647I64), x86.addr (1I32, x86.mov 2147483647I64));
+// An address without displacement or base is its base or displacement.
+lam no_disp (b: I64): I64 = x86.lea (x86.addr (0I32, b));
+let _ = refly.struc.e (no_disp, lm (b: I64): I64 = b);
+let _ = refly.struc.e (x86.lea (x86.addr (4294967292I32, 0I64)), 18446744073709551612I64);

@@ -1,0 +1,15 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin core;
+plugin mem;
+plugin x86;
+import compile;
+
+extern lam _compile (): compile.Phase = compile.phases ff (compile.named "x86.isel");
+
+// A literal address is a displacement if it fits `i32`, else its base goes into a register.
+extern lam near (m: mem.M 0): [mem.M 0, I8] = mem.load (m, 4096:(mem.Ptr0 I8));
+extern lam far (m: mem.M 0): [mem.M 0, I8] = mem.load (m, 4294967296:(mem.Ptr0 I8));
+
+// CHECK-DAG: x86.load i8 @ ff ({{m(_[0-9]+)?}}, x86.addr (4096I32, 0I64))
+// CHECK-DAG: x86.load i8 @ ff ({{m(_[0-9]+)?}}, x86.addr (0I32, x86.mov @ 0 4294967296I64))

@@ -1,0 +1,16 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin core;
+plugin mem;
+plugin x86;
+import compile;
+
+extern lam _compile (): compile.Phase = compile.phases ff (compile.named "x86.isel");
+
+// A left shift by 2 is the index scaled by 4, so no `shl` remains.
+extern lam f (m: mem.M 0, p: mem.Ptr0 I8, i: I64): [mem.M 0, I8] =
+    mem.load (m, mem.ptradd (p, core.wrap.shl 0 (i, 2I64)));
+
+// CHECK-NOT: x86.shl
+// CHECK: x86.index {{.*}} (i, 2I2)
+// CHECK-NOT: x86.shl

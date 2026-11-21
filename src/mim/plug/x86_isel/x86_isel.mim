@@ -30,6 +30,12 @@ axm imm: {s: Nat} → Idx s → Bool, normalize_imm;
 ///
 axm sh: {s: Nat} → Idx s → Bool, normalize_sh;
 ///
+/// ### lit
+///
+/// A literal.
+///
+axm lit: {T: *} → T → Bool, normalize_lit;
+///
 /// ## Operands
 ///
 /// ### addr
@@ -50,6 +56,18 @@ axm reg: {T: *, a: Nat} → mem.Ptr (T, a) → I64;
 /// The `Nat` `n` in a register.
 ///
 axm nat: Nat → I64;
+///
+/// ### ptr
+///
+/// The register `x` as a byte pointer, which isel's `I64` makes the identity.
+///
+axm ptr: I64 → mem.Ptr0 I8;
+///
+/// ### scaled
+///
+/// The `I64` `i` as an index with its scale.
+///
+axm scaled: I64 → [I64, I2];
 ///
 /// ## Commutativity
 ///
@@ -153,6 +171,13 @@ rule icmp_imm (p: {s: Nat} → «2; Idx s» → Bool, c: x86.Flags → Bool) (s:
 rule ncmp     (p: «2; Nat» → Bool, c: x86.Flags → Bool)               (a b: Nat):           p (a, b)                  => c (x86.cmp (nat a, nat b));
 rule ncmp_imm (p: «2; Nat» → Bool, c: x86.Flags → Bool)               (a b: Nat):           p (a, b) when imm (nat b) => c (x86.cmp (nat a, nat b));
 ///
+/// ### Selects
+///
+/// `x86.cmovcc`'s normalizer fuses a condition code into it; `i8` and `Bool` go through `i32`.
+///
+rule select  (s: Nat) (x y: Idx s, c: Bool): (x, y)#c => x86.cmovcc.ne (x86.test (c, c), x, y);
+rule select8 (s: Nat) (x y: Idx s, c: Bool): (x, y)#c => x86.trunc s (x86.cmovcc.ne (x86.test (c, c), x86.movzx i32 x, x86.movzx i32 y));
+///
 /// ### Loads and Stores
 ///
 /// Every pointer is a byte pointer `mem.Ptr0 I8` by now.
@@ -162,6 +187,10 @@ rule load_ptr           (m: mem.M 0, p: mem.Ptr0 (mem.Ptr0 I8)):             mem
 rule store              (s: Nat, m: mem.M 0, p: mem.Ptr0 (Idx s), x: Idx s): mem.store (m, p, x)            => x86.store (m, addr p, x);
 rule store_imm          (s: Nat, m: mem.M 0, p: mem.Ptr0 (Idx s), x: Idx s): mem.store (m, p, x) when imm x => x86.store (m, addr p, x);
 rule store_ptr          (m: mem.M 0, p: mem.Ptr0 (mem.Ptr0 I8), x: mem.Ptr0 I8): mem.store (m, p, x)        => x86.store (m, addr p, reg x);
+///
+/// ### Stack Slots
+///
+rule slot (m: mem.M 0, n: Nat, k: Cn [mem.M 0, mem.Ptr0 I8]): mem.mslot (I8, 0) ((m, n), k) when lit n => let (m, p) = x86.slot n m; k (m, ptr p);
 ///
 /// ### Memory Operands
 ///
@@ -186,21 +215,32 @@ rule xor_mr_imm (s: Nat) (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): le
 ///
 /// ### Addresses
 ///
-/// The offset of a `mem.ptradd` is the index and displacement of an address, also if something else uses its parts.
+/// A product with 2, 4, or 8, or a left shift by 1, 2, or 3, is an index with its scale; an address takes any index as one, scaled by 1 if need be.
 /// Of two matches that cost the same, isel keeps the first, so larger patterns come first.
 ///
-rule index2_disp (m n: Nat, p: mem.Ptr0 I8, i c: I64): mem.ptradd (p, core.wrap.add m (core.wrap.mul n (i, 2I64), c)) when imm c => x86.index (x86.addr (core.conv.u i32 c, reg p)) (i, x86.scale_2);
-rule index4_disp (m n: Nat, p: mem.Ptr0 I8, i c: I64): mem.ptradd (p, core.wrap.add m (core.wrap.mul n (i, 4I64), c)) when imm c => x86.index (x86.addr (core.conv.u i32 c, reg p)) (i, x86.scale_4);
-rule index8_disp (m n: Nat, p: mem.Ptr0 I8, i c: I64): mem.ptradd (p, core.wrap.add m (core.wrap.mul n (i, 8I64), c)) when imm c => x86.index (x86.addr (core.conv.u i32 c, reg p)) (i, x86.scale_8);
-rule base_index2 (m n: Nat, p: mem.Ptr0 I8, x i: I64): mem.ptradd (p, core.wrap.add m (x, core.wrap.mul n (i, 2I64)))            => x86.index (x86.addr (0I32, x86.lea (x86.index (x86.addr (0I32, reg p)) (x, x86.scale_1)))) (i, x86.scale_2);
-rule base_index4 (m n: Nat, p: mem.Ptr0 I8, x i: I64): mem.ptradd (p, core.wrap.add m (x, core.wrap.mul n (i, 4I64)))            => x86.index (x86.addr (0I32, x86.lea (x86.index (x86.addr (0I32, reg p)) (x, x86.scale_1)))) (i, x86.scale_4);
-rule base_index8 (m n: Nat, p: mem.Ptr0 I8, x i: I64): mem.ptradd (p, core.wrap.add m (x, core.wrap.mul n (i, 8I64)))            => x86.index (x86.addr (0I32, x86.lea (x86.index (x86.addr (0I32, reg p)) (x, x86.scale_1)))) (i, x86.scale_8);
-rule index2      (m: Nat, p: mem.Ptr0 I8, i: I64):     mem.ptradd (p, core.wrap.mul m (i, 2I64))                                 => x86.index (x86.addr (0I32, reg p)) (i, x86.scale_2);
-rule index4      (m: Nat, p: mem.Ptr0 I8, i: I64):     mem.ptradd (p, core.wrap.mul m (i, 4I64))                                 => x86.index (x86.addr (0I32, reg p)) (i, x86.scale_4);
-rule index8      (m: Nat, p: mem.Ptr0 I8, i: I64):     mem.ptradd (p, core.wrap.mul m (i, 8I64))                                 => x86.index (x86.addr (0I32, reg p)) (i, x86.scale_8);
-rule index_disp  (m: Nat, p: mem.Ptr0 I8, i c: I64):   mem.ptradd (p, core.wrap.add m (i, c))                         when imm c => x86.index (x86.addr (core.conv.u i32 c, reg p)) (i, x86.scale_1);
-rule disp        (p: mem.Ptr0 I8, c: I64):             mem.ptradd (p, c)                                              when imm c => x86.addr (core.conv.u i32 c, reg p);
-rule index       (p: mem.Ptr0 I8, i: I64):             mem.ptradd (p, i)                                                         => x86.index (x86.addr (0I32, reg p)) (i, x86.scale_1);
+rule scale2     (n: Nat, i: I64):                   core.wrap.mul n (i, 2I64)                               => (i, x86.scale_2);
+rule scale4     (n: Nat, i: I64):                   core.wrap.mul n (i, 4I64)                               => (i, x86.scale_4);
+rule scale8     (n: Nat, i: I64):                   core.wrap.mul n (i, 8I64)                               => (i, x86.scale_8);
+rule shl1       (n: Nat, i: I64):                   core.wrap.shl n (i, 1I64)                               => (i, x86.scale_2);
+rule shl2       (n: Nat, i: I64):                   core.wrap.shl n (i, 2I64)                               => (i, x86.scale_4);
+rule shl3       (n: Nat, i: I64):                   core.wrap.shl n (i, 3I64)                               => (i, x86.scale_8);
+rule index_disp (m: Nat, p: mem.Ptr0 I8, i c: I64): mem.ptradd (p, core.wrap.add m (i, c)) when imm c => x86.index (x86.addr (core.conv.u i32 c, reg p)) (scaled i);
+rule base_index (m: Nat, p: mem.Ptr0 I8, x i: I64): mem.ptradd (p, core.wrap.add m (x, i))            => x86.index (x86.addr (0I32, x86.lea (x86.index (x86.addr (0I32, reg p)) (x, x86.scale_1)))) (scaled i);
+rule disp       (p: mem.Ptr0 I8, c: I64):           mem.ptradd (p, c)                      when imm c => x86.addr (core.conv.u i32 c, reg p);
+rule index      (p: mem.Ptr0 I8, i: I64):           mem.ptradd (p, i)                                 => x86.index (x86.addr (0I32, reg p)) (scaled i);
+///
+/// ### Non-Terminals
+///
+/// A rule whose lhs is all of its meta variables converts between non-terminals; isel chains them.
+/// `x86.addr` and `x86.lea` normalize away what a literal makes trivial.
+/// A literal converts by `x86_isel.lit`: into an absolute address for free, else into a register first; the builder of `mov` takes any size.
+///
+rule base (x: I64): x => x86.addr (0I32, x);
+rule abs (x: I64): x when lit x => x86.addr (0I32, x);
+rule mov (x: I64): x when lit x => x86.mov x;
+rule lea (i: Bool) (a: x86.Addr i): a => x86.lea a;
+rule scale1 (i: I64): i => (i, x86.scale_1);
+rule unscale (s: [I64, I2]): s => x86.lea (x86.index (x86.addr (0I32, 0I64)) s);
 ///
 /// ## Instances
 ///
@@ -241,12 +281,14 @@ anx let compares = (
     ncmp (core.ncmp.le, x86.cc.be), ncmp (core.ncmp.g, x86.cc.a), ncmp (core.ncmp.ge, x86.cc.ae),
     ncmp_imm (core.ncmp.e, x86.cc.e), ncmp_imm (core.ncmp.ne, x86.cc.ne), ncmp_imm (core.ncmp.l, x86.cc.b),
     ncmp_imm (core.ncmp.le, x86.cc.be), ncmp_imm (core.ncmp.g, x86.cc.a), ncmp_imm (core.ncmp.ge, x86.cc.ae));
+anx let selects = (select i16, select i32, select i64, select8 i8, select8 i1);
 anx let division = (
     udiv8, udiv i16, udiv i32, udiv i64, urem8, urem i16, urem i32, urem i64,
     sdiv8, sdiv i16, sdiv i32, sdiv i64, srem8, srem i16, srem i32, srem i64,
     rem8, rem16, rem32, rem64);
-anx let memory = (load i8, load i16, load i32, load i64, load_ptr, store, store_imm, store_ptr);
-anx let addresses = (index2_disp, index4_disp, index8_disp, base_index2, base_index4, base_index8, index2, index4, index8, index_disp, disp, index);
+anx let nonterminals = (base, abs, mov, lea ff, lea tt, scale1, unscale);
+anx let memory = (load i8, load i16, load i32, load i64, load_ptr, store, store_imm, store_ptr, slot);
+anx let addresses = (scale2, scale4, scale8, shl1, shl2, shl3, index_disp, base_index, disp, index);
 ///
 /// `imul` has no `op m, r` form.
 ///

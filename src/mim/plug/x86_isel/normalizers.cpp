@@ -15,6 +15,10 @@ const Def* normalize_sh(const Def* type, const Def*, const Def* arg) {
     return Lit::isa(arg) ? type->world().lit_tt() : nullptr;
 }
 
+const Def* normalize_lit(const Def* type, const Def*, const Def* arg) {
+    return Lit::isa(arg) ? type->world().lit_tt() : nullptr;
+}
+
 MIM_x86_isel_NORMALIZER_IMPL
 
 } // namespace mim::plug::x86_isel
