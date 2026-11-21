@@ -468,13 +468,6 @@ constexpr Rule rules_[] = {
 
 static_assert(std::ranges::all_of(rules_, well_formed));
 
-constexpr bool in_pools(const rules::Rewrite& r) {
-    return r.lhs < std::size(rules::nodes) && r.rhs < std::size(rules::nodes)
-        && r.metas + r.num_metas <= std::size(rules::metas);
-}
-
-static_assert(std::ranges::all_of(rules::rewrites, in_pools));
-
 constexpr bool has_atomic(Op op) {
     return std::ranges::any_of(rules_, [op](const Rule& r) { return r.op == op && atomic(r); });
 }
@@ -483,11 +476,7 @@ constexpr bool has_atomic(Op op) {
  * Generated Rules
  */
 
-using rules::Kind;
-
-const rules::Node& node(u32 n) { return rules::nodes[n]; }
-u32 op(const rules::Node& node, size_t i) { return rules::ops[node.ops + i]; }
-const rules::Meta& meta(const rules::Rewrite& r, size_t i) { return rules::metas[r.metas + i]; }
+const rules::Want& want_of(const rules::Rewrite& r, size_t i) { return rules::wants[r.wants + i]; }
 
 Want want(rules::Want w) {
     switch (w) {
@@ -500,27 +489,18 @@ Want want(rules::Want w) {
     }
 }
 
-/// The axiom at the head of the generated term @p n.
-flags_t head(u32 n) {
-    while (node(n).kind == Kind::App)
-        n = op(node(n), 0);
-    return node(n).val;
-}
-
 std::vector<Rule> make_generated() {
     auto res = std::vector<Rule>();
     for (const auto& r : rules::rewrites) {
-        auto flags = head(r.lhs);
-        auto p     = std::ranges::find_if(patterns_, [flags](const Pattern& p) {
-            return p.member ? p.flags == flags : p.flags == Annex::flags2base(flags);
+        auto p = std::ranges::find_if(patterns_, [&r](const Pattern& p) {
+            return p.member ? p.flags == r.root : p.flags == Annex::flags2base(r.root);
         });
         if (p == std::end(patterns_)) fe::throwf("x86 isel: no pattern for the root of rule `{}`", r.name);
-        auto rhs  = head(r.rhs);
-        auto type = rhs == Annex::Base<x86::addr> ? Ty::Base : rhs == Annex::Base<index> ? Ty::Index : Ty::Reg;
+        auto type = r.head == Annex::Base<x86::addr> ? Ty::Base : r.head == Annex::Base<index> ? Ty::Index : Ty::Reg;
         auto rule
             = Rule{.op = p->op, .type = type, .cost = r.cost, .name = r.name, .build = &ISel::build_gen, .gen = &r};
         for (size_t i = 0; i != r.num_metas; ++i)
-            if (auto w = meta(r, i).want; w != rules::Want::Param) rule.slots[rule.num_slots++] = Slot(want(w));
+            if (auto w = want_of(r, i); w != rules::Want::Param) rule.slots[rule.num_slots++] = Slot(want(w));
         res.emplace_back(rule);
     }
     return res;
@@ -532,82 +512,6 @@ const std::vector<Rule>& generated() {
     return rules;
 }
 
-/// Matches the lhs of a generated rule against a Def of old_world().
-class Matcher {
-public:
-    explicit Matcher(const rules::Rewrite& r)
-        : r_(r)
-        , metas_(r.num_metas, nullptr) {}
-
-    /// Matches the root @p def, with its two operands swapped if @p swap is set.
-    bool root(const Def* def, bool swap) {
-        if (!swap) return match(r_.lhs, def);
-        auto app = def->isa<App>();
-        auto& n  = node(r_.lhs);
-        if (!app || n.kind != Kind::App) return false;
-        auto& arg = node(op(n, 1));
-        if (arg.kind != Kind::Tuple || arg.num_ops != 2 || Lit::isa(app->arg()->arity()) != 2) return false;
-        auto [a, b] = app->arg()->projs<2>();
-        return match(op(n, 0), app->callee()) && match(op(arg, 0), b) && match(op(arg, 1), a);
-    }
-
-    DefVec& metas() { return metas_; }
-
-private:
-    bool match(u32 i, const Def* def) {
-        auto& n = node(i);
-        switch (n.kind) {
-            case Kind::Hole: {
-                auto& m = metas_[n.val];
-                if (m) return m == def;
-                m = def;
-                return match(meta(r_, n.val).type, def->type());
-            }
-            case Kind::Axm: return def->isa<Axm>() && def->flags() == n.val;
-            case Kind::Lit: {
-                auto lit = def->isa<Lit>();
-                return lit && lit->get() == n.val && match(op(n, 0), lit->type());
-            }
-            case Kind::Nat: return def->isa<Nat>();
-            case Kind::Idx: return def->isa<Idx>();
-            case Kind::App: {
-                auto app = def->isa<App>();
-                return app && match(op(n, 0), app->callee()) && match(op(n, 1), app->arg());
-            }
-            case Kind::Extract: {
-                auto ex = def->isa<Extract>();
-                return ex && match(op(n, 0), ex->tuple()) && match(op(n, 1), ex->index());
-            }
-            case Kind::Pack: {
-                auto pack = def->isa_imm<Pack>();
-                return pack && match(op(n, 0), pack->arity()) && match(op(n, 1), pack->body());
-            }
-            case Kind::Arr: {
-                auto arr = def->isa_imm<Arr>();
-                return arr && match(op(n, 0), arr->arity()) && match(op(n, 1), arr->body());
-            }
-            case Kind::Sigma: {
-                auto sigma = def->isa_imm<Sigma>();
-                if (!sigma || sigma->num_ops() != n.num_ops) return false;
-                for (size_t j = 0; j != n.num_ops; ++j)
-                    if (!match(op(n, j), sigma->op(j))) return false;
-                return true;
-            }
-            case Kind::Tuple: {
-                // η: any term of the tuple's arity matches by its projections.
-                if (Lit::isa(def->arity()) != n.num_ops) return false;
-                for (size_t j = 0; j != n.num_ops; ++j)
-                    if (!match(op(n, j), def->proj(n.num_ops, j))) return false;
-                return true;
-            }
-        }
-        std::unreachable();
-    }
-
-    const rules::Rewrite& r_;
-    DefVec metas_;
-};
-
 } // namespace
 
 void ISel::append_gen(const Rule& rule, const Def* root, const Node& node, Alts& alts) {
@@ -615,62 +519,35 @@ void ISel::append_gen(const Rule& rule, const Def* root, const Node& node, Alts&
     auto swaps    = node.ptrn->commutes && rule.num_slots == 2 && rule.slots[0] != rule.slots[1];
     for (bool swap : {false, true}) {
         if (swap && !swaps) break;
-        auto matcher = Matcher(r);
-        if (!matcher.root(root, swap)) continue;
+        auto metas = DefVec(r.num_metas, [](size_t) { return nullptr; });
+        if (!r.match(root, swap, metas.data())) continue;
 
         auto alt = Alt();
         alt.rule = &rule;
         alt.cost = rule.cost;
         auto ok  = true;
         for (size_t i = 0; i != r.num_metas && ok; ++i) {
-            auto def = matcher.metas()[i];
+            auto def = metas[i];
             if (!def) ok = false;
-            if (auto w = meta(r, i).want; ok && w != rules::Want::Param) {
+            if (auto w = want_of(r, i); ok && w != rules::Want::Param) {
                 ok = !is_literal(want(w)) || literal(def, want(w));
                 alt.demands.emplace_back(Demand{def, want(w)});
             }
         }
         if (!ok || !holds(root, alt)) continue;
-        alt.metas  = std::move(matcher.metas());
+        alt.metas  = std::move(metas);
         generated_ = true;
         alts.emplace_back(std::move(alt));
     }
 }
 
 const Def* ISel::build_gen(const Def*, const Alt& alt) {
-    auto done = ankerl::unordered_dense::map<u32, const Def*>();
-    return gen(alt, alt.rule->gen->rhs, done);
-}
-
-const Def* ISel::gen(const Alt& alt, u32 i, ankerl::unordered_dense::map<u32, const Def*>& done) {
-    if (auto res = done.find(i); res != done.end()) return res->second;
-    auto& w  = new_world();
-    auto& n  = node(i);
-    auto sub = [&](size_t j) { return gen(alt, op(n, j), done); };
-    auto res = (const Def*)nullptr;
-    switch (n.kind) {
-        case Kind::Hole: {
-            auto def = alt.metas[n.val];
-            auto m   = meta(*alt.rule->gen, n.val).want;
-            res      = m == rules::Want::Param ? rewrite(def) : hole(def, want(m));
-            break;
-        }
-        case Kind::Axm: res = w.annex(n.val); break;
-        case Kind::Lit: res = w.lit(sub(0), n.val); break;
-        case Kind::Nat: res = w.type_nat(); break;
-        case Kind::Idx: res = w.type_idx(); break;
-        case Kind::App: res = w.app(sub(0), sub(1)); break;
-        case Kind::Extract: res = w.extract(sub(0), sub(1)); break;
-        case Kind::Pack: res = w.pack(sub(0), sub(1)); break;
-        case Kind::Arr: res = w.arr(sub(0), sub(1)); break;
-        case Kind::Tuple:
-        case Kind::Sigma: {
-            auto ops = DefVec(n.num_ops, [&](size_t j) { return sub(j); });
-            res      = n.kind == Kind::Tuple ? w.tuple(ops) : w.sigma(ops);
-            break;
-        }
-    }
-    return done[i] = res;
+    const auto& r = *alt.rule->gen;
+    auto holes    = DefVec(r.num_metas, [&](size_t i) {
+        auto w = want_of(r, i);
+        return w == rules::Want::Param ? rewrite(alt.metas[i]) : hole(alt.metas[i], want(w));
+    });
+    return r.build(new_world(), holes.data());
 }
 
 const Def* ISel::build_lea_off(const Def* root, const Alt& alt) {

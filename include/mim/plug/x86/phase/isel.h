@@ -264,8 +264,6 @@ private:
     void match(const Def* def, Alts& alts);
     /// Appends the matches of the generated @p rule rooted at @p root, which decomposes to @p node, to @p alts.
     void append_gen(const Rule& rule, const Def* root, const Node& node, Alts& alts);
-    /// The generated node @p n of the rhs of @p alt's rule in new_world().
-    const Def* gen(const Alt& alt, u32 n, ankerl::unordered_dense::map<u32, const Def*>& done);
     /// Appends the matches of @p rule rooted at @p root, which decomposes to @p node, to @p alts.
     void append(const Rule& rule, const Def* root, const Node& node, Alts& alts);
     /// Binds the slots of @p rule from @p i on to the pending operands in @p frames; complete matches go to @p alts.

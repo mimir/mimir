@@ -5,7 +5,7 @@
 /// [TOC]
 ///
 /// The instruction-selection rules of the `x86` backend.
-/// `gen` writes them as C++ tables that the `x86` plugin compiles in, so the compiler itself never loads this plugin.
+/// `gen` writes them as C++ that the `x86` plugin compiles in, so the compiler itself never loads this plugin.
 ///
 /// ## Dependencies
 ///
@@ -72,6 +72,6 @@ anx let alu = (
 ///
 /// ### gen
 ///
-/// Writes the closed rules of this plugin as C++ tables (mim::plug::x86::rules) to `-X x86_isel:o=<file>`, or to stdout.
+/// Writes the closed rules of this plugin as C++ matchers and builders (mim::plug::x86::rules) to `-X x86_isel:o=<file>`, or to stdout.
 ///
 axm gen: compile.Phase;

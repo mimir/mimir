@@ -4,7 +4,7 @@
 
 namespace mim::plug::x86_isel {
 
-/// Writes the closed rules among the annexes of this plugin as the C++ tables of mim::plug::x86::rules.
+/// Writes the closed rules among the annexes of this plugin as the C++ matchers and builders of mim::plug::x86::rules.
 class Gen : public Phase {
 public:
     Gen(World& world, flags_t annex)

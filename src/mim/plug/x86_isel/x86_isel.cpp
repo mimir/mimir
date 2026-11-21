@@ -10,7 +10,7 @@ static void reg_phases(Flags2Phases& phases) { Phase::hook<plug::x86_isel::gen, 
 
 // clang-format off
 static constexpr PluginArg known_args[] = {
-    {"o=<file>, output=<file>", "Writes the rule tables of `x86_isel.gen` to `<file>` instead of stdout."},
+    {"o=<file>, output=<file>", "Writes the C++ rules of `x86_isel.gen` to `<file>` instead of stdout."},
 };
 // clang-format on
 

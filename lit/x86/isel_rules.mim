@@ -5,29 +5,20 @@ plugin x86_isel;
 
 extern lam _compile (): compile.Phase = x86_isel.gen;
 
-// CHECK: inline constexpr Node nodes[] = {
-// CHECK: {Kind::Axm, 0, {{[0-9]+}}, {{0x[0-9a-f]+}}}, // core.wrap.add
-// CHECK: {Kind::Axm, 0, {{[0-9]+}}, {{0x[0-9a-f]+}}}, // x86.add
+// CHECK:      inline bool match_0(const Def* def, bool swap,
+// CHECK:          return false; // core.wrap.add
+// The operands of a commuting root may be swapped.
+// CHECK:          m[1] = {{d[0-9]+}}->proj(2, swap ? 1 : 0);
+// CHECK:      inline const Def* build_{{[0-9]+}}(World& w,
+// CHECK-NEXT:     auto b0 = w.annex({{0x[0-9a-f]+}}); // x86.add
 // The mode of `core.wrap.add` is a parameter, the operands are registers or, by the guard `imm`, an immediate.
-// CHECK:      inline constexpr Meta metas[] = {
-// CHECK-NEXT:     {Want::Param, 0},
-// CHECK-NEXT:     {Want::Reg, [[I8:[0-9]+]]},
-// CHECK-NEXT:     {Want::Reg, [[I8]]},
-// CHECK-NEXT:     {Want::Param, 0},
-// CHECK-NEXT:     {Want::Reg, {{[0-9]+}}},
-// CHECK-NEXT:     {Want::Reg, {{[0-9]+}}},
-// CHECK-NEXT:     {Want::Param, 0},
-// CHECK-NEXT:     {Want::Reg, {{[0-9]+}}},
-// CHECK-NEXT:     {Want::Reg, {{[0-9]+}}},
-// CHECK-NEXT:     {Want::Param, 0},
-// CHECK-NEXT:     {Want::Reg, {{[0-9]+}}},
-// CHECK-NEXT:     {Want::Reg, {{[0-9]+}}},
-// CHECK-NEXT:     {Want::Param, 0},
-// CHECK-NEXT:     {Want::Reg, [[I8]]},
-// CHECK-NEXT:     {Want::Imm, [[I8]]},
+// CHECK:      inline constexpr Want wants[] = {
+// CHECK-NEXT:     Want::Param, Want::Reg, Want::Reg, // add: I8 ↝ I8
+// CHECK:          Want::Param, Want::Reg, Want::Imm, // add_imm: I8 ↝ I8
+// `add` and `add_imm` share their matcher and builder.
 // CHECK:      inline constexpr Rewrite rewrites[] = {
-// CHECK-NEXT:     {"add", 1, [[ADD:[0-9]+]], [[X86ADD:[0-9]+]], 0, 3}, // I8 ↝ I8
-// CHECK:          {"add_imm", 1, [[ADD]], [[X86ADD]], {{[0-9]+}}, 3}, // I8 ↝ I8
+// CHECK-NEXT:     {"add", 1, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &match_[[M:[0-9]+]], &build_[[B:[0-9]+]], 0, 3}, // I8 ↝ I8
+// CHECK:          {"add_imm", 1, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &match_[[M]], &build_[[B]], {{[0-9]+}}, 3}, // I8 ↝ I8
 // `imul` has no 8-bit form.
 // CHECK-NOT:      {"mul", {{.*}} // I8 ↝ I8
 // CHECK:          {"mul", 1, {{.*}} // I16 ↝ I16

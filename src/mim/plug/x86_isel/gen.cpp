@@ -1,7 +1,10 @@
 #include "mim/plug/x86_isel/gen.h"
 
+#include <cctype>
+
 #include <map>
 #include <print>
+#include <set>
 
 #include <mim/driver.h>
 #include <mim/plugin.h>
@@ -16,20 +19,11 @@
 
 namespace mim::plug::x86_isel {
 
-using x86::rules::Kind;
 using x86::rules::Want;
 
 namespace {
 
-constexpr std::string_view name(Kind kind) {
-    switch (kind) {
-#define X(k) \
-    case Kind::k: return #k;
-        MIM_X86_RULE_KINDS(X)
-#undef X
-    }
-    std::unreachable();
-}
+enum class Kind : u8 { Hole, Axm, Lit, Nat, Idx, App, Tuple, Pack, Extract, Sigma, Arr };
 
 constexpr std::string_view name(Want want) {
     switch (want) {
@@ -99,8 +93,9 @@ private:
         std::string name;
         std::string type;
         size_t cost;
-        u32 lhs, rhs, metas;
-        size_t num_metas;
+        flags_t root, head;
+        u32 lhs, rhs;
+        std::vector<Meta> metas;
     };
 
     void add(const Rule*);
@@ -118,8 +113,8 @@ private:
     std::map<Node, u32> node2id_;
     std::vector<Node> nodes_;
     std::vector<std::string> comments_;
-    std::vector<Meta> metas_;
     std::vector<Rewrite> rewrites_;
+    friend class Code;
 };
 
 void Table::add(const Rule* rule) {
@@ -127,21 +122,21 @@ void Table::add(const Rule* rule) {
     if (!rule->is_closed()) rule->blame("x86_isel: rule `{}` is not closed", rule).bail();
     if (rule->guard() == rule->world().lit_ff()) return;
 
-    var_       = rule->has_var();
-    num_metas_ = var_ ? var_->num_projs() : 0;
-    auto metas = this->metas(rule);
-    auto first = u32(metas_.size());
-    for (auto meta : metas)
-        metas_.emplace_back(meta);
+    var_               = rule->has_var();
+    num_metas_         = var_ ? var_->num_projs() : 0;
+    auto [root, _, __] = Axm::get(rule->lhs());
+    if (!root) rule->blame("x86_isel: the lhs of `{}` must apply an axiom", rule).bail();
+    auto head = std::get<0>(Axm::get(rule->rhs()));
 
     auto done = DefSet();
-    rewrites_.emplace_back(Rewrite{.name      = rule->sym().str(),
-                                   .type      = std::format("{} ↝ {}", rule->dom(), rule->codom()),
-                                   .cost      = num_insns(rule->rhs(), done),
-                                   .lhs       = node(rule->lhs()),
-                                   .rhs       = node(rule->rhs()),
-                                   .metas     = first,
-                                   .num_metas = metas.size()});
+    rewrites_.emplace_back(Rewrite{.name  = rule->sym().str(),
+                                   .type  = std::format("{} ↝ {}", rule->dom(), rule->codom()),
+                                   .cost  = num_insns(rule->rhs(), done),
+                                   .root  = root->flags(),
+                                   .head  = head ? head->flags() : 0,
+                                   .lhs   = node(rule->lhs()),
+                                   .rhs   = node(rule->rhs()),
+                                   .metas = metas(rule)});
     var_ = nullptr;
 }
 
@@ -245,47 +240,213 @@ u32 Table::make(Node node, std::string comment) {
     return id;
 }
 
+/// Emits C++ that matches and builds the terms of the node pool of a Table.
+class Code {
+public:
+    Code(std::ostream& os, const Table& table)
+        : os_(os)
+        , t_(table) {}
+
+    void match(size_t id, u32 lhs, const std::vector<u32>& types);
+    void build(u32 rhs);
+
+private:
+    template<class... Args>
+    void line(std::format_string<Args...> fmt, Args&&... args) {
+        std::println(os_, "    {}", std::format(fmt, std::forward<Args>(args)...));
+    }
+
+    std::string fresh(char prefix) { return std::format("{}{}", prefix, next_++); }
+    const Table::Node& node(u32 n) const { return t_.nodes_[n]; }
+    const std::string& comment(u32 n) const { return t_.comments_[n]; }
+    /// Binds @p expr to a fresh variable, unless it is one.
+    std::string name(const std::string& expr);
+    void match(u32 n, const std::string& expr);
+    void match2(u32 n, const std::string& expr, std::string_view isa, std::string_view op0, std::string_view op1);
+    std::string build_(u32 n);
+
+    std::ostream& os_;
+    const Table& t_;
+    size_t next_ = 0;
+    std::vector<bool> bound_;
+    const std::vector<u32>* types_ = nullptr;
+    std::map<u32, std::string> built_;
+};
+
+void Code::match(size_t id, u32 lhs, const std::vector<u32>& types) {
+    next_  = 0;
+    types_ = &types;
+    bound_.assign(types.size(), false);
+    std::println(os_, "inline bool match_{}(const Def* def, bool swap, [[maybe_unused]] const Def** m) {{", id);
+
+    auto& n = node(lhs);
+    if (n.kind == Kind::App && node(n.ops[1]).kind == Kind::Tuple && node(n.ops[1]).ops.size() == 2) {
+        auto app = fresh('d');
+        line("auto {} = def->isa<App>();", app);
+        line("if (!{}) return false;", app);
+        match(n.ops[0], app + "->callee()");
+        auto arg = name(app + "->arg()");
+        line("if (Lit::isa({}->arity()) != 2) return false;", arg);
+        match(node(n.ops[1]).ops[0], std::format("{}->proj(2, swap ? 1 : 0)", arg));
+        match(node(n.ops[1]).ops[1], std::format("{}->proj(2, swap ? 0 : 1)", arg));
+    } else {
+        line("if (swap) return false;");
+        match(lhs, "def");
+    }
+    line("return true;");
+    std::println(os_, "}}");
+    std::println(os_);
+}
+
+std::string Code::name(const std::string& expr) {
+    if (std::ranges::all_of(expr, [](char c) { return std::isalnum(c) || c == '_'; })) return expr;
+    auto res = fresh('d');
+    line("auto {} = {};", res, expr);
+    return res;
+}
+
+void Code::match2(u32 n, const std::string& e, std::string_view isa, std::string_view op0, std::string_view op1) {
+    auto x = fresh('d');
+    line("auto {} = {}->{};", x, e, isa);
+    line("if (!{}) return false;", x);
+    match(node(n).ops[0], std::format("{}->{}()", x, op0));
+    match(node(n).ops[1], std::format("{}->{}()", x, op1));
+}
+
+void Code::match(u32 n, const std::string& e) {
+    const auto& x = node(n);
+    switch (x.kind) {
+        case Kind::Hole: {
+            auto i = x.val;
+            if (bound_[i]) {
+                line("if (m[{}] != {}) return false;", i, e);
+                return;
+            }
+            bound_[i] = true;
+            line("m[{}] = {};", i, e);
+            return match((*types_)[i], std::format("m[{}]->type()", i));
+        }
+        case Kind::Axm: {
+            auto d = name(e);
+            line("if (!{0}->isa<Axm>() || {0}->flags() != {1:#x}) return false; // {2}", d, x.val, comment(n));
+            return;
+        }
+        case Kind::Lit: {
+            auto lit = fresh('d');
+            line("auto {} = {}->isa<Lit>();", lit, e);
+            line("if (!{0} || {0}->get() != {1:#x}) return false;", lit, x.val);
+            return match(x.ops[0], lit + "->type()");
+        }
+        case Kind::Nat: line("if (!{}->isa<Nat>()) return false;", e); return;
+        case Kind::Idx: line("if (!{}->isa<Idx>()) return false;", e); return;
+        case Kind::App: return match2(n, e, "isa<App>()", "callee", "arg");
+        case Kind::Extract: return match2(n, e, "isa<Extract>()", "tuple", "index");
+        case Kind::Pack: return match2(n, e, "isa_imm<Pack>()", "arity", "body");
+        case Kind::Arr: return match2(n, e, "isa_imm<Arr>()", "arity", "body");
+        case Kind::Sigma: {
+            auto sigma = fresh('d');
+            line("auto {} = {}->isa_imm<Sigma>();", sigma, e);
+            line("if (!{0} || {0}->num_ops() != {1}) return false;", sigma, x.ops.size());
+            for (size_t j = 0; j != x.ops.size(); ++j)
+                match(x.ops[j], std::format("{}->op({})", sigma, j));
+            return;
+        }
+        case Kind::Tuple: {
+            // η: any term of the tuple's arity matches by its projections.
+            auto d = name(e);
+            line("if (Lit::isa({}->arity()) != {}) return false;", d, x.ops.size());
+            for (size_t j = 0; j != x.ops.size(); ++j)
+                match(x.ops[j], std::format("{}->proj({}, {})", d, x.ops.size(), j));
+            return;
+        }
+    }
+    std::unreachable();
+}
+
+void Code::build(u32 rhs) {
+    next_ = 0;
+    built_.clear();
+    std::println(os_, "inline const Def* build_{}(World& w, [[maybe_unused]] const Def* const* h) {{", rhs);
+    line("return {};", build_(rhs));
+    std::println(os_, "}}");
+    std::println(os_);
+}
+
+std::string Code::build_(u32 n) {
+    if (auto i = built_.find(n); i != built_.end()) return i->second;
+    const auto& x = node(n);
+    if (x.kind == Kind::Hole) return built_[n] = std::format("h[{}]", x.val);
+
+    auto ops = std::vector<std::string>();
+    for (auto op : x.ops)
+        ops.emplace_back(build_(op));
+    auto res = fresh('b');
+    switch (x.kind) {
+        case Kind::Axm: line("auto {} = w.annex({:#x}); // {}", res, x.val, comment(n)); break;
+        case Kind::Lit: line("auto {} = w.lit({}, {:#x});", res, ops[0], x.val); break;
+        case Kind::Nat: line("auto {} = w.type_nat();", res); break;
+        case Kind::Idx: line("auto {} = w.type_idx();", res); break;
+        case Kind::App: line("auto {} = w.app({}, {});", res, ops[0], ops[1]); break;
+        case Kind::Extract: line("auto {} = w.extract({}, {});", res, ops[0], ops[1]); break;
+        case Kind::Pack: line("auto {} = w.pack({}, {});", res, ops[0], ops[1]); break;
+        case Kind::Arr: line("auto {} = w.arr({}, {});", res, ops[0], ops[1]); break;
+        case Kind::Tuple: line("auto {} = w.tuple({{{}}});", res, fe::Join(ops, ", ")); break;
+        case Kind::Sigma: line("auto {} = w.sigma({{{}}});", res, fe::Join(ops, ", ")); break;
+        case Kind::Hole: std::unreachable();
+    }
+    return built_[n] = res;
+}
+
 void Table::dump(std::ostream& os) const {
     std::println(os, "// Generated by `x86_isel.gen`; do not edit.");
     std::println(os, "#pragma once");
+    std::println(os);
+    std::println(os, "#include <mim/world.h>");
     std::println(os);
     std::println(os, "#include \"mim/plug/x86/rule_table.h\"");
     std::println(os);
     std::println(os, "namespace mim::plug::x86::rules {{");
     std::println(os);
-    std::println(os, "// clang-format off");
 
-    auto ops = std::vector<u32>();
-    std::println(os, "inline constexpr Node nodes[] = {{");
-    for (size_t i = 0, e = nodes_.size(); i != e; ++i) {
-        const auto& n = nodes_[i];
-        std::print(os, "    /* {:4} */ {{Kind::{}, {}, {}, {:#x}}},", i, name(n.kind), n.ops.size(), ops.size(), n.val);
-        if (!comments_[i].empty()) std::print(os, " // {}", comments_[i]);
-        std::println(os);
-        ops.insert(ops.end(), n.ops.begin(), n.ops.end());
+    auto code     = Code(os, *this);
+    auto matchers = std::map<std::pair<u32, std::vector<u32>>, size_t>();
+    auto ids      = std::vector<size_t>();
+    for (const auto& r : rewrites_) {
+        auto types = std::vector<u32>();
+        for (auto m : r.metas)
+            types.emplace_back(m.type);
+        auto [i, fresh] = matchers.emplace(std::pair(r.lhs, types), matchers.size());
+        if (fresh) code.match(i->second, r.lhs, types);
+        ids.emplace_back(i->second);
     }
-    std::println(os, "}};");
-    std::println(os);
+    auto built = std::set<u32>();
+    for (const auto& r : rewrites_)
+        if (built.emplace(r.rhs).second) code.build(r.rhs);
 
+    std::println(os, "// clang-format off");
+    std::println(os, "inline constexpr Want wants[] = {{");
+    size_t num_wants = 0;
+    for (const auto& r : rewrites_) {
+        if (r.metas.empty()) continue;
+        std::print(os, "   ");
+        for (auto m : r.metas)
+            std::print(os, " Want::{},", name(m.want));
+        std::println(os, " // {}: {}", r.name, r.type);
+        num_wants += r.metas.size();
+    }
     // An empty array is ill-formed.
-    if (ops.empty()) ops.emplace_back(0);
-    std::println(os, "inline constexpr u32 ops[] = {{");
-    for (size_t i = 0; i < ops.size(); i += 16)
-        std::println(os, "    {},", fe::Join(std::span(ops).subspan(i, std::min<size_t>(16, ops.size() - i)), ", "));
-    std::println(os, "}};");
-    std::println(os);
-
-    std::println(os, "inline constexpr Meta metas[] = {{");
-    for (auto [want, type] : metas_)
-        std::println(os, "    {{Want::{}, {}}},", name(want), type);
-    if (metas_.empty()) std::println(os, "    {{Want::Param, 0}},");
+    if (num_wants == 0) std::println(os, "    Want::Param,");
     std::println(os, "}};");
     std::println(os);
 
     std::println(os, "inline constexpr Rewrite rewrites[] = {{");
-    for (const auto& r : rewrites_)
-        std::println(os, "    {{\"{}\", {}, {}, {}, {}, {}}}, // {}", r.name, r.cost, r.lhs, r.rhs, r.metas,
-                     r.num_metas, r.type);
+    size_t first = 0;
+    for (size_t i = 0, e = rewrites_.size(); i != e; ++i) {
+        const auto& r = rewrites_[i];
+        std::println(os, "    {{\"{}\", {}, {:#x}, {:#x}, &match_{}, &build_{}, {}, {}}}, // {}", r.name, r.cost,
+                     r.root, r.head, ids[i], r.rhs, first, r.metas.size(), r.type);
+        first += r.metas.size();
+    }
     std::println(os, "}};");
     std::println(os, "// clang-format on");
     std::println(os);
