@@ -229,11 +229,19 @@ void Path::bind(Scopes& s, bool quiet) const {
 // clang-format off
 void PathExpr   ::bind(Scopes& s) const { path()->bind(s); }
 void TypeExpr   ::bind(Scopes& s) const { level()->bind(s); }
-void RuleExpr   ::bind(Scopes& s) const { dom()->bind(s); }
 void ErrorExpr  ::bind(Scopes&) const {}
 void HoleExpr   ::bind(Scopes&) const {}
 void PrimaryExpr::bind(Scopes&) const {}
 // clang-format on
+
+void RuleExpr::bind(Scopes& s) const {
+    s.push();
+    if (meta()) meta()->bind(s, true, false);
+    lhs()->bind(s);
+    guard()->bind(s);
+    rhs()->bind(s);
+    s.pop();
+}
 
 void LitExpr::bind(Scopes& s) const {
     if (type()) {
@@ -640,16 +648,6 @@ void UseDecl::bind(Scopes& s) const {
             if (auto use = prev->isa<UseDecl>(); use && use->file() == file()) return;
 
     scope_ = mod;
-    s.bind(dbg(), this);
-}
-
-void RuleDecl::bind(Scopes& s) const {
-    s.push();
-    var()->bind(s, true, false);
-    lhs()->bind(s);
-    rhs()->bind(s);
-    guard()->bind(s);
-    s.pop();
     s.bind(dbg(), this);
 }
 

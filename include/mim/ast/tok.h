@@ -31,6 +31,7 @@ namespace ast {
     m(Inj,     R)       \
     m(Arrow,   R)       \
     m(Pi,      N)       \
+    m(Fire,    R)       \
     m(Eq,      N)       \
     m(Rel,     N)       \
     m(Add,     L)       \
@@ -117,8 +118,8 @@ constexpr bool should_reduce(Prec curr, Prec op) { return is_rassoc(op) ? curr >
     m(K_pub,    "pub"   )             \
     m(K_rec,    "rec"   )             \
     m(K_ret,    "ret"   )             \
+    m(K_rl,     "rl"    )             \
     m(K_rule,   "rule"  )             \
-    m(K_Rule,   "Rule"  )             \
     m(K_tt,     "tt"    )             \
     m(K_use,    "use"   )             \
     m(K_when,   "when"  )             \
@@ -155,6 +156,8 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_add,        "+")               \
     m(T_arrow_r,      "→")               \
     m(T_fat_arrow, "=>")               \
+    m(T_fire,       "▷")               \
+    m(T_leadsto,    "↝")               \
     m(T_assign,     "=")               \
     m(T_at,         "@")               \
     m(T_bot,        "⊥")               \
@@ -218,6 +221,8 @@ constexpr auto Num_Keys = size_t(0) MIM_KEY(CODE);
     m(T_extract,  "#",   Extract) \
     m(K_inj,      "inj", Inj    ) \
     m(T_arrow_r,  "→",   Arrow  ) \
+    m(T_leadsto,  "↝",   Arrow  ) \
+    m(T_fire,     "▷",   Fire   ) \
     m(T_arrow_l,  "←",   Ins    ) \
     m(T_at,       "@",   App    )
 

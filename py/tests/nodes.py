@@ -4,7 +4,7 @@ Constructs one instance of every core node reachable from a bare `World` and
 invokes a method or two, so a broken or missing binding surfaces immediately.
 
 Deliberately not exercised: nodes that need rewrite/lattice/plugin state beyond
-a smoke test (`Axm`, `Proxy`, `Match`, `Reform`, `Rule`, `LMax`,
+a smoke test (`Axm`, `Proxy`, `Match`, `Rule`, `Fire`, `LMax`,
 `LSucc`), and the abstract bases reached only via their subclasses (`Def`, `Prod`, `Seq`,
 `Ext`).
 """
@@ -29,6 +29,7 @@ def _every_node(w) -> list[tuple[mim.Def, type]]:
         (i8v, mim.Lit),
         (b, mim.App),
         (w.cn([b, i8]), mim.Pi),
+        (w.rho(i8, i8), mim.Rho),
         (lam, mim.Lam),
         (var, mim.Var),
         (w.sigma([b, i8]), mim.Sigma),

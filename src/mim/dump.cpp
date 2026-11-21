@@ -29,6 +29,7 @@ bool is_anx_nom(const Def* def) { return def->isa<Nom>() && def->sym().view().co
 Def* isa_decl(const Def* def) {
     if (auto mut = def->isa_mut()) {
         if (mut->isa<Hole>()) return nullptr; // a Hole stands for what it was set to, or for `?`
+        if (mut->isa<Rule>()) return nullptr; // always spelled out as an `rl` expression
         if (mut->is_external() || mut->isa<Lam>() || (mut->sym() && mut->sym() != '_')) return mut;
     }
     return nullptr;
@@ -210,7 +211,10 @@ Prec def2prec(Ctx* ctx, const Def* def) {
     if (def->isa<Name>()) return Prec::Inj;
     if (def->isa<Struc>()) return Prec::Prefix;
     if (def->isa<Variant>()) return Prec::Lit; // always parenthesized
-    if (isa_inst(ctx, def) || def->isa<Reform>()) return Prec::App;
+    if (isa_inst(ctx, def)) return Prec::App;
+    if (def->isa<Rho>()) return Prec::Arrow;
+    if (def->isa<Fire>()) return Prec::Fire;
+    if (def->isa<Rule>()) return Prec::Bot; // a rule expression swallows what follows it
     // `Cn e` parses its domain at Prec::Bot, so it swallows whatever follows and only ever fits a closed context.
     if (auto pi = def->isa<Pi>()) return Pi::isa_cn(pi) ? Prec::Bot : Prec::Arrow;
     if (def->isa<Lam>() || def->isa<Match>())
@@ -544,6 +548,18 @@ std::ostream& operator<<(std::ostream& os, Op op) {
     return os << id(op.ctx(), *op);
 }
 
+/// ` (meta): lhs when guard => rhs`
+void rule_body(std::ostream& os, Ctx* ctx, const Rule* rule) {
+    auto meta = rule->meta();
+    auto num  = num_binders(meta);
+    auto var  = rule->has_var();
+    os << ' ';
+    curry(os, ctx, var, meta, false, num, num, num != 0 && split(ctx, var, meta, num), true);
+    std::print(os, ": {}", Op(ctx, rule->lhs()));
+    if (rule->guard() != rule->world().lit_tt()) std::print(os, " when {}", Op(ctx, rule->guard()));
+    std::print(os, " => {}", Op(ctx, rule->rhs()));
+}
+
 /// A block's tail has no `let`, so it is spelled out unless it has a declaration of its own.
 std::string tail(Ctx* ctx, const Def* def) {
     return has_decl(ctx, def) ? std::format("{}", Op(ctx, def)) : std::format("{}", Full(ctx, def));
@@ -573,8 +589,15 @@ void full(std::ostream& os, Full d) {
             if (level == 1) return std::print(os, "□");
         }
         return std::print(os, "Type {}", d.r(type->level(), Prec::App));
-    } else if (auto reform = d->isa<Reform>()) {
-        return std::print(os, "Rule {}", d.r(reform->dom(), Prec::App));
+    } else if (auto rho = d->isa<Rho>()) {
+        return std::print(os, "{} {} {}", d.l(rho->dom(), Prec::Arrow), ascii ? "~>" : "↝",
+                          d.r(rho->codom(), Prec::Arrow));
+    } else if (auto rule = d->isa<Rule>()) {
+        os << "rl";
+        return rule_body(os, d.ctx(), rule);
+    } else if (auto fire = d->isa<Fire>()) {
+        return std::print(os, "{} {} {}", d.l(fire->callee(), Prec::Fire), ascii ? "|>" : "▷",
+                          d.r(fire->arg(), Prec::Fire));
     } else if (d->isa<Level>()) {
         return std::print(os, "Level");
     } else if (d->isa<Nat>()) {
@@ -1122,6 +1145,11 @@ private:
     }
 
     void schedule_deps(const Def* def) {
+        if (def->isa<Rule>()) {
+            // A rule expression has no block for its parts, so whatever depends on its meta variables is inlined.
+            printed_deps(def, [&](const Def* op) { schedule_inline(op, ctx_.inlined); });
+            return;
+        }
         pending_.emplace(def);
         printed_deps(def, [&](const Def* op) { schedule_(op); });
         pending_.erase(def);
@@ -1158,7 +1186,7 @@ private:
     }
 
     bool groupable(Def* mut) const {
-        if (!isa_decl(mut) || ctx_.arms.contains(mut) || mut->isa<Rule>() || !mut->is_set()) return false;
+        if (!isa_decl(mut) || ctx_.arms.contains(mut) || !mut->is_set()) return false;
         if (auto lam = mut->isa_mut<Lam>()) return curry_chain(lam).back()->is_set();
         return true;
     }
@@ -1166,11 +1194,7 @@ private:
     void schedule_body(Def* mut) {
         auto chain = mut->isa_mut<Lam>() ? curry_chain(mut->as_mut<Lam>()) : fe::Vector<Lam*>();
 
-        if (auto rule = mut->isa_mut<Rule>()) {
-            // The surface syntax has no block for a rule's parts, so whatever depends on its meta variable is inlined.
-            printed_deps(rule->type(), [&](const Def* op) { schedule_inline(op, ctx_.inlined); });
-            printed_deps(rule, [&](const Def* op) { schedule_inline(op, ctx_.inlined); });
-        } else if (chain.empty()) {
+        if (chain.empty()) {
             for (auto op : mut->deps())
                 schedule_(op);
         } else {
@@ -1369,7 +1393,6 @@ private:
 
     void emit_decl(Def* mut) {
         if (auto lam = mut->isa_mut<Lam>()) return emit_lam(lam);
-        if (auto rule = mut->isa_mut<Rule>(); rule && rule->is_set()) return emit_rule(rule);
         if (!mut->is_set()) return emit_unset(mut);
         // `rec` binds the name for the body - which only a self-referential mutable needs; `extern` is out either way.
         auto kw = is_recursive(mut) ? "rec " : "let ";
@@ -1377,17 +1400,6 @@ private:
         if (auto variant = mut->isa<Variant>())
             return std::println(os_, "{}{}{} = {};", ctx_.tab, kw, id(&ctx_, mut), ctors(&ctx_, variant));
         std::println(os_, "{}{}{} = {};", ctx_.tab, kw, id(&ctx_, mut), Full(&ctx_, mut));
-    }
-
-    void emit_rule(Rule* rule) {
-        auto dom = rule->dom();
-        auto num = num_binders(dom);
-        std::print(os_, "{}rule {} ", ctx_.tab, id(&ctx_, rule));
-        auto var = rule->has_var();
-        curry(os_, &ctx_, var, dom, false, num, num, num != 0 && split(&ctx_, var, dom, num), false);
-        std::print(os_, ": {}", Full(&ctx_, rule->lhs()));
-        if (rule->guard() != rule->world().lit_tt()) std::print(os_, " when {}", Full(&ctx_, rule->guard()));
-        std::println(os_, " => {};", Full(&ctx_, rule->rhs()));
     }
 
     /// Nothing declares a mutable that was never set, so leave a trace instead of an unreadable dump.
@@ -1423,13 +1435,21 @@ private:
             ctx_.names.emplace(chain[i], std::format("({})", ref));
         }
 
+        // `rule I (dom)+ (meta): r` is sugar for `anx lam I (dom)+ = rl (meta): r`.
+        if (auto rule = last->body()->isa<Rule>(); rule && !fun && !con && !lam->is_external()) {
+            std::print(os_, "{}rule {}", ctx_.tab, id(&ctx_, lam));
+            {
+                auto _ = fe::Restore(ctx_.in_header, true);
+                doms(chain, false, false);
+            }
+            rule_body(os_, &ctx_, rule);
+            return std::println(os_, ";");
+        }
+
         std::print(os_, "{}{}{} {}", ctx_.tab, external(lam), fun ? "fun" : con ? "con" : "lam", id(&ctx_, lam));
         {
             auto _ = fe::Restore(ctx_.in_header, true);
-            for (auto* c : chain) {
-                os_ << ' ';
-                lam_ptrn(os_, &ctx_, c, fun, con, c == last, !fun || c != last);
-            }
+            doms(chain, fun, con);
             lam_codom(os_, &ctx_, last, fun, con);
         }
         os_ << " =\n";
@@ -1442,6 +1462,13 @@ private:
         emit_tail(last->body(), ";");
         rets_.pop_back();
         --ctx_.tab;
+    }
+
+    void doms(const fe::Vector<Lam*>& chain, bool fun, bool con) {
+        for (auto* c : chain) {
+            os_ << ' ';
+            lam_ptrn(os_, &ctx_, c, fun, con, c == chain.back(), !fun || c != chain.back());
+        }
     }
 
     /// A Lam without a body only ever declares what some backend provides: `extern con f [mem.M 0, I32];`.
