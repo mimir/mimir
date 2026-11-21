@@ -45,10 +45,9 @@ enum class Ref : u8 {
     Mem,   ///< By its memory, which only the match uses.
 };
 
-/// A ref of a matcher: its cover and its owner, the node it is an operand of (0 for the root, `k + 1` for cover `k`).
+/// A ref of a matcher: its cover and how the lhs refers to it.
 struct RefInfo {
     u8 cover;
-    u8 owner;
     Ref kind;
 };
 

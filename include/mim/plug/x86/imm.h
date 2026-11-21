@@ -20,4 +20,7 @@ inline bool fits_imm(std::optional<nat_t> size, nat_t val) {
     return (size && reg_width(*size) < 64) || fits_i32(s64(val));
 }
 
+/// Does the literal @p lit fit a sign-extended 32-bit immediate?
+inline bool fits_imm(const Def* lit) { return fits_imm(Idx::isa_lit(lit->type()), *Lit::isa(lit)); }
+
 } // namespace mim::plug::x86

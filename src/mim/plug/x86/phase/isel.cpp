@@ -3,6 +3,7 @@
 #include <array>
 #include <optional>
 #include <print>
+#include <ranges>
 
 #include <pbqp/dot.h>
 #include <pbqp/solver.h>
@@ -26,16 +27,13 @@ namespace mem  = mim::plug::mem;
 namespace {
 
 /// @p def without the casts between pointer types around it, which `mem.legalize_ptr` inserts and which are no-ops.
-const Def* strip(const Def* def) {
+const Def* strip_ptr_cast(const Def* def) {
     while (auto cast = Axm::isa<core::bitcast>(def)) {
         if (!Axm::isa<core::Ptr>(def->type()) || !Axm::isa<core::Ptr>(cast->arg()->type())) break;
         def = cast->arg();
     }
     return def;
 }
-
-/// Does the old_world() or new_world() literal @p lit fit a sign-extended 32-bit immediate?
-bool fits_imm(const Def* lit) { return x86::fits_imm(Idx::isa_lit(lit->type()), *Lit::isa(lit)); }
 
 bool is_lowered_plugin(const Axm* axm) {
     auto p = axm->plugin();
@@ -55,13 +53,8 @@ Lam* chain(const Def* m) {
         if (auto var = m->isa<Var>()) return var->binder()->isa<Lam>();
         auto app = m->isa<App>();
         if (!app) return nullptr;
-        auto arg  = app->arg();
-        auto n    = arg->num_projs();
-        auto next = (const Def*)nullptr;
-        for (size_t i = 0; i != n && !next; ++i)
-            if (auto a = arg->proj(n, i); Axm::isa<core::M>(a->type())) next = a;
-        if (!next) return nullptr;
-        m = next;
+        m = core::mem_def(app->arg());
+        if (!m) return nullptr;
     }
 }
 
@@ -74,12 +67,12 @@ bool depends(const Def* def, const Def* target, DefSet& done) {
     return false;
 }
 
-/// The root axioms of the rules of `x86_isel`.
+/// The rules of `x86_isel` by their root axiom.
 const auto& gen_roots() {
     static const auto roots = [] {
-        auto res = ankerl::unordered_dense::set<flags_t>();
+        auto res = ankerl::unordered_dense::map<flags_t, std::vector<const rules::Rewrite*>>();
         for (const auto& r : rules::rewrites)
-            res.emplace(r.root);
+            res[r.root].emplace_back(&r);
         return res;
     }();
     return roots;
@@ -87,7 +80,7 @@ const auto& gen_roots() {
 
 /// The root of the rules covering @p def: its axiom, or `0` for an Extract at a dynamic index.
 std::optional<flags_t> root_of(const Def* def) {
-    if (strip(def) != def) return {};
+    if (strip_ptr_cast(def) != def) return {};
     if (auto ex = def->isa<Extract>()) return Lit::isa(ex->index()) ? std::nullopt : std::optional<flags_t>(0);
     auto [axm, curry, _] = Axm::get(def);
     if (!axm || curry) return {};
@@ -186,9 +179,21 @@ bool atomic(const rules::Rewrite& r) {
 }
 
 #ifdef MIM_ENABLE_CHECKS
-bool has_atomic(flags_t root) {
-    auto is = [root](const rules::Rewrite& r) { return r.root == root && atomic(r); };
-    return std::ranges::any_of(rules::rewrites, is);
+/// Verifies atomic completeness, total conversions, and inner-node coverage over the rule set.
+void check_rules() {
+    for (const auto& r : rules::rewrites) {
+        if (conv(r.type, Want::Reg).is_inf())
+            fe::throwf("x86 isel: rule `{}` yields a value that does not convert to a register", r.name);
+        for (size_t i = 0; i != r.num_metas; ++i) {
+            auto w = want_of(r, i);
+            if (is_param(w) || is_literal(w)) continue; // no rule type fills it
+            auto fills = [w](size_t t) { return Ty(t) != Ty::Lit && !conv(Ty(t), w).is_inf(); };
+            if (!std::ranges::any_of(std::views::iota(0uz, Num_Tys), fills))
+                fe::throwf("x86 isel: no rule type converts to a hole of `{}`", r.name);
+        }
+        if (!std::ranges::any_of(gen_roots().at(r.root), [](auto a) { return atomic(*a); }))
+            fe::throwf("x86 isel: no atomic rule shares the root of `{}`", r.name);
+    }
 }
 #endif
 
@@ -205,14 +210,13 @@ void ISel::append(const rules::Rewrite& rule, const Def* root, Alts& alts) {
 
 void ISel::append(const rules::Rewrite& r, const Def* root, u32 swap, Alts& alts) {
     const auto& m = *r.match;
-    auto metas    = DefVec(r.num_metas, [](size_t) { return nullptr; });
-    auto refs     = DefVec(m.num_refs, [](size_t) { return nullptr; });
+    auto metas    = DefVec(r.num_metas);
+    auto refs     = DefVec(m.num_refs);
     if (!m.fn(root, swap, metas.data(), refs.data())) return;
 
     auto alt = Alt();
     alt.rule = &r;
-    alt.cost = pbqp::Cost(r.cost);
-    alt.covers.resize(m.num_covers, Cover{nullptr, 0, {}, false});
+    alt.covers.resize(m.num_covers);
     for (size_t j = 0; j != m.num_refs; ++j) {
         auto info                  = rules::all_refs[m.refs + j];
         auto ex                    = refs[j]->isa<Extract>();
@@ -222,7 +226,7 @@ void ISel::append(const rules::Rewrite& r, const Def* root, u32 swap, Alts& alts
     }
 
     // A pure inner node that something else uses is looked through: the match takes its operands but not the node.
-    auto parent = std::vector<u8>(m.num_covers, 0);
+    auto parent = fe::Vector<u8>(m.num_covers);
     auto owner  = [&](u8 o) {
         while (o != 0 && alt.covers[o - 1].through)
             o = parent[o - 1];
@@ -273,8 +277,8 @@ const Def* ISel::build(const Alt& alt) {
 void ISel::match(const Def* def, Alts& alts) {
     auto r = root_of(def);
     if (!r) return;
-    for (const auto& rule : rules::rewrites)
-        if (rule.root == *r) append(rule, def, alts);
+    for (auto rule : gen_roots().at(*r))
+        append(*rule, def, alts);
 }
 
 const App* ISel::sole(const Def* parent, const Def* def) const {
@@ -291,10 +295,10 @@ bool ISel::holds(const Alt& alt) {
     auto ld = alt.covers[alt.rule->maps - 1].def->as<App>();
     auto bb = chain(ld->arg(2, 0));
     if (!bb) return false;
-    for (const auto& d : alt.demands) {
-        auto done = DefSet();
+    // `done` is shared, since a Def that does not reach `ld` never will.
+    auto done = DefSet();
+    for (const auto& d : alt.demands)
         if (!d.inner && (!d.def->in_scope(bb) || depends(d.def, ld, done))) return false;
-    }
     return true;
 }
 
@@ -351,7 +355,7 @@ bool ISel::analyze() {
     for (auto def : nodes) {
         auto costs = pbqp::Costs();
         for (const auto& alt : alts_[def]) {
-            auto c = alt.cost;
+            auto c = alt.rule ? pbqp::Cost(alt.rule->cost) : pbqp::Cost(0);
             for (const auto& d : alt.demands)
                 if (!alts_.contains(key(d.def))) c += d.inner ? pbqp::Cost::inf() : leaf(d.def, d.want);
             costs.emplace_back(c);
@@ -361,18 +365,22 @@ bool ISel::analyze() {
 
     for (auto def : nodes) {
         const auto& alts = alts_[def];
+        auto keys        = fe::Vector<DefVec>(alts.size());
         auto operands    = DefVec();
-        for (const auto& alt : alts)
-            for (const auto& d : alt.demands)
-                if (auto op = key(d.def); alts_.contains(op) && std::ranges::find(operands, op) == operands.end())
-                    operands.emplace_back(op);
+        auto seen        = DefSet();
+        for (size_t i = 0; i != alts.size(); ++i)
+            for (const auto& d : alts[i].demands) {
+                auto op = keys[i].emplace_back(key(d.def));
+                if (alts_.contains(op) && seen.emplace(op).second) operands.emplace_back(op);
+            }
         for (auto op : operands) {
             const auto& op_alts = alts_[op];
             auto costs          = pbqp::Matrix(alts.size(), op_alts.size(), [&](size_t i, size_t j) {
                 const auto& o = op_alts[j];
                 auto c        = pbqp::Cost(0);
-                for (const auto& d : alts[i].demands) {
-                    if (key(d.def) != op) continue;
+                for (size_t k = 0; k != alts[i].demands.size(); ++k) {
+                    if (keys[i][k] != op) continue;
+                    const auto& d = alts[i].demands[k];
                     if (d.inner)
                         c += !o.rule && j + 1 == d.inner ? 0 : pbqp::Cost::inf();
                     else
@@ -417,26 +425,6 @@ bool ISel::analyze() {
     return false;
 }
 
-#ifdef MIM_ENABLE_CHECKS
-void ISel::check_rules() const {
-    for (const auto& r : rules::rewrites) {
-        if (conv(r.type, Want::Reg).is_inf())
-            fe::throwf("x86 isel: rule `{}` yields a value that does not convert to a register", r.name);
-        for (size_t i = 0; i != r.num_metas; ++i) {
-            auto w = want_of(r, i);
-            if (is_param(w) || is_literal(w)) continue; // no rule type fills it
-            bool ok = false;
-            for (size_t t = 0; t != Num_Tys; ++t)
-                if (Ty(t) != Ty::Lit && !conv(Ty(t), w).is_inf()) ok = true;
-            if (!ok) fe::throwf("x86 isel: no rule type converts to a hole of `{}`", r.name);
-        }
-    }
-
-    for (const auto& r : rules::rewrites)
-        if (!has_atomic(r.root)) fe::throwf("x86 isel: no atomic rule shares the root of `{}`", r.name);
-}
-#endif
-
 void ISel::count(const Def* def) {
     if (!counted_.emplace(def).second) return;
     for (auto op : def->ops()) {
@@ -454,7 +442,7 @@ const App* ISel::sole_value(const Def* def) const {
 }
 
 const Def* ISel::key(const Def* def) const {
-    def = strip(def);
+    def = strip_ptr_cast(def);
     if (auto ex = def->isa<Extract>(); ex && Lit::isa(ex->index()) == 1)
         if (auto app = ex->tuple()->isa<App>(); app && root_of(app) && mem_valued(app)) return app;
     return def;
@@ -487,7 +475,7 @@ const Def* ISel::selected(const Def* def) {
 }
 
 const Def* ISel::hole(const Def* def, Want want) {
-    auto stripped = strip(def);
+    auto stripped = strip_ptr_cast(def);
     if (auto alt = choice(stripped); alt && alt->rule) return convert(select(stripped), alt->rule->type, want);
     return convert(val(def), Ty::Reg, want);
 }
@@ -506,9 +494,14 @@ const Def* ISel::convert(const Def* x, Ty from, Want want) {
     return x;
 }
 
+const Def* ISel::nat_as_i64(const Def* x) {
+    if (auto l = Lit::isa(x); l && x->type()->isa<Nat>()) return new_world().lit_i64(*l);
+    return nullptr;
+}
+
 const Def* ISel::val(const Def* def) {
     auto res = rewrite(def);
-    if (auto l = Lit::isa(res); l && res->type()->isa<Nat>()) return new_world().lit_i64(*l);
+    if (auto i = nat_as_i64(res)) return i;
     return res;
 }
 
@@ -518,9 +511,7 @@ const Def* ISel::rewrite_imm_Lit(const Lit* lit) {
 }
 
 const Def* ISel::coerce_leaf(const Def* type, const Def* val) {
-    if (auto l = Lit::isa(val); l && val->type()->isa<Nat>() && type == new_world().type_i64())
-        return new_world().lit_i64(*l);
-    return nullptr;
+    return type == new_world().type_i64() ? nat_as_i64(val) : nullptr;
 }
 
 const Def* ISel::rewrite_imm_Extract(const Extract* ex) {
@@ -533,7 +524,7 @@ const Def* ISel::rewrite_imm_App(const App* app) {
     if (Axm::isa<core::Ptr>(app)) return w.type_i64();
     if (Axm::isa<core::M>(app)) return w.call<core::M>(w.lit_nat_0());
     if (auto res = selected(app)) return res;
-    if (auto ptr = strip(app); ptr != app) return rewrite(ptr);
+    if (auto ptr = strip_ptr_cast(app); ptr != app) return rewrite(ptr);
     // Loop hints for LLVM.
     if (Axm::isa<ll::vec>(app) || Axm::isa<ll::novec>(app)) return rewrite(app->arg());
 

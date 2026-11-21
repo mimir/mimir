@@ -55,7 +55,7 @@ Want classify(const Def* type) {
         return !i ? Want::Addr : *i ? Want::Index : Want::Base;
     }
     auto& w = type->world();
-    if (type == w.sigma({w.type_i64(), w.type_idx(4)})) return Want::Scaled;
+    if (type == w.sigma({w.type_i64(), w.type_i2()})) return Want::Scaled;
     return Want::Reg;
 }
 
@@ -230,7 +230,7 @@ void Table::add(const Rule* rule) {
         return;
     }
     // `(m, e)`: the memory `m` of an inner node of `e` becomes that of the rhs.
-    if (auto t = lhs->isa<Tuple>(); t && t->num_ops() == 2 && Axm::isa<core::M>(t->op(0)->type())) {
+    if (auto t = lhs->isa<Tuple>(); t && t->num_ops() == 2 && core::isa_mem(t->op(0))) {
         mapped = node(t->op(0));
         lhs    = t->op(1);
     }
@@ -361,7 +361,7 @@ u32 Table::node_(const Def* def) {
         return make({Kind::App, flags, {node(app->callee()), arg}});
     }
     if (auto ex = def->isa<Extract>()) {
-        auto flags = Axm::isa<core::M>(ex->type()) ? Mem : 0;
+        auto flags = core::isa_mem(ex) ? Mem : 0;
         return make({Kind::Extract, flags, {node(ex->tuple()), node(ex->index())}});
     }
     if (auto pack = def->isa_imm<Pack>()) return make({Kind::Pack, 0, {node(pack->arity()), node(pack->body())}});
@@ -392,9 +392,16 @@ u32 Table::make(Node node, std::string comment) {
 class Code {
 public:
     /// The shape of an lhs that a matcher records; covers are in walk order until `finish` puts them into preorder.
+    /// A ref with its owner, the node it is an operand of (0 for the root, `k + 1` for cover `k`).
+    struct RefInfo {
+        u8 cover;
+        u8 owner;
+        Ref kind;
+    };
+
     struct Shape {
         std::vector<u32> covers;
-        std::vector<x86::rules::RefInfo> refs;
+        std::vector<RefInfo> refs;
         std::vector<x86::rules::Use> uses;
         std::vector<std::pair<u32, u32>> swaps; ///< The operands of each commuting node.
     };
@@ -506,7 +513,7 @@ void Code::ref(u32 n, const std::string& e, Ref kind) {
     auto k = std::ranges::find(shape_.covers, n) - shape_.covers.begin();
     if (size_t(k) == shape_.covers.size()) shape_.covers.emplace_back(n);
     auto j = shape_.refs.size();
-    shape_.refs.emplace_back(x86::rules::RefInfo{u8(k), owner_, kind});
+    shape_.refs.emplace_back(RefInfo{u8(k), owner_, kind});
     if (kind == Ref::Value) shape_.uses.emplace_back(x86::rules::Use{owner_, u8(j), true});
     line("r[{}] = {};", j, e);
 }
@@ -718,10 +725,10 @@ void Table::dump(std::ostream& os) const {
     std::println(os, "}};");
     std::println(os);
     std::println(os, "inline constexpr RefInfo all_refs[] = {{");
-    std::println(os, "    {{0, 0, Ref::Value}},");
+    std::println(os, "    {{0, Ref::Value}},");
     for (const auto& s : shapes)
         for (auto r : s.refs)
-            std::println(os, "    {{{}, {}, Ref::{}}},", r.cover, r.owner, refs[size_t(r.kind)]);
+            std::println(os, "    {{{}, Ref::{}}},", r.cover, refs[size_t(r.kind)]);
     std::println(os, "}};");
     std::println(os);
     std::println(os, "inline constexpr Matcher matchers[] = {{");

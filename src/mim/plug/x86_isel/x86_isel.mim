@@ -28,7 +28,7 @@ axm imm: {s: Nat} → Idx s → Bool, normalize_imm;
 ///
 /// A literal shift count; x86 masks it, so any literal fits.
 ///
-axm sh: {s: Nat} → Idx s → Bool, normalize_sh;
+axm sh: {s: Nat} → Idx s → Bool, normalize_lit;
 ///
 /// ### lit
 ///

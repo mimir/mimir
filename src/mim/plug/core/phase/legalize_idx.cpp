@@ -53,11 +53,14 @@ const Def* sub(World& w, nat_t s, const Def* a, const Def* b) {
 /// The product of the widened `Idx s` values @p a and @p b.
 const Def* mul(World& w, nat_t s, const Def* a, const Def* b) { return w.call<mulrem>(w.lit_nat(s), Defs{a, b}); }
 
+flags_t base_of(const App* app) {
+    auto axm = app->axm();
+    return axm ? axm->base() : 0;
+}
+
 /// Does the op @p app keep values of `Idx s` in range, so that it computes the same on the widened `Idx s`?
 bool in_range(const App* app) {
-    auto axm = std::get<0>(Axm::get(app));
-    if (!axm) return false;
-    auto base = axm->base();
+    auto base = base_of(app);
     return base == Annex::base<wrap>() || base == Annex::base<icmp>() || base == Annex::base<shr>()
         || base == Annex::base<extrema>() || base == Annex::base<div>() || base == Annex::base<conv>()
         || base == Annex::base<idx2nat>();
@@ -80,9 +83,7 @@ bool has_dyn_size(const Def* implicit) {
 /// state?
 bool sized(const App* app) {
     if (in_range(app)) return true;
-    auto axm = std::get<0>(Axm::get(app));
-    if (!axm) return false;
-    auto base = axm->base();
+    auto base = base_of(app);
     return base == Annex::base<bit1>() || base == Annex::base<bit2>() || base == Annex::base<abs>();
 }
 
@@ -104,6 +105,7 @@ LegalizeIdx::LegalizeIdx(World& world, flags_t annex)
 
 std::optional<nat_t> LegalizeIdx::odd(const Def* type) const { return dyn_ ? std::nullopt : isa_odd_idx(type); }
 std::optional<nat_t> LegalizeIdx::odd_op(const Def* def) const { return dyn_ ? std::nullopt : isa_odd_idx_op(def); }
+const Def* LegalizeIdx::dyn_idx(const Def* type) const { return dyn_ ? isa_dyn_idx(type) : nullptr; }
 
 const Def* LegalizeIdx::rewrite_imm_App(const App* app) {
     auto& w = new_world();
@@ -112,9 +114,9 @@ const Def* LegalizeIdx::rewrite_imm_App(const App* app) {
 
     if (auto s = odd(app)) return w.type_idx(widen_idx(*s));
     // Like the backends, `I64` ignores a dynamic modulus.
-    if (dyn_ && isa_dyn_idx(app)) return w.type_i64();
-    auto size = [&](const Def* type) { return dyn_ && isa_dyn_idx(type) ? w.lit_nat_0() : rewrite(Idx::isa(type)); };
-    if (auto op = Axm::isa<idx>(app); op && dyn_ && isa_dyn_idx(app->type()))
+    if (dyn_idx(app)) return w.type_i64();
+    auto size = [&](const Def* type) { return dyn_idx(type) ? w.lit_nat_0() : rewrite(Idx::isa(type)); };
+    if (auto op = Axm::isa<idx>(app); op && dyn_idx(app->type()))
         return w.app(w.app(rewrite(op->callee()->as<App>()->callee()), size(app->type())), rewrite(op->arg()));
 
     if (auto op = Axm::isa<conv>(app); op && op.id() == conv::u) {
@@ -129,12 +131,12 @@ const Def* LegalizeIdx::rewrite_imm_App(const App* app) {
     if (!s) {
         // An op that keeps values of `Idx s` in range works on the widened operands as they are.
         if (auto c = app->callee()->isa<App>(); c && c->callee_type()->is_implicit()) {
-            if (auto n = Lit::isa(c->arg()); n && c->arg()->type()->isa<Nat>() && odd(w.type_idx(*n)) && in_range(app))
-                return w.implicit_app(rewrite(c->callee()), rewrite(app->arg()));
-            if (dyn_ && has_dyn_size(c->arg()) && sized(app))
+            auto n = Lit::isa(c->arg());
+            if ((n && c->arg()->type()->isa<Nat>() && odd(w.type_idx(*n)) && in_range(app))
+                || (dyn_ && has_dyn_size(c->arg()) && sized(app)))
                 return w.implicit_app(rewrite(c->callee()), rewrite(app->arg()));
         }
-        if (auto op = Axm::isa<conv>(app); op && dyn_ && (isa_dyn_idx(app->type()) || isa_dyn_idx(op->arg()->type())))
+        if (auto op = Axm::isa<conv>(app); op && (dyn_idx(app->type()) || dyn_idx(op->arg()->type())))
             return w.call(op.id(), size(app->type()), rewrite(op->arg()));
         // An op that keeps `Idx s` yields its value in range but still has to widen it like everything else.
         auto res = RWPhase::rewrite_imm_App(app);
@@ -201,8 +203,7 @@ const Def* LegalizeIdx::rewrite_imm_Insert(const Insert* insert) {
 }
 
 const Def* LegalizeIdx::coerce_leaf(const Def* type, const Def* val) {
-    if (auto size = Idx::isa(type);
-        size && Idx::isa(val->type()) && (odd(type) || odd(val->type()) || (dyn_ && isa_dyn_idx(type))))
+    if (auto size = Idx::isa(type); size && Idx::isa(val->type()) && (odd(type) || odd(val->type()) || dyn_idx(type)))
         return new_world().call(conv::u, size, val);
     return nullptr;
 }

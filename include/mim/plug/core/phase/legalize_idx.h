@@ -30,6 +30,8 @@ private:
     std::optional<nat_t> odd(const Def* type) const;
     /// The odd literal size the core operation @p def depends on, unless only dynamic sizes are legalized.
     std::optional<nat_t> odd_op(const Def* def) const;
+    /// The dynamic size of the `Idx` @p type, if only dynamic sizes are legalized.
+    const Def* dyn_idx(const Def* type) const;
 
     bool dyn_;
 };

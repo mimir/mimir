@@ -40,15 +40,14 @@ const Def* LegalizePtr::rewrite_imm_App(const App* app) {
     if (auto ptr = Axm::isa<core::Ptr>(app)) return w.call<core::Ptr>(Defs{w.type_i8(), rewrite(ptr->arg(2, 1))});
 
     if (auto lea = Axm::isa<mem::lea>(app)) {
-        auto [p, i]       = lea->args<2>();
-        auto [pointee, _] = Axm::as<core::Ptr>(p->type())->args<2>();
-        auto [elem, __]   = Axm::as<core::Ptr>(lea->type())->args<2>();
-        auto l            = Lit::isa(i);
-        const Def* off    = nullptr;
+        auto [p, i]    = lea->args<2>();
+        auto pointee   = mem::pointee(p);
+        auto l         = Lit::isa(i);
+        const Def* off = nullptr;
         if (!pointee->isa<Arr>()) {
             if (!l) i->blame("index `{}` into `{}` must be a literal", i, pointee).bail();
             off = w.lit_i64(field_offset(pointee, *l));
-        } else if (auto size = trait(core::trait::size, elem); l) {
+        } else if (auto size = trait(core::trait::size, mem::pointee(lea)); l) {
             off = w.lit_i64(*l * size);
         } else {
             off = core::zext(w, reg_index(w, rewrite(i)));
@@ -64,7 +63,8 @@ const Def* LegalizePtr::rewrite_imm_App(const App* app) {
         auto [T, a]    = slot->decurry()->args<2>();
         auto [msz, k]  = slot->args<2>();
         auto [m, size] = msz->projs<2>();
-        auto n         = Lit::isa(size).value_or(trait(core::trait::size, T));
+        auto l         = Lit::isa(size);
+        auto n         = l ? *l : trait(core::trait::size, T);
         auto msz_      = w.tuple({rewrite(m), w.lit_nat(n)});
         return w.app(w.app(w.annex<mem::mslot>(), w.tuple({w.type_i8(), rewrite(a)})), w.tuple({msz_, rewrite(k)}));
     }

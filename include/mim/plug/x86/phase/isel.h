@@ -8,8 +8,6 @@
 
 namespace mim::plug::x86::phase {
 
-class ISel;
-
 /// @name Rules
 /// A rule rewrites a pattern over `core`/`mem` into an x86 term; the holes of the pattern are typed.
 ///@{
@@ -39,7 +37,6 @@ struct Cover {
 /// An alternative of a PBQP node: a match rooted there, or the class of all matches covering it as the same inner node.
 struct Alt {
     const rules::Rewrite* rule = nullptr; ///< `nullptr` for an inner alternative, whose id is its index plus one.
-    pbqp::Cost cost            = 0;
     fe::Vector<Demand> demands;
     fe::Vector<Cover> covers;
     DefVec metas; ///< What the meta variables of its rule match.
@@ -75,6 +72,8 @@ private:
     const Def* hole(const Def* def, Want want = Want::Reg);
     /// The rewritten @p def with a `Nat` literal as `I64`, for value operands.
     const Def* val(const Def* def);
+    /// The `Nat` literal @p x as `I64`, if it is one.
+    const Def* nat_as_i64(const Def* x);
     /// Builds the rhs of the rule of @p alt.
     const Def* build(const Alt& alt);
     ///@}
@@ -92,10 +91,6 @@ private:
     const App* sole(const Def* parent, const Def* def) const;
     /// Does the match @p alt meet the side condition of its rule?
     bool holds(const Alt& alt);
-#ifdef MIM_ENABLE_CHECKS
-    /// Verifies atomic completeness, total conversions, and inner-node coverage over the rule set.
-    void check_rules() const;
-#endif
     /// The node Def @p def stands for: a memory operation stands for its value.
     const Def* key(const Def* def) const;
     /// The chosen alternative of the node @p def.
