@@ -325,7 +325,8 @@ void UseDecl::stream(fe::Tab& tab, std::ostream& os) const {
 }
 
 /// `rule I (dom)* (meta): r` is sugar for `anx lam I (dom)* = rl (meta): r`, so `anx` goes without saying.
-static void stream_rule(fe::Tab& tab, std::ostream& os, const Mods& mods, Dbg dbg, auto doms, const RuleExpr* rule) {
+static void
+stream_rule(fe::Tab& tab, std::ostream& os, const Mods& mods, Dbg dbg, const auto& doms, const RuleExpr* rule) {
     if (mods.resolved_vis() == Vis::Priv) std::print(os, "{} ", vis2str(Vis::Priv));
     std::print(os, "{} {}", rule->is_norm() ? Tag::K_norm : Tag::K_rule, dbg);
     for (auto dom : doms)

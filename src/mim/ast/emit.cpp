@@ -375,11 +375,17 @@ const Def* TypeExpr::emit_(Emitter& e) const {
 const Def* RuleExpr::emit_(Emitter& e) const {
     auto& w   = e.world();
     auto rule = w.mut_rule(w.rho(w.mut_hole_type(), w.mut_hole_type()));
+    rule->set(name());
     rule->set_meta(meta() ? meta()->emit_type(e) : w.sigma());
     if (meta()) emit_var(e, meta(), rule);
     rule->set_lhs(lhs()->emit(e));
     rule->set_guard(guard()->emit(e));
     rule->set_rhs(rhs()->emit(e));
+    if (auto var = rule->has_var(); var && rule->type()->has_free_var(var))
+        e.error()
+            .e(loc(), "the type of a rule must not depend on its meta variables")
+            .n("its type is `{}`; make what it depends on a parameter of the family", rule->type()->zonk())
+            .bail();
     if (auto rho = rule->type(); is_norm() && !Check::alpha(rho->dom(), rho->codom()))
         e.error()
             .e(loc(), "a normalizing rule must not change the type")

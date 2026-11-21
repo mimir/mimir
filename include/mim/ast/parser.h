@@ -119,7 +119,7 @@ private:
     Ptr<Expr> parse_lit_expr();
     Ptr<Expr> parse_type_expr();
     Ptr<Expr> parse_rule_expr();
-    Ptr<RuleExpr> parse_rule_body(Tracker, Ptr<Ptrn> meta, bool is_norm);
+    Ptr<RuleExpr> parse_rule_body(Tracker, Ptr<Ptrn> meta, bool is_norm, Sym name = {});
     Ptr<Expr> parse_ret_expr();
     Ptr<Expr> parse_pi_expr();
     Ptr<Expr> parse_pi_expr(Ptr<Ptrn>);

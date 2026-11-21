@@ -106,7 +106,15 @@ public:
 
         auto& scope = top();
         if (rebind) {
-            scope[dbg.sym()] = Bind{decl, vis};
+            auto [i, ins] = scope.try_emplace(dbg.sym(), Bind{decl, vis});
+            if (!ins) {
+                // An annex is registered by name, so it must not shadow another one.
+                if (!quiet && decl->is_anx() && i->second.decl->is_anx())
+                    error()
+                        .e(dbg.loc(), "redeclaration of `{}`", dbg)
+                        .n(i->second.decl->dbg().loc(), "previous declaration here");
+                i->second = Bind{decl, vis};
+            }
         } else if (auto [i, ins] = scope.try_emplace(dbg.sym(), Bind{decl, vis}); !ins) {
             auto prev = i->second.decl;
             if (!quiet && !prev->isa<DummyDecl>()) // if prev stems from an error - don't complain

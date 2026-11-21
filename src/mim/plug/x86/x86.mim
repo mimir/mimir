@@ -50,8 +50,9 @@ anx let Index = Addr tt;
 ///
 /// `addr (disp, base)` addresses `disp + base`, like AT&T's `disp(base)`.
 /// A literal `0I64` as `base` means there is none.
+/// A literal `base` folds into `disp` if the sum fits, else it goes into a register.
 ///
-axm addr: [disp: I32, base: I64] → Base;
+axm addr: [disp: I32, base: I64] → Base, normalize_addr;
 ///
 /// ### index
 ///
@@ -121,7 +122,7 @@ axm rm: {s: Nat, C: *, i: Bool} → («2; Idx s» → C) → [mem.M 0, Idx s, Ad
 ///
 /// `op addr, r`: `mr f (m, addr, b)` stores `f (a, b)` to `addr` with `a` loaded from `addr`.
 ///
-axm mr: {s: Nat, i: Bool} → («2; Idx s» → Idx s) → [mem.M 0, Addr i, Idx s] → mem.M 0;
+axm mr: {s: Nat, C: *, i: Bool} → («2; Idx s» → C) → [mem.M 0, Addr i, Idx s] → mem.M 0;
 ///
 /// ### sched
 ///
@@ -169,8 +170,9 @@ end
 /// ### lea
 ///
 /// `lea r, addr` materializes an address as a value.
+/// The address `addr (0, b)` is `b`, and `addr (d, 0)` the literal `d`.
 ///
-axm lea: {i: Bool} → Addr i → I64;
+axm lea: {i: Bool} → Addr i → I64, normalize_lea;
 ///
 /// ### mov
 ///
@@ -230,9 +232,11 @@ axm (shl, shr, sar): {s: Nat} → «2; Idx s» → Idx (gpr s);
 ///
 /// ### Conversions
 ///
-/// `movzx`, `movsx`, and truncation to the low bits of the register.
+/// `movzx`, `movsx`, and truncation to the low bits of the register; they fold a literal.
 ///
-axm (movzx, movsx, trunc): {s: Nat} → [d: Nat] → Idx s → Idx d;
+axm movzx: {s: Nat} → [d: Nat] → Idx s → Idx d, normalize_movzx;
+axm movsx: {s: Nat} → [d: Nat] → Idx s → Idx d, normalize_movsx;
+axm trunc: {s: Nat} → [d: Nat] → Idx s → Idx d, normalize_trunc;
 ///
 /// ### Comparisons
 ///
@@ -273,7 +277,9 @@ axm cc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): Flags → Bool;
 ///
 /// `cmovcc.l (f, x, y)` yields `y` if `l` holds on `f`, else `x`, like `(x, y)#cond`.
 ///
-axm cmovcc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): {s: Nat} → [Flags, Idx s, Idx s] → Idx (gpr16 s);
+/// `cmovcc.ne (test (cc.l f, cc.l f), x, y)` normalizes to `cmovcc.l (f, x, y)`.
+///
+axm cmovcc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): {s: Nat} → [Flags, Idx s, Idx s] → Idx (gpr16 s), normalize_cmovcc;
 ///
 /// ## Phases
 ///

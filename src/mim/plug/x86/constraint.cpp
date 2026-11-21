@@ -1,5 +1,6 @@
 #include "mim/plug/x86/constraint.h"
 
+#include "mim/plug/x86/insn.h"
 #include "mim/plug/x86/x86.h"
 
 namespace mim::plug::x86 {
@@ -18,7 +19,7 @@ Constraint constraint(const App* insn) {
     auto res = Constraint();
     res.ops  = operands(insn);
     if (Axm::isa<rm>(insn)) {
-        res.tied = 1;
+        res.tied = insn::tied(Annex::Base<rm>);
         return res;
     }
     if (!Axm::isa<sched>(insn)) return res;
@@ -34,15 +35,10 @@ Constraint constraint(const App* insn) {
         res.results.emplace_back(1, w.annex(reg::rdx));
         res.clobbers.emplace_back(w.annex(reg::rdx));
     } else if (id == Annex::Base<shl> || id == Annex::Base<shr> || id == Annex::Base<sar>) {
-        res.tied = 0;
         res.fixed.emplace_back(1, w.annex(reg::rcx));
-    } else if (id == Annex::Base<add> || id == Annex::Base<sub> || id == Annex::Base<and_> || id == Annex::Base<or_>
-            || id == Annex::Base<xor_> || id == Annex::Base<imul>) {
-        res.tied = 0;
-    } else if (id == Annex::Base<cmovcc>) {
-        res.tied = 1;
     }
     // clang-format on
+    res.tied = insn::tied(id);
     std::erase_if(res.fixed, [&](auto fixed) { return Lit::isa(res.ops[fixed.first]); });
     if (res.tied && Lit::isa(res.ops[*res.tied])) res.tied.reset();
     return res;

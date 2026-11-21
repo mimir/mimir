@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <optional>
 
 #include <mim/axm.h>
 #include <mim/lam.h>
@@ -90,6 +91,28 @@ inline std::optional<nat_t> isa_odd_idx_op(const Def* def) {
 inline const Def* op(trait o, const Def* type) {
     World& w = type->world();
     return w.app(w.annex(o), type);
+}
+
+/// The memory layout of a Sigma or, if @p overlap, a Union of @p fields; `size` is not padded to `align`.
+struct Layout {
+    fe::Vector<nat_t> offsets;
+    nat_t size  = 0;
+    nat_t align = 1;
+};
+
+/// The Layout of @p fields, unless one of them has no literal size or alignment.
+inline std::optional<Layout> layout(Defs fields, bool overlap = false) {
+    auto res = Layout();
+    for (auto t : fields) {
+        auto a = Lit::isa(op(trait::align, t));
+        auto s = Lit::isa(op(trait::size, t));
+        if (!a || !s) return {};
+        auto offset = overlap ? 0 : fe::pad(res.size, *a);
+        res.offsets.emplace_back(offset);
+        res.align = std::max(res.align, *a);
+        res.size  = std::max(res.size, offset + *s);
+    }
+    return res;
 }
 ///@}
 

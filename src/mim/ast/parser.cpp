@@ -465,12 +465,12 @@ Ptr<Expr> Parser::parse_rule_expr() {
     return parse_rule_body(track, meta, false);
 }
 
-Ptr<RuleExpr> Parser::parse_rule_body(Tracker track, Ptr<Ptrn> meta, bool is_norm) {
+Ptr<RuleExpr> Parser::parse_rule_body(Tracker track, Ptr<Ptrn> meta, bool is_norm, Sym name) {
     auto lhs   = parse_expr("rewrite pattern");
     auto guard = accept(Tag::K_when) ? parse_expr("rewrite guard") : ptr<PrimaryExpr>(missing(), Tag::K_tt);
     expect(Tag::T_fat_arrow, "rewrite rule");
     auto rhs = parse_expr("rewrite result");
-    return ptr<RuleExpr>(track, meta, lhs, guard, rhs, is_norm);
+    return ptr<RuleExpr>(track, meta, lhs, guard, rhs, is_norm, name);
 }
 
 Ptr<Expr> Parser::parse_pi_expr() {
@@ -859,7 +859,7 @@ Ptr<ValDecl> Parser::parse_rule_decl(Tracker track, Mods mods) {
         doms.pop_back();
     }
     expect(Tag::T_colon, "rewrite rule declaration");
-    auto rule = parse_rule_body(tracker(), meta, is_norm);
+    auto rule = parse_rule_body(tracker(), meta, is_norm, dbg.sym());
     if (doms.empty()) return ptr<LetDecl>(track, mods, ptr<IdPtrn>(dbg.loc(), dbg, nullptr), rule);
     return ptr<LamDecl>(track, mods, Tag::K_lam, dbg, nullptr, rule, nullptr, doms);
 }

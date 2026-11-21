@@ -1,0 +1,9 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+plugin core;
+
+// An `anx let` may shadow a plain declaration but not another annex, since an annex is registered by name.
+anx lam foo (s: Nat): Nat = s;
+anx let foo = 3;
+
+// CHECK:      {{.*}}anx_let_redecl.mim:6:9-6:11: error: redeclaration of `foo`
+// CHECK:      {{.*}}anx_let_redecl.mim:5:9-5:11: note: previous declaration here

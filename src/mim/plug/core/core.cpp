@@ -12,6 +12,7 @@ using namespace mim::plug;
 
 static void reg_phases(Flags2Phases& phases) {
     Phase::hook<core::legalize_idx, core::phase::LegalizeIdx>(phases);
+    Phase::hook<core::legalize_dyn_idx, core::phase::LegalizeIdx>(phases);
     Phase::hook<core::lower_dyn_extract, core::phase::LowerDynExtract>(phases);
     Phase::hook<core::lower_variant, core::phase::LowerVariant>(phases);
 }

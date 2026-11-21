@@ -1,0 +1,8 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+plugin core;
+
+// The type `Idx s` of the rule mentions its meta variable `s`.
+rule dep (s: Nat, a: Idx s): a => a;
+
+// CHECK: {{.*}}rulemeta.mim:6:{{.*}}: error: the type of a rule must not depend on its meta variables

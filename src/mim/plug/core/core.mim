@@ -367,6 +367,13 @@ axm lower_variant: compile.Phase;
 ///
 axm legalize_idx: compile.Phase;
 ///
+/// ### legalize_dyn_idx
+///
+/// Like core.legalize_idx, but also turns each `Idx n` with a dynamic `n` into `I64`, which ignores the modulus `n` like the `ll` backend does.
+/// It must run after the last specialization, since an `Idx n` whose `n` would become a literal stays `I64`.
+///
+axm legalize_dyn_idx: compile.Phase;
+///
 /// ## Operators
 ///
 /// Bindings for the infix operators, which are sugar for an application of the escaped name.

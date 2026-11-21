@@ -993,19 +993,10 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
         if (!n) return {};
         auto projs = u ? u->arg()->projs(*n) : DefVec();
 
-        u64 size  = 0;
-        u64 align = 1;
-        for (auto t : u ? Defs(projs) : type->ops()) {
-            auto a = Lit::isa(core::op(trait::align, t));
-            auto s = Lit::isa(core::op(trait::size, t));
-            if (!a || !s) return {};
-
-            align = std::max(align, *a);
-            // A Sigma places its members one after another, a Union all at the same offset.
-            size = u ? std::max(size, *s) : fe::pad(size, *a) + *s;
-        }
-
-        return world.lit_nat(id == trait::align ? align : fe::pad(size, align));
+        // A Sigma places its members one after another, a Union all at the same offset.
+        auto l = layout(u ? Defs(projs) : type->ops(), u);
+        if (!l) return {};
+        return world.lit_nat(id == trait::align ? l->align : fe::pad(l->size, l->align));
     } else if (auto arr = type->isa_imm<Arr>()) {
         // One axis at a time, so a fused Arr multiplies in every extent: `«a, b; T»` is `a * size «b; T»`.
         auto elem = arr->elem();

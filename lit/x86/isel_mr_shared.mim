@@ -1,0 +1,22 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin core;
+plugin mem;
+plugin x86;
+import compile;
+
+extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_ptr, compile.named "x86.isel");
+
+// `op m, r` needs the load's memory to have no user but the store.
+extern lam f (m: mem.M 0, p: mem.Ptr0 I32): [mem.M 0, mem.M 0] =
+    let (m, v) = mem.load (m, p);
+    (mem.store (m, p, core.wrap.add 0 (v, 1I32)), m);
+
+extern lam g (m: mem.M 0, p: mem.Ptr0 I32): mem.M 0 =
+    let (m, v) = mem.load (m, p);
+    mem.store (m, p, core.wrap.add 0 (v, 1I32));
+
+// CHECK-DAG: extern lam f
+// CHECK-DAG: x86.store @ (i32, ff)
+// CHECK-DAG: extern lam g
+// CHECK-DAG: x86.mr @ (i32, I32, ff) (x86.add @ i32)
