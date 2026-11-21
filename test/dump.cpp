@@ -265,7 +265,6 @@ TEST_CASE("dump: precedence") {
     auto& w  = rt.world();
     auto nat = w.type_nat();
     auto i32 = w.type_i32();
-    auto i8  = w.type_i8();
     auto t   = w.tuple({w.lit_nat(23), w.lit_nat(42)});
     auto i0  = w.lit_idx(2, 0);
     auto i1  = w.lit_idx(2, 1);

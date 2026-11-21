@@ -8,6 +8,8 @@
 
 #include <mim/phase.h>
 
+#include "mim/plug/x86/rule_table.h"
+
 namespace mim::plug::x86::phase {
 
 class ISel;
@@ -109,6 +111,7 @@ enum class Cond : u8 {
     Same,   ///< The root has the register size of its operand.
     Narrow, ///< The root's register is at most as wide as its operand's, but its size differs.
     Widen,  ///< The root's register is wider than its operand's.
+    Ungenerated, ///< No rule of `x86_isel` matches the root.
 };
 
 /// What a match needs of the operand @p def: a hole of type @p want or, if @p inner is set, that inner pattern node.
@@ -139,6 +142,7 @@ struct Alt {
     pbqp::Cost cost  = 0;
     fe::Vector<Demand> demands;
     fe::Vector<Cover> covers;
+    DefVec metas; ///< What the meta variables of a generated rule match.
 };
 
 using Alts = fe::Vector<Alt>;
@@ -158,6 +162,7 @@ struct Rule {
     Cond cond    = Cond::None;
     u8 num_slots = 0;
     std::array<Slot, Max_Slots> slots{};
+    const rules::Rewrite* gen = nullptr; ///< The rule of `x86_isel` this one stems from.
 
     constexpr Rule with(Cond c) const {
         auto res = *this;
@@ -231,6 +236,8 @@ public:
     const Def* build_slot(const Def* root, const Alt& alt);
     const Def* build_assume(const Def* root, const Alt& alt);
     const Def* build_select(const Def* root, const Alt& alt);
+    /// Builds the rhs of a generated rule.
+    const Def* build_gen(const Def* root, const Alt& alt);
     ///@}
 
 private:
@@ -255,6 +262,10 @@ private:
     std::optional<Node> decompose(const Def* def) const;
     /// Appends the matches rooted at @p def to @p alts.
     void match(const Def* def, Alts& alts);
+    /// Appends the matches of the generated @p rule rooted at @p root, which decomposes to @p node, to @p alts.
+    void append_gen(const Rule& rule, const Def* root, const Node& node, Alts& alts);
+    /// The generated node @p n of the rhs of @p alt's rule in new_world().
+    const Def* gen(const Alt& alt, u32 n, ankerl::unordered_dense::map<u32, const Def*>& done);
     /// Appends the matches of @p rule rooted at @p root, which decomposes to @p node, to @p alts.
     void append(const Rule& rule, const Def* root, const Node& node, Alts& alts);
     /// Binds the slots of @p rule from @p i on to the pending operands in @p frames; complete matches go to @p alts.
@@ -300,6 +311,7 @@ private:
     DefMap<size_t> choices_;
     Def2Def roots_; ///< inner node → root of the match covering it
     Def2Def repls_;
+    bool generated_ = false; ///< Did a generated rule match the Def that match() is at?
 };
 
 } // namespace mim::plug::x86::phase
