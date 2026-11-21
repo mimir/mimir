@@ -55,4 +55,5 @@ Plugin-specific notes live in `plug/AGENTS.md` and below; phase-specific ones in
 - `+ - * / %` have no built-in meaning: `a op b` desugars to `` `op (a, b) ``, and the escaped Sym includes the backtick (needed for the `--output-ast` round trip).
 - Literal signs are parsed, not lexed (`f -3` subtracts); don't reintroduce sign lexing, it makes `a-1` a silent application.
 - An `axm F` and a `mod F` in one scope are a redeclaration error, so an axiom cannot have child annexes under its own name.
+- An `anx let` may shadow a plain declaration (`priv nom Tensor …; pub anx let Tensor = Tensor;`) but not another annex, whose flags would collide in `World::Annexes::attach`.
 - Verify parser refactors by diffing `mim --output-ast -` over all lit/extra `.mim`; no lit test covers the AST stream.

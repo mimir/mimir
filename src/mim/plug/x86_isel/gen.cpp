@@ -238,7 +238,9 @@ void Table::add(const Rule* rule) {
         rule->blame("x86_isel: the lhs of `{}` must apply an axiom or extract", rule).bail();
 
     auto done = DefSet();
-    rewrites_.emplace_back(Rewrite{.name   = rule->sym().str(),
+    // A family that takes the operation names all of its instances alike.
+    auto name = root ? std::format("{}({})", rule->sym().str(), root->sym().str()) : rule->sym().str();
+    rewrites_.emplace_back(Rewrite{.name   = std::move(name),
                                    .rho    = std::format("{} ↝ {}", rule->dom(), rule->codom()),
                                    .cost   = num_insns(rule->rhs(), done),
                                    .root   = root ? root->flags() : 0,

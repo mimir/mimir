@@ -77,70 +77,41 @@ anx let commutes = (core.wrap.add, core.wrap.mul, core.bit2.and, core.bit2.or, c
 ///
 /// ## Rules
 ///
-/// Each family takes the operand size; the instance tuples fix the sizes its instruction supports.
+/// Each family takes the operand size last; the instance tuples fix the sizes its instruction supports.
 /// A meta variable that the right-hand side uses and no other meta variable's type mentions is an operand, unless it is a memory.
 /// An lhs `(m, e)` replaces `e` and, by the memory of the rhs, the memory `m` of an inner node of `e`.
+/// A family that takes a guard `g` on an operand is instantiated with `any` and with the guard that makes it an immediate.
+/// `c` is the size of what the instruction yields, which the frontend cannot infer.
+///
+let Guard = {s: Nat} → Idx s → Bool;
+lam any {s: Nat} (_: Idx s): Bool = tt;
 ///
 /// ### ALU
 ///
-rule add      (s: Nat) (m: Nat, a b: Idx s): core.wrap.add m (a, b)             => x86.add (a, b);
-rule add_imm  (s: Nat) (m: Nat, a b: Idx s): core.wrap.add m (a, b)  when imm b => x86.add (a, b);
-rule sub      (s: Nat) (m: Nat, a b: Idx s): core.wrap.sub m (a, b)             => x86.sub (a, b);
-rule sub_imm  (s: Nat) (m: Nat, a b: Idx s): core.wrap.sub m (a, b)  when imm b => x86.sub (a, b);
-rule mul      (s: Nat) (m: Nat, a b: Idx s): core.wrap.mul m (a, b)             => x86.imul (a, b);
-rule mul_imm  (s: Nat) (m: Nat, a b: Idx s): core.wrap.mul m (a, b)  when imm b => x86.imul (a, b);
-rule mul8              (m: Nat, a b: I8):    core.wrap.mul m (a, b)             => x86.trunc i8 (x86.imul (x86.movzx i32 a, x86.movzx i32 b));
-rule mul8_imm          (m: Nat, a b: I8):    core.wrap.mul m (a, b)  when imm b => x86.trunc i8 (x86.imul (x86.movzx i32 a, x86.movzx i32 b));
-rule and      (s: Nat) (m: Nat, a b: Idx s): core.bit2.and m (a, b)             => x86.and (a, b);
-rule and_imm  (s: Nat) (m: Nat, a b: Idx s): core.bit2.and m (a, b)  when imm b => x86.and (a, b);
-rule or       (s: Nat) (m: Nat, a b: Idx s): core.bit2.or m (a, b)              => x86.or (a, b);
-rule or_imm   (s: Nat) (m: Nat, a b: Idx s): core.bit2.or m (a, b)   when imm b => x86.or (a, b);
-rule xor      (s: Nat) (m: Nat, a b: Idx s): core.bit2.xor m (a, b)             => x86.xor (a, b);
-rule xor_imm  (s: Nat) (m: Nat, a b: Idx s): core.bit2.xor m (a, b)  when imm b => x86.xor (a, b);
-rule nand     (s: Nat) (m: Nat, a b: Idx s): core.bit2.nand m (a, b)            => let x = x86.and (a, b); x86.xor (x, core.bit1.t 0 x);
-rule nand_imm (s: Nat) (m: Nat, a b: Idx s): core.bit2.nand m (a, b) when imm b => let x = x86.and (a, b); x86.xor (x, core.bit1.t 0 x);
-rule nor      (s: Nat) (m: Nat, a b: Idx s): core.bit2.nor m (a, b)             => let x = x86.or (a, b); x86.xor (x, core.bit1.t 0 x);
-rule nor_imm  (s: Nat) (m: Nat, a b: Idx s): core.bit2.nor m (a, b)  when imm b => let x = x86.or (a, b); x86.xor (x, core.bit1.t 0 x);
-rule nxor     (s: Nat) (m: Nat, a b: Idx s): core.bit2.nxor m (a, b)            => let x = x86.xor (a, b); x86.xor (x, core.bit1.t 0 x);
-rule nxor_imm (s: Nat) (m: Nat, a b: Idx s): core.bit2.nxor m (a, b) when imm b => let x = x86.xor (a, b); x86.xor (x, core.bit1.t 0 x);
-rule shl      (s: Nat) (m: Nat, a b: Idx s): core.wrap.shl m (a, b)             => x86.shl (a, b);
-rule shl_imm  (s: Nat) (m: Nat, a b: Idx s): core.wrap.shl m (a, b)  when sh b  => x86.shl (a, b);
-rule shr      (s: Nat) (a b: Idx s):         core.shr.l (a, b)                  => x86.shr (a, b);
-rule shr_imm  (s: Nat) (a b: Idx s):         core.shr.l (a, b)       when sh b  => x86.shr (a, b);
-rule sar      (s: Nat) (a b: Idx s):         core.shr.a (a, b)                  => x86.sar (a, b);
-rule sar_imm  (s: Nat) (a b: Idx s):         core.shr.a (a, b)       when sh b  => x86.sar (a, b);
+rule alu   (c: Nat → Nat) (op: Nat → {s: Nat} → «2; Idx s» → Idx s, insn: {s: Nat} → «2; Idx s» → Idx (c s)) (g: Guard) (s: Nat) (m: Nat, a b: Idx s): op m (a, b) when g b => insn (a, b);
+rule shift (op: {s: Nat} → «2; Idx s» → Idx s, insn: {s: Nat} → «2; Idx s» → Idx (x86.gpr s))                       (g: Guard) (s: Nat) (a b: Idx s):         op (a, b)   when g b => insn (a, b);
+rule neg   (op: Nat → {s: Nat} → «2; Idx s» → Idx s, insn: {s: Nat} → «2; Idx s» → Idx (x86.logic s))                (g: Guard) (s: Nat) (m: Nat, a b: Idx s): op m (a, b) when g b => let x = insn (a, b); x86.xor (x, core.bit1.t 0 x);
+rule mul8  (g: Guard) (m: Nat, a b: I8): core.wrap.mul m (a, b) when g b => x86.trunc i8 (x86.imul (x86.movzx i32 a, x86.movzx i32 b));
 ///
 /// ### Nat
 ///
 /// `Nat` is `I64`; `core.nat.sub` saturates at 0.
 ///
-rule nat_add     (a b: Nat): core.nat.add (a, b)                      => x86.add (nat a, nat b);
-rule nat_add_imm (a b: Nat): core.nat.add (a, b) when imm (nat b)     => x86.add (nat a, nat b);
-rule nat_sub     (a b: Nat): core.nat.sub (a, b)                      => x86.cmovcc.b (x86.cmp (nat a, nat b), x86.sub (nat a, nat b), x86.mov 0I64);
-rule nat_sub_imm (a b: Nat): core.nat.sub (a, b) when imm (nat b)     => x86.cmovcc.b (x86.cmp (nat a, nat b), x86.sub (nat a, nat b), x86.mov 0I64);
-rule nat_mul     (a b: Nat): core.nat.mul (a, b)                      => x86.imul (nat a, nat b);
-rule nat_mul_imm (a b: Nat): core.nat.mul (a, b) when imm (nat b)     => x86.imul (nat a, nat b);
-rule nat_div     (a b: Nat): core.nat.div (a, b)                      => (x86.div (nat a, nat b))#0_2;
-rule nat_rem     (a b: Nat): core.nat.rem (a, b)                      => (x86.div (nat a, nat b))#1_2;
+rule nat_alu (op: «2; Nat» → Nat, insn: «2; I64» → I64) (g: Guard) (a b: Nat): op (a, b) when g (nat b) => insn (nat a, nat b);
+rule nat_sub (g: Guard)                                 (a b: Nat): core.nat.sub (a, b) when g (nat b) => x86.cmovcc.b (x86.cmp (nat a, nat b), x86.sub (nat a, nat b), x86.mov 0I64);
+rule nat_div (op: «2; Nat» → Nat, i: Idx 2)             (a b: Nat): op (a, b) => (x86.div (nat a, nat b))#i;
 ///
 /// ### Division
 ///
-/// `div` and `idiv` yield both the quotient and the remainder; they have no 8-bit form, so `i8` widens to `i32`.
+/// `div` and `idiv` yield both the quotient and the remainder at `i`; they have no 8-bit form, so `i8` widens to `i32` by `ext`.
 /// `core.rem` puts its divisor into a register with `x86.mov`, whose result type only folds for a literal size.
 ///
-rule udiv  (s: Nat) (m: mem.M 0, a b: Idx s): core.div.udiv (m, (a, b)) => (m, (x86.div (a, b))#0_2);
-rule urem  (s: Nat) (m: mem.M 0, a b: Idx s): core.div.urem (m, (a, b)) => (m, (x86.div (a, b))#1_2);
-rule sdiv  (s: Nat) (m: mem.M 0, a b: Idx s): core.div.sdiv (m, (a, b)) => (m, (x86.idiv (a, b))#0_2);
-rule srem  (s: Nat) (m: mem.M 0, a b: Idx s): core.div.srem (m, (a, b)) => (m, (x86.idiv (a, b))#1_2);
-rule udiv8          (m: mem.M 0, a b: I8):    core.div.udiv (m, (a, b)) => (m, x86.trunc i8 (x86.div (x86.movzx i32 a, x86.movzx i32 b))#0_2);
-rule urem8          (m: mem.M 0, a b: I8):    core.div.urem (m, (a, b)) => (m, x86.trunc i8 (x86.div (x86.movzx i32 a, x86.movzx i32 b))#1_2);
-rule sdiv8          (m: mem.M 0, a b: I8):    core.div.sdiv (m, (a, b)) => (m, x86.trunc i8 (x86.idiv (x86.movsx i32 a, x86.movsx i32 b))#0_2);
-rule srem8          (m: mem.M 0, a b: I8):    core.div.srem (m, (a, b)) => (m, x86.trunc i8 (x86.idiv (x86.movsx i32 a, x86.movsx i32 b))#1_2);
-rule rem8           (d: Nat, x: I8):          core.rem d x              => x86.trunc i8 (x86.div (x86.movzx i32 x, x86.mov (core.idx 0 i32 d)))#1_2;
-rule rem16          (d: Nat, x: I16):         core.rem d x              => (x86.div (x, x86.mov (core.idx 0 i16 d)))#1_2;
-rule rem32          (d: Nat, x: I32):         core.rem d x              => (x86.div (x, x86.mov (core.idx 0 i32 d)))#1_2;
-rule rem64          (d: Nat, x: I64):         core.rem d x              => (x86.div (x, x86.mov (core.idx 0 i64 d)))#1_2;
-///
+rule div  (op: {s a: Nat} → [mem.M a, «2; Idx s»] → [mem.M a, Idx s], insn: {s: Nat} → «2; Idx s» → «2; Idx (x86.gpr16 s)», i: Idx 2)                                        (s: Nat) (m: mem.M 0, a b: Idx s): op (m, (a, b)) => (m, (insn (a, b))#i);
+rule div8 (op: {s a: Nat} → [mem.M a, «2; Idx s»] → [mem.M a, Idx s], insn: {s: Nat} → «2; Idx s» → «2; Idx (x86.gpr16 s)», i: Idx 2, ext: {s: Nat} → [d: Nat] → Idx s → Idx d)          (m: mem.M 0, a b: I8):    op (m, (a, b)) => (m, x86.trunc i8 (insn (ext i32 a, ext i32 b))#i);
+rule rem8  (d: Nat, x: I8):  core.rem d x => x86.trunc i8 (x86.div (x86.movzx i32 x, x86.mov (core.idx 0 i32 d)))#1_2;
+rule rem16 (d: Nat, x: I16): core.rem d x => (x86.div (x, x86.mov (core.idx 0 i16 d)))#1_2;
+rule rem32 (d: Nat, x: I32): core.rem d x => (x86.div (x, x86.mov (core.idx 0 i32 d)))#1_2;
+rule rem64 (d: Nat, x: I64): core.rem d x => (x86.div (x, x86.mov (core.idx 0 i64 d)))#1_2;
 /// ### Conversions
 ///
 /// `mem.legalize_ptr` leaves only register sizes; each family takes the source and the destination size.
@@ -166,11 +137,8 @@ rule idx                   (m l: Nat):        core.idx m i64 l              => n
 ///
 /// Each family takes the predicate and its condition code.
 ///
-rule icmp     (p: {s: Nat} → «2; Idx s» → Bool, c: x86.Flags → Bool) (s: Nat, a b: Idx s): p (a, b)            => c (x86.cmp (a, b));
-rule icmp_imm (p: {s: Nat} → «2; Idx s» → Bool, c: x86.Flags → Bool) (s: Nat, a b: Idx s): p (a, b) when imm b => c (x86.cmp (a, b));
-rule ncmp     (p: «2; Nat» → Bool, c: x86.Flags → Bool)               (a b: Nat):           p (a, b)                  => c (x86.cmp (nat a, nat b));
-rule ncmp_imm (p: «2; Nat» → Bool, c: x86.Flags → Bool)               (a b: Nat):           p (a, b) when imm (nat b) => c (x86.cmp (nat a, nat b));
-///
+rule icmp (p: {s: Nat} → «2; Idx s» → Bool, c: x86.Flags → Bool) (g: Guard) (s: Nat, a b: Idx s): p (a, b) when g b       => c (x86.cmp (a, b));
+rule ncmp (p: «2; Nat» → Bool, c: x86.Flags → Bool)               (g: Guard) (a b: Nat):           p (a, b) when g (nat b) => c (x86.cmp (nat a, nat b));
 /// ### Selects
 ///
 /// `x86.cmovcc`'s normalizer fuses a condition code into it; `i8` and `Bool` go through `i32`.
@@ -184,10 +152,8 @@ rule select8 (s: Nat) (x y: Idx s, c: Bool): (x, y)#c => x86.trunc s (x86.cmovcc
 ///
 rule load      (s: Nat) (m: mem.M 0, p: mem.Ptr0 (Idx s)):                   mem.load (m, p)                => x86.load s (m, addr p);
 rule load_ptr           (m: mem.M 0, p: mem.Ptr0 (mem.Ptr0 I8)):             mem.load (m, p)                => x86.load i64 (m, addr p);
-rule store              (s: Nat, m: mem.M 0, p: mem.Ptr0 (Idx s), x: Idx s): mem.store (m, p, x)            => x86.store (m, addr p, x);
-rule store_imm          (s: Nat, m: mem.M 0, p: mem.Ptr0 (Idx s), x: Idx s): mem.store (m, p, x) when imm x => x86.store (m, addr p, x);
-rule store_ptr          (m: mem.M 0, p: mem.Ptr0 (mem.Ptr0 I8), x: mem.Ptr0 I8): mem.store (m, p, x)        => x86.store (m, addr p, reg x);
-///
+rule store     (g: Guard) (s: Nat, m: mem.M 0, p: mem.Ptr0 (Idx s), x: Idx s):    mem.store (m, p, x) when g x => x86.store (m, addr p, x);
+rule store_ptr            (m: mem.M 0, p: mem.Ptr0 (mem.Ptr0 I8), x: mem.Ptr0 I8): mem.store (m, p, x)          => x86.store (m, addr p, reg x);
 /// ### Stack Slots
 ///
 rule slot (m: mem.M 0, n: Nat, k: Cn [mem.M 0, mem.Ptr0 I8]): mem.mslot (I8, 0) ((m, n), k) when lit n => let (m, p) = x86.slot n m; k (m, ptr p);
@@ -196,23 +162,8 @@ rule slot (m: mem.M 0, n: Nat, k: Cn [mem.M 0, mem.Ptr0 I8]): mem.mslot (I8, 0) 
 ///
 /// `op r, m` folds a load into the second operand; `op m, r` also stores to the address it loads from.
 ///
-rule add_rm     (s: Nat) (k: Nat, a: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); (mm, core.wrap.add k (a, v)) => x86.rm x86.add (m, a, addr p);
-rule sub_rm     (s: Nat) (k: Nat, a: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); (mm, core.wrap.sub k (a, v)) => x86.rm x86.sub (m, a, addr p);
-rule mul_rm     (s: Nat) (k: Nat, a: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); (mm, core.wrap.mul k (a, v)) => x86.rm x86.imul (m, a, addr p);
-rule and_rm     (s: Nat) (k: Nat, a: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); (mm, core.bit2.and k (a, v)) => x86.rm x86.and (m, a, addr p);
-rule or_rm      (s: Nat) (k: Nat, a: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); (mm, core.bit2.or k (a, v))  => x86.rm x86.or (m, a, addr p);
-rule xor_rm     (s: Nat) (k: Nat, a: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); (mm, core.bit2.xor k (a, v)) => x86.rm x86.xor (m, a, addr p);
-rule add_mr     (s: Nat) (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); mem.store (mm, p, core.wrap.add k (v, b))            => x86.mr (x86.add @ s) (m, addr p, b);
-rule add_mr_imm (s: Nat) (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); mem.store (mm, p, core.wrap.add k (v, b)) when imm b => x86.mr (x86.add @ s) (m, addr p, b);
-rule sub_mr     (s: Nat) (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); mem.store (mm, p, core.wrap.sub k (v, b))            => x86.mr (x86.sub @ s) (m, addr p, b);
-rule sub_mr_imm (s: Nat) (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); mem.store (mm, p, core.wrap.sub k (v, b)) when imm b => x86.mr (x86.sub @ s) (m, addr p, b);
-rule and_mr     (s: Nat) (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); mem.store (mm, p, core.bit2.and k (v, b))            => x86.mr (x86.and @ s) (m, addr p, b);
-rule and_mr_imm (s: Nat) (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); mem.store (mm, p, core.bit2.and k (v, b)) when imm b => x86.mr (x86.and @ s) (m, addr p, b);
-rule or_mr      (s: Nat) (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); mem.store (mm, p, core.bit2.or k (v, b))            => x86.mr (x86.or @ s) (m, addr p, b);
-rule or_mr_imm  (s: Nat) (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); mem.store (mm, p, core.bit2.or k (v, b)) when imm b => x86.mr (x86.or @ s) (m, addr p, b);
-rule xor_mr     (s: Nat) (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); mem.store (mm, p, core.bit2.xor k (v, b))            => x86.mr (x86.xor @ s) (m, addr p, b);
-rule xor_mr_imm (s: Nat) (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); mem.store (mm, p, core.bit2.xor k (v, b)) when imm b => x86.mr (x86.xor @ s) (m, addr p, b);
-///
+rule rm (c: Nat → Nat) (op: Nat → {s: Nat} → «2; Idx s» → Idx s, insn: {s: Nat} → «2; Idx s» → Idx (c s))           (s: Nat) (k: Nat, a: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); (mm, op k (a, v))                  => x86.rm insn (m, a, addr p);
+rule mr (c: Nat → Nat) (op: Nat → {s: Nat} → «2; Idx s» → Idx s, insn: {s: Nat} → «2; Idx s» → Idx (c s)) (g: Guard) (s: Nat) (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); mem.store (mm, p, op k (v, b)) when g b => x86.mr (insn @ s) (m, addr p, b);
 /// ### Addresses
 ///
 /// A product with 2, 4, or 8, or a left shift by 1, 2, or 3, is an index with its scale; an address takes any index as one, scaled by 1 if need be.
@@ -244,66 +195,75 @@ rule unscale (s: [I64, I2]): s => x86.lea (x86.index (x86.addr (0I32, 0I64)) s);
 ///
 /// ## Instances
 ///
-/// `imul` has no 8-bit form, so `mul8` widens to `i32`; the logical instructions also take `Bool`.
-/// x86 has no negated logical instructions, so `nand`, `nor`, and `nxor` complement with an `xor`.
+/// Each helper instantiates a family of one shape at the sizes its name says; one that takes `g` does so with `any` first and then with `g`.
 ///
-anx let alu = (
-    add i8, add i16, add i32, add i64, add_imm i8, add_imm i16, add_imm i32, add_imm i64,
-    sub i8, sub i16, sub i32, sub i64, sub_imm i8, sub_imm i16, sub_imm i32, sub_imm i64,
-    mul8, mul i16, mul i32, mul i64, mul8_imm, mul_imm i16, mul_imm i32, mul_imm i64,
-    and i1, and i8, and i16, and i32, and i64, and_imm i1, and_imm i8, and_imm i16, and_imm i32, and_imm i64,
-    or i1, or i8, or i16, or i32, or i64, or_imm i1, or_imm i8, or_imm i16, or_imm i32, or_imm i64,
-    xor i1, xor i8, xor i16, xor i32, xor i64, xor_imm i1, xor_imm i8, xor_imm i16, xor_imm i32, xor_imm i64,
-    nand i1, nand i8, nand i16, nand i32, nand i64, nand_imm i1, nand_imm i8, nand_imm i16, nand_imm i32, nand_imm i64,
-    nor i1, nor i8, nor i16, nor i32, nor i64, nor_imm i1, nor_imm i8, nor_imm i16, nor_imm i32, nor_imm i64,
-    nxor i1, nxor i8, nxor i16, nxor i32, nxor i64, nxor_imm i1, nxor_imm i8, nxor_imm i16, nxor_imm i32, nxor_imm i64,
-    shl i8, shl i16, shl i32, shl i64, shl_imm i8, shl_imm i16, shl_imm i32, shl_imm i64,
-    shr i8, shr i16, shr i32, shr i64, shr_imm i8, shr_imm i16, shr_imm i32, shr_imm i64,
-    sar i8, sar i16, sar i32, sar i64, sar_imm i8, sar_imm i16, sar_imm i32, sar_imm i64);
+lam gprs (c: Nat → Nat, g: Guard) (f: Guard → [s: Nat] → Idx s ↝ Idx (c s)) = (f any i8, f any i16, f any i32, f any i64, f g i8, f g i16, f g i32, f g i64);
+lam bits (c: Nat → Nat, g: Guard) (f: Guard → [s: Nat] → Idx s ↝ Idx (c s)) = (f any i1, f any i8, f any i16, f any i32, f any i64, f g i1, f g i8, f g i16, f g i32, f g i64);
+lam mrs  (g: Guard) (f: Guard → [s: Nat] → mem.M 0 ↝ mem.M 0) = (f any i8, f any i16, f any i32, f any i64, f g i8, f g i16, f g i32, f g i64);
+lam rms  (c: Nat → Nat) (f: [s: Nat] → [mem.M 0, Idx s] ↝ [mem.M 0, Idx (c s)]) = (f i8, f i16, f i32, f i64);
+lam divs (f: [s: Nat] → [mem.M 0, Idx s] ↝ [mem.M 0, Idx (x86.gpr16 s)]) = (f i16, f i32, f i64);
+lam narrow (f: [s d: Nat] → Idx d ↝ Idx d) = (f (i64, i32), f (i64, i16), f (i64, i8), f (i64, i1), f (i32, i16), f (i32, i8), f (i32, i1), f (i16, i8), f (i16, i1), f (i8, i1), f (i1, i8));
+lam widen  (f: [s d: Nat] → Idx d ↝ Idx d) = (f (i1, i16), f (i1, i32), f (i1, i64), f (i8, i16), f (i8, i32), f (i8, i64), f (i16, i32), f (i16, i64), f (i32, i64));
+lam icmps (g: Guard) = (
+    icmp (core.icmp.e,  x86.cc.e) g, icmp (core.icmp.ne,  x86.cc.ne) g, icmp (core.icmp.ul, x86.cc.b) g, icmp (core.icmp.ule, x86.cc.be) g,
+    icmp (core.icmp.ug, x86.cc.a) g, icmp (core.icmp.uge, x86.cc.ae) g, icmp (core.icmp.sl, x86.cc.l) g, icmp (core.icmp.sle, x86.cc.le) g,
+    icmp (core.icmp.sg, x86.cc.g) g, icmp (core.icmp.sge, x86.cc.ge) g);
+lam ncmps (g: Guard) = (
+    ncmp (core.ncmp.e,  x86.cc.e) g,  ncmp (core.ncmp.ne, x86.cc.ne) g, ncmp (core.ncmp.l, x86.cc.b) g,
+    ncmp (core.ncmp.le, x86.cc.be) g, ncmp (core.ncmp.g,  x86.cc.a) g,  ncmp (core.ncmp.ge, x86.cc.ae) g);
+///
+/// `imul` has no 8-bit form, so `mul8` widens to `i32`; the logical instructions also take `Bool`.
+/// x86 has no negated logical instructions, so `nand`, `nor`, and `nxor` complement with an `xor`, which yields `x86.logic` of `x86.logic`.
+///
+let logic2 = λ (s: Nat): Nat = x86.logic (x86.logic s);
+let mul    = alu x86.gpr16 (core.wrap.mul, x86.imul);
+anx let arithmetic = (
+    gprs (x86.gpr,   imm) (alu x86.gpr   (core.wrap.add, x86.add)),
+    gprs (x86.gpr,   imm) (alu x86.gpr   (core.wrap.sub, x86.sub)),
+    mul8 any, mul any i16, mul any i32, mul any i64, mul8 imm, mul imm i16, mul imm i32, mul imm i64,
+    bits (x86.logic, imm) (alu x86.logic (core.bit2.and, x86.and)),
+    bits (x86.logic, imm) (alu x86.logic (core.bit2.or,  x86.or)),
+    bits (x86.logic, imm) (alu x86.logic (core.bit2.xor, x86.xor)),
+    bits (logic2,    imm) (neg (core.bit2.nand, x86.and)),
+    bits (logic2,    imm) (neg (core.bit2.nor,  x86.or)),
+    bits (logic2,    imm) (neg (core.bit2.nxor, x86.xor)),
+    gprs (x86.gpr,   sh)  (alu x86.gpr   (core.wrap.shl, x86.shl)),
+    gprs (x86.gpr,   sh)  (shift (core.shr.l, x86.shr)),
+    gprs (x86.gpr,   sh)  (shift (core.shr.a, x86.sar)));
+anx let nats = (
+    nat_alu (core.nat.add, x86.add) any, nat_alu (core.nat.add, x86.add) imm, nat_sub any, nat_sub imm,
+    nat_alu (core.nat.mul, x86.imul) any, nat_alu (core.nat.mul, x86.imul) imm, nat_div (core.nat.div, 0_2), nat_div (core.nat.rem, 1_2));
 anx let conversions = (
-    trunc (i64, i32), trunc (i64, i16), trunc (i64, i8), trunc (i64, i1), trunc (i32, i16), trunc (i32, i8), trunc (i32, i1), trunc (i16, i8), trunc (i16, i1), trunc (i8, i1), trunc (i1, i8),
-    strunc (i64, i32), strunc (i64, i16), strunc (i64, i8), strunc (i64, i1), strunc (i32, i16), strunc (i32, i8), strunc (i32, i1), strunc (i16, i8), strunc (i16, i1), strunc (i8, i1), strunc (i1, i8),
-    cast_trunc (i64, i32), cast_trunc (i64, i16), cast_trunc (i64, i8), cast_trunc (i64, i1), cast_trunc (i32, i16), cast_trunc (i32, i8), cast_trunc (i32, i1), cast_trunc (i16, i8), cast_trunc (i16, i1), cast_trunc (i8, i1), cast_trunc (i1, i8),
-    zext (i1, i16), zext (i1, i32), zext (i1, i64), zext (i8, i16), zext (i8, i32), zext (i8, i64), zext (i16, i32), zext (i16, i64), zext (i32, i64),
-    sext (i1, i16), sext (i1, i32), sext (i1, i64), sext (i8, i16), sext (i8, i32), sext (i8, i64), sext (i16, i32), sext (i16, i64), sext (i32, i64),
-    cast_zext (i1, i16), cast_zext (i1, i32), cast_zext (i1, i64), cast_zext (i8, i16), cast_zext (i8, i32), cast_zext (i8, i64), cast_zext (i16, i32), cast_zext (i16, i64), cast_zext (i32, i64),
+    narrow trunc, narrow strunc, narrow cast_trunc, widen zext, widen sext, widen cast_zext,
     cast_nat i32, cast_nat i16, cast_nat i8, cast_nat i1, cast_nat64,
     cast_idx i32, cast_idx i16, cast_idx i8, cast_idx i1, cast_idx64, cast_ptr, cast_int,
     idx2nat i32, idx2nat i16, idx2nat i8, idx2nat i1, idx2nat64, idx);
-anx let compares = (
-    icmp (core.icmp.e,   x86.cc.e),  icmp (core.icmp.ne,  x86.cc.ne), icmp (core.icmp.ul, x86.cc.b), icmp (core.icmp.ule, x86.cc.be),
-    icmp (core.icmp.ug,  x86.cc.a),  icmp (core.icmp.uge, x86.cc.ae), icmp (core.icmp.sl, x86.cc.l), icmp (core.icmp.sle, x86.cc.le),
-    icmp (core.icmp.sg,  x86.cc.g),  icmp (core.icmp.sge, x86.cc.ge),
-    icmp_imm (core.icmp.e,  x86.cc.e),  icmp_imm (core.icmp.ne,  x86.cc.ne), icmp_imm (core.icmp.ul, x86.cc.b), icmp_imm (core.icmp.ule, x86.cc.be),
-    icmp_imm (core.icmp.ug, x86.cc.a),  icmp_imm (core.icmp.uge, x86.cc.ae), icmp_imm (core.icmp.sl, x86.cc.l), icmp_imm (core.icmp.sle, x86.cc.le),
-    icmp_imm (core.icmp.sg, x86.cc.g),  icmp_imm (core.icmp.sge, x86.cc.ge),
-    ncmp (core.ncmp.e, x86.cc.e), ncmp (core.ncmp.ne, x86.cc.ne), ncmp (core.ncmp.l, x86.cc.b),
-    ncmp (core.ncmp.le, x86.cc.be), ncmp (core.ncmp.g, x86.cc.a), ncmp (core.ncmp.ge, x86.cc.ae),
-    ncmp_imm (core.ncmp.e, x86.cc.e), ncmp_imm (core.ncmp.ne, x86.cc.ne), ncmp_imm (core.ncmp.l, x86.cc.b),
-    ncmp_imm (core.ncmp.le, x86.cc.be), ncmp_imm (core.ncmp.g, x86.cc.a), ncmp_imm (core.ncmp.ge, x86.cc.ae));
+anx let compares = (icmps any, icmps imm, ncmps any, ncmps imm);
 anx let selects = (select i16, select i32, select i64, select8 i8, select8 i1);
 anx let division = (
-    udiv8, udiv i16, udiv i32, udiv i64, urem8, urem i16, urem i32, urem i64,
-    sdiv8, sdiv i16, sdiv i32, sdiv i64, srem8, srem i16, srem i32, srem i64,
+    div8 (core.div.udiv, x86.div, 0_2, x86.movzx), divs (div (core.div.udiv, x86.div, 0_2)),
+    div8 (core.div.urem, x86.div, 1_2, x86.movzx), divs (div (core.div.urem, x86.div, 1_2)),
+    div8 (core.div.sdiv, x86.idiv, 0_2, x86.movsx), divs (div (core.div.sdiv, x86.idiv, 0_2)),
+    div8 (core.div.srem, x86.idiv, 1_2, x86.movsx), divs (div (core.div.srem, x86.idiv, 1_2)),
     rem8, rem16, rem32, rem64);
 anx let nonterminals = (base, abs, mov, lea ff, lea tt, scale1, unscale);
-anx let memory = (load i8, load i16, load i32, load i64, load_ptr, store, store_imm, store_ptr, slot);
+anx let memory = (load i8, load i16, load i32, load i64, load_ptr, store any, store imm, store_ptr, slot);
 anx let addresses = (scale2, scale4, scale8, shl1, shl2, shl3, index_disp, base_index, disp, index);
 ///
 /// `imul` has no `op m, r` form.
 ///
 anx let mem_ops = (
-    add_rm i8, add_rm i16, add_rm i32, add_rm i64,
-    sub_rm i8, sub_rm i16, sub_rm i32, sub_rm i64,
-    mul_rm i16, mul_rm i32, mul_rm i64,
-    and_rm i8, and_rm i16, and_rm i32, and_rm i64,
-    or_rm i8, or_rm i16, or_rm i32, or_rm i64,
-    xor_rm i8, xor_rm i16, xor_rm i32, xor_rm i64,
-    add_mr i8, add_mr i16, add_mr i32, add_mr i64, add_mr_imm i8, add_mr_imm i16, add_mr_imm i32, add_mr_imm i64,
-    sub_mr i8, sub_mr i16, sub_mr i32, sub_mr i64, sub_mr_imm i8, sub_mr_imm i16, sub_mr_imm i32, sub_mr_imm i64,
-    and_mr i8, and_mr i16, and_mr i32, and_mr i64, and_mr_imm i8, and_mr_imm i16, and_mr_imm i32, and_mr_imm i64,
-    or_mr i8, or_mr i16, or_mr i32, or_mr i64, or_mr_imm i8, or_mr_imm i16, or_mr_imm i32, or_mr_imm i64,
-    xor_mr i8, xor_mr i16, xor_mr i32, xor_mr i64, xor_mr_imm i8, xor_mr_imm i16, xor_mr_imm i32, xor_mr_imm i64);
+    rms x86.gpr   (rm x86.gpr   (core.wrap.add, x86.add)),
+    rms x86.gpr   (rm x86.gpr   (core.wrap.sub, x86.sub)),
+    rm x86.gpr16 (core.wrap.mul, x86.imul) i16, rm x86.gpr16 (core.wrap.mul, x86.imul) i32, rm x86.gpr16 (core.wrap.mul, x86.imul) i64,
+    rms x86.logic (rm x86.logic (core.bit2.and, x86.and)),
+    rms x86.logic (rm x86.logic (core.bit2.or,  x86.or)),
+    rms x86.logic (rm x86.logic (core.bit2.xor, x86.xor)),
+    mrs imm (mr x86.gpr   (core.wrap.add, x86.add)),
+    mrs imm (mr x86.gpr   (core.wrap.sub, x86.sub)),
+    mrs imm (mr x86.logic (core.bit2.and, x86.and)),
+    mrs imm (mr x86.logic (core.bit2.or,  x86.or)),
+    mrs imm (mr x86.logic (core.bit2.xor, x86.xor)));
 ///
 /// ## Phases
 ///
