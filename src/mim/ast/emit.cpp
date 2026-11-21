@@ -1100,6 +1100,7 @@ void LamDecl::emit_body(Emitter& e) const {
 }
 
 void RuleDecl::emit(Emitter& e) const {
+    // TODO a `norm` lands in the IR as a plain Rule whose lhs its own generated normalizer may already rewrite
     auto _      = e.world().push(loc());
     auto meta_t = e.world().reform(var()->emit_type(e));
     auto rule   = e.world().mut_rule(meta_t)->set(dbg());

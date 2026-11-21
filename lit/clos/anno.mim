@@ -1,0 +1,11 @@
+// RUN: %mim %s --output-mim - | %FileCheck %s
+
+plugin clos;
+
+extern lam bottom (x: Nat): Nat = clos.anno.bottom x;
+extern lam esc (x: Nat): Nat = clos.anno.esc x;
+
+// CHECK-LABEL: extern lam bottom (x: Nat): Nat =
+// CHECK-NEXT:  x;
+// CHECK-LABEL: extern lam esc ({{.*}}: Nat): Nat =
+// CHECK-NEXT:  clos.anno.esc @ Nat x{{.*}};

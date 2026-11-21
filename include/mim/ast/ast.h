@@ -18,6 +18,7 @@ namespace mim::ast {
 class Decl;
 class Expr;
 class LamDecl;
+class RuleDecl;
 class File;
 class Scopes;
 class Emitter;
@@ -168,6 +169,10 @@ public:
     };
     void add_foreign_alias(Sym plugin, ForeignAlias alias) { plugin2foreign_aliases_[plugin].emplace_back(alias); }
     const auto& plugin2foreign_aliases(Sym plugin) { return plugin2foreign_aliases_[plugin]; }
+
+    /// A `norm` rule of @p plugin; bootstrapping turns all rules of the same name into the C++ normalizer of that name.
+    void add_norm(Sym plugin, const RuleDecl* rule) { plugin2norms_[plugin].emplace_back(rule); }
+    const auto& plugin2norms(Sym plugin) { return plugin2norms_[plugin]; }
     ///@}
 
     /// @name bootstrap
@@ -185,6 +190,7 @@ public:
         swap(a1.scopes_, a2.scopes_);
         swap(a1.plugin2sym2annex_, a2.plugin2sym2annex_);
         swap(a1.plugin2foreign_aliases_, a2.plugin2foreign_aliases_);
+        swap(a1.plugin2norms_, a2.plugin2norms_);
         // clang-format on
     }
 
@@ -200,6 +206,7 @@ private:
     // so the elements must not be relocated when further annexes are inserted into the same plugin.
     std::unordered_map<fe::Sym, std::unordered_map<fe::Sym, AnnexInfo>> plugin2sym2annex_;
     std::unordered_map<fe::Sym, std::vector<ForeignAlias>> plugin2foreign_aliases_;
+    std::unordered_map<fe::Sym, std::vector<const RuleDecl*>> plugin2norms_;
 };
 
 /// Base class of all AST nodes.

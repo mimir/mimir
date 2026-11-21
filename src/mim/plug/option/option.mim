@@ -43,6 +43,7 @@ anx lam is_some {T: *} (o: Opt@T): Bool =
 /// Extracts the value without checking - undefined behavior for `None`.
 ///
 axm unwrap_unsafe: {T: *} → Opt@T → T, normalize_unwrap_unsafe;
+norm normalize_unwrap_unsafe (T: *, v: T): unwrap_unsafe (Opt#Some v) => v;
 ///
 /// ### unwrap_or
 ///

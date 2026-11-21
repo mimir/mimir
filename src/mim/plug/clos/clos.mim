@@ -61,6 +61,7 @@ axm longjmp: Cn [mem.M 0, BufPtr, I32];
 /// The `clos` phases are the only consumers; until the last of them has run, dropping one of these annotations
 /// loses the classification and closure conversion picks the wrong treatment.
 axm anno.(returning, free_bb, fstclass_bb, esc, bottom): {T: *} → T → T, normalize_clos;
+norm normalize_clos (T: *, x: T): anno.bottom x => x;
 ///
 /// ## Phases
 ///

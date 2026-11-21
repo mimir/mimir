@@ -1,0 +1,73 @@
+// UNSUPPORTED: roundtrip
+// RUN: %mim %s --output-h - --bootstrap | %FileCheck %s
+
+axm fam.(a, b, c): {T: *} → T → T, normalize_fam;
+norm normalize_fam (T: *, x: T): fam.a x => x;
+norm normalize_fam (T: *, x: T): (fam.b @ T) x => fam.a x;
+
+nom Meter = Nat;
+axm unwrap: Meter → Nat, normalize_unwrap;
+norm normalize_unwrap (x: Nat): unwrap (x inj Meter) => x;
+
+axm fst: [Nat, Nat] → Nat, normalize_fst;
+norm normalize_fst (a b: Nat): fst (a, b) => a;
+
+axm snd: [Nat, Nat] → Nat, normalize_snd;
+norm normalize_snd (a b: Nat): snd (b, a) => a;
+
+// CHECK-LABEL: inline const Def* normalize_fam_0(
+// CHECK:       auto d0 = callee;
+// CHECK-NEXT:  if (d0->node() != Node::App || d0->flags() != 0x0_u64 || d0->num_ops() != 2) return nullptr;
+// CHECK-NEXT:  if (auto axm = d0->op(0)->isa<Axm>(); !axm || axm->flags() != flags_t(plug::normgen::fam::a)) return nullptr;
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto T_ = d0->op(1);
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto x_ = arg;
+// CHECK-NEXT:  return x_;
+
+// CHECK-LABEL: inline const Def* normalize_fam_1(
+// CHECK:       if (auto axm = d0->op(0)->isa<Axm>(); !axm || axm->flags() != flags_t(plug::normgen::fam::b)) return nullptr;
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto T_ = d0->op(1);
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto x_ = arg;
+// CHECK-NEXT:  return w.app(w.app(w.annex(plug::normgen::fam::a), T_), x_);
+
+// CHECK-LABEL: template<plug::normgen::fam id>
+// CHECK-NEXT:  inline const Def* normalize_fam(
+// CHECK-NEXT:  if constexpr (id == plug::normgen::fam::a)
+// CHECK-NEXT:  if (auto res = normalize_fam_0(type, callee, arg)) return res;
+// CHECK-NEXT:  if constexpr (id == plug::normgen::fam::b)
+// CHECK-NEXT:  if (auto res = normalize_fam_1(type, callee, arg)) return res;
+// CHECK-NEXT:  return nullptr;
+
+// The rule over a nominal type requires the Name; its erased twin matches the bare value.
+// CHECK-LABEL: inline const Def* normalize_unwrap_0(
+// CHECK:       if (auto axm = callee->isa<Axm>(); !axm || axm->flags() != Annex::base<plug::normgen::unwrap>()) return nullptr;
+// CHECK-NEXT:  auto d0 = arg;
+// CHECK-NEXT:  if (d0->node() != Node::Name || d0->flags() != 0x0_u64 || d0->num_ops() != 1) return nullptr;
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto x_ = d0->op(0);
+// CHECK-NEXT:  return x_;
+
+// CHECK-LABEL: inline const Def* normalize_unwrap_1(
+// CHECK:       if (auto axm = callee->isa<Axm>(); !axm || axm->flags() != Annex::base<plug::normgen::unwrap>()) return nullptr;
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto x_ = arg;
+// CHECK-NEXT:  return x_;
+
+// CHECK-LABEL: inline const Def* normalize_unwrap(
+// CHECK-SAME:  // generated from the `norm` rules `normalize_unwrap` in normgen.mim
+// CHECK-NEXT:  if (auto res = normalize_unwrap_0(type, callee, arg)) return res;
+// CHECK-NEXT:  if (auto res = normalize_unwrap_1(type, callee, arg)) return res;
+// CHECK-NEXT:  return nullptr;
+
+// The binders are independent placeholders, so `(a, b)` stays a tuple instead of eta-reducing.
+// CHECK-LABEL: inline const Def* normalize_fst_0(
+// CHECK:       auto d0 = arg;
+// CHECK-NEXT:  if (Lit::isa(d0->arity()) != 2_n) return nullptr;
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto a_ = d0->proj(2, 0);
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto b_ = d0->proj(2, 1);
+// CHECK-NEXT:  return a_;
+
+// A tuple pattern decomposes any value of its arity through projections.
+// CHECK-LABEL: inline const Def* normalize_snd_0(
+// CHECK:       auto d0 = arg;
+// CHECK-NEXT:  if (Lit::isa(d0->arity()) != 2_n) return nullptr;
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto b_ = d0->proj(2, 0);
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto a_ = d0->proj(2, 1);
+// CHECK-NEXT:  return a_;

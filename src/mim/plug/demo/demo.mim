@@ -13,4 +13,8 @@
 /// The constant `42`, evaluated by a normalizer.
 /// Requires `n > 42`.
 ///
+
+plugin core;
+
 axm const_idx: [n: Nat] → Idx n, normalize_const;
+norm normalize_const (n: Nat): const_idx n when core.ncmp.g (n, 42) => core.conv.u n 42I64;
