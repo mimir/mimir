@@ -240,7 +240,8 @@ const Def* Def::var_type() {
     switch (mut_node()) {
         case MutNode::Lam:     return as<Lam >()->dom();
         case MutNode::Pi:      return as<Pi  >()->dom();
-        case MutNode::Rule:    return as<Rule>()->dom();
+        case MutNode::Rho:     return as<Rho >()->dom();
+        case MutNode::Rule:    return as<Rule>()->meta();
         case MutNode::Arr:
         case MutNode::Pack:    return world().type_indices(as<Seq>()->shape());
         case MutNode::Sigma:   return this;
@@ -573,8 +574,12 @@ const Def* Def::immutabilize() {
         }
         case MutNode::Sigma:   return is_immutabilizable() ? w.sigma(ops()) : nullptr;
         case MutNode::Variant: return is_immutabilizable() ? w.variant(ops()) : nullptr;
-        case MutNode::Rule:    return nullptr; // TODO should we ever immutabilize Rules?
+        case MutNode::Rho: {
+            auto rho = as<Rho>();
+            return is_immutabilizable() ? w.rho(rho->dom(), rho->codom()) : nullptr;
+        }
         case MutNode::Lam:
+        case MutNode::Rule:
         case MutNode::Hole:    return nullptr;
         case MutNode::Arr:
         case MutNode::Pack: {
@@ -602,6 +607,7 @@ size_t Def::reduction_offset() const noexcept {
         case MutNode::Arr:
         case MutNode::Pack:
         case MutNode::Pi:
+        case MutNode::Rho:
         case MutNode::Rule:    return 1;
         case MutNode::Hole:
         case MutNode::Variant: return size_t(-1);

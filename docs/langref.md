@@ -50,7 +50,7 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 ```text
 ( ) [ ] { }
 ‹ › « »
-→ ← => ⊥ ⊤ * □ λ
+→ ← => ↝ ▷ ⊥ ⊤ * □ λ
 = , ; . : @ $ # | ?
 + - / % == != < <= > >= << >>
 <eof>
@@ -68,6 +68,8 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 | ------- | --------- |
 | `→`     | `->`      |
 | `←`     | `<-`      |
+| `↝`     | `~>`      |
+| `▷`     | `\|>`     |
 | `λ`     | `lm`      |
 | `⊥`     | `bot`     |
 | `⊤`     | `top`     |
@@ -78,10 +80,10 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 <div class="terminals-code">
 
 ```text
-Bool Cn Fn I1 I8 I16 I32 I64 Idx Level Nat Rule Type
+Bool Cn Fn I1 I8 I16 I32 I64 Idx Level Nat Type
 anx as axm cn con end extern ff fn fun
 i1 i8 i16 i32 i64 import inj lam let match mod mutual
-nom norm plugin priv pub rec ret rule tt use when where with
+nom norm plugin priv pub rec ret rl rule tt use when where with
 ```
 
 </div>
@@ -244,7 +246,7 @@ d      ::= vis? import (I | S) ("as" (I | "*"))? ";"
         |  vis? "anx"? "nom" I ndom* "=" e
         |  vis? ("extern" | "anx")? "mutual" d* "end"
         |  vis? "axm" axm
-        |  vis? ("rule" | "norm") I p ":" e ("when" e)? "=>" e
+        |  vis? ("rule" | "norm") I ndom* ":" e ("when" e)? "=>" e
 
 import ::= "import" | "plugin"
 vis    ::= "priv" | "pub"
@@ -282,8 +284,11 @@ tail   ::= ("," I)? ("," L ("," L)?)?
   A `tag` list declares several axioms of the same type at once, and each `= I` adds another name for that tag.
   Prefixed with a name as in `axm nat.(add, sub): ...`, the tags become members of a module of that name.
 - An `axm`'s `tail` is the normalizer, the curry counter, and the trip count, in that order; a trip count requires a curry counter.
-- `rule` and `norm` declare rewrite rules.
-- `norm` is the normalizing variant of `rule`.
+- `rule I ndom* m: l when g => r` declares a [rewrite rule](@ref rules) and is sugar for `anx lam I ndom* = rl m: l when g => r`.
+  Its last domain `m` binds the meta variables, which matching determines; the `ndom`s before it make a family of rules, which whoever uses it instantiates.
+  Without any domain, it is an `anx let I = rl (): l when g => r`.
+  A rule is always an [annex](@ref annex), so phases leave it alone.
+- `norm` is the normalizing variant of `rule`: it must not change the type.
 
 #### Modifiers
 
@@ -376,7 +381,6 @@ e     ::= "Level"
        |  "□"
        |  "Nat"
        |  "Idx"
-       |  "Rule" e
        |  alias
 
 alias ::= "Bool"
@@ -390,7 +394,6 @@ alias ::= "Bool"
 - `□` abbreviates `Type (1:Level)`.
 - `Nat` is the natural number type.
 - `Idx` is the builtin of type `Nat → *`.
-- `Rule e` is the type of rewrite rules over the meta type `e`.
 - `alias` is one of the [predefined aliases](@ref terminals), so `Bool` abbreviates `Idx i1` and `I32` abbreviates `Idx i32`.
 
 #### Literals and Basic Forms {#lit}
@@ -438,6 +441,21 @@ e   ::= e "→" e
 - `t → e`, `Cn t`, and `Fn t → e` are dependent function forms whose domain is described by a telescope.
 - `λ`, `cn`, and `fn` are the expression forms corresponding to `lam`, `con`, and `fun`.
   They are anonymous, so they cannot call themselves; use a `lam`/`con`/`fun` [declaration](@ref decl) to recurse.
+
+#### Rewrite Rules {#rules}
+
+```ebnf
+e   ::= e "↝" e
+     |  "rl" p ":" e ("when" e)? "=>" e
+     |  e "▷" e
+```
+
+- `T ↝ U` is the type of a rule that rewrites a term of type `T` into one of type `U`.
+- `rl p: l when g => r` is a rule expression; `p` binds its meta variables, which may not occur in `T` or `U`.
+  It extends as far right as it can.
+- `f ▷ x` fires the rule `f` at `x`; an implicit family parameter of `f` is inferred from the type of `x`, as in `rule eq {s: Nat} (a: Idx s): (a, a) => tt`.
+  It matches `x` against the left-hand side, which determines the meta variables; if that succeeds and the guard holds, it becomes the right-hand side.
+  Otherwise it stays put, so it may fire later.
 - Application is written by juxtaposition.
 - `{...}` declares implicit domains: an application inserts a `Hole` for each, and `e @ e` passes one explicitly.
 - `e @ e` passes an explicit implicit argument.
@@ -660,20 +678,21 @@ A `+`/`-` sign is part of the [literal](@ref lit) rather than an operator and so
 | --: | --------- | :---: | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
 |   1 | `Lit`     |   -   | `L:e`                                | The tightest level. Not an infix operator - the literal parser reads the ascription itself and bounds `e` here.                   |
 |   2 | `Extract` | left  | `e#e`, `e#I`                         |                                                                                                                                   |
-|   3 | `App`     | left  | `e e`, `e @ e`                       | Application binds tighter than every operator. Also bounds the `e` in `Type e` and `Rule e`.                                      |
+|   3 | `App`     | left  | `e e`, `e @ e`                       | Application binds tighter than every operator. Also bounds the `e` in `Type e`.                                                   |
 |   4 | `Prefix`  |   -   | `#e`                                 | The only prefix level. Looser than application, so `#f x` is `#(f x)`.                                                            |
 |   5 | `Shift`   | left  | `e << e`, `e >> e`                   | Tighter than `*`, as in Lean and OCaml - not the C position.                                                                      |
 |   6 | `Mul`     | left  | `e * e`, `e / e`, `e % e`            |                                                                                                                                   |
 |   7 | `Add`     | left  | `e + e`, `e - e`                     |                                                                                                                                   |
 |   8 | `Rel`     | none  | `e < e`, `e <= e`, `e > e`, `e >= e` |                                                                                                                                   |
 |   9 | `Eq`      | none  | `e == e`, `e != e`                   |                                                                                                                                   |
-|  10 | `Pi`      |   -   | _pseudo_                             | Bounds the domain of a `λ`/`Fn`/`t → e` binder so it stops before the `→`. A `Cn`-style binder has no `→` and uses `Bot` instead. |
-|  11 | `Arrow`   | right | `e → e`                              | Also bounds the codomain after a `→`.                                                                                             |
-|  12 | `Inj`     | right | `e inj e`                            |                                                                                                                                   |
-|  13 | `Ins`     | right | `e("#"e)+ ← e`                       | Also bounds a declaration's `: codom` slot, which ends at `=` and so takes everything short of a `where`.                         |
-|  14 | `Where`   | left  | `e where d* end`                     | The loosest surface operator.                                                                                                     |
-|  15 | `Bot`     |   -   | _pseudo_                             | A complete expression; the default bound, and the only one a trailing `where` fits into.                                          |
-|  16 | `Err`     |   -   | _pseudo_                             | Below everything; the parser's "no operator seen yet" sentinel.                                                                   |
+|  10 | `Fire`    | right | `e ▷ e`                              | `f ▷ g ▷ x` fires `g` first.                                                                                                      |
+|  11 | `Pi`      |   -   | _pseudo_                             | Bounds the domain of a `λ`/`Fn`/`t → e` binder so it stops before the `→`. A `Cn`-style binder has no `→` and uses `Bot` instead. |
+|  12 | `Arrow`   | right | `e → e`, `e ↝ e`                     | Also bounds the codomain after a `→`.                                                                                             |
+|  13 | `Inj`     | right | `e inj e`                            |                                                                                                                                   |
+|  14 | `Ins`     | right | `e("#"e)+ ← e`                       | Also bounds a declaration's `: codom` slot, which ends at `=` and so takes everything short of a `where`.                         |
+|  15 | `Where`   | left  | `e where d* end`                     | The loosest surface operator.                                                                                                     |
+|  16 | `Bot`     |   -   | _pseudo_                             | A complete expression; the default bound, and the only one a trailing `where` fits into.                                          |
+|  17 | `Err`     |   -   | _pseudo_                             | Below everything; the parser's "no operator seen yet" sentinel.                                                                   |
 
 ## Summary: Functions and Types
 

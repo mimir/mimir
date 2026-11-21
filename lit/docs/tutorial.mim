@@ -65,7 +65,7 @@ let star = *;               // … which `*` abbreviates
 let boxx = □;               // and `Type (1:Level)`, which `□` abbreviates
 let nat  = Nat;
 let idx  = Idx;             // the builtin of type `Nat → *`
-let rul  = Rule Nat;        // the type of rewrite rules over `Nat`
+let rul  = Nat ↝ Nat;       // the type of rewrite rules from `Nat` to `Nat`
 
 lam bool_is_idx (b: Bool): Idx 2 = b;   // `Bool` abbreviates `Idx i1`; likewise I8 … I64
 ///
@@ -260,10 +260,13 @@ axm Curried: [Nat, Nat] → *, 1;                                 // … and a c
 ///
 mod rewrites
     use core.ops.n;
-    pub rule dbl (a: Nat): (a + a) => (a * 2);          // a rewrite rule, visible outside `rewrites`
-    norm zro (a: Nat): (a * 0) when (a == a) => 0;      // its normalizing variant, `priv` by default
+    rule dbl (a: Nat): a + a => a * 2;                 // a rewrite rule; like `anx`, visible outside `rewrites`
+    priv norm zro (a: Nat): a * 0 when a == a => 0;     // its normalizing variant, which must not change the type
 end
-/// @todo First-class rules are WIP and you can't really do anything useful with them yet.
+lam twice (n: Nat): Nat = rewrites.dbl ▷ core.nat.add (n, n); // `▷` fires a rule; it stays put until the rule matches
+rule dup (n: Nat) (a: Idx n): a => (a, a);                  // the last domain binds the meta variables, the others a family
+lam dup8 (x: I8): «2; I8» = dup i8 ▷ x;                     // whoever uses a family instantiates it
+lam swap (p: [Nat, Bool]): [Bool, Nat] = (rl (a: Nat, b: Bool): (a, b) => (b, a)) ▷ p; // `rl` is the rule expression
 ///
 /// ## LLVM
 ///

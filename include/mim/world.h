@@ -241,8 +241,11 @@ public:
         const auto& sym2flags() const { return sym2flags_; }
         /// The flags of the annex @p def, if it is one.
         const flags_t* flags(const Def* d) const { return d->is_annex() ? fe::lookup(def2flags_, d) : nullptr; }
-        /// Like flags() but only for an Axm or a non-Lam mutable - whose identity phases must preserve.
-        const flags_t* opaque(const Def* d) const { return d->isa<Axm>() || !d->isa_mut<Lam>() ? flags(d) : nullptr; }
+        /// Like flags() but only for an Axm, a non-Lam mutable, or a rule family - whose identity phases must preserve.
+        const flags_t* opaque(const Def* d) const {
+            if (!d->is_annex()) return nullptr;
+            return d->isa<Axm>() || !d->isa_mut<Lam>() || Rho::isa_family(d->type()) ? flags(d) : nullptr;
+        }
         size_t size() const { return flags2entry_.size(); }
         ///@}
 
@@ -437,13 +440,27 @@ public:
     // clang-format on
     ///@}
 
-    /// @name Rewrite Rules
+    /// @name Rho
     ///@{
-    const Reform* reform(const Def* dom) { return unify<Reform>(Reform::infer(dom), dom); }
-    Rule* mut_rule(const Reform* type) { return insert<Rule>(type); }
-    const Rule* rule(const Reform* type, const Def* lhs, const Def* rhs, const Def* guard) {
-        return unify<Rule>(type, lhs, rhs, guard);
-    }
+    // clang-format off
+    const Rho* rho(const Def* dom, const Def* codom) { return unify<Rho>(Rho::infer(dom, codom), dom, codom); }
+    const Rho* rho(Defs       dom, const Def* codom) { return rho(sigma(dom), codom); }
+    const Rho* rho(const Def* dom, Defs       codom) { return rho(dom, sigma(codom)); }
+    const Rho* rho(Defs       dom, Defs       codom) { return rho(sigma(dom), sigma(codom)); }
+    Rho*   mut_rho(const Def* type                 ) { return insert<Rho>(type); }
+    // clang-format on
+    ///@}
+
+    /// @name Rule
+    ///@{
+    const Rule* rule(const Rho* rho, const Def* meta, const Def* lhs, const Def* guard, const Def* rhs);
+    Rule* mut_rule(const Rho* rho) { return insert<Rule>(rho); }
+    ///@}
+
+    /// @name Fire
+    ///@{
+    const Def* fire(const Def* callee, const Def* arg);
+    const Def* fire(const Def* callee, Defs args) { return fire(callee, tuple(args)); }
     ///@}
 
     /// @name App
