@@ -112,7 +112,6 @@ struct Cover {
 
 struct Rule;
 struct Pattern;
-struct Insn;
 
 /// An alternative of a PBQP node: a match rooted there, or the class of all matches covering it as the same inner node.
 struct Alt {
@@ -192,20 +191,12 @@ public:
     Address split(const Def* addr);
     /// @p a as a value.
     const Def* materialize(Address a);
-    /// Applies @p insn to @p a and @p b, a hole of type @p want; operand sizes it does not support go through `i32`.
-    const Def* call_insn(const Insn& insn, Want want, const Def* a, const Def* b);
     /// Does the x86 instruction @p insn take operands of `Idx size`?
     bool supports(flags_t insn, nat_t size);
 
-    const Def* build_load(const Def* root, const Alt& alt);
-    const Def* build_store(const Def* root, const Alt& alt);
-    const Def* build_insn(const Def* root, const Alt& alt);
-    const Def* build_cmp(const Def* root, const Alt& alt);
-    const Def* build_nat_sub(const Def* root, const Alt& alt);
     const Def* build_id(const Def* root, const Alt& alt);
     const Def* build_trunc(const Def* root, const Alt& alt);
     const Def* build_ext(const Def* root, const Alt& alt);
-    const Def* build_rem(const Def* root, const Alt& alt);
     const Def* build_slot(const Def* root, const Alt& alt);
     const Def* build_select(const Def* root, const Alt& alt);
     /// Builds the rhs of a generated rule.

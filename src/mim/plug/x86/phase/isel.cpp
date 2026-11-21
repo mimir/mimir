@@ -44,15 +44,6 @@ bool fits_imm(const Def* lit) { return x86::fits_imm(Idx::isa_lit(lit->type()), 
 
 /// @p x in a register.
 const Def* reg(World& w, const Def* x) { return Lit::isa(x) ? w.call<mov>(x) : x; }
-/// @p x in a register or as an immediate.
-const Def* ri(World& w, const Def* x) { return Lit::isa(x) && fits_imm(x) ? x : reg(w, x); }
-
-/// `op r, r/imm`.
-template<class Id>
-const Def* bin(World& w, const Def* a, const Def* b) {
-    return w.call<Id>(Defs{reg(w, a), ri(w, b)});
-}
-
 bool is_lowered_plugin(const Axm* axm) {
     auto p = axm->plugin();
     return p == core::Plugin_Id || p == mem::Plugin_Id || p == math::Plugin_Id;
@@ -62,105 +53,74 @@ bool is_lowered_plugin(const Axm* axm) {
 
 /// How `match` extracts the operands of a pattern.
 enum class Tag : u8 {
-    Load,   ///< `mem.load (m, p)`.
-    Store,  ///< `mem.store (m, p, x)`.
-    Bin,    ///< Two operands.
+    Args,   ///< The projections of the argument.
     Unary,  ///< One operand.
-    Div,    ///< Two operands behind the `divrem` tuple.
     None,   ///< No operands.
     Select, ///< `(x, y)#c`, an `Extract` rather than an axiom.
 };
 
-/// The x86 side of a pattern, for the builders that apply one instruction.
-struct Insn {
-    flags_t id = 0;     ///< The x86 instruction.
-    s8 res     = -1;    ///< The result of a pair-valued instruction, or -1.
-    bool sign  = false; ///< Operands narrower than any size the instruction supports are sign-extended.
-};
-
-/// A program-side operation `match` recognizes: its axiom, the `Op` it selects, how to take it apart, and its
-/// instruction.
+/// A program-side operation `match` recognizes: its axiom, the `Op` it selects, and how to take it apart.
 struct Pattern {
     flags_t flags;      ///< The axiom, or the whole annex if `member` is `false`.
     bool member = true; ///< @p flags names one member of the annex.
     Op op;              ///< The operation @p flags selects.
     Tag tag;            ///< How `match` extracts the operands.
-    Insn insn     = {};
-    bool commutes = true; ///< An immediate may also be the first operand.
+    bool sign = false;  ///< A conversion that sign-extends.
 };
 
 namespace {
 
 /// One member of a multi-member annex.
 template<class Id>
-constexpr Pattern member(Id id, Op op, Tag tag, Insn insn = {}, bool commutes = true) {
-    return Pattern{flags_t(id), true, op, tag, insn, commutes};
+constexpr Pattern member(Id id, Op op, Tag tag, bool sign = false) {
+    return Pattern{flags_t(id), true, op, tag, sign};
 }
 
 /// The whole annex.
 template<class Id>
-constexpr Pattern annex(Op op, Tag tag, Insn insn = {}) {
-    return Pattern{Annex::base<Id>(), false, op, tag, insn, false};
+constexpr Pattern annex(Op op, Tag tag) {
+    return Pattern{Annex::base<Id>(), false, op, tag};
 }
 
 // clang-format off
 /// The program side of the rule set: which `core`/`mem` axioms isel covers.
 constexpr Pattern patterns_[] = {
     // The rules of `x86_isel` select these.
-    member(core::wrap::add,  Op::WrapAdd, Tag::Bin),
-    member(core::wrap::sub,  Op::WrapSub, Tag::Bin),
-    member(core::wrap::mul,  Op::WrapMul, Tag::Bin),
-    member(core::wrap::shl,  Op::WrapShl, Tag::Bin),
-    member(core::bit2::and_, Op::BitAnd,  Tag::Bin),
-    member(core::bit2::or_,  Op::BitOr,   Tag::Bin),
-    member(core::bit2::xor_, Op::BitXor,  Tag::Bin),
-    member(core::bit2::nand, Op::BitNand, Tag::Bin),
-    member(core::bit2::nor,  Op::BitNor,  Tag::Bin),
-    member(core::bit2::nxor, Op::BitNxor, Tag::Bin),
-    member(core::shr::a,     Op::ShrA,    Tag::Bin),
-    member(core::shr::l,     Op::ShrL,    Tag::Bin),
-    // The members of an annex select different instructions.
-    member(core::nat::add,   Op::NatAdd,  Tag::Bin,   {.id = Annex::Base<add>}),
-    member(core::nat::sub,   Op::NatSub,  Tag::Bin,   {}, false),
-    member(core::nat::mul,   Op::NatMul,  Tag::Bin,   {.id = Annex::Base<imul>}),
-    member(core::nat::div,   Op::NatDiv,  Tag::Bin,   {.id = Annex::Base<div>,  .res = 0}, false),
-    member(core::nat::rem,   Op::NatRem,  Tag::Bin,   {.id = Annex::Base<div>,  .res = 1}, false),
-    member(core::div::udiv,  Op::Div,     Tag::Div,   {.id = Annex::Base<div>,  .res = 0}, false),
-    member(core::div::urem,  Op::Div,     Tag::Div,   {.id = Annex::Base<div>,  .res = 1}, false),
-    member(core::div::sdiv,  Op::Div,     Tag::Div,   {.id = Annex::Base<idiv>, .res = 0, .sign = true}, false),
-    member(core::div::srem,  Op::Div,     Tag::Div,   {.id = Annex::Base<idiv>, .res = 1, .sign = true}, false),
-    member(core::conv::s,    Op::Conv,    Tag::Unary, {.sign = true}, false),
-    member(core::conv::u,    Op::Conv,    Tag::Unary, {}, false),
+    member(core::wrap::add,  Op::WrapAdd, Tag::Args),
+    member(core::wrap::sub,  Op::WrapSub, Tag::Args),
+    member(core::wrap::mul,  Op::WrapMul, Tag::Args),
+    member(core::wrap::shl,  Op::WrapShl, Tag::Args),
+    member(core::bit2::and_, Op::BitAnd,  Tag::Args),
+    member(core::bit2::or_,  Op::BitOr,   Tag::Args),
+    member(core::bit2::xor_, Op::BitXor,  Tag::Args),
+    member(core::bit2::nand, Op::BitNand, Tag::Args),
+    member(core::bit2::nor,  Op::BitNor,  Tag::Args),
+    member(core::bit2::nxor, Op::BitNxor, Tag::Args),
+    member(core::shr::a,     Op::ShrA,    Tag::Args),
+    member(core::shr::l,     Op::ShrL,    Tag::Args),
+    annex<core::icmp>       (Op::Icmp,    Tag::Args),
+    annex<core::ncmp>       (Op::Ncmp,    Tag::Args),
+    annex<mem::ptradd>      (Op::Ptradd,  Tag::Args),
+    annex<mem::load>        (Op::Load,    Tag::Args),
+    annex<mem::store>       (Op::Store,   Tag::Args),
+    member(core::nat::add,   Op::NatAdd,  Tag::Args),
+    member(core::nat::sub,   Op::NatSub,  Tag::Args),
+    member(core::nat::mul,   Op::NatMul,  Tag::Args),
+    member(core::nat::div,   Op::NatDiv,  Tag::Args),
+    member(core::nat::rem,   Op::NatRem,  Tag::Args),
+    annex<core::div>        (Op::Div,     Tag::Args),
+    annex<core::rem>        (Op::Rem,     Tag::Unary),
 
-    member(core::icmp::e,    Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::e)},  false),
-    member(core::icmp::ne,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::ne)}, false),
-    member(core::icmp::ul,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::b)},  false),
-    member(core::icmp::ule,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::be)}, false),
-    member(core::icmp::ug,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::a)},  false),
-    member(core::icmp::uge,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::ae)}, false),
-    member(core::icmp::sl,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::l)},  false),
-    member(core::icmp::sle,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::le)}, false),
-    member(core::icmp::sg,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::g)},  false),
-    member(core::icmp::sge,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::ge)}, false),
-    member(core::ncmp::e,    Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::e)},  false),
-    member(core::ncmp::ne,   Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::ne)}, false),
-    member(core::ncmp::l,    Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::b)},  false),
-    member(core::ncmp::le,   Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::be)}, false),
-    member(core::ncmp::g,    Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::a)},  false),
-    member(core::ncmp::ge,   Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::ae)}, false),
-
-    // One axiom per instruction.
-    annex<core::idx>     (Op::Idx,       Tag::Unary),
-    annex<core::idx2nat> (Op::Idx2Nat,   Tag::Unary),
-    annex<core::bitcast> (Op::Bitcast,   Tag::Unary),
-    annex<core::rem>     (Op::Rem,       Tag::Unary, {.id = Annex::Base<div>, .res = 1}),
-    annex<mem::ptradd>   (Op::Ptradd,    Tag::Bin),
-    annex<mem::load>     (Op::Load,      Tag::Load),
-    annex<mem::store>    (Op::Store,     Tag::Store),
-    annex<mem::mslot>    (Op::Slot,      Tag::None),
+    // The rules of `isel.cpp` select these.
+    member(core::conv::s,    Op::Conv,    Tag::Unary, true),
+    member(core::conv::u,    Op::Conv,    Tag::Unary),
+    annex<core::idx>        (Op::Idx,     Tag::Unary),
+    annex<core::idx2nat>    (Op::Idx2Nat, Tag::Unary),
+    annex<core::bitcast>    (Op::Bitcast, Tag::Unary),
+    annex<mem::mslot>       (Op::Slot,    Tag::None),
 };
 
-constexpr Pattern select_ = {.flags = 0, .member = false, .op = Op::Select, .tag = Tag::Select, .commutes = false};
+constexpr Pattern select_ = {.flags = 0, .member = false, .op = Op::Select, .tag = Tag::Select};
 // clang-format on
 
 /// The condition of the first `refly.check` in @p def.
@@ -241,18 +201,6 @@ bool ISel::supports(flags_t insn, nat_t size) {
     return supports_[{insn, size}] = !var || !cond || VarRewriter(var, w.lit_nat(size)).rewrite(cond) == w.lit_tt();
 }
 
-const Def* ISel::call_insn(const Insn& insn, Want want, const Def* a, const Def* b) {
-    auto& w   = new_world();
-    auto call = [&](const Def* x, const Def* y) {
-        auto r = w.call(insn.id, Defs{reg(w, x), is_literal(want) ? y : reg(w, y)});
-        return insn.res < 0 ? r : r->proj(2, insn.res);
-    };
-    auto size = Idx::isa_lit(a->type());
-    if (!size || supports(insn.id, core::widen_idx(*size))) return call(a, b);
-    auto ext = [&](const Def* x) { return insn.sign ? w.call<movsx>(w.lit_i32(), reg(w, x)) : zext(w.lit_i32(), x); };
-    return w.call<trunc>(*size, call(ext(a), ext(b)));
-}
-
 namespace {
 
 /*
@@ -311,24 +259,6 @@ constexpr std::string_view op_name(Op op) {
 // clang-format off
 /// The rule set: one entry per pattern ↦ replacement.
 constexpr Rule rules_[] = {
-    rule(Op::Load,      Ty::Reg,   1, "load",          &ISel::build_load, Want::Addr),
-    rule(Op::Store,     Ty::Reg,   1, "store",         &ISel::build_store, Want::Addr, Want::Reg),
-    rule(Op::Store,     Ty::Reg,   1, "store_imm",     &ISel::build_store, Want::Addr, Want::Imm),
-
-    rule(Op::Icmp,      Ty::Reg,   2, "cmp",           &ISel::build_cmp, Want::Reg, Want::Reg),
-    rule(Op::Icmp,      Ty::Reg,   2, "cmp_imm",       &ISel::build_cmp, Want::Reg, Want::Imm),
-    rule(Op::Ncmp,      Ty::Reg,   2, "ncmp",          &ISel::build_cmp, Want::Reg, Want::Reg),
-    rule(Op::Ncmp,      Ty::Reg,   2, "ncmp_imm",      &ISel::build_cmp, Want::Reg, Want::Imm),
-
-    rule(Op::NatAdd,    Ty::Reg,   1, "nat_add",       &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::NatAdd,    Ty::Reg,   1, "nat_add_imm",   &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::NatSub,    Ty::Reg,   1, "nat_sub",       &ISel::build_nat_sub, Want::Reg, Want::Reg),
-    rule(Op::NatSub,    Ty::Reg,   1, "nat_sub_imm",   &ISel::build_nat_sub, Want::Reg, Want::Imm),
-    rule(Op::NatMul,    Ty::Reg,   1, "nat_mul",       &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::NatMul,    Ty::Reg,   1, "nat_mul_imm",   &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::NatDiv,    Ty::Reg,   1, "nat_div",       &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::NatRem,    Ty::Reg,   1, "nat_rem",       &ISel::build_insn, Want::Reg, Want::Reg),
-
     rule(Op::Conv,      Ty::Reg,   0, "conv_id",       &ISel::build_id, Want::Reg).with(Cond::Same),
     rule(Op::Conv,      Ty::Reg,   1, "conv_trunc",    &ISel::build_trunc, Want::Reg).with(Cond::Narrow),
     rule(Op::Conv,      Ty::Reg,   1, "conv_ext",      &ISel::build_ext, Want::Reg).with(Cond::Widen),
@@ -338,9 +268,7 @@ constexpr Rule rules_[] = {
     rule(Op::Bitcast,   Ty::Reg,   0, "bitcast_id",    &ISel::build_id, Want::Reg).with(Cond::Same),
     rule(Op::Bitcast,   Ty::Reg,   1, "bitcast_trunc", &ISel::build_trunc, Want::Reg).with(Cond::Narrow),
     rule(Op::Bitcast,   Ty::Reg,   1, "bitcast_ext",   &ISel::build_ext, Want::Reg).with(Cond::Widen),
-    rule(Op::Rem,       Ty::Reg,   1, "rem",           &ISel::build_rem, Want::Reg),
 
-    rule(Op::Div,       Ty::Reg,   1, "div",           &ISel::build_insn, Want::Reg, Want::Reg),
     rule(Op::Slot,      Ty::Reg,   1, "slot",          &ISel::build_slot),
     rule(Op::Select,    Ty::Reg,   1, "select",        &ISel::build_select, Want::Reg, Want::Reg, Want::Reg),
 };
@@ -476,40 +404,6 @@ const Def* ISel::build_gen(const Def*, const Alt& alt) {
     return res->proj(2, 1);
 }
 
-const Def* ISel::build_load(const Def* root, const Alt&) {
-    auto [m, p] = root->as<App>()->args<2>();
-    auto size   = *xsize(root->type()->proj(2, 1));
-    return new_world().call<load>(size, Defs{rewrite(m), hole(p, Want::Addr)});
-}
-
-const Def* ISel::build_store(const Def* root, const Alt& alt) {
-    auto [m, p, x] = root->as<App>()->args<3>();
-    return new_world().call<store>(Defs{rewrite(m), hole(p, Want::Addr), hole(x, alt.demands[1].want)});
-}
-
-const Def* ISel::build_insn(const Def* root, const Alt& alt) {
-    auto& w    = new_world();
-    auto& insn = pattern(root)->insn;
-    auto a     = hole(alt.demands[0].def, alt.demands[0].want);
-    auto b     = hole(alt.demands[1].def, alt.demands[1].want);
-    auto res   = call_insn(insn, alt.demands[1].want, a, b);
-    return mem_valued(root) ? w.tuple({rewrite(root->as<App>()->arg(2, 0)), res}) : res;
-}
-
-const Def* ISel::build_cmp(const Def* root, const Alt& alt) {
-    auto& w = new_world();
-    auto a  = hole(alt.demands[0].def);
-    auto b  = hole(alt.demands[1].def, alt.demands[1].want);
-    return w.call(pattern(root)->insn.id, bin<cmp>(w, a, b));
-}
-
-const Def* ISel::build_nat_sub(const Def*, const Alt& alt) {
-    auto& w = new_world();
-    auto a  = hole(alt.demands[0].def);
-    auto b  = hole(alt.demands[1].def, alt.demands[1].want);
-    return w.call(x86::cmovcc::b, Defs{bin<cmp>(w, a, b), bin<sub>(w, a, b), reg(w, w.lit_i64(0))});
-}
-
 const Def* ISel::build_id(const Def*, const Alt& alt) { return hole(alt.demands[0].def); }
 
 const Def* ISel::build_trunc(const Def* root, const Alt& alt) {
@@ -520,14 +414,7 @@ const Def* ISel::build_ext(const Def* root, const Alt& alt) {
     auto& w  = new_world();
     auto dst = *Idx::isa_lit(rewrite(root->type()));
     auto x   = hole(alt.demands[0].def);
-    return pattern(root)->insn.sign ? w.call<movsx>(dst, x) : w.call<movzx>(dst, x);
-}
-
-const Def* ISel::build_rem(const Def* root, const Alt& alt) {
-    auto& insn = pattern(root)->insn;
-    auto x     = hole(alt.demands[0].def);
-    auto d     = new_world().lit(x->type(), *Lit::isa(Axm::as<core::rem>(root)->decurry()->arg()));
-    return call_insn(insn, Want::Reg, x, d);
+    return pattern(root)->sign ? w.call<movsx>(dst, x) : w.call<movzx>(dst, x);
 }
 
 const Def* ISel::build_slot(const Def* root, const Alt&) {
@@ -572,23 +459,8 @@ std::optional<ISel::Node> ISel::decompose(const Def* def) const {
             auto [x, y] = ex->tuple()->projs<2>();
             return node({x, y, index});
         }
-        case Tag::Load:
-            if (!xsize(app->type()->proj(2, 1))) return {};
-            return node({app->arg(2, 1)});
-        case Tag::Store: {
-            auto [_, p, x] = app->args<3>();
-            if (!xsize(x->type())) return {};
-            return node({p, x});
-        }
-        case Tag::Bin: {
-            auto [a, b] = app->args<2>();
-            return node({a, b});
-        }
+        case Tag::Args: return node(DefVec(app->arg()->projs()));
         case Tag::Unary: return node({app->arg()});
-        case Tag::Div: {
-            auto [x, y] = app->arg(2, 1)->projs<2>();
-            return node({x, y});
-        }
         case Tag::None: return node({});
     }
     std::unreachable();
@@ -606,21 +478,16 @@ void ISel::match(const Def* def, Alts& alts) {
 
 void ISel::append(const Rule& rule, const Def* root, const Node& node, Alts& alts) {
     if (node.ops.size() != rule.num_slots) return;
-    auto swaps = node.ptrn->commutes && rule.num_slots == 2 && rule.slots[0] != rule.slots[1];
-    for (bool swap : {false, true}) {
-        if (swap && !swaps) break;
-        auto alt = Alt();
-        alt.rule = &rule;
-        alt.cost = rule.cost;
-        auto ok  = true;
-        for (size_t i = 0; i != rule.num_slots && ok; ++i) {
-            auto def  = node.ops[swap ? 1 - i : i];
-            auto want = rule.slots[i];
-            ok        = !is_literal(want) || literal(def, want);
-            alt.demands.emplace_back(Demand{def, want});
-        }
-        if (ok && holds(root, alt)) alts.emplace_back(std::move(alt));
+    auto alt = Alt();
+    alt.rule = &rule;
+    alt.cost = rule.cost;
+    for (size_t i = 0; i != rule.num_slots; ++i) {
+        auto def  = node.ops[i];
+        auto want = rule.slots[i];
+        if (is_literal(want) && !literal(def, want)) return;
+        alt.demands.emplace_back(Demand{def, want});
     }
+    if (holds(root, alt)) alts.emplace_back(std::move(alt));
 }
 
 const App* ISel::sole(const Def* parent, const Def* def) const {
@@ -897,7 +764,7 @@ const Def* ISel::addr(Address a) {
 const Def* ISel::materialize(Address a) {
     auto& w = new_world();
     if (!a.index && Lit::isa(a.base)) return w.lit_i64(*Lit::isa(a.base) + a.disp);
-    if (!fits_i32(a.disp)) a = {bin<add>(w, a.base, w.lit_i64(a.disp)), a.index, a.scale};
+    if (!fits_i32(a.disp)) a = {w.call<add>(Defs{reg(w, a.base), reg(w, w.lit_i64(a.disp))}), a.index, a.scale};
     if (!a.index && a.disp == 0) return a.base;
     return w.call<lea>(addr(a));
 }

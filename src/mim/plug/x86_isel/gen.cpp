@@ -30,7 +30,7 @@ enum class Kind : u8 { Hole, Axm, Lit, Nat, Idx, App, Tuple, Pack, Extract, Sigm
 /// Flags of an App node.
 enum : u64 {
     Implicit = 1, ///< Its callee takes an implicit argument.
-    Inner    = 2, ///< It saturates an axiom, so in a term position of an lhs it is an inner node.
+    Inner    = 2, ///< It saturates an axiom into a term, so in a term position of an lhs it is an inner node.
     Commutes = 4, ///< It applies a commuting axiom to two operands.
 };
 
@@ -192,6 +192,9 @@ std::vector<Table::Meta> Table::metas(const Rule* rule) {
         if (!param) {
             if (Idx::isa(type)) {
                 want = Want::Reg;
+            } else if (type->isa<Nat>()) {
+                auto mark = marks_.find(i);
+                want      = mark == marks_.end() ? Want::Param : mark->second;
             } else if (Axm::isa<core::Ptr>(type)) {
                 auto mark = marks_.find(i);
                 if (mark == marks_.end())
@@ -225,6 +228,7 @@ void Table::guard(const Def* g, std::vector<Meta>& metas) {
     }
 
     auto set = [&](const Def* meta, Want want) {
+        if (auto nat = Axm::isa<x86_isel::nat>(meta)) meta = nat->arg();
         for (size_t i = 0; i != num_metas_; ++i)
             if (var_->proj(num_metas_, i) == meta && metas[i].want == Want::Reg) {
                 metas[i].want = want;
@@ -260,6 +264,7 @@ u32 Table::node_(const Def* def) {
 
     if (auto addr = Axm::isa<x86_isel::addr>(def)) return marked(addr->arg(), Want::Addr);
     if (auto reg = Axm::isa<x86_isel::reg>(def)) return marked(reg->arg(), Want::Reg);
+    if (auto nat = Axm::isa<x86_isel::nat>(def)) return marked(nat->arg(), Want::Reg);
     if (auto axm = def->isa<Axm>()) return make({Kind::Axm, axm->flags(), {}}, axm->sym().str());
     if (auto lit = def->isa<Lit>()) return make({Kind::Lit, lit->get(), {node(lit->type())}});
     if (def->isa<Nat>()) return make({Kind::Nat, 0, {}});
@@ -267,11 +272,14 @@ u32 Table::node_(const Def* def) {
     if (auto app = def->isa<App>()) {
         auto [axm, curry, _] = Axm::get(app);
         u64 flags            = app->callee_type()->is_implicit() ? u64(Implicit) : 0;
-        if (axm && curry == 0) {
+        auto arg             = node(app->arg());
+        if (axm && curry == 0 && !app->type()->isa<Type>()) {
             flags |= Inner;
-            if (commutes_.contains(axm->flags()) && app->arg()->isa<Tuple>() && app->num_args() == 2) flags |= Commutes;
+            // The arg may also be the meta variables as a whole.
+            if (commutes_.contains(axm->flags()) && nodes_[arg].kind == Kind::Tuple && nodes_[arg].ops.size() == 2)
+                flags |= Commutes;
         }
-        return make({Kind::App, flags, {node(app->callee()), node(app->arg())}});
+        return make({Kind::App, flags, {node(app->callee()), arg}});
     }
     if (auto ex = def->isa<Extract>()) {
         auto flags = Axm::isa<core::M>(ex->type()) ? Mem : 0;

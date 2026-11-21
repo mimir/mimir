@@ -52,7 +52,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 
 - `x86.cc` and `x86.cmovcc` are families in hardware encoding order (`x86.cc.o` = 0, …, `x86.cc.g` = 15), so a code is a subtag rather than an operand: C++ compares `Axm::base()` and reads `Axm::sub()`.
 - `x86.cc.l: Flags → Bool` is `setcc` as a value and `jcc` as a branch condition.
-- `core.icmp` maps onto `x86.cc.<c> (x86.cmp (a, b))` for `e`, `ne`, `sl`, `sle`, `sg`, `sge`, `ul`, `ule`, `ug`, `uge`, one `patterns_` row per predicate with its condition code as the `Insn`; the other predicates have no row and are rejected for now.
+- `core.icmp` maps onto `x86.cc.<c> (x86.cmp (a, b))` for `e`, `ne`, `sl`, `sle`, `sg`, `sge`, `ul`, `ule`, `ug`, `uge`, and `core.ncmp` for `e`, `ne`, `l`, `le`, `g`, `ge`: the rule families `icmp`/`ncmp` of `x86_isel` take the predicate and its condition code; the other predicates have no instance and are rejected for now.
 
 ## Status
 
@@ -117,12 +117,11 @@ Done (on `feature/x86`):
   A `Rule` carries the `Op` of its root, the type of its replacement, its cost, its name, its builder, a side condition `Cond`, and the `Want` of each operand; only a generated rule (see *Staging*) has inner nodes.
   `Op` has one value per instruction, and one instruction is one row per operand form (`add`, `add_imm`, `add_rm`).
   `Cond::Same`, `Cond::Narrow`, and `Cond::Widen` compare the register sizes of a conversion's operand and result and pick the identity, `trunc`, or `movzx`/`movsx`; `Cond::Fold` (an `rm` rule) requires the availability of the root's holes at the load whose memory the replacement takes over.
-  A `Pattern` carries the axiom (or the member of a multi-member annex; `select_` stands for an `Extract`), its `Op`, the `Tag` that tells `decompose` how to take it apart, its `Insn`, and whether its operands commute.
-  An `Insn` is the x86 instruction, the result it takes of a pair-valued instruction (`div`), whether narrow operands are sign-extended, and whether the result is complemented (`nand` as `xor` of `and` with all ones).
-  So one builder, `build_insn`, selects every operation that is one instruction (`core.wrap`, `core.bit2`, `core.shr`, `core.nat` but `sub`, `core.div`, `core.rem`); `build_id`, `build_trunc`, and `build_ext` select the conversions (`core.conv`, `core.bitcast`, `core.idx`, `core.idx2nat`), and no builder asks for the axiom again.
+  A `Pattern` carries the axiom (or the member of a multi-member annex; `select_` stands for an `Extract`), its `Op`, the `Tag` that tells `decompose` how to take it apart, and for a conversion whether it sign-extends.
+  The hand-written rules left are the conversions (`build_id`, `build_trunc`, `build_ext` for `core.conv`, `core.bitcast`, `core.idx`, `core.idx2nat`), `select`, and `slot`; all other operations are rules of `x86_isel`.
   A cast between pointer types is a no-op to isel: `key`, `hole`, and the rewrite look through it, and it is no node.
-  Which operand sizes an x86 instruction takes is read off the `refly.check` in its codomain (`supports`, memoized per instruction and size): a memory form needs it for the instruction and for `x86.load`, and `call_insn` and `build_select` go through `i32` where it fails.
-  `match` decomposes a Def into its `Op` and operands and binds every rule of that `Op` operand by operand, trying the swapped operands of a commuting node whenever their holes differ; an inner node must be `sole` (its value and its parent's operand tuple have no other user).
+  Which operand sizes an x86 instruction takes is read off the `refly.check` in its codomain (`supports`, memoized per instruction and size): a memory form needs it for the instruction and for `x86.load`, and `build_select` goes through `i32` where it fails.
+  `match` decomposes a Def into its `Op` and operands and binds every hand-written rule of that `Op` operand by operand; an inner node must be `sole` (its value and its parent's operand tuple have no other user).
   A match is an `Alt` with typed `Demand`s on the operands and the inner nodes it covers (`Cover`).
   `ISel::analyze()` builds the PBQP generically from that: every operation with a match is a node, inner alternatives are the classes of covers with equal demands (resolved bottom-up), edges price `conv` between rule type and hole type, and all-zero edges are left out.
   Conversion costs are one table `conv_` from rule type (or `Ty::Lit` for a literal operand) to hole type; `key` lets the value projection of any memory operation stand for it.
@@ -138,7 +137,8 @@ Done (on `feature/x86`):
   `<op>_mr`/`<op>_mr_imm` fold a store right behind the load (the load's memory has no other user) of an operation on the loaded value to the same address into `x86.mr f (m, addr, b)` (`op addr, r/imm`; not `imul`).
   `cmp`/`test` do not fold since `x86.schedule` rematerializes them per consumer, and `div` does not since `cltd` clobbers the index register.
 - `x86.div`/`idiv` yield quotient and remainder as a pair, so a quotient and a remainder of the same operands share one instruction; `x86.slot n` reserves `n` frame bytes on the `mem.M` chain; `trunc` to a non-power-of-two size is an unsigned remainder.
-- The rule `mul8` widens 8-bit multiplications to `i32` (`movzx`, `imul`, `trunc`), since `imul` has no 8-bit form; `div`/`idiv` at `i8` still widen in `call_insn`.
+- The rules `mul8`, `udiv8`, `urem8`, `sdiv8`, `srem8`, and `rem8` widen 8-bit operations to `i32` (`movzx`/`movsx`, the instruction, `trunc`), since `imul`, `div`, and `idiv` have no 8-bit form.
+- `core.nat` selects on `I64`; `core.nat.sub` saturates as `cmovcc.b (cmp (a, b), sub (a, b), mov 0)`, and `core.rem` puts its divisor into a register with one closed rule per size, since `x86.mov`'s result type only folds for a literal size.
 - Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/isel_nlogic.mim`, `lit/x86/isel_mr_shared.mim`, `lit/x86/isel_index_shared.mim` (look-through), `lit/x86/isel_addr.mim` (merged offsets), `lit/x86/isel_rules.mim` (the generated C++), `lit/x86/conv_fold.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/emit_pbqp.mim` (competing folds), `lit/x86/sched.mim`, `lit/x86/sched_join.mim` (one placement in the dominator), `lit/x86/sched_loop.mim` (hoisting), `lit/x86/sched_remat.mim`, `lit/x86/sched_closed_tuple.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/sched_no_chain.mim`, `lit/x86/live_loop.mim`, `lit/x86/live_call.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`, `lit/x86/spill_loop.mim` (live-through values spilled outside the loop), `lit/x86/spill_phi.mim` (memory φ), `lit/x86/spill_ssa.mim` (new φ for a reloaded value), `lit/x86/spill_call.mim` (callee-saved limit), `lit/x86/constrain.mim` (also at `k = 3`), `lit/x86/color.mim` (fixed results, a value across a call; also at `k = 3`); `lit/x86/emit_cf.mim` also runs at `k = 3`.
 
 Known gaps and bugs, as of 2026-11-20.
@@ -203,6 +203,7 @@ Instruction selection:
 
 - A looked-through inner node keeps the cost of its own selection in the PBQP even if no chosen alternative uses its value; the rewrite then never builds it.
 - A scaled index is only found in a `core.wrap.mul` by 2, 4, or 8, not in a `core.wrap.shl`.
+- The `load`/`store` rules take `mem.M 0` and a pointer value only as `mem.Ptr0 I8`, so a memory operation in another address space has no rule.
 - `isel` still emits size-check failures for non-register sizes (e.g. `core.wrap.add` on `Idx 5`); these need masking or a clear rejection.
 - `isel` emits a `trunc` → `movzx` pair for array indices that `core.legalize_idx` narrowed; it is a mask (`and x, 2^k - 1`), not a no-op, and should become one `and` in PBQP isel.
 - `malloc`/`free`, aggregate loads and stores, `bitcast` of unions or floats, `core.mulrem`, and `math` are not selected; `core.nat.div`/`rem` do not guard against zero like `ll`.
@@ -304,21 +305,21 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 
 ### Staging
 
-- Now both sides of the rule set are `constexpr` tables in `isel.cpp`: `rules_`, one entry per operation and operand form with its slots, side condition, cost, and builder, and `patterns_`, one entry per recognized axiom with its `Tag`.
-  `decompose` names no axiom: it switches over `Tag` to extract the operands, so the only code left is the operand extraction, the register sizes a `Tag` implies, the `Cond`s, and the builders of replacements that are more than one instruction (`nat.sub`, `select`, `slot`, `assume`, and the `negate`/`res`/`sign` flags of an `Insn`).
-  Writing replacements as Mim terms is the next step; it also brings `Ty::Flags`, so that `select` fuses with a `cmp` by PBQP choice.
+- `isel.cpp` keeps two `constexpr` tables: `rules_`, the hand-written rules left (conversions, `select`, `slot`) with their slots, side condition, cost, and builder, and `patterns_`, one entry per recognized axiom with its `Op` and `Tag`.
+  `decompose` names no axiom: it switches over `Tag` to extract the operands.
+  Next are the conversions as instances per pair of sizes, then `select` with `Ty::Flags`, so that it fuses with a `cmp` by PBQP choice.
   The PBQP construction, the rewrite, and the solvability checks are generic over the tables.
 - The rules move to Mim: the plugin `x86_isel` (`src/mim/plug/x86_isel/x86_isel.mim`) holds rule families, their instance tuples, and the phase `x86_isel.gen`, which writes every closed rule reachable from its annexes to `build/include/mim/plug/x86/isel_rules.h` (types in `rule_table.h`): one C++ matcher per distinct lhs, one builder per distinct rhs, and a `Rewrite` row per rule with its cost, root and head axioms, and the `Want` of each meta.
   A matcher checks the lhs structurally, binds the metas (a hole also matches its type, which checks the size), and matches a tuple pattern by projections.
-  A saturated axiom inside an lhs is an inner node (a cover); the matcher records each reference to one (`Ref::Value` as an operand, `Ref::Mem` by its memory), and the generator numbers the covers in preorder of their Value refs.
-  Each node of an axiom listed in `x86_isel.commutes` gets a swap bit, and a rule's `swaps` keeps the bits whose two operand patterns differ under its wants.
+  A saturated axiom inside an lhs is an inner node (a cover), unless it is a type such as the implicit `core.Ptr (I8, 0)` of a `mem.load`; the matcher records each reference to one (`Ref::Value` as an operand, `Ref::Mem` by its memory), and the generator numbers the covers in preorder of their Value refs.
+  Each node of an axiom listed in `x86_isel.commutes` gets a swap bit, also if its operand pair is the rule's meta variables as a whole (`(a, b)` η-collapses into the Var), and a rule's `swaps` keeps the bits whose two operand patterns differ under its wants.
   An lhs `(m, e)` replaces `e` and, by the memory of the rhs, the memory `m` of an inner node of `e` (`maps`); this is how `x86.rm` takes over a load.
   `isel.cpp` turns each row into a `Rule` (its `Op` from the root axiom's `patterns_` row, `build_gen` as builder, `Cond::Fold` if it maps): every subset of `swaps` yields a match whose Value refs must be `sole`, whose Mem refs must have no other user, and whose operand metas become `Demand`s of their owner; `build_gen` converts each operand meta with `hole`, calls the builder, and maps the cover whose memory it replaces.
   Builders drop implicit arguments for `World::implicit_app`, so the holes determine them, e.g. the `i` of the `x86.Addr i` that the marker `x86_isel.addr p` stands for.
   A pure inner node whose value something else uses is looked through (`Cover::through`): the match takes its operands but leaves the node to its own selection, so a shared `i * 4` still folds into the scale of every address; a memory operation never is.
   Generated rules apply by their root axiom, not by `Op`.
-  The ALU forms (reg, imm, widened `mul8`, `Bool` logic, `nand`/`nor`/`nxor`), the memory forms (`rm`, `mr`), and the address forms are generated now, with selection byte-identical up to gids; `x86.movzx`/`movsx`/`trunc` fold a literal, so a widened immediate stays one.
-  The generator derives what a rule wants of each meta variable: a meta the rhs does not use, another meta's type mentions, or of type `mem.M` is a `Param`, otherwise its type gives `Reg` (`Idx s`), its marker `Addr`/`Reg` (`mem.Ptr` under `x86_isel.addr`/`reg`) or `Base`/`Index`/`Addr` (`x86.Addr`), and the guard atoms `x86_isel.imm`/`sh` give `Imm`/`Sh`; any other guard is an error, and a guard of `ff` drops the instance.
+  The ALU forms (reg, imm, widened `mul8`, `Bool` logic, `nand`/`nor`/`nxor`), the comparisons, `core.nat`, `core.div`, `core.rem`, loads and stores, the memory forms (`rm`, `mr`), and the address forms are generated now, with selection byte-identical up to gids; `x86.movzx`/`movsx`/`trunc` fold a literal, so a widened immediate stays one.
+  The generator derives what a rule wants of each meta variable: a meta the rhs does not use, another meta's type mentions, or of type `mem.M` is a `Param`, otherwise its type gives `Reg` (`Idx s`), its marker `Addr`/`Reg` (`mem.Ptr` under `x86_isel.addr`/`reg`, `Nat` under `x86_isel.nat`; an unmarked `Nat` is a `Param`, like the divisor of `core.rem`) or `Base`/`Index`/`Addr` (`x86.Addr`), and the guard atoms `x86_isel.imm`/`sh` give `Imm`/`Sh`; any other guard is an error, and a guard of `ff` drops the instance.
   A rule costs the number of saturated x86 instructions in its rhs, addresses excluded.
 - The build runs `mim` with `x86_isel` loaded as a module, so `x86` and `x86_isel` exist only if `MIM_X86` (neither `MIM_STATIC_PLUGINS` nor `MIM_NATIVE_MIM`); lit then excludes `lit/x86/` and drops the `x86_64-linux` feature.
   Generating needs `x86.mim` but not `libmim_x86`.
