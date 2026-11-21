@@ -16,6 +16,7 @@
 #include <mim/plug/mem/mem.h>
 
 #include "mim/plug/x86/imm.h"
+#include "mim/plug/x86/insn.h"
 #include "mim/plug/x86/isel_rules.h"
 #include "mim/plug/x86/x86.h"
 
@@ -90,6 +91,12 @@ pbqp::Cost leaf(const Def* def, Want want) { return conv(Lit::isa(def) ? Ty::Lit
 /// Does @p def satisfy a hole of type @p want that requires a literal?
 bool literal(const Def* def, Want want) { return Lit::isa(def) && (want == Want::Sh || fits_imm(def)); }
 
+/// Is @p def a Var or a projection of one?
+bool is_param_var(const Def* def) {
+    if (auto ex = def->isa<Extract>()) def = ex->tuple();
+    return def->isa<Var>();
+}
+
 /// The hole of type @p want that @p def fills: a RegImm or RegSh is an immediate if @p def is a literal that fits.
 Want resolve(const Def* def, Want want) {
     if (auto l = rules::literal_of(want); l != want) return literal(def, l) ? l : Want::Reg;
@@ -113,19 +120,22 @@ bool atomic(const rules::Rewrite& r) {
 } // namespace
 
 void ISel::append(const rules::Rewrite& rule, const Def* root, Alts& alts) {
-    auto swaps = rule.swaps;
-    // Ascending subsets of `swaps`.
+    auto swaps  = rule.swaps;
+    auto copies = ankerl::unordered_dense::map<u32, u32>();
+    // Ascending subsets of `swaps`, so the rival of a swap comes first.
     for (u32 swap = 0;; swap = ((swap | ~swaps) + 1) & swaps) {
-        append(rule, root, swap, alts);
+        auto rival = swap & rule.imm_swaps ? fe::lookup(copies, swap & ~rule.imm_swaps) : nullptr;
+        if (auto c = append(rule, root, swap, rival ? std::optional(*rival) : std::nullopt, alts)) copies[swap] = *c;
         if (swap == swaps) break;
     }
 }
 
-void ISel::append(const rules::Rewrite& r, const Def* root, u32 swap, Alts& alts) {
+std::optional<u32>
+ISel::append(const rules::Rewrite& r, const Def* root, u32 swap, std::optional<u32> rival, Alts& alts) {
     const auto& m = *r.match;
     auto metas    = std::array<const Def*, rules::Max_Metas>{};
     auto refs     = std::array<const Def*, rules::Max_Refs>{};
-    if (!m.fn(root, swap, metas.data(), refs.data())) return;
+    if (!m.fn(root, swap, metas.data(), refs.data())) return {};
 
     auto alt = Alt();
     alt.rule = &r;
@@ -135,7 +145,7 @@ void ISel::append(const rules::Rewrite& r, const Def* root, u32 swap, Alts& alts
         auto ex                    = refs[j]->isa<Extract>();
         auto cover                 = ex ? ex->tuple() : refs[j];
         alt.covers[info.cover].def = cover;
-        if (info.kind == rules::Ref::Mem && uses(refs[j]) != 1) return;
+        if (info.kind == rules::Ref::Mem && uses(refs[j]) != 1) return {};
     }
 
     // A pure inner node that something else uses is looked through: the match takes its operands but not the node.
@@ -156,28 +166,32 @@ void ISel::append(const rules::Rewrite& r, const Def* root, u32 swap, Alts& alts
             auto c    = rules::all_refs[m.refs + u.index].cover;
             auto& cov = alt.covers[c];
             parent[c] = o;
-            if (!root_of(cov.def)) return;
+            if (!root_of(cov.def)) return {};
             if (sole(node(u.owner), def) != cov.def) {
-                if (mem_valued(cov.def) || c + 1u == r.maps) return;
+                if (mem_valued(cov.def) || c + 1u == r.maps) return {};
                 cov.through = true;
                 continue;
             }
             demands(o).emplace_back(Demand{def, Want::Reg, size_t(c) + 1});
         } else if (auto w = want_of(r, u.index); w == Want::Lit) {
-            if (!Lit::isa(metas[u.index])) return;
+            if (!Lit::isa(metas[u.index])) return {};
         } else if (w != Want::Param) {
             auto def = metas[u.index];
             auto rw  = resolve(def, w);
-            if (rules::is_literal(rw) && !literal(def, rw)) return;
+            if (rules::is_literal(rw) && !literal(def, rw)) return {};
             imm |= rw != w && rw != Want::Reg;
             demands(o).emplace_back(Demand{def, rw});
         }
     }
-    // Without an immediate, such a swap yields a match that another swap already did.
-    if ((swap & r.imm_swaps) && !imm) return;
-    if (!holds(alt)) return;
+    for (size_t i = 0; i != r.num_metas; ++i)
+        if (r.tied >> i & 1 && overwritten(metas[i])) ++alt.copies;
+    // Without an immediate, such a swap only differs from its rival in which operand it overwrites.
+    if ((swap & r.imm_swaps) && !imm && !(rival && alt.copies < *rival)) return {};
+    if (!holds(alt)) return {};
     alt.metas = DefVec(metas.begin(), metas.begin() + r.num_metas);
+    auto res  = alt.copies;
     alts.emplace_back(std::move(alt));
+    return res;
 }
 
 const Def* ISel::build(const Alt& alt) {
@@ -270,7 +284,7 @@ bool ISel::analyze() {
     for (auto def : nodes) {
         auto costs = pbqp::Costs();
         for (const auto& alt : alts_[def]) {
-            auto c = alt.rule ? pbqp::Cost(alt.rule->cost) : pbqp::Cost(0);
+            auto c = alt.rule ? pbqp::Cost(alt.rule->cost + alt.copies * insn::Copy) : pbqp::Cost(0);
             for (const auto& d : alt.demands)
                 if (!alts_.contains(key(d.def))) c += d.inner ? pbqp::Cost::inf() : leaf(d.def, d.want);
             costs.emplace_back(c);
@@ -339,6 +353,8 @@ bool ISel::analyze() {
     }
     return false;
 }
+
+bool ISel::overwritten(const Def* def) const { return !Lit::isa(def) && !is_param_var(def) && uses(def) > 1; }
 
 void ISel::count(const Def* def) {
     if (!counted_.emplace(def).second) return;

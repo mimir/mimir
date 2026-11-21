@@ -230,6 +230,12 @@ anx let arithmetic = (
     gprs (x86.gpr,   reg_sh)  (alu x86.gpr   (core.wrap.shl, x86.shl)),
     gprs (x86.gpr,   reg_sh)  (shift (core.shr.l, x86.shr)),
     gprs (x86.gpr,   reg_sh)  (shift (core.shr.a, x86.sar)));
+///
+/// `lea` adds without overwriting an operand; it costs what `add` does, so it only wins where `add` would need a copy.
+/// A closed rule is an annex of its own, so these follow `arithmetic` to lose a tie against its `add`.
+///
+rule lea_add  (m: Nat, a b: I64): core.wrap.add m (a, b)            => x86.lea (x86.index (x86.addr (0I32, a)) (b, x86.scale_1));
+rule lea_disp (m: Nat, a c: I64): core.wrap.add m (a, c) when imm c => x86.lea (x86.addr (core.conv.u i32 c, a));
 anx let nats = (
     nat_alu (core.nat.add, x86.add), nat_sub, nat_alu (core.nat.mul, x86.imul), nat_div (core.nat.div, 0_2), nat_div (core.nat.rem, 1_2));
 anx let conversions = (

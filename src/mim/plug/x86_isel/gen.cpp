@@ -15,6 +15,7 @@
 
 #include <mim/plug/core/core.h>
 #include <mim/plug/x86/autogen.h>
+#include <mim/plug/x86/insn.h>
 #include <mim/plug/x86/rule_table.h>
 
 #include "mim/plug/x86_isel/x86_isel.h"
@@ -105,16 +106,20 @@ bool uses(const Def* def, const Var* var, size_t i) {
     return uses(def, var, i, done);
 }
 
-/// The number of x86 instructions in @p def; an address is none.
-size_t num_insns(const Def* def, DefSet& done) {
+/// The summed x86::insn::cost of the instructions in @p def.
+size_t cost(const Def* def, DefSet& done) {
     if (def->isa_mut() || !done.emplace(def).second) return 0;
     size_t n = 0;
-    if (auto [axm, curry, _] = Axm::get(def);
-        axm && curry == 0 && axm->plugin() == x86::Plugin_Id && !Axm::isa<x86::Addr>(def->type()))
-        ++n;
+    if (auto [axm, curry, _] = Axm::get(def); axm && curry == 0 && axm->plugin() == x86::Plugin_Id)
+        n += x86::insn::cost(def->as<App>());
     for (auto op : def->ops())
-        n += num_insns(op, done);
+        n += cost(op, done);
     return n;
+}
+
+size_t cost(const Def* def) {
+    auto done = DefSet();
+    return cost(def, done);
 }
 
 /// A ref with its owner, the node it is an operand of (0 for the root, `k + 1` for cover `k`).
@@ -194,6 +199,7 @@ private:
         Ty type;
         u32 lhs, rhs;
         u32 mapped; ///< The memory Extract the rhs replaces, or `u32(-1)`.
+        u32 tied;   ///< The meta variables that a two-address instruction of the rhs overwrites.
         std::vector<Meta> metas;
     };
 
@@ -220,6 +226,18 @@ private:
     }
 
     size_t num_metas() const { return var_ ? var_->num_projs() : 0; }
+    /// The meta variable @p def is, under its markers.
+    std::optional<size_t> meta(const Def* def) const {
+        for (;;) {
+            auto [axm, curry, _] = Axm::get(def);
+            if (!axm || curry != 0 || axm->plugin() != Plugin_Id) break;
+            def = def->as<App>()->arg();
+        }
+        if (def == var_) return 0;
+        if (auto ex = def->isa<Extract>(); ex && ex->tuple() == var_) return Lit::isa(ex->index());
+        return {};
+    }
+    u32 tied(const Def* rhs) const;
 
     DefSet seen_;
     ankerl::unordered_dense::map<u64, Want> marks_; ///< The marker of each meta variable of the current rule.
@@ -255,10 +273,9 @@ void Table::add(const Rule* rule) {
         if (!literal && rule->guard() != rule->world().lit_tt())
             rule->blame("x86_isel: the guard of conversion `{}` is no `x86_isel.lit` of its meta variable", rule)
                 .bail();
-        auto done = DefSet();
         conversions_.emplace_back(Conversion{.name  = rule->sym().str(),
                                              .rho   = std::format("{} ↝ {}", rule->dom(), rule->codom()),
-                                             .cost  = num_insns(rule->rhs(), done),
+                                             .cost  = cost(rule->rhs()),
                                              .from  = literal ? Ty::Lit : nonterminal(rule, from),
                                              .to    = type(rule),
                                              .rhs   = node(rule->rhs()),
@@ -275,19 +292,38 @@ void Table::add(const Rule* rule) {
     if (!root && !lhs->isa<Extract>())
         rule->blame("x86_isel: the lhs of `{}` must apply an axiom or extract", rule).bail();
 
-    auto done = DefSet();
     // A family that takes the operation names all of its instances alike.
     auto name = root ? std::format("{}({})", rule->sym().str(), root->sym().str()) : rule->sym().str();
     rewrites_.emplace_back(Rewrite{.name   = std::move(name),
                                    .rho    = std::format("{} ↝ {}", rule->dom(), rule->codom()),
-                                   .cost   = num_insns(rule->rhs(), done),
+                                   .cost   = cost(rule->rhs()),
                                    .root   = root ? root->flags() : 0,
                                    .type   = type(rule),
                                    .lhs    = node(lhs),
                                    .rhs    = node(rule->rhs()),
                                    .mapped = mapped,
+                                   .tied   = tied(rule->rhs()),
                                    .metas  = metas(rule)});
     var_ = nullptr;
+}
+
+u32 Table::tied(const Def* rhs) const {
+    u32 res   = 0;
+    auto done = DefSet();
+    auto todo = DefVec{rhs};
+    while (!todo.empty()) {
+        auto def = todo.back();
+        todo.pop_back();
+        if (def->isa_mut() || !done.emplace(def).second) continue;
+        if (auto [axm, curry, _] = Axm::get(def); axm && curry == 0 && axm->plugin() == x86::Plugin_Id)
+            if (auto i = x86::insn::tied(axm->base())) {
+                auto arg = def->as<App>()->arg();
+                if (auto m = meta(arg->proj(arg->num_projs(), *i))) res |= 1u << *m;
+            }
+        for (auto op : def->ops())
+            todo.emplace_back(op);
+    }
+    return res;
 }
 
 std::vector<Table::Meta> Table::metas(const Rule* rule) {
@@ -829,9 +865,10 @@ void Table::dump(std::ostream& os) const {
             if (size_t(k) == s.covers.size()) fe::throwf("x86_isel: `{}` maps the memory of no inner node", r.name);
             maps = k + 1;
         }
-        std::println(os, "    {{\"{}\", {}, {:#x}, Ty::{}, &matchers[{}], &build_{}, {}, {}, {:#x}, {:#x}, {}}}, // {}",
-                     r.name, r.cost, r.root, name(r.type), ids[i], r.rhs, first, r.metas.size(), swaps,
-                     swaps & ~reg_swaps, maps, r.rho);
+        std::println(
+            os, "    {{\"{}\", {}, {:#x}, Ty::{}, &matchers[{}], &build_{}, {}, {}, {:#x}, {:#x}, {:#x}, {}}}, // {}",
+            r.name, r.cost, r.root, name(r.type), ids[i], r.rhs, first, r.metas.size(), swaps, swaps & ~reg_swaps,
+            r.tied, maps, r.rho);
         first += r.metas.size();
     }
     std::println(os, "}};");

@@ -53,25 +53,28 @@ extern lam _compile (): compile.Phase = x86_isel.gen;
 // CHECK:      inline constexpr size_t Max_Metas
 // CHECK:      inline constexpr Rewrite rewrites[] = {
 // The operands of `core.nat.add` are the meta variables as a whole, and they still commute, though only for an immediate.
-// CHECK:          {"nat_alu(core.nat.add)", 1, {{.*}}, 2, 0x1, 0x1, 0}, // Nat ↝ I64
+// `add` overwrites its first operand, meta variable 0.
+// CHECK:          {"nat_alu(core.nat.add)", 2, {{.*}}, 2, 0x1, 0x1, 0x1, 0}, // Nat ↝ I64
 // CHECK:          {"idx(core.idx)", 0, {{0x[0-9a-f]+}}, Ty::Reg, {{.*}} // I64 ↝ I64
 // The logical instructions also take `Bool`.
-// CHECK:          {"alu(core.bit2.and)", 1, {{.*}} // Bool ↝ Bool
-// One rule per size covers the register and the immediate form; swapping only yields another match with an immediate.
-// CHECK:          {"alu(core.wrap.add)", 1, {{0x[0-9a-f]+}}, Ty::Reg, {{.*}}, 3, 0x1, 0x1, 0}, // I8 ↝ I8
-// CHECK-NEXT:     {"alu(core.wrap.add)", 1, {{.*}} // I16 ↝ I16
-// The rhs of `rm` replaces the load's memory, cover 0, and yields the register of its value.
-// CHECK:          {"rm(core.wrap.add)", 1, {{0x[0-9a-f]+}}, Ty::Reg, {{.*}}, 4, 0x1, 0x0, 1}, // [core.M 0, I8] ↝ [core.M 0, I8]
-// CHECK:          {"mul8(core.wrap.mul)", 4, {{0x[0-9a-f]+}}, Ty::Reg, {{.*}}, 3, 0x1, 0x1, 0}, // I8 ↝ I8
+// CHECK:          {"alu(core.bit2.and)", 2, {{.*}} // Bool ↝ Bool
+// One rule per size covers the register and the immediate form; swapping only yields another match with an immediate or with fewer copies.
+// A rule costs the latency of its instructions plus one per instruction.
+// CHECK:          {"alu(core.wrap.add)", 2, {{0x[0-9a-f]+}}, Ty::Reg, {{.*}}, 3, 0x1, 0x1, 0x2, 0}, // I8 ↝ I8
+// CHECK-NEXT:     {"alu(core.wrap.add)", 2, {{.*}} // I16 ↝ I16
+// The rhs of `rm` replaces the load's memory, cover 0, and yields the register of its value; it costs a load and an `add` in one instruction.
+// CHECK:          {"rm(core.wrap.add)", 6, {{0x[0-9a-f]+}}, Ty::Reg, {{.*}}, 4, 0x1, 0x0, 0x2, 1}, // [core.M 0, I8] ↝ [core.M 0, I8]
+// `imul` overwrites a `movzx`, no meta variable, and the `trunc` back to `i8` is free.
+// CHECK:          {"mul8(core.wrap.mul)", 8, {{0x[0-9a-f]+}}, Ty::Reg, {{.*}}, 3, 0x1, 0x1, 0x0, 0}, // I8 ↝ I8
 // CHECK-NOT:      {"alu(core.wrap.mul)", {{.*}} // I8 ↝ I8
-// CHECK:          {"alu(core.wrap.mul)", 1, {{.*}} // I16 ↝ I16
+// CHECK:          {"alu(core.wrap.mul)", 4, {{.*}} // I16 ↝ I16
 // A scale is part of the address, so it costs nothing, and a product of either order is one.
-// CHECK:          {"scale(core.wrap.mul)", 0, {{0x[0-9a-f]+}}, Ty::Scaled, {{.*}}, 2, 0x1, 0x0, 0}, // I64 ↝ [I64, I2]
+// CHECK:          {"scale(core.wrap.mul)", 0, {{0x[0-9a-f]+}}, Ty::Scaled, {{.*}}, 2, 0x1, 0x0, 0x0, 0}, // I64 ↝ [I64, I2]
 // CHECK-NOT:      {"rm(core.wrap.mul)", {{.*}} // [core.M 0, I8]
-// CHECK:          {"mr(mem.store)", 1, {{.*}}, 4, 0x1, 0x0, 0}, // core.M 0 ↝ core.M 0
+// CHECK:          {"mr(mem.store)", 7, {{.*}}, 4, 0x1, 0x0, 0x0, 0}, // core.M 0 ↝ core.M 0
 // `index_disp` and `base_index` share their matcher, and both may swap their operands.
-// CHECK:          {"index_disp(mem.ptradd)", 0, {{0x[0-9a-f]+}}, Ty::Index, &matchers{{\[}}[[Q:[0-9]+]]{{\]}}, {{.*}}, 4, 0x1, 0x0, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
-// CHECK-NEXT:     {"base_index(mem.ptradd)", 1, {{0x[0-9a-f]+}}, Ty::Index, &matchers{{\[}}[[Q]]{{\]}}, {{.*}}, 4, 0x1, 0x0, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
+// CHECK:          {"index_disp(mem.ptradd)", 0, {{0x[0-9a-f]+}}, Ty::Index, &matchers{{\[}}[[Q:[0-9]+]]{{\]}}, {{.*}}, 4, 0x1, 0x0, 0x0, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
+// CHECK-NEXT:     {"base_index(mem.ptradd)", 2, {{0x[0-9a-f]+}}, Ty::Index, &matchers{{\[}}[[Q]]{{\]}}, {{.*}}, 4, 0x1, 0x0, 0x0, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
 // A displacement alone yields an `x86.Base`; it shares its matcher with the plain index.
 // CHECK-NEXT:     {"disp(mem.ptradd)", 0, {{0x[0-9a-f]+}}, Ty::Base, &matchers{{\[}}[[P:[0-9]+]]{{\]}}, {{.*}} // core.Ptr (I8, 0) ↝ x86.Addr ff
 // CHECK-NEXT:     {"index(mem.ptradd)", 0, {{0x[0-9a-f]+}}, Ty::Index, &matchers{{\[}}[[P]]{{\]}}, {{.*}} // core.Ptr (I8, 0) ↝ x86.Addr tt

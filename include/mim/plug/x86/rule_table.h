@@ -74,7 +74,7 @@ struct Matcher {
 /// A closed rule `lhs ↦ rhs`, whose metas want `num_metas` consecutive entries of `wants`.
 struct Rewrite {
     std::string_view name;
-    u32 cost;     ///< The number of x86 instructions in its rhs.
+    u32 cost;     ///< The summed x86::insn::cost of its rhs.
     flags_t root; ///< The axiom at the head of its lhs, or 0 for an Extract.
     Ty type;      ///< The non-terminal its rhs yields.
     const Matcher* match;
@@ -83,6 +83,7 @@ struct Rewrite {
     u8 num_metas;
     u32 swaps;     ///< The swaps of `match` that may yield another match.
     u32 imm_swaps; ///< Those of `swaps` that only do if a RegImm or RegSh becomes an immediate.
+    u32 tied;      ///< The meta variables that a two-address instruction of the rhs overwrites.
     u8 maps;       ///< `k + 1` if the rhs replaces cover `k` as a whole, or 0.
 };
 

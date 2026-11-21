@@ -39,7 +39,8 @@ struct Alt {
     const rules::Rewrite* rule = nullptr; ///< `nullptr` for an inner alternative, whose id is its index plus one.
     fe::Vector<Demand> demands;
     fe::Vector<Cover> covers;
-    DefVec metas; ///< What the meta variables of its rule match.
+    DefVec metas;   ///< What the meta variables of its rule match.
+    u32 copies = 0; ///< The operands its two-address instructions overwrite although something else uses them.
 };
 
 using Alts = fe::Vector<Alt>;
@@ -66,6 +67,9 @@ private:
         auto n = fe::lookup(uses_, def);
         return n ? *n : 0;
     }
+    /// Does overwriting @p def cost a copy, since something else uses it?
+    /// The other uses of a parameter are mostly in other continuations, so it never does.
+    bool overwritten(const Def* def) const;
     /// The memory operation of old_world() that @p def is the value of, if nothing else uses this value.
     const App* sole_value(const Def* def) const;
     /// The old_world() operand @p def as @p want in new_world().
@@ -85,8 +89,11 @@ private:
     void match(const Def* def, Alts& alts);
     /// Appends the matches of @p rule rooted at @p root to @p alts.
     void append(const rules::Rewrite& rule, const Def* root, Alts& alts);
-    /// Appends the match of @p rule rooted at @p root with the commuting nodes in @p swap swapped.
-    void append(const rules::Rewrite& rule, const Def* root, u32 swap, Alts& alts);
+    /// Appends the match of @p rule rooted at @p root with the commuting nodes in @p swap swapped and yields its
+    /// copies. A swap of `imm_swaps` without an immediate only counts if it needs fewer copies than the @p rival
+    /// without it.
+    std::optional<u32>
+    append(const rules::Rewrite& rule, const Def* root, u32 swap, std::optional<u32> rival, Alts& alts);
     /// The inner node the operand @p def of @p parent stands for, if nothing outside the match uses it.
     const App* sole(const Def* parent, const Def* def) const;
     /// Does the match @p alt meet the side condition of its rule?

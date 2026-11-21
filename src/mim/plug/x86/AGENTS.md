@@ -26,7 +26,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 - Registers and the schedule are no concern of these types.
 - Constants are explicit: a literal operand of an instruction is an immediate and must fit its encoding (a sign-extended `i32`, any shift count), and `x86.mov c` (`mov r, imm`) puts any other constant into a register.
   Isel decides this per use, as part of the cover (Buchwald & Zwinkau, *Instruction Selection by Graph Transformation*, CASES 2010: `Add+Const` versus atomic `Const`).
-  A literal is no PBQP node: it is hash-consed across the whole world and free to rematerialize, so each using option prices it locally (immediate 0, `mov` 1) and scheduling rematerializes a closed instruction right before each use.
+  A literal is no PBQP node: it is hash-consed across the whole world and free to rematerialize, so each using option prices it locally (immediate 0, `mov` 2) and scheduling rematerializes a closed instruction right before each use.
 - An address is an operand of type `x86.Addr i`, built by `x86.addr (disp, base)` and `x86.index a (index, scale)`; it is no value, so it is not scheduled and occupies no register of its own.
   Isel folds address arithmetic into it; RA may still unfold it into `x86.lea` under pressure.
 - `x86.lea: Addr i → I64` materializes an address that is used as a value; `mem.Ptr` becomes `I64` during isel.
@@ -141,7 +141,7 @@ Done (on `feature/x86`):
   A literal offset that fits `i32` is the `disp`, `x + i` puts `p + x` into the base with an `x86.lea`, and any other offset is the index.
   An index is the non-terminal `Scaled` (`[I64, I2]`, the hole marker `x86_isel.scaled i`): the `scale` family makes a `core.wrap.mul` by 2, 4, or 8 or a `core.wrap.shl` by 1, 2, or 3 one, any other register takes scale 1, so a product shared by several addresses is one node that each folds.
   `base_index` keeps `x` a register, so it and the scaled `i` differ and both orders of the `add` stay matches; with both `Scaled`, the generator drops the swap and `p + i * 4` can land in the `lea` of a loop.
-  Of two matches that cost the same, the solver keeps the first, so the rules come larger first; within a root, the table follows the declaration order in `x86_isel.mim`, not the instance tuples.
+  Of two matches that cost the same, the solver keeps the first, so the rules come larger first; within a root, the table follows the declaration order of `x86_isel`'s annexes, where a closed `rule` is an annex of its own and a family's instances sit in their tuple.
 - `<op>_rm` folds a sole load into `add`/`sub`/`and`/`or`/`xor`/`imul` as `x86.rm f (m, a, addr)` (`op r, addr`): the user moves to the load's place in the memory order, so its other operand must be in scope of the load's block and must not depend on the load.
   `mr` folds a store right behind the load (the load's memory has no other user) of an operation on the loaded value to the same address into `x86.mr f (m, addr, b)` (`op addr, r/imm`; not `imul`).
   `cmp`/`test` do not fold since `x86.schedule` rematerializes them per consumer, and `div` does not since `cltd` clobbers the index register.
@@ -149,7 +149,7 @@ Done (on `feature/x86`):
 - The rules `mul8`, `div8`, `rem8`, and `select8` widen 8-bit operations to `i32` (`movzx`/`movsx`, the instruction, `trunc`), since `imul`, `div`, `idiv`, and `cmovcc` have no 8-bit form.
 - A select is `cmovcc.ne (test (c, c), x, y)`; `x86.cmovcc`'s normalizer turns it into `cmovcc.l (f, x, y)` if `c` is `cc.l f`, so a `cmp` feeding a `setcc` and a `cmov` stays one.
 - `core.nat` selects on `I64`; `core.nat.sub` saturates as `cmovcc.b (cmp (a, b), sub (a, b), mov 0)`, and `core.rem` puts its divisor into a register with one closed rule per size, since `x86.mov`'s result type only folds for a literal size.
-- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/isel_nlogic.mim`, `lit/x86/isel_mr_shared.mim`, `lit/x86/isel_index_shared.mim` (a shared scaled index), `lit/x86/isel_index_shl.mim`, `lit/x86/isel_disp_shared.mim` (look-through), `lit/x86/isel_abs.mim` (literal addresses), `lit/x86/isel_addr.mim` (merged offsets), `lit/x86/isel_rules.mim` (the generated C++), `lit/x86/isel_select.mim`, `lit/x86/isel_slot.mim`, `lit/x86/isel_slot_dyn.mim` (no rule for a dynamic size), `lit/mem/legalize_ptr_index.mim`, `lit/x86/conv_fold.mim`, `lit/x86/addr_fold.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/emit_pbqp.mim` (competing folds), `lit/x86/sched.mim`, `lit/x86/sched_join.mim` (one placement in the dominator), `lit/x86/sched_loop.mim` (hoisting), `lit/x86/sched_remat.mim`, `lit/x86/sched_closed_tuple.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/sched_no_chain.mim`, `lit/x86/live_loop.mim`, `lit/x86/live_call.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`, `lit/x86/spill_loop.mim` (live-through values spilled outside the loop), `lit/x86/spill_phi.mim` (memory φ), `lit/x86/spill_ssa.mim` (new φ for a reloaded value), `lit/x86/spill_call.mim` (callee-saved limit), `lit/x86/constrain.mim` (also at `k = 3`), `lit/x86/color.mim` (fixed results, a value across a call; also at `k = 3`); `lit/x86/emit_cf.mim` also runs at `k = 3`.
+- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/isel_nlogic.mim`, `lit/x86/isel_mr_shared.mim`, `lit/x86/isel_index_shared.mim` (a shared scaled index), `lit/x86/isel_index_shl.mim`, `lit/x86/isel_disp_shared.mim` (look-through), `lit/x86/isel_abs.mim` (literal addresses), `lit/x86/isel_addr.mim` (merged offsets), `lit/x86/isel_rules.mim` (the generated C++), `lit/x86/isel_select.mim`, `lit/x86/isel_lea.mim` (an `add` that would need a copy), `lit/x86/isel_slot.mim`, `lit/x86/isel_slot_dyn.mim` (no rule for a dynamic size), `lit/mem/legalize_ptr_index.mim`, `lit/x86/conv_fold.mim`, `lit/x86/addr_fold.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/emit_pbqp.mim` (competing folds), `lit/x86/sched.mim`, `lit/x86/sched_join.mim` (one placement in the dominator), `lit/x86/sched_loop.mim` (hoisting), `lit/x86/sched_remat.mim`, `lit/x86/sched_closed_tuple.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/sched_no_chain.mim`, `lit/x86/live_loop.mim`, `lit/x86/live_call.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`, `lit/x86/spill_loop.mim` (live-through values spilled outside the loop), `lit/x86/spill_phi.mim` (memory φ), `lit/x86/spill_ssa.mim` (new φ for a reloaded value), `lit/x86/spill_call.mim` (callee-saved limit), `lit/x86/constrain.mim` (also at `k = 3`), `lit/x86/color.mim` (fixed results, a value across a call; also at `k = 3`); `lit/x86/emit_cf.mim` also runs at `k = 3`.
 
 Known gaps and bugs, as of 2026-11-21.
 
@@ -218,6 +218,9 @@ Instruction selection:
 - `isel` still emits size-check failures for non-register sizes (e.g. `core.wrap.add` on `Idx 5`); these need masking or a clear rejection.
 - An array index that `core.legalize_idx` narrowed is still reduced modulo its size in `mem.legalize_ptr` (an `and`, or a `div` for a size that is no power of two), although it is in range.
 - `malloc`/`free`, aggregate loads and stores, `bitcast` of unions or floats, `core.mulrem`, and `math` are not selected; `core.nat.div`/`rem` do not guard against zero like `ll`.
+- The operand markers of `x86_isel` are a hack: opaque axioms that only the generator understands, so a rule applied by `▷` leaves them stuck and the rules are no executable specification.
+  `reg`, `addr`, `nat`, `scaled`, and `ptr` cast a meta variable from its lhs type (`mem.Ptr0 I8`, `Nat`) to an x86 operand type so the rhs type-checks, and double as its `Want`; they exist because one rule spans the change of representation, so lowering `Nat` (and pointers) to `I64` before isel removes most of them.
+  `reg_imm`/`reg_sh` only state an operand form; which operand of an instruction may be an immediate is a machine fact like `insn::tied`, so `insn.h` should state it and the generator derive `RegImm`/`RegSh` from the hole's position, which also drops the family parameter `r: mark`.
 
 Frontend bugs that `x86_isel` hits (libmim, not fixed):
 
@@ -242,7 +245,7 @@ Pitfalls already hit (fixed, but each is a rule for any new backend phase):
 
 ## Next Steps
 
-1. **PBQP instruction selection**: rules are data and the solvability checks run over the rule set now (see *Solvability*); next is rules in bulk (`cc` for flags consumed by branches and `cmov`, three-operand `add` via `lea`, the `and` mask for `trunc` → `movzx`).
+1. **PBQP instruction selection**: rules are data and the solvability checks run over the rule set now (see *Solvability*); next is rules in bulk (`cc` for flags consumed by branches and `cmov`, the `and` mask for `trunc` → `movzx`).
 2. **Register allocation**: spilling, `x86.constrain`, `x86.color`, and `emit` on the colored registers (SSA destruction by parallel copies) are done; next are spill-slot coloring with memory-φ coalescing, loop-depth weights for copies, and pressure-aware list scheduling (see *Register Assignment*); each piece is checked against the allowlist, also at small `k`.
 
 ## Instruction Selection with PBQP
@@ -332,7 +335,10 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
   Rules apply by their exact root axiom, so a member of an annex without a rule is no node.
   The ALU forms (reg, imm, widened `mul8`, `Bool` logic, `nand`/`nor`/`nxor`), the comparisons, the selects, the conversions, `core.nat`, `core.div`, `core.rem`, loads and stores, the memory forms (`rm`, `mr`), and the address forms are generated now, with selection byte-identical up to gids; `x86.movzx`/`movsx`/`trunc` fold a literal, so a widened immediate stays one.
   The generator derives what a rule wants of each meta variable: a meta the rhs does not use, another meta's type mentions, or of type `mem.M` or a continuation is a `Param`, otherwise its type gives `Reg` (`Idx s`), its marker `Addr`/`Reg` (`mem.Ptr` under `x86_isel.addr`/`reg`, `Nat` under `x86_isel.nat`; an unmarked `Nat` is a `Param`, like the divisor of `core.rem`) or `Base`/`Index`/`Addr` (`x86.Addr`), and the guard atoms `x86_isel.imm`/`sh` give `Imm`/`Sh` and `x86_isel.lit` makes a `Param` a `Lit`, which must match a literal (and a conversion one from a literal); any other guard is an error, and a guard of `ff` drops the instance.
-  A rule costs the number of saturated x86 instructions in its rhs, addresses excluded.
+  A rule costs the summed `x86::insn::cost` of its rhs (`include/mim/plug/x86/insn.h`): each instruction's latency on recent cores (uops.info) plus one, so of two equally fast covers the shorter wins; an address costs nothing, `rm`/`mr` a load plus their operation, and a `trunc` to a register size nothing.
+  `Rewrite::tied` marks the meta variables a two-address instruction of the rhs overwrites (`insn::tied`, which `constraint()` shares); an alternative adds `insn::Copy` for each that something else uses (`ISel::overwritten`), and a swap of a commuting node that saves such a copy is kept.
+  `lea_add`/`lea_disp` add 64-bit values without overwriting either, at the cost of an `add`, so they win exactly where the `add` needs such a copy.
+  Without liveness, a parameter or loop φ never counts as overwritten, since its other uses are mostly in other continuations (`lit/mem/seo/dont_prop_old.mim` regresses otherwise).
   The frontend rejects a rule whose type mentions one of its meta variables, so a size the type names is a family parameter: a conversion of `core.conv` takes both sizes, one instance per pair of register sizes.
 - The build runs `mim` with `x86_isel` loaded as a module, so `x86` and `x86_isel` exist only if `MIM_X86` (neither `MIM_STATIC_PLUGINS` nor `MIM_NATIVE_MIM`); lit then excludes `lit/x86/` and drops the `x86_64-linux` feature.
   Generating needs `x86.mim` but not `libmim_x86`.
@@ -341,7 +347,8 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 
 - A multi-result pattern that should win only because it is shared (`sub` and `cmp` of the same operands) is underpriced by the one-rule-per-result scheme; to be revisited with flags.
 - Flags: `cmp` + `cc` as a rule of type `Flags` consumed by branches and `cmovcc`; keeping the flags alive until then is the scheduler's job.
-- The cost unit: µops or latency from uops.info for a chosen µarch, with encoding size as tie-breaker.
+- The cost unit is latency plus one per instruction for a generic recent core; a per-µarch table, µops, or encoding size as a tie-breaker are open.
+- The copy charge only sees use counts, not liveness: an operand whose other uses all come earlier is charged anyway, and a parameter used again in the same block is not.
 
 ## Register Allocation
 
