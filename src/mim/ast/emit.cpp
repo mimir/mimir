@@ -381,7 +381,7 @@ const Def* RuleExpr::emit_(Emitter& e) const {
     rule->set_lhs(lhs()->emit(e));
     rule->set_guard(guard()->emit(e));
     rule->set_rhs(rhs()->emit(e));
-    if (auto var = rule->has_var(); var && rule->type()->free_vars().contains(var))
+    if (auto var = rule->has_var(); var && rule->type()->has_free_var(var))
         e.error()
             .e(loc(), "the type of a rule must not depend on its meta variables")
             .n("its type is `{}`; make what it depends on a parameter of the family", rule->type()->zonk())

@@ -17,7 +17,7 @@ nat_t field_offset(const Def* sigma, nat_t i) {
     for (nat_t j = 0; j <= i; ++j) {
         auto field = sigma->proj(sigma->num_projs(), j);
         auto align = trait(core::trait::align, field);
-        off        = (off + align - 1) / align * align;
+        off        = fe::pad(off, align);
         if (j != i) off += trait(core::trait::size, field);
     }
     return off;

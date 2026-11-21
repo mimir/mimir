@@ -15,7 +15,7 @@ const Def* fold(const Def* type, const Def* x, bool sign) {
     if (!l || !s || !d) return nullptr;
     auto v = *l;
     if (auto bits = Idx::size2bitwidth(*s); sign && bits < 64 && (v >> (bits - 1)) & 1) v |= ~0_n << bits;
-    return type->world().lit(type, *d == 0 ? v : v % *d);
+    return type->world().lit_idx_mod(*d, v);
 }
 
 } // namespace
@@ -37,8 +37,10 @@ const Def* normalize_addr(const Def* type, const Def*, const Def* arg) {
 const Def* normalize_lea(const Def* type, const Def*, const Def* a) {
     if (auto ad = Axm::isa<addr>(a)) {
         auto [disp, base] = ad->args<2>();
-        if (Lit::isa(disp) == 0) return base;
-        if (Lit::isa(base) == 0) return type->world().lit_i64(u64(s64(s32(*Lit::isa(disp)))));
+        auto d            = Lit::isa(disp);
+        auto b            = Lit::isa(base);
+        if (d && *d == 0) return base;
+        if (d && b && *b == 0) return type->world().lit_i64(u64(s64(s32(*d))));
     }
     return nullptr;
 }

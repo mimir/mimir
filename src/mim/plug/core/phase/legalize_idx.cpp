@@ -79,10 +79,11 @@ bool has_dyn_size(const Def* implicit) {
 /// Is the core operation @p app generic in the size of its `Idx` operands and result, which its implicit arguments
 /// state?
 bool sized(const App* app) {
+    if (in_range(app)) return true;
     auto axm = std::get<0>(Axm::get(app));
     if (!axm) return false;
     auto base = axm->base();
-    return in_range(app) || base == Annex::base<bit1>() || base == Annex::base<bit2>() || base == Annex::base<abs>();
+    return base == Annex::base<bit1>() || base == Annex::base<bit2>() || base == Annex::base<abs>();
 }
 
 /// The bits of @p x as `I64`, zero-extended if @p x is narrower.
@@ -114,7 +115,7 @@ const Def* LegalizeIdx::rewrite_imm_App(const App* app) {
     if (dyn_ && isa_dyn_idx(app)) return w.type_i64();
     auto size = [&](const Def* type) { return dyn_ && isa_dyn_idx(type) ? w.lit_nat_0() : rewrite(Idx::isa(type)); };
     if (auto op = Axm::isa<idx>(app); op && dyn_ && isa_dyn_idx(app->type()))
-        return w.app(w.app(rewrite(op->callee()->as<App>()->callee()), w.lit_nat_0()), rewrite(op->arg()));
+        return w.app(w.app(rewrite(op->callee()->as<App>()->callee()), size(app->type())), rewrite(op->arg()));
 
     if (auto op = Axm::isa<conv>(app); op && op.id() == conv::u) {
         auto x = op->arg();

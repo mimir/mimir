@@ -151,6 +151,9 @@ std::pair<Ty, pbqp::Cost> target(Ty from, Want want) {
     return res;
 }
 
+/// Does a hole of type @p want take a literal rather than a replacement?
+bool is_literal(Want want) { return want == Want::Imm || want == Want::Sh; }
+
 /// Cost of converting a replacement or operand of non-terminal @p from into a hole of type @p want.
 pbqp::Cost conv(Ty from, Want want) {
     if (is_literal(want)) return from == Ty::Lit ? 0 : Inf;
@@ -277,7 +280,7 @@ void ISel::match(const Def* def, Alts& alts) {
 const App* ISel::sole(const Def* parent, const Def* def) const {
     auto app = parent->isa<App>();
     if (!app || !root_of(app) || uses(app->arg()) != 1) return nullptr;
-    if (std::ranges::count(DefVec(app->arg()->projs()), def) != 1) return nullptr;
+    if (std::ranges::count(app->arg()->projs(), def) != 1) return nullptr;
     if (def->isa<Extract>() && key(def) != def) return sole_value(def);
     return uses(def) == 1 ? def->isa<App>() : nullptr;
 }
@@ -484,7 +487,8 @@ const Def* ISel::selected(const Def* def) {
 }
 
 const Def* ISel::hole(const Def* def, Want want) {
-    if (auto alt = choice(strip(def)); alt && alt->rule) return convert(select(strip(def)), alt->rule->type, want);
+    auto stripped = strip(def);
+    if (auto alt = choice(stripped); alt && alt->rule) return convert(select(stripped), alt->rule->type, want);
     return convert(val(def), Ty::Reg, want);
 }
 
@@ -495,7 +499,7 @@ const Def* ISel::convert(const Def* x, Ty from, Want want) {
     auto to = target(from, want).first;
     for (auto t = from; t != to;) {
         auto c     = chains().first[size_t(t)][size_t(to)];
-        auto holes = DefVec(x->projs(c->arity));
+        auto holes = x->projs(c->arity);
         x          = c->build(w, holes.data());
         t          = c->to;
     }

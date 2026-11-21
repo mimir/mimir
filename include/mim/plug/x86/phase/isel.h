@@ -17,9 +17,6 @@ class ISel;
 using rules::Ty;
 using rules::Want;
 
-/// Does a hole of type @p want take a literal rather than a replacement?
-constexpr bool is_literal(Want want) { return want == Want::Imm || want == Want::Sh; }
-
 /// What a match needs of the operand @p def: a hole of type @p want or, if @p inner is set, that inner pattern node.
 /// While matching, @p inner is one plus the index of its Cover; `analyze()` turns it into the id of the inner
 /// alternative.
@@ -65,6 +62,7 @@ class ISel : public RWPhase {
 public:
     using RWPhase::RWPhase;
 
+private:
     /// @name For Rules
     ///@{
     size_t uses(const Def* def) const {
@@ -81,7 +79,6 @@ public:
     const Def* build(const Alt& alt);
     ///@}
 
-private:
     bool analyze() final;
     /// Counts in `uses_` how often each Def of old_world() occurs as an operand.
     void count(const Def*);

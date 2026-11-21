@@ -109,7 +109,7 @@ size_t num_insns(const Def* def, DefSet& done) {
     if (def->isa_mut() || !done.emplace(def).second) return 0;
     size_t n = 0;
     if (auto [axm, curry, _] = Axm::get(def);
-        axm && curry == 0 && Annex::flags2plugin(axm->flags()) == x86::Plugin_Id && !Axm::isa<x86::Addr>(def->type()))
+        axm && curry == 0 && axm->plugin() == x86::Plugin_Id && !Axm::isa<x86::Addr>(def->type()))
         ++n;
     for (auto op : def->ops())
         n += num_insns(op, done);
@@ -182,10 +182,11 @@ private:
         return id;
     }
 
+    size_t num_metas() const { return var_ ? var_->num_projs() : 0; }
+
     DefSet seen_;
     std::map<u64, Want> marks_; ///< The marker of each meta variable of the current rule.
-    const Var* var_   = nullptr;
-    size_t num_metas_ = 0;
+    const Var* var_ = nullptr;
     DefMap<u32> def2node_;
     std::map<Node, u32> node2id_;
     std::vector<Node> nodes_;
@@ -202,8 +203,7 @@ void Table::add(const Rule* rule) {
     if (!rule->is_closed()) rule->blame("x86_isel: rule `{}` is not closed", rule).bail();
     if (rule->guard() == rule->world().lit_ff()) return;
 
-    var_       = rule->has_var();
-    num_metas_ = var_ ? var_->num_projs() : 0;
+    var_ = rule->has_var();
     marks_.clear();
     auto lhs    = rule->lhs();
     auto mapped = u32(-1);
@@ -213,7 +213,8 @@ void Table::add(const Rule* rule) {
             rule->blame("x86_isel: the meta variable of conversion `{}` must be a register or a non-terminal", rule)
                 .bail();
         // `x86_isel.lit x` makes it a conversion of a literal.
-        auto literal = Axm::isa<x86_isel::lit>(rule->guard()) && Axm::isa<x86_isel::lit>(rule->guard())->arg() == var_;
+        auto lit     = Axm::isa<x86_isel::lit>(rule->guard());
+        bool literal = lit && lit->arg() == var_;
         if (!literal && rule->guard() != rule->world().lit_tt())
             rule->blame("x86_isel: the guard of conversion `{}` is no `x86_isel.lit` of its meta variable", rule)
                 .bail();
@@ -224,7 +225,7 @@ void Table::add(const Rule* rule) {
                                              .from  = literal ? Ty::Lit : nonterminal(rule, from),
                                              .to    = type(rule),
                                              .rhs   = node(rule->rhs()),
-                                             .arity = num_metas_});
+                                             .arity = num_metas()});
         var_ = nullptr;
         return;
     }
@@ -254,7 +255,7 @@ void Table::add(const Rule* rule) {
 
 std::vector<Table::Meta> Table::metas(const Rule* rule) {
     auto res = std::vector<Meta>();
-    auto n   = num_metas_;
+    auto n   = num_metas();
     for (size_t i = 0; i != n; ++i) {
         auto meta  = var_->proj(n, i);
         auto type  = meta->type();
@@ -264,14 +265,13 @@ std::vector<Table::Meta> Table::metas(const Rule* rule) {
 
         auto want = Want::Param;
         if (!param) {
+            auto mark   = marks_.find(i);
+            auto marked = [&](Want dflt) { return mark == marks_.end() ? dflt : mark->second; };
             if (Idx::isa(type)) {
-                auto mark = marks_.find(i);
-                want      = mark == marks_.end() ? Want::Reg : mark->second;
+                want = marked(Want::Reg);
             } else if (type->isa<Nat>()) {
-                auto mark = marks_.find(i);
-                want      = mark == marks_.end() ? Want::Param : mark->second;
+                want = marked(Want::Param);
             } else if (Axm::isa<core::Ptr>(type)) {
-                auto mark = marks_.find(i);
                 if (mark == marks_.end())
                     rule->blame("x86_isel: pointer `{}` of `{}` is no `x86_isel.addr` or `x86_isel.reg`", meta, rule)
                         .bail();
@@ -303,8 +303,8 @@ void Table::guard(const Def* g, std::vector<Meta>& metas) {
 
     auto set = [&](const Def* meta, Want from, Want to) {
         if (auto nat = Axm::isa<x86_isel::nat>(meta)) meta = nat->arg();
-        for (size_t i = 0; i != num_metas_; ++i)
-            if (var_->proj(num_metas_, i) == meta && metas[i].want == from) {
+        for (size_t i = 0; i != num_metas(); ++i)
+            if (var_->proj(num_metas(), i) == meta && metas[i].want == from) {
                 metas[i].want = to;
                 return;
             }
@@ -330,9 +330,9 @@ u32 Table::node(const Def* def) {
 
 u32 Table::node_(const Def* def) {
     if (var_ && def == var_) {
-        if (num_metas_ == 1) return hole(0);
+        if (num_metas() == 1) return hole(0);
         auto ops = std::vector<u32>();
-        for (size_t i = 0; i != num_metas_; ++i)
+        for (size_t i = 0; i != num_metas(); ++i)
             ops.emplace_back(hole(i));
         return make({Kind::Tuple, 0, std::move(ops)});
     }
@@ -409,7 +409,7 @@ public:
 private:
     template<class... Args>
     void line(std::format_string<Args...> fmt, Args&&... args) {
-        if (!dry_) std::println(os_, "    {}", std::format(fmt, std::forward<Args>(args)...));
+        std::println(os_, "    {}", std::format(fmt, std::forward<Args>(args)...));
     }
 
     void walk(u32 lhs);
@@ -429,7 +429,6 @@ private:
     std::ostream& os_;
     const Table& t_;
     size_t next_  = 0;
-    bool dry_     = false;
     bool in_type_ = false;
     u32 root_     = 0;
     u8 owner_     = 0;
@@ -442,8 +441,15 @@ private:
 
 Code::Shape Code::match(size_t id, u32 lhs, const std::vector<u32>& types) {
     types_ = &types;
-    dry_   = true;
+    std::println(os_,
+                 "inline bool match_{}(const Def* def, [[maybe_unused]] u32 swap, [[maybe_unused]] const Def** m, "
+                 "[[maybe_unused]] const Def** r) {{",
+                 id);
     walk(lhs);
+    line("return true;");
+    std::println(os_, "}}");
+    std::println(os_);
+
     // Number the covers in preorder of the Value refs, so a cover's operands follow it.
     auto children = std::vector<std::vector<u8>>(shape_.covers.size() + 1);
     for (const auto& r : shape_.refs)
@@ -468,17 +474,6 @@ Code::Shape Code::match(size_t id, u32 lhs, const std::vector<u32>& types) {
     auto covers = res.covers;
     for (size_t k = 0; k != covers.size(); ++k)
         res.covers[perm[k]] = covers[k];
-
-    dry_ = false;
-    std::println(os_,
-                 "inline bool match_{}(const Def* def, [[maybe_unused]] u32 swap, [[maybe_unused]] const Def** m, "
-                 "[[maybe_unused]] const Def** r) {{",
-                 id);
-    walk(lhs);
-    line("return true;");
-    std::println(os_, "}}");
-    std::println(os_);
-    shape_ = {};
     return res;
 }
 
@@ -635,8 +630,9 @@ std::string Code::build_(u32 n) {
     if (x.kind == Kind::Hole) return built_[n] = std::format("h[{}]", x.val);
 
     // The holes determine the implicit arguments, which may differ from the rule's, e.g. `i` of an `x86.Addr i`.
-    if (auto& c = node(x.ops.empty() ? n : x.ops[0]); x.kind == Kind::App && c.kind == Kind::App && c.val & Implicit) {
-        auto f   = build_(c.ops[0]);
+    const auto& callee = node(x.kind == Kind::App ? x.ops[0] : n);
+    if (x.kind == Kind::App && callee.kind == Kind::App && callee.val & Implicit) {
+        auto f   = build_(callee.ops[0]);
         auto a   = build_(x.ops[1]);
         auto res = fresh('b');
         line("auto {} = w.implicit_app({}, {});", res, f, a);
