@@ -14,6 +14,8 @@
 #include <mim/plug/mem/mem.h>
 #include <mim/plug/refly/refly.h>
 
+#include "mim/plug/x86/imm.h"
+#include "mim/plug/x86/isel_rules.h"
 #include "mim/plug/x86/x86.h"
 
 namespace mim::plug::x86::phase {
@@ -23,44 +25,25 @@ namespace mem  = mim::plug::mem;
 
 namespace {
 
-/// Width of the register holding an `Idx size`.
-nat_t reg_width(nat_t size) { return std::bit_ceil(std::max<nat_t>(Idx::size2bitwidth(size), 8)); }
-
-bool fits_i32(s64 disp) { return INT32_MIN <= disp && disp <= INT32_MAX; }
-
 bool is_reg_size(nat_t size) { return size == 2 || size == core::widen_idx(size); }
 
-nat_t trait(core::trait t, const Def* type) {
-    if (auto n = Lit::isa(core::op(t, type))) return *n;
-    type->blame(MIM_X86_BE "type `{}` has no static size or alignment", type).bail();
+/// @p def without the casts between pointer types around it, which `mem.legalize_ptr` inserts and which are no-ops.
+const Def* strip(const Def* def) {
+    while (auto cast = Axm::isa<core::bitcast>(def)) {
+        if (!Axm::isa<core::Ptr>(def->type()) || !Axm::isa<core::Ptr>(cast->arg()->type())) break;
+        def = cast->arg();
+    }
+    return def;
 }
 
 /// The `cmovcc` with the same subtag as @p code.
 x86::cmovcc cmovcc_of(sub_t code) { return static_cast<x86::cmovcc>(Annex::Base<x86::cmovcc> | code); }
 
 /// Does the old_world() or new_world() literal @p lit fit a sign-extended 32-bit immediate?
-bool fits_imm(const Def* lit) {
-    auto s = Idx::isa_lit(lit->type());
-    return (s && reg_width(*s) < 64) || fits_i32(*Lit::isa(lit));
-}
+bool fits_imm(const Def* lit) { return x86::fits_imm(Idx::isa_lit(lit->type()), *Lit::isa(lit)); }
 
 /// @p x in a register.
 const Def* reg(World& w, const Def* x) { return Lit::isa(x) ? w.call<mov>(x) : x; }
-/// @p x in a register or as an immediate.
-const Def* ri(World& w, const Def* x) { return Lit::isa(x) && fits_imm(x) ? x : reg(w, x); }
-
-/// `op r, r/imm`.
-template<class Id>
-const Def* bin(World& w, const Def* a, const Def* b) {
-    return w.call<Id>(Defs{reg(w, a), ri(w, b)});
-}
-
-/// All bits of @p type set.
-const Def* ones(World& w, const Def* type) {
-    auto s = *Idx::isa_lit(type);
-    return w.lit(type, s == 0 ? ~0_n : s - 1);
-}
-
 bool is_lowered_plugin(const Axm* axm) {
     auto p = axm->plugin();
     return p == core::Plugin_Id || p == mem::Plugin_Id || p == math::Plugin_Id;
@@ -70,124 +53,72 @@ bool is_lowered_plugin(const Axm* axm) {
 
 /// How `match` extracts the operands of a pattern.
 enum class Tag : u8 {
-    Lea,    ///< The base `p` of `mem.lea (p, i)` with a constant index `i`.
-    Load,   ///< `mem.load (m, p)`.
-    Store,  ///< `mem.store (m, p, x)`.
-    Bin,    ///< Two operands.
+    Args,   ///< The projections of the argument.
     Unary,  ///< One operand.
-    Div,    ///< Two operands behind the `divrem` tuple.
     None,   ///< No operands.
     Select, ///< `(x, y)#c`, an `Extract` rather than an axiom.
 };
 
-/// The memory operand forms of a pattern's x86 instruction.
-enum class Mem : u8 {
-    None,
-    Rm,  ///< `op r, m`.
-    Rmw, ///< `op r, m` and `op m, r`.
-};
-
-/// The x86 side of a pattern, for the builders that apply one instruction.
-struct Insn {
-    flags_t id  = 0; ///< The x86 instruction.
-    Mem mem     = Mem::None;
-    s8 res      = -1;    ///< The result of a pair-valued instruction, or -1.
-    bool sign   = false; ///< Operands narrower than any size the instruction supports are sign-extended.
-    bool negate = false; ///< The result is complemented.
-};
-
-/// A program-side operation `match` recognizes: its axiom, the `Op` it selects, how to take it apart, and its
-/// instruction.
+/// A program-side operation `match` recognizes: its axiom, the `Op` it selects, and how to take it apart.
 struct Pattern {
     flags_t flags;      ///< The axiom, or the whole annex if `member` is `false`.
     bool member = true; ///< @p flags names one member of the annex.
     Op op;              ///< The operation @p flags selects.
     Tag tag;            ///< How `match` extracts the operands.
-    Insn insn     = {};
-    bool commutes = true;  ///< An immediate may also be the first operand.
-    bool constant = false; ///< Only a `mem.lea` with a constant index.
-
-    constexpr Pattern only_constant() const {
-        auto res     = *this;
-        res.constant = true;
-        return res;
-    }
 };
 
 namespace {
 
 /// One member of a multi-member annex.
 template<class Id>
-constexpr Pattern member(Id id, Op op, Tag tag, Insn insn = {}, bool commutes = true) {
-    return Pattern{flags_t(id), true, op, tag, insn, commutes};
+constexpr Pattern member(Id id, Op op, Tag tag) {
+    return Pattern{flags_t(id), true, op, tag};
 }
 
 /// The whole annex.
 template<class Id>
-constexpr Pattern annex(Op op, Tag tag, Insn insn = {}) {
-    return Pattern{Annex::base<Id>(), false, op, tag, insn, false};
+constexpr Pattern annex(Op op, Tag tag) {
+    return Pattern{Annex::base<Id>(), false, op, tag};
 }
 
 // clang-format off
 /// The program side of the rule set: which `core`/`mem` axioms isel covers.
 constexpr Pattern patterns_[] = {
-    // The members of an annex select different instructions.
-    member(core::wrap::add,  Op::WrapAdd, Tag::Bin,   {.id = Annex::Base<add>,  .mem = Mem::Rmw}),
-    member(core::wrap::sub,  Op::WrapSub, Tag::Bin,   {.id = Annex::Base<sub>,  .mem = Mem::Rmw}, false),
-    // `imul` has no `op m, r` form; the low bits of a product do not depend on how the operands were extended.
-    member(core::wrap::mul,  Op::WrapMul, Tag::Bin,   {.id = Annex::Base<imul>, .mem = Mem::Rm}),
-    member(core::wrap::shl,  Op::WrapShl, Tag::Bin,   {.id = Annex::Base<shl>}, false),
-    member(core::bit2::and_, Op::BitAnd,  Tag::Bin,   {.id = Annex::Base<and_>, .mem = Mem::Rmw}),
-    member(core::bit2::or_,  Op::BitOr,   Tag::Bin,   {.id = Annex::Base<or_>,  .mem = Mem::Rmw}),
-    member(core::bit2::xor_, Op::BitXor,  Tag::Bin,   {.id = Annex::Base<xor_>, .mem = Mem::Rmw}),
-    member(core::bit2::nand, Op::BitNand, Tag::Bin,   {.id = Annex::Base<and_>, .negate = true}),
-    member(core::bit2::nor,  Op::BitNor,  Tag::Bin,   {.id = Annex::Base<or_>,  .negate = true}),
-    member(core::bit2::nxor, Op::BitNxor, Tag::Bin,   {.id = Annex::Base<xor_>, .negate = true}),
-    member(core::shr::a,     Op::ShrA,    Tag::Bin,   {.id = Annex::Base<sar>}, false),
-    member(core::shr::l,     Op::ShrL,    Tag::Bin,   {.id = Annex::Base<shr>}, false),
-    member(core::nat::add,   Op::NatAdd,  Tag::Bin,   {.id = Annex::Base<add>}),
-    member(core::nat::sub,   Op::NatSub,  Tag::Bin,   {}, false),
-    member(core::nat::mul,   Op::NatMul,  Tag::Bin,   {.id = Annex::Base<imul>}),
-    member(core::nat::div,   Op::NatDiv,  Tag::Bin,   {.id = Annex::Base<div>,  .res = 0}, false),
-    member(core::nat::rem,   Op::NatRem,  Tag::Bin,   {.id = Annex::Base<div>,  .res = 1}, false),
-    member(core::div::udiv,  Op::Div,     Tag::Div,   {.id = Annex::Base<div>,  .res = 0}, false),
-    member(core::div::urem,  Op::Div,     Tag::Div,   {.id = Annex::Base<div>,  .res = 1}, false),
-    member(core::div::sdiv,  Op::Div,     Tag::Div,   {.id = Annex::Base<idiv>, .res = 0, .sign = true}, false),
-    member(core::div::srem,  Op::Div,     Tag::Div,   {.id = Annex::Base<idiv>, .res = 1, .sign = true}, false),
-    member(core::conv::s,    Op::Conv,    Tag::Unary, {.sign = true}, false),
-    member(core::conv::u,    Op::Conv,    Tag::Unary, {}, false),
+    // The rules of `x86_isel` select these.
+    member(core::wrap::add,  Op::WrapAdd, Tag::Args),
+    member(core::wrap::sub,  Op::WrapSub, Tag::Args),
+    member(core::wrap::mul,  Op::WrapMul, Tag::Args),
+    member(core::wrap::shl,  Op::WrapShl, Tag::Args),
+    member(core::bit2::and_, Op::BitAnd,  Tag::Args),
+    member(core::bit2::or_,  Op::BitOr,   Tag::Args),
+    member(core::bit2::xor_, Op::BitXor,  Tag::Args),
+    member(core::bit2::nand, Op::BitNand, Tag::Args),
+    member(core::bit2::nor,  Op::BitNor,  Tag::Args),
+    member(core::bit2::nxor, Op::BitNxor, Tag::Args),
+    member(core::shr::a,     Op::ShrA,    Tag::Args),
+    member(core::shr::l,     Op::ShrL,    Tag::Args),
+    annex<core::icmp>       (Op::Icmp,    Tag::Args),
+    annex<core::ncmp>       (Op::Ncmp,    Tag::Args),
+    annex<mem::ptradd>      (Op::Ptradd,  Tag::Args),
+    annex<mem::load>        (Op::Load,    Tag::Args),
+    annex<mem::store>       (Op::Store,   Tag::Args),
+    member(core::nat::add,   Op::NatAdd,  Tag::Args),
+    member(core::nat::sub,   Op::NatSub,  Tag::Args),
+    member(core::nat::mul,   Op::NatMul,  Tag::Args),
+    member(core::nat::div,   Op::NatDiv,  Tag::Args),
+    member(core::nat::rem,   Op::NatRem,  Tag::Args),
+    annex<core::div>        (Op::Div,     Tag::Args),
+    annex<core::rem>        (Op::Rem,     Tag::Unary),
+    annex<core::conv>       (Op::Conv,    Tag::Unary),
+    annex<core::idx>        (Op::Idx,     Tag::Unary),
+    annex<core::idx2nat>    (Op::Idx2Nat, Tag::Unary),
+    annex<core::bitcast>    (Op::Bitcast, Tag::Unary),
 
-    member(core::icmp::e,    Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::e)},  false),
-    member(core::icmp::ne,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::ne)}, false),
-    member(core::icmp::ul,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::b)},  false),
-    member(core::icmp::ule,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::be)}, false),
-    member(core::icmp::ug,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::a)},  false),
-    member(core::icmp::uge,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::ae)}, false),
-    member(core::icmp::sl,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::l)},  false),
-    member(core::icmp::sle,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::le)}, false),
-    member(core::icmp::sg,   Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::g)},  false),
-    member(core::icmp::sge,  Op::Icmp,    Tag::Bin,   {.id = flags_t(x86::cc::ge)}, false),
-    member(core::ncmp::e,    Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::e)},  false),
-    member(core::ncmp::ne,   Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::ne)}, false),
-    member(core::ncmp::l,    Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::b)},  false),
-    member(core::ncmp::le,   Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::be)}, false),
-    member(core::ncmp::g,    Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::a)},  false),
-    member(core::ncmp::ge,   Op::Ncmp,    Tag::Bin,   {.id = flags_t(x86::cc::ae)}, false),
-
-    // One axiom per instruction.
-    annex<core::idx>     (Op::Idx,       Tag::Unary),
-    annex<core::idx2nat> (Op::Idx2Nat,   Tag::Unary),
-    annex<core::bitcast> (Op::Bitcast,   Tag::Unary),
-    annex<core::rem>     (Op::Rem,       Tag::Unary, {.id = Annex::Base<div>, .res = 1}),
-    annex<mem::lea>      (Op::LeaOffset, Tag::Lea).only_constant(),
-    annex<mem::lea>      (Op::LeaIndex,  Tag::Bin),
-    annex<mem::load>     (Op::Load,      Tag::Load),
-    annex<mem::store>    (Op::Store,     Tag::Store),
-    annex<mem::mslot>    (Op::Slot,      Tag::None),
-    annex<mem::assume>   (Op::Assume,    Tag::None),
+    // The rules of `isel.cpp` select these.
+    annex<mem::mslot>       (Op::Slot,    Tag::None),
 };
 
-constexpr Pattern select_ = {.flags = 0, .member = false, .op = Op::Select, .tag = Tag::Select, .commutes = false};
+constexpr Pattern select_ = {.flags = 0, .member = false, .op = Op::Select, .tag = Tag::Select};
 // clang-format on
 
 /// The condition of the first `refly.check` in @p def.
@@ -234,8 +165,7 @@ bool depends(const Def* def, const Def* target, DefSet& done) {
 /// The register size of the x86 `Idx` the old_world() @p type becomes.
 std::optional<nat_t> new_size(const Def* type) {
     if (Axm::isa<core::Ptr>(type) || type->isa<Nat>()) return 0;
-    if (auto size = Idx::isa(type)) return Lit::isa(size).value_or(0);
-    return {};
+    return Idx::isa_lit(type);
 }
 
 /// The size of the x86 `Idx` the old_world() @p type becomes, if it fits a register.
@@ -244,45 +174,15 @@ std::optional<nat_t> xsize(const Def* type) {
     return {};
 }
 
-/// Size of the elements the array `mem.lea` @p lea indexes.
-nat_t elem_size(const App* lea) {
-    auto [elem, _] = Axm::as<core::Ptr>(lea->type())->args<2>();
-    return trait(core::trait::size, elem);
-}
-
-/// The constant byte offset of the `mem.lea` @p lea, unless its index is dynamic.
-std::optional<nat_t> offset(const App* lea) {
-    auto [p, i]       = Axm::as<mem::lea>(lea)->args<2>();
-    auto [pointee, _] = Axm::as<core::Ptr>(p->type())->args<2>();
-    auto l            = Lit::isa(i);
-    if (pointee->isa<Arr>()) return l ? std::optional(*l * elem_size(lea)) : std::nullopt;
-    if (!l) i->blame(MIM_X86_BE "index `{}` into `{}` must be a literal", i, pointee).bail();
-    nat_t off = 0;
-    for (nat_t j = 0; j <= *l; ++j) {
-        auto field = pointee->proj(pointee->num_projs(), j);
-        auto align = trait(core::trait::align, field);
-        off        = (off + align - 1) / align * align;
-        if (j != *l) off += trait(core::trait::size, field);
-    }
-    return off;
-}
-
 /// The pattern of @p def, or `nullptr` if isel does not cover it.
 const Pattern* pattern(const Def* def) {
+    if (strip(def) != def) return nullptr;
     if (def->isa<Extract>()) return &select_;
     auto [axm, curry, _] = Axm::get(def);
     if (!axm || curry) return nullptr;
     for (const auto& p : patterns_)
-        if ((p.member ? axm->flags() == p.flags : axm->base() == p.flags) && (!p.constant || offset(def->as<App>())))
-            return &p;
+        if ((p.member ? axm->flags() == p.flags : axm->base() == p.flags)) return &p;
     return nullptr;
-}
-
-/// The x86 ALU instruction for the old_world() operation @p def; it has a memory operand.
-const Def* alu(World& w, const Def* def) {
-    auto p = pattern(def);
-    assert(p && p->insn.mem != Mem::None);
-    return w.app(w.annex(p->insn.id), w.lit_nat(*Idx::isa_lit(def->type())));
 }
 
 } // namespace
@@ -296,23 +196,6 @@ bool ISel::supports(flags_t insn, nat_t size) {
     // The `refly.check` in its codomain states the sizes it supports.
     auto cond                      = size_check(pi->codom(), done);
     return supports_[{insn, size}] = !var || !cond || VarRewriter(var, w.lit_nat(size)).rewrite(cond) == w.lit_tt();
-}
-
-bool ISel::has_mem_form(const Pattern& p, const Def* def, bool rmw) {
-    auto s = Idx::isa_lit(def->type());
-    return p.insn.mem >= (rmw ? Mem::Rmw : Mem::Rm) && s && supports(Annex::Base<load>, *s) && supports(p.insn.id, *s);
-}
-
-const Def* ISel::call_insn(const Insn& insn, Want want, const Def* a, const Def* b) {
-    auto& w   = new_world();
-    auto call = [&](const Def* x, const Def* y) {
-        auto r = w.call(insn.id, Defs{reg(w, x), is_literal(want) ? y : reg(w, y)});
-        return insn.res < 0 ? r : r->proj(2, insn.res);
-    };
-    auto size = Idx::isa_lit(a->type());
-    if (!size || supports(insn.id, core::widen_idx(*size))) return call(a, b);
-    auto ext = [&](const Def* x) { return insn.sign ? w.call<movsx>(w.lit_i32(), reg(w, x)) : zext(w.lit_i32(), x); };
-    return w.call<trunc>(*size, call(ext(a), ext(b)));
 }
 
 namespace {
@@ -349,38 +232,14 @@ bool literal(const Def* def, Want want) { return Lit::isa(def) && (want == Want:
 template<class... S>
 constexpr Rule rule(Op op, Ty type, pbqp::Cost cost, std::string_view name, BuildFn build, S... slots) {
     static_assert(sizeof...(S) <= Rule::Max_Slots);
-    return Rule{op, type, cost, name, build, Cond::None, u8(sizeof...(S)), {Slot(slots)...}};
-}
-
-/// The end of the subtree of slots that starts at @p i, or beyond `num_slots` if the slots are malformed.
-constexpr size_t skip(const Rule& r, size_t i) {
-    if (i >= r.num_slots) return r.num_slots + 1;
-    auto n = r.slots[i++].arity;
-    while (n-- != 0)
-        i = skip(r, i);
-    return i;
-}
-
-/// Are the two operand subtrees starting at @p i equal, so that swapping the operands yields no other match?
-constexpr bool symmetric(const Rule& r, size_t i) {
-    auto j = skip(r, i);
-    auto k = skip(r, j);
-    return std::equal(r.slots.begin() + i, r.slots.begin() + j, r.slots.begin() + j, r.slots.begin() + k);
-}
-
-constexpr bool well_formed(const Rule& r) {
-    size_t i = 0;
-    while (i < r.num_slots)
-        i = skip(r, i);
-    return i == r.num_slots;
+    return Rule{op, type, cost, name, build, Cond::None, u8(sizeof...(S)), {slots...}};
 }
 
 /// An atomic rule has no inner nodes and only holes that every rule type can fill.
-constexpr bool atomic(const Rule& r) {
-    for (size_t i = 0; i != r.num_slots; ++i) {
-        auto s = r.slots[i];
-        if (!s.is_hole() || (s.want != Want::Reg && s.want != Want::Base && s.want != Want::Addr)) return false;
-    }
+bool atomic(const Rule& r) {
+    if (r.gen && r.gen->match->num_covers != 0) return false;
+    for (size_t i = 0; i != r.num_slots; ++i)
+        if (auto w = r.slots[i]; w != Want::Reg && w != Want::Base && w != Want::Addr) return false;
     return true;
 }
 
@@ -397,190 +256,147 @@ constexpr std::string_view op_name(Op op) {
 // clang-format off
 /// The rule set: one entry per pattern ↦ replacement.
 constexpr Rule rules_[] = {
-    // An address is an operand form, not a value.
-    rule(Op::LeaOffset, Ty::Base,  0, "lea_off_base",  &ISel::build_lea_off, Want::Base),
-    rule(Op::LeaOffset, Ty::Index, 0, "lea_off_index", &ISel::build_lea_off, Want::Index),
-    rule(Op::LeaIndex,  Ty::Index, 0, "lea_index",     &ISel::build_lea_idx, Want::Base, Want::Reg).with(Cond::Scale),
-    rule(Op::LeaIndex,  Ty::Index, 1, "lea_index_mul", &ISel::build_lea_idx, Want::Base, Want::Reg),
-
-    rule(Op::Load,      Ty::Reg,   1, "load",          &ISel::build_load, Want::Addr),
-    rule(Op::Store,     Ty::Reg,   1, "store",         &ISel::build_store, Want::Addr, Want::Reg),
-    rule(Op::Store,     Ty::Reg,   1, "store_imm",     &ISel::build_store, Want::Addr, Want::Imm),
-    rule(Op::Store,     Ty::Reg,   1, "store_mr",      &ISel::build_store_mr, Want::Addr, Slot(Op::Alu, 2), Slot(Op::Load, 1), Want::Addr, Want::Reg).with(Cond::Rmw),
-    rule(Op::Store,     Ty::Reg,   1, "store_mr_imm",  &ISel::build_store_mr, Want::Addr, Slot(Op::Alu, 2), Slot(Op::Load, 1), Want::Addr, Want::Imm).with(Cond::Rmw),
-
-    rule(Op::WrapAdd,   Ty::Reg,   1, "add",           &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::WrapAdd,   Ty::Reg,   1, "add_imm",       &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::WrapAdd,   Ty::Reg,   1, "add_rm",        &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
-    rule(Op::WrapSub,   Ty::Reg,   1, "sub",           &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::WrapSub,   Ty::Reg,   1, "sub_imm",       &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::WrapSub,   Ty::Reg,   1, "sub_rm",        &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
-    rule(Op::WrapMul,   Ty::Reg,   1, "mul",           &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::WrapMul,   Ty::Reg,   1, "mul_imm",       &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::WrapMul,   Ty::Reg,   1, "mul_rm",        &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
-    rule(Op::WrapShl,   Ty::Reg,   1, "shl",           &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::WrapShl,   Ty::Reg,   1, "shl_imm",       &ISel::build_insn, Want::Reg, Want::Sh),
-    rule(Op::BitAnd,    Ty::Reg,   1, "and",           &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::BitAnd,    Ty::Reg,   1, "and_imm",       &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::BitAnd,    Ty::Reg,   1, "and_rm",        &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
-    rule(Op::BitOr,     Ty::Reg,   1, "or",            &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::BitOr,     Ty::Reg,   1, "or_imm",        &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::BitOr,     Ty::Reg,   1, "or_rm",         &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
-    rule(Op::BitXor,    Ty::Reg,   1, "xor",           &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::BitXor,    Ty::Reg,   1, "xor_imm",       &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::BitXor,    Ty::Reg,   1, "xor_rm",        &ISel::build_bin_rm, Want::Reg, Slot(Op::Load, 1), Want::Addr).with(Cond::Fold),
-    rule(Op::BitNand,   Ty::Reg,   1, "nand",          &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::BitNand,   Ty::Reg,   1, "nand_imm",      &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::BitNor,    Ty::Reg,   1, "nor",           &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::BitNor,    Ty::Reg,   1, "nor_imm",       &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::BitNxor,   Ty::Reg,   1, "nxor",          &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::BitNxor,   Ty::Reg,   1, "nxor_imm",      &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::ShrL,      Ty::Reg,   1, "shr",           &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::ShrL,      Ty::Reg,   1, "shr_imm",       &ISel::build_insn, Want::Reg, Want::Sh),
-    rule(Op::ShrA,      Ty::Reg,   1, "sar",           &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::ShrA,      Ty::Reg,   1, "sar_imm",       &ISel::build_insn, Want::Reg, Want::Sh),
-
-    rule(Op::Icmp,      Ty::Reg,   2, "cmp",           &ISel::build_cmp, Want::Reg, Want::Reg),
-    rule(Op::Icmp,      Ty::Reg,   2, "cmp_imm",       &ISel::build_cmp, Want::Reg, Want::Imm),
-    rule(Op::Ncmp,      Ty::Reg,   2, "ncmp",          &ISel::build_cmp, Want::Reg, Want::Reg),
-    rule(Op::Ncmp,      Ty::Reg,   2, "ncmp_imm",      &ISel::build_cmp, Want::Reg, Want::Imm),
-
-    rule(Op::NatAdd,    Ty::Reg,   1, "nat_add",       &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::NatAdd,    Ty::Reg,   1, "nat_add_imm",   &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::NatSub,    Ty::Reg,   1, "nat_sub",       &ISel::build_nat_sub, Want::Reg, Want::Reg),
-    rule(Op::NatSub,    Ty::Reg,   1, "nat_sub_imm",   &ISel::build_nat_sub, Want::Reg, Want::Imm),
-    rule(Op::NatMul,    Ty::Reg,   1, "nat_mul",       &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::NatMul,    Ty::Reg,   1, "nat_mul_imm",   &ISel::build_insn, Want::Reg, Want::Imm),
-    rule(Op::NatDiv,    Ty::Reg,   1, "nat_div",       &ISel::build_insn, Want::Reg, Want::Reg),
-    rule(Op::NatRem,    Ty::Reg,   1, "nat_rem",       &ISel::build_insn, Want::Reg, Want::Reg),
-
-    rule(Op::Conv,      Ty::Reg,   0, "conv_id",       &ISel::build_id, Want::Reg).with(Cond::Same),
-    rule(Op::Conv,      Ty::Reg,   1, "conv_trunc",    &ISel::build_trunc, Want::Reg).with(Cond::Narrow),
-    rule(Op::Conv,      Ty::Reg,   1, "conv_ext",      &ISel::build_ext, Want::Reg).with(Cond::Widen),
-    rule(Op::Idx,       Ty::Reg,   0, "idx",           &ISel::build_id, Want::Reg).with(Cond::Same),
-    rule(Op::Idx2Nat,   Ty::Reg,   0, "idx2nat_id",    &ISel::build_id, Want::Reg).with(Cond::Same),
-    rule(Op::Idx2Nat,   Ty::Reg,   1, "idx2nat_ext",   &ISel::build_ext, Want::Reg).with(Cond::Widen),
-    rule(Op::Bitcast,   Ty::Reg,   0, "bitcast_id",    &ISel::build_id, Want::Reg).with(Cond::Same),
-    rule(Op::Bitcast,   Ty::Reg,   1, "bitcast_trunc", &ISel::build_trunc, Want::Reg).with(Cond::Narrow),
-    rule(Op::Bitcast,   Ty::Reg,   1, "bitcast_ext",   &ISel::build_ext, Want::Reg).with(Cond::Widen),
-    rule(Op::Rem,       Ty::Reg,   1, "rem",           &ISel::build_rem, Want::Reg),
-
-    rule(Op::Div,       Ty::Reg,   1, "div",           &ISel::build_insn, Want::Reg, Want::Reg),
     rule(Op::Slot,      Ty::Reg,   1, "slot",          &ISel::build_slot),
-    rule(Op::Assume,    Ty::Reg,   0, "assume",        &ISel::build_assume),
     rule(Op::Select,    Ty::Reg,   1, "select",        &ISel::build_select, Want::Reg, Want::Reg, Want::Reg),
 };
 // clang-format on
 
-static_assert(std::ranges::all_of(rules_, well_formed));
+/*
+ * Generated Rules
+ */
 
-constexpr bool has_atomic(Op op) {
-    return std::ranges::any_of(rules_, [op](const Rule& r) { return r.op == op && atomic(r); });
+const rules::Want& want_of(const rules::Rewrite& r, size_t i) { return rules::wants[r.wants + i]; }
+
+Want want(rules::Want w) {
+    switch (w) {
+        case rules::Want::Imm: return Want::Imm;
+        case rules::Want::Sh: return Want::Sh;
+        case rules::Want::Base: return Want::Base;
+        case rules::Want::Index: return Want::Index;
+        case rules::Want::Addr: return Want::Addr;
+        default: return Want::Reg;
+    }
 }
+
+std::vector<Rule> make_generated() {
+    auto res = std::vector<Rule>();
+    for (const auto& r : rules::rewrites) {
+        auto p = std::ranges::find_if(patterns_, [&r](const Pattern& p) {
+            return p.member ? p.flags == r.root : p.flags == Annex::flags2base(r.root);
+        });
+        if (p == std::end(patterns_)) fe::throwf("x86 isel: no pattern for the root of rule `{}`", r.name);
+        auto type = r.head == Annex::Base<x86::addr> ? Ty::Base : r.head == Annex::Base<index> ? Ty::Index : Ty::Reg;
+        auto rule = Rule{.op    = p->op,
+                         .type  = type,
+                         .cost  = pbqp::Cost(r.cost),
+                         .name  = r.name,
+                         .build = &ISel::build_gen,
+                         .cond  = r.maps ? Cond::Fold : Cond::None,
+                         .gen   = &r};
+        for (size_t i = 0; i != r.num_metas; ++i)
+            if (auto w = want_of(r, i); w != rules::Want::Param && rule.num_slots != Rule::Max_Slots)
+                rule.slots[rule.num_slots++] = want(w);
+        res.emplace_back(rule);
+    }
+    return res;
+}
+
+/// The rules of `x86_isel`.
+const std::vector<Rule>& generated() {
+    static const auto rules = make_generated();
+    return rules;
+}
+
+#ifdef MIM_ENABLE_CHECKS
+bool has_atomic(Op op) {
+    auto is = [op](const Rule& r) { return r.op == op && atomic(r); };
+    return std::ranges::any_of(rules_, is) || std::ranges::any_of(generated(), is);
+}
+#endif
 
 } // namespace
 
-const Def* ISel::build_lea_off(const Def* root, const Alt& alt) {
-    auto a = split(hole(alt.demands[0].def, alt.demands[0].want));
-    a.disp += *offset(root->as<App>());
-    return addr(a);
+void ISel::append_gen(const Rule& rule, const Def* root, Alts& alts) {
+    auto swaps = rule.gen->swaps;
+    // Ascending subsets of `swaps`.
+    for (u32 swap = 0;; swap = ((swap | ~swaps) + 1) & swaps) {
+        append_gen(rule, root, swap, alts);
+        if (swap == swaps) break;
+    }
 }
 
-const Def* ISel::build_lea_idx(const Def* root, const Alt& alt) {
-    auto& w   = new_world();
-    auto i    = alt.demands[1].def;
-    auto a    = split(hole(alt.demands[0].def, Want::Base));
-    auto size = elem_size(root->as<App>());
-    auto x    = hole(i);
-    if (auto n = Idx::isa_lit(i->type()); n && *n != 0) x = zext(w.lit_i64(), x);
-    if (alt.rule->cond == Cond::Scale) return addr({a.base, x, u8(size), a.disp});
-    return addr({a.base, bin<imul>(w, x, w.lit_i64(size)), 1, a.disp});
+void ISel::append_gen(const Rule& rule, const Def* root, u32 swap, Alts& alts) {
+    const auto& r = *rule.gen;
+    const auto& m = *r.match;
+    auto metas    = DefVec(r.num_metas, [](size_t) { return nullptr; });
+    auto refs     = DefVec(m.num_refs, [](size_t) { return nullptr; });
+    if (!m.fn(root, swap, metas.data(), refs.data())) return;
+
+    auto alt = Alt();
+    alt.rule = &rule;
+    alt.cost = rule.cost;
+    alt.covers.resize(m.num_covers, Cover{nullptr, 0, {}, false});
+    for (size_t j = 0; j != m.num_refs; ++j) {
+        auto info                  = rules::all_refs[m.refs + j];
+        auto ex                    = refs[j]->isa<Extract>();
+        auto cover                 = ex ? ex->tuple() : refs[j];
+        alt.covers[info.cover].def = cover;
+        if (info.kind == rules::Ref::Mem && uses(refs[j]) != 1) return;
+    }
+
+    // A pure inner node that something else uses is looked through: the match takes its operands but not the node.
+    auto parent = std::vector<u8>(m.num_covers, 0);
+    auto owner  = [&](u8 o) {
+        while (o != 0 && alt.covers[o - 1].through)
+            o = parent[o - 1];
+        return o;
+    };
+    auto node    = [&](u8 o) { return o == 0 ? root : alt.covers[o - 1].def; };
+    auto demands = [&](u8 o) -> auto& { return o == 0 ? alt.demands : alt.covers[o - 1].demands; };
+    for (size_t j = 0; j != m.num_uses; ++j) {
+        auto u = rules::all_uses[m.uses + j];
+        auto o = owner(u.owner);
+        if (u.ref) {
+            auto def  = refs[u.index];
+            auto c    = rules::all_refs[m.refs + u.index].cover;
+            auto& cov = alt.covers[c];
+            parent[c] = o;
+            if (!decompose(cov.def)) return;
+            if (sole(node(u.owner), def) != cov.def) {
+                if (mem_valued(cov.def) || c + 1u == r.maps) return;
+                cov.through = true;
+                continue;
+            }
+            demands(o).emplace_back(Demand{def, Want::Reg, size_t(c) + 1});
+        } else if (auto w = want_of(r, u.index); w != rules::Want::Param) {
+            auto def = metas[u.index];
+            if (is_literal(want(w)) && !literal(def, want(w))) return;
+            demands(o).emplace_back(Demand{def, want(w)});
+        }
+    }
+    if (!holds(alt)) return;
+    alt.metas = std::move(metas);
+    alts.emplace_back(std::move(alt));
 }
 
-const Def* ISel::build_load(const Def* root, const Alt&) {
-    auto [m, p] = root->as<App>()->args<2>();
-    auto size   = *xsize(root->type()->proj(2, 1));
-    return new_world().call<load>(size, Defs{rewrite(m), hole(p, Want::Addr)});
-}
-
-const Def* ISel::build_store(const Def* root, const Alt& alt) {
-    auto [m, p, x] = root->as<App>()->args<3>();
-    return new_world().call<store>(Defs{rewrite(m), hole(p, Want::Addr), hole(x, alt.demands[1].want)});
-}
-
-const Def* ISel::build_store_mr(const Def* root, const Alt& alt) {
-    auto& w        = new_world();
-    auto [_, p, u] = root->as<App>()->args<3>();
-    auto ld        = alt.covers[1].def;
-    auto other     = alt.covers[0].demands[1];
-    auto b         = hole(other.def, other.want);
-    return w.call<mr>(alu(w, u), Defs{rewrite(ld->as<App>()->arg(2, 0)), hole(p, Want::Addr), b});
-}
-
-const Def* ISel::build_insn(const Def* root, const Alt& alt) {
-    auto& w    = new_world();
-    auto& insn = pattern(root)->insn;
-    auto a     = hole(alt.demands[0].def, alt.demands[0].want);
-    auto b     = hole(alt.demands[1].def, alt.demands[1].want);
-    auto res   = call_insn(insn, alt.demands[1].want, a, b);
-    if (insn.negate) res = bin<xor_>(w, res, ones(w, a->type()));
-    return mem_valued(root) ? w.tuple({rewrite(root->as<App>()->arg(2, 0)), res}) : res;
-}
-
-const Def* ISel::build_bin_rm(const Def* root, const Alt& alt) {
-    auto& w     = new_world();
-    auto ld     = alt.covers[0].def->as<App>();
-    auto [m, p] = ld->args<2>();
-    auto res    = w.call<rm>(alu(w, root), Defs{rewrite(m), hole(alt.demands[0].def), hole(p, Want::Addr)});
-    map(ld, res);
+const Def* ISel::build_gen(const Def*, const Alt& alt) {
+    const auto& r = *alt.rule->gen;
+    auto holes    = DefVec(r.num_metas, [&](size_t i) {
+        auto w = want_of(r, i);
+        return w == rules::Want::Param ? rewrite(alt.metas[i]) : hole(alt.metas[i], want(w));
+    });
+    auto res      = r.build(new_world(), holes.data());
+    if (!r.maps) return res;
+    map(alt.covers[r.maps - 1].def, res);
     return res->proj(2, 1);
-}
-
-const Def* ISel::build_cmp(const Def* root, const Alt& alt) {
-    auto& w = new_world();
-    auto a  = hole(alt.demands[0].def);
-    auto b  = hole(alt.demands[1].def, alt.demands[1].want);
-    return w.call(pattern(root)->insn.id, bin<cmp>(w, a, b));
-}
-
-const Def* ISel::build_nat_sub(const Def*, const Alt& alt) {
-    auto& w = new_world();
-    auto a  = hole(alt.demands[0].def);
-    auto b  = hole(alt.demands[1].def, alt.demands[1].want);
-    return w.call(x86::cmovcc::b, Defs{bin<cmp>(w, a, b), bin<sub>(w, a, b), reg(w, w.lit_i64(0))});
-}
-
-const Def* ISel::build_id(const Def*, const Alt& alt) { return hole(alt.demands[0].def); }
-
-const Def* ISel::build_trunc(const Def* root, const Alt& alt) {
-    return new_world().call<trunc>(*Idx::isa_lit(rewrite(root->type())), hole(alt.demands[0].def));
-}
-
-const Def* ISel::build_ext(const Def* root, const Alt& alt) {
-    auto& w  = new_world();
-    auto dst = *Idx::isa_lit(rewrite(root->type()));
-    auto x   = hole(alt.demands[0].def);
-    return pattern(root)->insn.sign ? w.call<movsx>(dst, x) : w.call<movzx>(dst, x);
-}
-
-const Def* ISel::build_rem(const Def* root, const Alt& alt) {
-    auto& insn = pattern(root)->insn;
-    auto x     = hole(alt.demands[0].def);
-    auto d     = new_world().lit(x->type(), *Lit::isa(Axm::as<core::rem>(root)->decurry()->arg()));
-    return call_insn(insn, Want::Reg, x, d);
 }
 
 const Def* ISel::build_slot(const Def* root, const Alt&) {
     auto& w        = new_world();
-    auto op        = Axm::as<mem::mslot>(root);
-    auto [T, _]    = op->decurry()->args<2>();
-    auto [msz, k]  = op->args<2>();
+    auto [msz, k]  = Axm::as<mem::mslot>(root)->args<2>();
     auto [m, size] = msz->projs<2>();
-    auto n         = Lit::isa(size).value_or(trait(core::trait::size, T));
-    return w.app(rewrite(k), w.call<slot>(n, rewrite(m)));
+    return w.app(rewrite(k), w.call<slot>(*Lit::isa(size), rewrite(m)));
 }
-
-const Def* ISel::build_assume(const Def* root, const Alt&) { return rewrite(root->as<App>()->arg(2, 0)); }
 
 const Def* ISel::build_select(const Def* root, const Alt& alt) {
     auto& w   = new_world();
@@ -617,118 +433,50 @@ std::optional<ISel::Node> ISel::decompose(const Def* def) const {
             auto [x, y] = ex->tuple()->projs<2>();
             return node({x, y, index});
         }
-        case Tag::Lea: return node({app->arg(2, 0)});
-        case Tag::Load:
-            if (!xsize(app->type()->proj(2, 1))) return {};
-            return node({app->arg(2, 1)});
-        case Tag::Store: {
-            auto [_, p, x] = app->args<3>();
-            if (!xsize(x->type())) return {};
-            return node({p, x});
-        }
-        case Tag::Bin: {
-            auto [a, b] = app->args<2>();
-            return node({a, b});
-        }
+        case Tag::Args: return node(DefVec(app->arg()->projs()));
         case Tag::Unary: return node({app->arg()});
-        case Tag::Div: {
-            auto [x, y] = app->arg(2, 1)->projs<2>();
-            return node({x, y});
-        }
         case Tag::None: return node({});
     }
     std::unreachable();
 }
 
 void ISel::match(const Def* def, Alts& alts) {
-    if (auto node = decompose(def))
-        for (const auto& rule : rules_)
-            if (rule.op == node->op) append(rule, def, *node, alts);
+    auto node = decompose(def);
+    if (!node) return;
+    if (auto axm = std::get<0>(Axm::get(def)))
+        for (const auto& rule : generated())
+            if (rule.gen->root == axm->flags()) append_gen(rule, def, alts);
+    for (const auto& rule : rules_)
+        if (rule.op == node->op) append(rule, *node, alts);
 }
 
-void ISel::append(const Rule& rule, const Def* root, const Node& node, Alts& alts) {
+void ISel::append(const Rule& rule, const Node& node, Alts& alts) {
+    if (node.ops.size() != rule.num_slots) return;
     auto alt = Alt();
     alt.rule = &rule;
     alt.cost = rule.cost;
-    descend(rule, root, 0, std::move(alt), {}, Frame{root, node.ops}, node, alts);
+    for (size_t i = 0; i != rule.num_slots; ++i) {
+        auto def  = node.ops[i];
+        auto want = rule.slots[i];
+        if (is_literal(want) && !literal(def, want)) return;
+        alt.demands.emplace_back(Demand{def, want});
+    }
+    if (holds(alt)) alts.emplace_back(std::move(alt));
 }
 
-void ISel::descend(const Rule& rule,
-                   const Def* root,
-                   size_t i,
-                   Alt alt,
-                   fe::Vector<Frame> frames,
-                   Frame frame,
-                   const Node& node,
-                   Alts& alts) {
-    if (node.ptrn->commutes && frame.ops.size() == 2 && !symmetric(rule, i)) {
-        auto swapped = frames;
-        swapped.emplace_back(Frame{frame.node, {frame.ops[1], frame.ops[0]}, 0, frame.cover});
-        frames.emplace_back(std::move(frame));
-        bind(rule, root, i, alt, std::move(frames), alts);
-        bind(rule, root, i, std::move(alt), std::move(swapped), alts);
-    } else {
-        frames.emplace_back(std::move(frame));
-        bind(rule, root, i, std::move(alt), std::move(frames), alts);
-    }
-}
-
-void ISel::bind(const Rule& rule, const Def* root, size_t i, Alt alt, fe::Vector<Frame> frames, Alts& alts) {
-    while (!frames.empty() && frames.back().next == frames.back().ops.size())
-        frames.pop_back();
-    if (frames.empty()) {
-        if (i == rule.num_slots && holds(root, alt)) alts.emplace_back(std::move(alt));
-        return;
-    }
-    if (i == rule.num_slots) return;
-
-    auto& f       = frames.back();
-    auto def      = f.ops[f.next++];
-    auto slot     = rule.slots[i];
-    auto& demands = f.cover == size_t(-1) ? alt.demands : alt.covers[f.cover].demands;
-    if (slot.is_hole()) {
-        if (is_literal(slot.want) && !literal(def, slot.want)) return;
-        demands.emplace_back(Demand{def, slot.want});
-        return bind(rule, root, i + 1, std::move(alt), std::move(frames), alts);
-    }
-
-    auto app  = sole(f, def);
-    auto node = app ? decompose(app) : std::nullopt;
-    if (!node || node->ops.size() != slot.arity) return;
-    if (slot.node == Op::Alu ? !has_mem_form(*node->ptrn, app, true) : node->op != slot.node) return;
-    auto c = alt.covers.size();
-    demands.emplace_back(Demand{def, Want::Reg, c + 1});
-    alt.covers.emplace_back(Cover{app, 0, {}});
-    descend(rule, root, i + 1, std::move(alt), std::move(frames), Frame{app, node->ops, 0, c}, *node, alts);
-}
-
-const App* ISel::sole(const Frame& parent, const Def* def) const {
-    if (auto app = parent.node->isa<App>(); !app || uses(app->arg()) != 1) return nullptr;
-    if (std::ranges::count(parent.ops, def) != 1) return nullptr;
-    if (key(def) != def) return sole_value(def);
+const App* ISel::sole(const Def* parent, const Def* def) const {
+    auto ops = decompose(parent);
+    if (auto app = parent->isa<App>(); !app || !ops || uses(app->arg()) != 1) return nullptr;
+    if (std::ranges::count(ops->ops, def) != 1) return nullptr;
+    if (def->isa<Extract>() && key(def) != def) return sole_value(def);
     return uses(def) == 1 ? def->isa<App>() : nullptr;
 }
 
-bool ISel::holds(const Def* root, const Alt& alt) {
+bool ISel::holds(const Alt& alt) {
     switch (alt.rule->cond) {
         case Cond::None: return true;
-        case Cond::Same:
-        case Cond::Narrow:
-        case Cond::Widen: {
-            auto src = new_size(alt.demands[0].def->type());
-            auto dst = new_size(root->type());
-            if (!src || !dst) return false;
-            if (*src == *dst) return alt.rule->cond == Cond::Same;
-            return alt.rule->cond == (reg_width(*src) >= reg_width(*dst) ? Cond::Narrow : Cond::Widen);
-        }
-        case Cond::Scale: {
-            auto size = elem_size(root->as<App>());
-            return size == 1 || size == 2 || size == 4 || size == 8;
-        }
         case Cond::Fold: {
-            if (!has_mem_form(*pattern(root), root, false)) return false;
-            // The replacement sits at the load, so the other operands must be available there.
-            auto ld = alt.covers.back().def->as<App>();
+            auto ld = alt.covers[alt.rule->gen->maps - 1].def->as<App>();
             auto bb = chain(ld->arg(2, 0));
             if (!bb) return false;
             for (const auto& d : alt.demands) {
@@ -736,12 +484,6 @@ bool ISel::holds(const Def* root, const Alt& alt) {
                 if (!d.inner && (!d.def->in_scope(bb) || depends(d.def, ld, done))) return false;
             }
             return true;
-        }
-        case Cond::Rmw: {
-            // The load's memory has no other user, so nothing lies between load and store.
-            auto [m, p, _] = root->as<App>()->args<3>();
-            auto ld        = alt.covers.back().def->as<App>();
-            return ld->arg(2, 1) == p && ld->proj(2, 0) == m && uses(m) == 1;
         }
     }
     std::unreachable();
@@ -780,6 +522,7 @@ bool ISel::analyze() {
         for (auto& alt : alts_[def]) {
             for (size_t j = alt.covers.size(); j-- != 0;) {
                 auto& cover = alt.covers[j];
+                if (cover.through) continue;
                 resolve(alt, cover.demands);
                 auto& inner = alts_.at(cover.def);
                 auto same   = [&](const Alt& a) { return !a.rule && std::ranges::equal(a.demands, cover.demands); };
@@ -860,35 +603,29 @@ bool ISel::analyze() {
         auto c        = picked[ids[def]];
         choices_[def] = c;
         for (const auto& cover : alts_[def][c].covers)
-            roots_[cover.def] = def;
+            if (!cover.through) roots_[cover.def] = def;
     }
     return false;
 }
 
 #ifdef MIM_ENABLE_CHECKS
 void ISel::check_rules() const {
-    for (const auto& r : rules_) {
+    auto all = std::vector<Rule>(std::begin(rules_), std::end(rules_));
+    all.insert(all.end(), generated().begin(), generated().end());
+    for (const auto& r : all) {
         if (conv(r.type, Want::Reg).is_inf())
             fe::throwf("x86 isel: rule `{}` yields a value that does not convert to a register", r.name);
         for (size_t i = 0; i != r.num_slots; ++i) {
-            auto s = r.slots[i];
-            if (!s.is_hole()) {
-                if (s.node != Op::Alu && !has_atomic(s.node))
-                    fe::throwf("x86 isel: `{}` folds `{}`, but no atomic rule selects it", r.name, op_name(s.node));
-                for (const auto& p : patterns_)
-                    if (s.node == Op::Alu && p.insn.mem == Mem::Rmw && !has_atomic(p.op))
-                        fe::throwf("x86 isel: `{}` folds `{}`, but no atomic rule selects it", r.name, op_name(p.op));
-                continue;
-            }
-            if (is_literal(s.want)) continue; // satisfied by a literal, not a rule type
+            auto w = r.slots[i];
+            if (is_literal(w)) continue; // satisfied by a literal, not a rule type
             bool ok = false;
             for (auto ty : {Ty::Reg, Ty::Base, Ty::Index})
-                if (!conv(ty, s.want).is_inf()) ok = true;
+                if (!conv(ty, w).is_inf()) ok = true;
             if (!ok) fe::throwf("x86 isel: no rule type converts to a hole of `{}`", r.name);
         }
     }
 
-    for (const auto& r : rules_)
+    for (const auto& r : all)
         if (!has_atomic(r.op)) fe::throwf("x86 isel: no atomic rule for `{}`", op_name(r.op));
 }
 #endif
@@ -910,6 +647,7 @@ const App* ISel::sole_value(const Def* def) const {
 }
 
 const Def* ISel::key(const Def* def) const {
+    def = strip(def);
     if (auto ex = def->isa<Extract>(); ex && Lit::isa(ex->index()) == 1)
         if (auto app = ex->tuple()->isa<App>(); app && pattern(app) && mem_valued(app)) return app;
     return def;
@@ -942,8 +680,8 @@ const Def* ISel::selected(const Def* def) {
 }
 
 const Def* ISel::hole(const Def* def, Want want) {
-    if (auto alt = choice(def); alt && alt->rule && alt->rule->type != Ty::Reg)
-        return convert(select(def), alt->rule->type, want);
+    if (auto alt = choice(strip(def)); alt && alt->rule && alt->rule->type != Ty::Reg)
+        return convert(select(strip(def)), alt->rule->type, want);
     return convert(val(def), Ty::Reg, want);
 }
 
@@ -991,7 +729,7 @@ const Def* ISel::addr(Address a) {
 const Def* ISel::materialize(Address a) {
     auto& w = new_world();
     if (!a.index && Lit::isa(a.base)) return w.lit_i64(*Lit::isa(a.base) + a.disp);
-    if (!fits_i32(a.disp)) a = {bin<add>(w, a.base, w.lit_i64(a.disp)), a.index, a.scale};
+    if (!fits_i32(a.disp)) a = {w.call<add>(Defs{reg(w, a.base), reg(w, w.lit_i64(a.disp))}), a.index, a.scale};
     if (!a.index && a.disp == 0) return a.base;
     return w.call<lea>(addr(a));
 }
@@ -1016,8 +754,8 @@ const Def* ISel::rewrite_imm_App(const App* app) {
     auto& w = new_world();
     if (Axm::isa<core::Ptr>(app)) return w.type_i64();
     if (Axm::isa<core::M>(app)) return w.call<core::M>(w.lit_nat_0());
-    if (auto size = Idx::isa(app); size && !Lit::isa(size)) return w.type_i64();
     if (auto res = selected(app)) return res;
+    if (auto ptr = strip(app); ptr != app) return rewrite(ptr);
     // Loop hints for LLVM.
     if (Axm::isa<ll::vec>(app) || Axm::isa<ll::novec>(app)) return rewrite(app->arg());
 

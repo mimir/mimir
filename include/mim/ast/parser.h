@@ -119,6 +119,7 @@ private:
     Ptr<Expr> parse_lit_expr();
     Ptr<Expr> parse_type_expr();
     Ptr<Expr> parse_rule_expr();
+    Ptr<RuleExpr> parse_rule_body(Tracker, Ptr<Ptrn> meta, bool is_norm, Sym name = {});
     Ptr<Expr> parse_ret_expr();
     Ptr<Expr> parse_pi_expr();
     Ptr<Expr> parse_pi_expr(Ptr<Ptrn>);
@@ -176,6 +177,13 @@ private:
     Ptr<RecDecl> parse_nom_decl(Tracker, Mods);
     Ptr<ValDecl> parse_use_decl(Tracker, Mods);
     Ptr<ValDecl> parse_rule_decl(Tracker, Mods);
+
+    struct DomStyle {
+        bool required = false;
+        bool filter   = false;
+        bool brckt    = false; ///< A domain may be a telescope `[...]`.
+    };
+    Ptrs<LamDecl::Dom> parse_doms(Prec, fe::Cite entity, DomStyle);
     Ptr<LamDecl> parse_lam_decl(Tracker, Mods);
     Ptr<RecDecl> parse_rec_decl(Tracker, Mods);
     Ptr<ValDecl> parse_mutual_decl(Tracker, Mods);

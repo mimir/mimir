@@ -896,6 +896,11 @@ std::optional<std::string> Emitter::emit_mem(BB& bb, const std::string& name, co
         auto gep_i = emit_gep_index(bb, name, i);
 
         return bb.assign(name, "getelementptr inbounds {}, {} {}, i64 0, {}", t_pointee, t_ptr, v_ptr, gep_i);
+    } else if (auto add = Axm::isa<mem::ptradd>(def)) {
+        auto [p, off] = add->args<2>();
+        auto v_p      = emit(p);
+        auto v_off    = emit(off);
+        return bb.assign(name, "getelementptr i8, {} {}, i64 {}", convert(p->type()), v_p, v_off);
     } else if (auto assume = Axm::isa<mem::assume>(def)) {
         auto p = assume->arg(2, 0);
         return bb.assign(name, "bitcast {} {} to {}", convert(p->type()), emit(p), convert(def->type()));

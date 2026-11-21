@@ -245,7 +245,7 @@ TEST_CASE("dump: apps") {
     CHECK_RT(w.call(plug::core::wrap::add, plug::core::Mode::none, Defs{a, b})); // folds to a Lit
     CHECK_RT(w.call(plug::core::nat::add, Defs{w.lit_nat(2), w.lit_nat(3)}));
     CHECK_RT(w.type_idx(w.call(plug::core::nat::add, Defs{w.lit_nat(2), w.lit_nat(3)})));
-    CHECK_RT(w.reform(w.type_nat()));
+    CHECK_RT(w.rho(w.type_nat(), w.type_nat()));
 }
 
 TEST_CASE("dump: math lits") {
@@ -265,7 +265,6 @@ TEST_CASE("dump: precedence") {
     auto& w  = rt.world();
     auto nat = w.type_nat();
     auto i32 = w.type_i32();
-    auto i8  = w.type_i8();
     auto t   = w.tuple({w.lit_nat(23), w.lit_nat(42)});
     auto i0  = w.lit_idx(2, 0);
     auto i1  = w.lit_idx(2, 1);

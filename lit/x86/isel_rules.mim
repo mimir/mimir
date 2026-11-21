@@ -1,0 +1,76 @@
+// RUN: %mim %s -X x86_isel:o=- | %FileCheck %s
+
+plugin compile;
+plugin x86_isel;
+
+extern lam _compile (): compile.Phase = x86_isel.gen;
+
+// CHECK:      inline bool match_0(const Def* def,
+// CHECK:          return false; // core.wrap.mul
+// The operands of a commuting node may be swapped.
+// CHECK:          m[1] = {{d[0-9]+}}->proj(2, swap >> 0 & 1);
+// The implicit type argument of `mem.load` is no inner node.
+// CHECK:          return false; // mem.load
+// CHECK-NOT:      r[
+// CHECK:          return false; // core.Ptr
+// An inner node is captured once and compared where it occurs again.
+// CHECK:          r[2] = [[VAL:d[0-9]+]];
+// CHECK-NEXT:     if ([[VAL]]->tuple() != {{d[0-9]+}}) return false;
+// `mul8` widens to `i32`, since `imul` has no 8-bit form.
+// CHECK:      inline const Def* build_[[W:[0-9]+]]({{\[\[}}maybe_unused{{\]\]}} World& w,
+// CHECK-NEXT:     auto b0 = w.annex({{0x[0-9a-f]+}}); // x86.trunc
+// CHECK:          w.annex({{0x[0-9a-f]+}}); // x86.imul
+// CHECK:          w.annex({{0x[0-9a-f]+}}); // x86.movzx
+// The holes determine the implicit arguments of `x86.rm`.
+// CHECK:          auto b0 = w.annex({{0x[0-9a-f]+}}); // x86.rm
+// CHECK:          w.implicit_app(b0, {{b[0-9]+}});
+// The mode of `core.wrap.mul` is a parameter, the operands are registers or, by the guard `imm`, an immediate.
+// CHECK:      inline constexpr Want wants[] = {
+// CHECK-NEXT:     Want::Param, Want::Reg, Want::Reg, // mul8: I8 ↝ I8
+// CHECK-NEXT:     Want::Param, Want::Reg, Want::Imm, // mul8_imm: I8 ↝ I8
+// A `Nat` under `x86_isel.nat` is a register or, by the guard `imm`, an immediate.
+// CHECK-NEXT:     Want::Reg, Want::Reg, // nat_add: Nat ↝ I64
+// CHECK-NEXT:     Want::Reg, Want::Imm, // nat_add_imm: Nat ↝ I64
+// The divisor of `core.rem` is a parameter.
+// CHECK:          Want::Param, Want::Reg, // rem16: I16 ↝ I16
+// A conversion of equal register sizes is its operand, and a marker is no head.
+// CHECK:          Want::Reg, // idx2nat64: Nat ↝ I64
+// CHECK-NEXT:     Want::Param, Want::Reg, // idx: I64 ↝ I64
+// A size that an operand's type mentions is a parameter.
+// CHECK:          Want::Param, Want::Addr, // load_ptr: [core.M 0, core.Ptr (I8, 0)] ↝ [core.M 0, I64]
+// CHECK-NEXT:     Want::Param, Want::Param, Want::Addr, Want::Reg, // store: core.M 0 ↝ core.M 0
+// CHECK-NEXT:     Want::Param, Want::Param, Want::Addr, Want::Imm, // store_imm: core.M 0 ↝ core.M 0
+// CHECK-NEXT:     Want::Param, Want::Addr, Want::Reg, // store_ptr: core.M 0 ↝ core.M 0
+// The base pointer of an address is a register.
+// CHECK-NEXT:     Want::Param, Want::Param, Want::Reg, Want::Reg, Want::Imm, // index2_disp: core.Ptr (I8, 0) ↝ x86.Addr tt
+// CHECK:          Want::Reg, Want::Imm, // ncmp_imm: Bool ↝ Bool
+// A memory is a parameter and a pointer an address.
+// CHECK:          Want::Param, Want::Reg, Want::Param, Want::Addr, // add_rm: [core.M 0, I8] ↝ [core.M 0, I8]
+// CHECK:      inline constexpr Rewrite rewrites[] = {
+// Swapping the operands of `mul8` yields no other match, but of `mul8_imm` it does.
+// CHECK-NEXT:     {"mul8", 4, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers[0], &build_[[W]], 0, 3, 0x0, 0}, // I8 ↝ I8
+// CHECK-NEXT:     {"mul8_imm", 4, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers[0], &build_[[W]], 3, 3, 0x1, 0}, // I8 ↝ I8
+// The operands of `core.nat.add` are the meta variables as a whole, and they still commute.
+// CHECK-NEXT:     {"nat_add", 1, {{.*}}, 2, 0x0, 0}, // Nat ↝ I64
+// CHECK-NEXT:     {"nat_add_imm", 1, {{.*}}, 2, 0x1, 0}, // Nat ↝ I64
+// An index and a displacement are part of the address, so they cost nothing; both commuting nodes may swap.
+// CHECK:          {"idx", 0, {{0x[0-9a-f]+}}, 0x0, {{.*}} // I64 ↝ I64
+// CHECK:          {"index2_disp", 0, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers[{{[0-9]+}}], &build_{{[0-9]+}}, {{[0-9]+}}, 5, 0x3, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
+// CHECK:          {"index2", 0, {{.*}}, 3, 0x1, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
+// A displacement alone yields an `x86.Base`; it shares its matcher with the plain index.
+// CHECK:          {"disp", 0, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers{{\[}}[[P:[0-9]+]]{{\]}}, {{.*}} // core.Ptr (I8, 0) ↝ x86.Addr ff
+// CHECK-NEXT:     {"index", 0, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers{{\[}}[[P]]{{\]}}, {{.*}} // core.Ptr (I8, 0) ↝ x86.Addr tt
+// `add` and `add_imm` share their matcher and builder.
+// CHECK-NEXT:     {"add", 1, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers{{\[}}[[M:[0-9]+]]{{\]}}, &build_[[B:[0-9]+]], {{[0-9]+}}, 3, 0x0, 0}, // I8 ↝ I8
+// CHECK:          {"add_imm", 1, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers{{\[}}[[M]]{{\]}}, &build_[[B]], {{[0-9]+}}, 3, 0x1, 0}, // I8 ↝ I8
+// CHECK-NOT:      {"mul", {{.*}} // I8 ↝ I8
+// CHECK:          {"mul", 1, {{.*}} // I16 ↝ I16
+// The logical instructions also take `Bool`.
+// CHECK:          {"and", 1, {{.*}} // Bool ↝ Bool
+// The rhs of `add_rm` replaces the load's memory, cover 0.
+// CHECK:          {"add_rm", 1, {{.*}}, 4, 0x1, 1}, // [core.M 0, I8] ↝ [core.M 0, I8]
+// CHECK-NOT:      {"mul_rm", {{.*}} // [core.M 0, I8]
+// CHECK:          {"add_mr", 1, {{.*}}, 4, 0x1, 0}, // core.M 0 ↝ core.M 0
+// CHECK:          {"xor_mr_imm", 1, {{.*}}, 4, 0x1, 0}, // core.M 0 ↝ core.M 0
+// CHECK-COUNT-3:  {"xor_mr_imm", 1, {{.*}}, 4, 0x1, 0}, // core.M 0 ↝ core.M 0
+// CHECK-NEXT: };

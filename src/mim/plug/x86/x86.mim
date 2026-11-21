@@ -121,7 +121,7 @@ axm rm: {s: Nat, C: *, i: Bool} → («2; Idx s» → C) → [mem.M 0, Idx s, Ad
 ///
 /// `op addr, r`: `mr f (m, addr, b)` stores `f (a, b)` to `addr` with `a` loaded from `addr`.
 ///
-axm mr: {s: Nat, i: Bool} → («2; Idx s» → Idx s) → [mem.M 0, Addr i, Idx s] → mem.M 0;
+axm mr: {s: Nat, C: *, i: Bool} → («2; Idx s» → C) → [mem.M 0, Addr i, Idx s] → mem.M 0;
 ///
 /// ### sched
 ///
@@ -230,9 +230,11 @@ axm (shl, shr, sar): {s: Nat} → «2; Idx s» → Idx (gpr s);
 ///
 /// ### Conversions
 ///
-/// `movzx`, `movsx`, and truncation to the low bits of the register.
+/// `movzx`, `movsx`, and truncation to the low bits of the register; they fold a literal.
 ///
-axm (movzx, movsx, trunc): {s: Nat} → [d: Nat] → Idx s → Idx d;
+axm movzx: {s: Nat} → [d: Nat] → Idx s → Idx d, normalize_movzx;
+axm movsx: {s: Nat} → [d: Nat] → Idx s → Idx d, normalize_movsx;
+axm trunc: {s: Nat} → [d: Nat] → Idx s → Idx d, normalize_trunc;
 ///
 /// ### Comparisons
 ///

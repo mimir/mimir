@@ -342,7 +342,7 @@ Ptr<Expr> Parser::parse_primary_expr(fe::Cite ctxt) {
         case Tag::D_brckt_l: return parse_sigma_expr();
         case Tag::D_paren_l: return parse_tuple_expr();
         case Tag::K_Type:    return parse_type_expr();
-        case Tag::K_Rule:    return parse_rule_expr();
+        case Tag::K_rl:      return parse_rule_expr();
         case Tag::K_match:   return parse_match_expr();
         case Tag::T_pipe:    return parse_variant_expr();
         case Tag::T_hole:    return ptr<HoleExpr>(lex().loc());
@@ -459,8 +459,18 @@ Ptr<Expr> Parser::parse_type_expr() {
 
 Ptr<Expr> Parser::parse_rule_expr() {
     auto track = tracker();
-    eat(Tag::K_Rule);
-    return ptr<RuleExpr>(track, parse_expr("domain of rule", Prec::App));
+    eat(Tag::K_rl);
+    auto meta = parse_ptrn({}, Prec::Pi, "meta variables of a rule expression");
+    expect(Tag::T_colon, "rule expression");
+    return parse_rule_body(track, meta, false);
+}
+
+Ptr<RuleExpr> Parser::parse_rule_body(Tracker track, Ptr<Ptrn> meta, bool is_norm, Sym name) {
+    auto lhs   = parse_expr("rewrite pattern");
+    auto guard = accept(Tag::K_when) ? parse_expr("rewrite guard") : ptr<PrimaryExpr>(missing(), Tag::K_tt);
+    expect(Tag::T_fat_arrow, "rewrite rule");
+    auto rhs = parse_expr("rewrite result");
+    return ptr<RuleExpr>(track, meta, lhs, guard, rhs, is_norm, name);
 }
 
 Ptr<Expr> Parser::parse_pi_expr() {
@@ -808,12 +818,7 @@ Ptr<RecDecl> Parser::parse_nom_decl(Tracker track, Mods mods) {
     }
 
     // `nom I (dom)+ = e` is sugar for `lam I (dom)+ = nom I = e; I`; within `e`, `I` names the type constructor.
-    Ptrs<LamDecl::Dom> doms;
-    do {
-        auto dom_track = tracker();
-        auto ptrn      = parse_ptrn({.implicit = true}, Prec::Pi, "domain pattern of a nominal type declaration");
-        doms.emplace_back(ptr<LamDecl::Dom>(dom_track, ptrn, nullptr, nullptr, nullptr));
-    } while (ISA(ahead().tag(), C_CURRIED_P));
+    auto doms = parse_doms(Prec::Pi, "nominal type declaration", {.required = true});
     expect(Tag::T_assign, "nominal type declaration");
     auto body  = parse_expr("underlying type of a nominal type declaration");
     auto nom   = ptr<NomDecl>(track, Mods{}, dbg, body);
@@ -824,18 +829,39 @@ Ptr<RecDecl> Parser::parse_nom_decl(Tracker track, Mods mods) {
     return ptr<LamDecl>(track, mods, Tag::K_lam, dbg, nullptr, inst, sugar, doms);
 }
 
+Ptrs<LamDecl::Dom> Parser::parse_doms(Prec prec, fe::Cite entity, DomStyle style) {
+    Ptrs<LamDecl::Dom> doms;
+    if (!style.required && !ISA(ahead().tag(), C_CURRIED_P)) return doms;
+    do {
+        auto track = tracker();
+        // A domain spelled with brackets is a telescope; a declaration with a body rejects that where names must bind.
+        auto brckt  = style.brckt && ahead().isa(Tag::D_brckt_l);
+        auto ptrn   = parse_ptrn(brckt ? PtrnStyle{.brckt = true} : PtrnStyle{.implicit = true}, prec,
+                                 "domain pattern of a {}", entity);
+        auto filter = style.filter && accept(Tag::T_at) ? parse_expr("filter") : nullptr;
+        doms.emplace_back(ptr<LamDecl::Dom>(track, ptrn, filter, nullptr, nullptr));
+    } while (ISA(ahead().tag(), C_CURRIED_P));
+    return doms;
+}
+
 Ptr<ValDecl> Parser::parse_rule_decl(Tracker track, Mods mods) {
     check_no_extern(mods, "rewrite rule");
-    if (mods.is_anx) error().e(curr_, "`anx` doesn't apply to a rewrite rule");
+    // A rule is data that phases leave alone, so it always lives in the library.
+    mods.is_anx  = true;
     auto is_norm = lex().tag() == Tag::K_norm;
     auto dbg     = parse_id("rewrite rule");
-    auto ptrn    = parse_ptrn({}, "meta variables in rewrite rule");
+
+    // `rule I (dom)* (meta): r` is sugar for `anx lam I (dom)* = rl (meta): r`.
+    auto doms = parse_doms(Prec::Pi, "rewrite rule", {});
+    auto meta = Ptr<Ptrn>();
+    if (!doms.empty()) {
+        meta = Ptr<Ptrn>(doms.back()->ptrn());
+        doms.pop_back();
+    }
     expect(Tag::T_colon, "rewrite rule declaration");
-    auto lhs   = parse_expr("rewrite pattern");
-    auto guard = accept(Tag::K_when) ? parse_expr("rewrite guard") : ptr<PrimaryExpr>(missing(), Tag::K_tt);
-    expect(Tag::T_fat_arrow, "rewrite rule declaration");
-    auto rhs = parse_expr("rewrite result");
-    return ptr<RuleDecl>(track, mods, dbg, ptrn, lhs, rhs, guard, is_norm);
+    auto rule = parse_rule_body(tracker(), meta, is_norm, dbg.sym());
+    if (doms.empty()) return ptr<LetDecl>(track, mods, ptr<IdPtrn>(dbg.loc(), dbg, nullptr), rule);
+    return ptr<LamDecl>(track, mods, Tag::K_lam, dbg, nullptr, rule, nullptr, doms);
 }
 
 Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
@@ -866,22 +892,10 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
         }
 
     auto dbg = decl ? parse_id(entity) : Dbg();
-    // The last Dom is built after the codomain, which a `fn`/`fun` turns into its `return` type.
-    Ptrs<LamDecl::Dom> doms;
-    Loc loc;
-    Ptr<Ptrn> ptrn;
-    Ptr<Expr> filter;
-    while (true) {
-        auto track = tracker();
-        // A domain spelled with brackets is a telescope; the check after the body rejects that where names must bind.
-        auto style = ahead().isa(Tag::D_brckt_l) ? PtrnStyle{.brckt = true} : PtrnStyle{.implicit = true};
-        ptrn       = parse_ptrn(style, prec, "domain pattern of a {}", entity);
-        filter     = accept(Tag::T_at) ? parse_expr("filter") : nullptr;
-        loc        = Loc(track);
-
-        if (!ISA(ahead().tag(), C_CURRIED_P)) break;
-        doms.emplace_back(ptr<LamDecl::Dom>(loc, ptrn, filter, nullptr, nullptr));
-    }
+    // The last Dom is rebuilt after the codomain, which a `fn`/`fun` turns into its `return` type.
+    auto doms = parse_doms(prec, entity, {.required = true, .filter = true, .brckt = true});
+    auto last = doms.back();
+    doms.pop_back();
 
     // The `: codom` slot ends at `=`, so it takes everything short of a `where`.
     auto codom = accept(Tag::T_colon) ? parse_expr(Prec(int(Prec::Where) + 1), "codomain of a {}", entity) : nullptr;
@@ -892,7 +906,8 @@ Ptr<LamDecl> Parser::parse_lam_decl(Tracker track, Mods mods) {
         ret      = ptr<IdDecl>(Dbg(ret_type->loc(), ast().sym_return()));
         codom    = nullptr; // the `ret` continuation is where it went
     }
-    doms.emplace_back(ptr<LamDecl::Dom>(loc, ptrn, filter, ret_type, ret));
+    doms.emplace_back(
+        ptr<LamDecl::Dom>(last->loc(), Ptr<Ptrn>(last->ptrn()), Ptr<Expr>(last->filter()), ret_type, ret));
 
     Ptr<Expr> body;
     if (decl && mods.is_extern && ahead().isa(Tag::T_semicolon)) {

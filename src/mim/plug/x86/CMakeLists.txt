@@ -4,6 +4,7 @@ add_mim_plugin(x86
         constraint.cpp
         emit.cpp
         liveness.cpp
+        normalizers.cpp
         phase/color.cpp
         phase/constrain.cpp
         phase/isel.cpp

@@ -6,5 +6,7 @@
   It needs literal `trait` values and falls back to Tagged otherwise.
 - Recursive (mutable) Variants like `List` are not lowered yet; they need a boxed payload.
 - `core.legalize_idx` widens every literal `Idx s` that is no `Bool`/`I8`/`I16`/`I32`/`I64`; `core::isa_odd_idx_op` is the one definition of "depends on the odd modulus".
+- `core.legalize_dyn_idx` (same class, other annex) turns a dynamic `Idx n` into `I64` and nothing else: rerunning the odd-size logic would take `legalize_idx`'s own conversions back to `Idx s` for real ones and add modulos.
+  It cannot run where `legalize_idx` does, since the final `optimize` still specializes dependent functions (`f (n: Nat): Idx n` called with `i32`), so `opt.mim` runs it for `x86` only, after `ll.emit`.
 - `core.trait` still hard-codes x86-64; a target description in the `Driver` is the parked follow-up.
 - `core.idx2nat` is the always-safe `Idx`→`Nat` conversion; a nonzero literal of `Idx n` with symbolic `n` is `core.conv.u n 1I64`.

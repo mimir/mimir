@@ -37,7 +37,7 @@
     X(Arr,    Judge::Form ) X(Pack,  Judge::Intro)                                                                 \
     X(Variant, Judge::Form) X(Inj,  Judge::Intro) X(Match,   Judge::Elim)                                         \
     X(Top,    Judge::Intro) X(Bot,   Judge::Intro)                                                                 \
-    X(Reform, Judge::Form ) X(Rule,  Judge::Intro)                                                                 \
+    X(Rho,    Judge::Form ) X(Rule,  Judge::Intro) X(Fire,    Judge::Elim)                                         \
     X(Single, Judge::Form ) X(Wrap,  Judge::Intro)                                                                 \
     X(Nom,    Judge::Form ) X(Name,  Judge::Intro) X(Struc,   Judge::Elim)                                         \
     X(Nat,    Judge::Form )                                                                                        \
@@ -54,7 +54,7 @@
     X(Arr)    X(Pack)                                                                                              \
     X(Variant) X(Inj)  X(Match)                                                                                    \
     X(Top)    X(Bot)                                                                                               \
-    X(Reform) X(Rule)                                                                                              \
+    X(Rho)    X(Rule)  X(Fire)                                                                                     \
     X(Single) X(Wrap)                                                                                              \
     X(Nat)                                                                                                         \
     X(Idx)                                                                                                         \
@@ -66,7 +66,7 @@
     X(Sigma)                                                                                                       \
     X(Arr)   X(Pack)                                                                                               \
     X(Variant)                                                                                                     \
-    X(Rule)
+    X(Rho)   X(Rule)
 // clang-format on
 
 namespace mim {
@@ -260,12 +260,12 @@ struct DotConfig {
 /// | Single            | Wrap              |                   |
 /// | Nom               | Name              | Struc             |
 /// | Variant           | Inj               | Match             |
-/// | Reform            | Rule              |                   |
+/// | Rho               | Rule              | Fire              |
 /// | Nat               | Lit               |                   |
 /// | Idx               | Lit               |                   |
 /// In addition there is:
 /// * Var: A variable. Currently the following Def%s may be binders:
-///     * Pi, Lam, Sigma, Arr, Pack, Rule
+///     * Pi, Lam, Sigma, Arr, Pack, Rho, Rule
 /// * Axm: To introduce new entities.
 /// * Proxy: Used for intermediate values during optimizations.
 /// * Hole: A metavariable filled in by the type inference (always mutable as holes are filled in later).

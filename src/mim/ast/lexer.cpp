@@ -107,6 +107,13 @@ Tok Lexer::lex() {
             return tok(Tag::T_sub);
         }
         if (accept(U'→')) return tok(Tag::T_arrow_r);
+        if (accept(U'↝')) return tok(Tag::T_leadsto);
+        if (accept(U'▷')) return tok(Tag::T_fire);
+        if (accept( '~')) {
+            if (accept('>')) return tok(Tag::T_leadsto);
+            error().e(loc_, "expected `>` after `~`");
+            continue;
+        }
         if (accept(U'←')) return tok(Tag::T_arrow_l);
         if (accept( '@')) return tok(Tag::T_at);
         if (accept( '=')) {
@@ -138,7 +145,10 @@ Tok Lexer::lex() {
         if (accept( '#')) return tok(Tag::T_extract);
         if (accept(U'λ')) return tok(Tag::T_lm);
         if (accept( '%')) return tok(Tag::T_rem);
-        if (accept( '|')) return tok(Tag::T_pipe);
+        if (accept( '|')) {
+            if (accept('>')) return tok(Tag::T_fire);
+            return tok(Tag::T_pipe);
+        }
         if (accept( '?')) return tok(Tag::T_hole);
         if (accept( ';')) return tok(Tag::T_semicolon);
         if (accept(U'★')) return tok(Tag::T_star);
