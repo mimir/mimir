@@ -1,0 +1,21 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin core;
+plugin mem;
+import compile;
+
+extern lam _compile (): compile.Phase = mem.legalize_ptr;
+
+// An index into a dynamic size ignores the modulus.
+extern lam dyn (n: Nat, p: mem.Ptr0 «n; I32», x: I64): mem.Ptr0 I32 = mem.lea (p, core.conv.u n x);
+// CHECK-LABEL: dyn
+// CHECK-NOT: core.conv.u
+// CHECK: core.wrap.mul 0 @ 0 (4I64, x{{(_[0-9]+)?}})
+
+// An index into an odd size is a remainder, by an `and` for a power of two.
+extern lam odd (p: mem.Ptr0 «3; I32», x: I8): mem.Ptr0 I32 = mem.lea (p, core.conv.u 3 x);
+// CHECK-LABEL: odd
+// CHECK: core.rem @ i8 3 x{{(_[0-9]+)?}}
+extern lam pow2 (p: mem.Ptr0 «4; I32», x: I8): mem.Ptr0 I32 = mem.lea (p, core.conv.u 4 x);
+// CHECK-LABEL: pow2
+// CHECK: core.bit2.and 0 @ i8 (3I8, x{{(_[0-9]+)?}})

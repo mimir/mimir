@@ -8,11 +8,11 @@ import compile;
 extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_ptr, compile.named "x86.isel");
 
 // The row offset goes into the base, the column into the scaled index.
-extern lam row (m: mem.M 0, a: mem.Ptr0 «64; «64; I32»», i j: Idx 64): [mem.M 0, I32] =
+extern lam row (m: mem.M 0, a: mem.Ptr0 «256; «256; I32»», i j: I8): [mem.M 0, I32] =
     mem.load (m, mem.lea (mem.lea (a, i), j));
 
 // The field offset is the displacement of the scaled element index.
-extern lam field (m: mem.M 0, a: mem.Ptr0 «64; [I32, I32]», i: Idx 64): [mem.M 0, I32] =
+extern lam field (m: mem.M 0, a: mem.Ptr0 «256; [I32, I32]», i: I8): [mem.M 0, I32] =
     mem.load (m, mem.lea (mem.lea (a, i), 1_2));
 
 // CHECK-NOT: x86.imul @ 0 ({{.*}}, {{[48]}}I64)

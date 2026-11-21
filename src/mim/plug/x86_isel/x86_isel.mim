@@ -123,6 +123,27 @@ rule rem16          (d: Nat, x: I16):         core.rem d x              => (x86.
 rule rem32          (d: Nat, x: I32):         core.rem d x              => (x86.div (x, x86.mov (core.idx 0 i32 d)))#1_2;
 rule rem64          (d: Nat, x: I64):         core.rem d x              => (x86.div (x, x86.mov (core.idx 0 i64 d)))#1_2;
 ///
+/// ### Conversions
+///
+/// `mem.legalize_ptr` leaves only register sizes; each family takes the source and the destination size.
+/// A conversion between sizes of the same register width truncates.
+///
+rule trunc      (s d: Nat) (x: Idx s):        core.conv.u d x               => x86.trunc d x;
+rule strunc     (s d: Nat) (x: Idx s):        core.conv.s d x               => x86.trunc d x;
+rule zext       (s d: Nat) (x: Idx s):        core.conv.u d x               => x86.movzx d x;
+rule sext       (s d: Nat) (x: Idx s):        core.conv.s d x               => x86.movsx d x;
+rule cast_trunc (s d: Nat) (x: Idx s):        core.bitcast (Idx d) x        => x86.trunc d x;
+rule cast_zext  (s d: Nat) (x: Idx s):        core.bitcast (Idx d) x        => x86.movzx d x;
+rule cast_nat   (d: Nat)   (x: Nat):          core.bitcast (Idx d) x        => x86.trunc d (nat x);
+rule cast_nat64            (x: Nat):          core.bitcast I64 x            => nat x;
+rule cast_idx   (s: Nat)   (x: Idx s):        core.bitcast Nat x            => x86.movzx i64 x;
+rule cast_idx64            (x: I64):          core.bitcast Nat x            => x;
+rule cast_ptr              (x: mem.Ptr0 I8):  core.bitcast I64 x            => reg x;
+rule cast_int              (x: I64):          core.bitcast (mem.Ptr0 I8) x  => x;
+rule idx2nat    (s: Nat)   (x: Idx s):        core.idx2nat x                => x86.movzx i64 x;
+rule idx2nat64             (x: I64):          core.idx2nat x                => x;
+rule idx                   (m l: Nat):        core.idx m i64 l              => nat l;
+///
 /// ### Comparisons
 ///
 /// Each family takes the predicate and its condition code.
@@ -199,6 +220,16 @@ anx let alu = (
     shl i8, shl i16, shl i32, shl i64, shl_imm i8, shl_imm i16, shl_imm i32, shl_imm i64,
     shr i8, shr i16, shr i32, shr i64, shr_imm i8, shr_imm i16, shr_imm i32, shr_imm i64,
     sar i8, sar i16, sar i32, sar i64, sar_imm i8, sar_imm i16, sar_imm i32, sar_imm i64);
+anx let conversions = (
+    trunc (i64, i32), trunc (i64, i16), trunc (i64, i8), trunc (i64, i1), trunc (i32, i16), trunc (i32, i8), trunc (i32, i1), trunc (i16, i8), trunc (i16, i1), trunc (i8, i1), trunc (i1, i8),
+    strunc (i64, i32), strunc (i64, i16), strunc (i64, i8), strunc (i64, i1), strunc (i32, i16), strunc (i32, i8), strunc (i32, i1), strunc (i16, i8), strunc (i16, i1), strunc (i8, i1), strunc (i1, i8),
+    cast_trunc (i64, i32), cast_trunc (i64, i16), cast_trunc (i64, i8), cast_trunc (i64, i1), cast_trunc (i32, i16), cast_trunc (i32, i8), cast_trunc (i32, i1), cast_trunc (i16, i8), cast_trunc (i16, i1), cast_trunc (i8, i1), cast_trunc (i1, i8),
+    zext (i1, i16), zext (i1, i32), zext (i1, i64), zext (i8, i16), zext (i8, i32), zext (i8, i64), zext (i16, i32), zext (i16, i64), zext (i32, i64),
+    sext (i1, i16), sext (i1, i32), sext (i1, i64), sext (i8, i16), sext (i8, i32), sext (i8, i64), sext (i16, i32), sext (i16, i64), sext (i32, i64),
+    cast_zext (i1, i16), cast_zext (i1, i32), cast_zext (i1, i64), cast_zext (i8, i16), cast_zext (i8, i32), cast_zext (i8, i64), cast_zext (i16, i32), cast_zext (i16, i64), cast_zext (i32, i64),
+    cast_nat i32, cast_nat i16, cast_nat i8, cast_nat i1, cast_nat64,
+    cast_idx i32, cast_idx i16, cast_idx i8, cast_idx i1, cast_idx64, cast_ptr, cast_int,
+    idx2nat i32, idx2nat i16, idx2nat i8, idx2nat i1, idx2nat64, idx);
 anx let compares = (
     icmp (core.icmp.e,   x86.cc.e),  icmp (core.icmp.ne,  x86.cc.ne), icmp (core.icmp.ul, x86.cc.b), icmp (core.icmp.ule, x86.cc.be),
     icmp (core.icmp.ug,  x86.cc.a),  icmp (core.icmp.uge, x86.cc.ae), icmp (core.icmp.sl, x86.cc.l), icmp (core.icmp.sle, x86.cc.le),

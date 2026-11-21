@@ -8,7 +8,7 @@ import compile;
 extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_ptr, compile.named "x86.isel");
 
 // Both addresses share the product `i * 4`, which each folds into its scale nevertheless.
-extern lam f (m: mem.M 0, a b: mem.Ptr0 «4096; I32», i: Idx 4096): [mem.M 0, I32] =
+extern lam f (m: mem.M 0, a b: mem.Ptr0 «65536; I32», i: I16): [mem.M 0, I32] =
     let (m, x) = mem.load (m, mem.lea (a, i));
     let (m, y) = mem.load (m, mem.lea (b, i));
     (m, core.wrap.add 0 (x, y));

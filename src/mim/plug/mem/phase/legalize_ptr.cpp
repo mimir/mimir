@@ -23,6 +23,16 @@ nat_t field_offset(const Def* sigma, nat_t i) {
     return off;
 }
 
+/// The index @p i at register size: a literal odd `n` of `conv.u n y` is a remainder, a dynamic one is ignored.
+const Def* reg_index(World& w, const Def* i) {
+    auto conv = Axm::isa(core::conv::u, i);
+    if (!conv) return i;
+    auto n = Idx::isa(i->type());
+    if (!Lit::isa(n)) return conv->arg();
+    if (core::isa_odd_idx(i->type())) return w.call<core::rem>(n, conv->arg());
+    return i;
+}
+
 } // namespace
 
 const Def* LegalizePtr::rewrite_imm_App(const App* app) {
@@ -41,7 +51,7 @@ const Def* LegalizePtr::rewrite_imm_App(const App* app) {
         } else if (auto size = trait(core::trait::size, elem); l) {
             off = w.lit_i64(*l * size);
         } else {
-            off = w.call(core::conv::u, w.lit_nat_0(), rewrite(i));
+            off = core::zext(w, reg_index(w, rewrite(i)));
             if (size != 1) off = w.call(core::wrap::mul, core::Mode::none, Defs{off, w.lit_i64(size)});
         }
         return w.call<mem::ptradd>(Defs{rewrite(p), off});

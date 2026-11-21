@@ -17,7 +17,7 @@ extern lam _compile (): compile.Phase = x86_isel.gen;
 // CHECK:          r[2] = [[VAL:d[0-9]+]];
 // CHECK-NEXT:     if ([[VAL]]->tuple() != {{d[0-9]+}}) return false;
 // `mul8` widens to `i32`, since `imul` has no 8-bit form.
-// CHECK:      inline const Def* build_[[W:[0-9]+]](World& w,
+// CHECK:      inline const Def* build_[[W:[0-9]+]]({{\[\[}}maybe_unused{{\]\]}} World& w,
 // CHECK-NEXT:     auto b0 = w.annex({{0x[0-9a-f]+}}); // x86.trunc
 // CHECK:          w.annex({{0x[0-9a-f]+}}); // x86.imul
 // CHECK:          w.annex({{0x[0-9a-f]+}}); // x86.movzx
@@ -33,6 +33,9 @@ extern lam _compile (): compile.Phase = x86_isel.gen;
 // CHECK-NEXT:     Want::Reg, Want::Imm, // nat_add_imm: Nat ↝ I64
 // The divisor of `core.rem` is a parameter.
 // CHECK:          Want::Param, Want::Reg, // rem16: I16 ↝ I16
+// A conversion of equal register sizes is its operand, and a marker is no head.
+// CHECK:          Want::Reg, // idx2nat64: Nat ↝ I64
+// CHECK-NEXT:     Want::Param, Want::Reg, // idx: I64 ↝ I64
 // A size that an operand's type mentions is a parameter.
 // CHECK:          Want::Param, Want::Addr, // load_ptr: [core.M 0, core.Ptr (I8, 0)] ↝ [core.M 0, I64]
 // CHECK-NEXT:     Want::Param, Want::Param, Want::Addr, Want::Reg, // store: core.M 0 ↝ core.M 0
@@ -51,6 +54,7 @@ extern lam _compile (): compile.Phase = x86_isel.gen;
 // CHECK-NEXT:     {"nat_add", 1, {{.*}}, 2, 0x0, 0}, // Nat ↝ I64
 // CHECK-NEXT:     {"nat_add_imm", 1, {{.*}}, 2, 0x1, 0}, // Nat ↝ I64
 // An index and a displacement are part of the address, so they cost nothing; both commuting nodes may swap.
+// CHECK:          {"idx", 0, {{0x[0-9a-f]+}}, 0x0, {{.*}} // I64 ↝ I64
 // CHECK:          {"index2_disp", 0, {{0x[0-9a-f]+}}, {{0x[0-9a-f]+}}, &matchers[{{[0-9]+}}], &build_{{[0-9]+}}, {{[0-9]+}}, 5, 0x3, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
 // CHECK:          {"index2", 0, {{.*}}, 3, 0x1, 0}, // core.Ptr (I8, 0) ↝ x86.Addr tt
 // A displacement alone yields an `x86.Base`; it shares its matcher with the plain index.

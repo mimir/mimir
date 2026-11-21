@@ -84,11 +84,8 @@ enum class Op : u8 {
 /// A side condition of a rule beyond what its slots state.
 enum class Cond : u8 {
     None,
-    Fold,   ///< The replacement sits at the inner node whose memory it replaces, so the root's holes must be available
-            ///< there.
-    Same,   ///< The root has the register size of its operand.
-    Narrow, ///< The root's register is at most as wide as its operand's, but its size differs.
-    Widen,  ///< The root's register is wider than its operand's.
+    Fold, ///< The replacement sits at the inner node whose memory it replaces, so the root's holes must be available
+          ///< there.
 };
 
 /// What a match needs of the operand @p def: a hole of type @p want or, if @p inner is set, that inner pattern node.
@@ -141,12 +138,6 @@ struct Rule {
     u8 num_slots = 0;
     std::array<Want, Max_Slots> slots{};
     const rules::Rewrite* gen = nullptr; ///< The rule of `x86_isel` this one stems from.
-
-    constexpr Rule with(Cond c) const {
-        auto res = *this;
-        res.cond = c;
-        return res;
-    }
 };
 ///@}
 
@@ -194,9 +185,6 @@ public:
     /// Does the x86 instruction @p insn take operands of `Idx size`?
     bool supports(flags_t insn, nat_t size);
 
-    const Def* build_id(const Def* root, const Alt& alt);
-    const Def* build_trunc(const Def* root, const Alt& alt);
-    const Def* build_ext(const Def* root, const Alt& alt);
     const Def* build_slot(const Def* root, const Alt& alt);
     const Def* build_select(const Def* root, const Alt& alt);
     /// Builds the rhs of a generated rule.
@@ -222,12 +210,12 @@ private:
     void append_gen(const Rule& rule, const Def* root, Alts& alts);
     /// Appends the match of the generated @p rule rooted at @p root with the commuting nodes in @p swap swapped.
     void append_gen(const Rule& rule, const Def* root, u32 swap, Alts& alts);
-    /// Appends the matches of @p rule rooted at @p root, which decomposes to @p node, to @p alts.
-    void append(const Rule& rule, const Def* root, const Node& node, Alts& alts);
+    /// Appends the match of the hand-written @p rule on @p node to @p alts.
+    void append(const Rule& rule, const Node& node, Alts& alts);
     /// The inner node the operand @p def of @p parent stands for, if nothing outside the match uses it.
     const App* sole(const Def* parent, const Def* def) const;
-    /// Does the match @p alt rooted at @p root meet the side condition of its rule?
-    bool holds(const Def* root, const Alt& alt);
+    /// Does the match @p alt meet the side condition of its rule?
+    bool holds(const Alt& alt);
 #ifdef MIM_ENABLE_CHECKS
     /// Verifies atomic completeness, total conversions, and inner-node coverage over the rule set.
     void check_rules() const;

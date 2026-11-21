@@ -162,5 +162,6 @@ axm alloc2malloc_repl: compile.Phase;
 /// ### legalize_ptr
 ///
 /// Prepares a lowered world for a native backend (mim::plug::mem::phase::LegalizePtr): every pointer becomes a byte pointer `Ptr (I8, a)`, cast to its access type where an operation needs one, and `lea` becomes `ptradd` by a byte offset.
+/// An index `core.conv.u n y` into an `Idx n` that is no register size becomes `y` modulo a literal `n`, or `y` itself for a dynamic `n`.
 ///
 axm legalize_ptr: compile.Phase;

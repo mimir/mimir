@@ -164,6 +164,7 @@ void Table::add(const Rule* rule) {
     auto [root, _, __] = Axm::get(lhs);
     if (!root) rule->blame("x86_isel: the lhs of `{}` must apply an axiom", rule).bail();
     auto head = std::get<0>(Axm::get(rule->rhs()));
+    if (head && Annex::flags2plugin(head->flags()) != x86::Plugin_Id) head = nullptr;
 
     auto done = DefSet();
     rewrites_.emplace_back(Rewrite{.name   = rule->sym().str(),
@@ -539,7 +540,8 @@ void Code::match(u32 n, const std::string& e) {
 void Code::build(u32 rhs) {
     next_ = 0;
     built_.clear();
-    std::println(os_, "inline const Def* build_{}(World& w, [[maybe_unused]] const Def* const* h) {{", rhs);
+    std::println(os_, "inline const Def* build_{}([[maybe_unused]] World& w, [[maybe_unused]] const Def* const* h) {{",
+                 rhs);
     line("return {};", build_(rhs));
     std::println(os_, "}}");
     std::println(os_);

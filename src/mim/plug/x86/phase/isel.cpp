@@ -65,15 +65,14 @@ struct Pattern {
     bool member = true; ///< @p flags names one member of the annex.
     Op op;              ///< The operation @p flags selects.
     Tag tag;            ///< How `match` extracts the operands.
-    bool sign = false;  ///< A conversion that sign-extends.
 };
 
 namespace {
 
 /// One member of a multi-member annex.
 template<class Id>
-constexpr Pattern member(Id id, Op op, Tag tag, bool sign = false) {
-    return Pattern{flags_t(id), true, op, tag, sign};
+constexpr Pattern member(Id id, Op op, Tag tag) {
+    return Pattern{flags_t(id), true, op, tag};
 }
 
 /// The whole annex.
@@ -110,13 +109,12 @@ constexpr Pattern patterns_[] = {
     member(core::nat::rem,   Op::NatRem,  Tag::Args),
     annex<core::div>        (Op::Div,     Tag::Args),
     annex<core::rem>        (Op::Rem,     Tag::Unary),
-
-    // The rules of `isel.cpp` select these.
-    member(core::conv::s,    Op::Conv,    Tag::Unary, true),
-    member(core::conv::u,    Op::Conv,    Tag::Unary),
+    annex<core::conv>       (Op::Conv,    Tag::Unary),
     annex<core::idx>        (Op::Idx,     Tag::Unary),
     annex<core::idx2nat>    (Op::Idx2Nat, Tag::Unary),
     annex<core::bitcast>    (Op::Bitcast, Tag::Unary),
+
+    // The rules of `isel.cpp` select these.
     annex<mem::mslot>       (Op::Slot,    Tag::None),
 };
 
@@ -167,8 +165,7 @@ bool depends(const Def* def, const Def* target, DefSet& done) {
 /// The register size of the x86 `Idx` the old_world() @p type becomes.
 std::optional<nat_t> new_size(const Def* type) {
     if (Axm::isa<core::Ptr>(type) || type->isa<Nat>()) return 0;
-    if (auto size = Idx::isa(type)) return Lit::isa(size).value_or(0);
-    return {};
+    return Idx::isa_lit(type);
 }
 
 /// The size of the x86 `Idx` the old_world() @p type becomes, if it fits a register.
@@ -259,16 +256,6 @@ constexpr std::string_view op_name(Op op) {
 // clang-format off
 /// The rule set: one entry per pattern ↦ replacement.
 constexpr Rule rules_[] = {
-    rule(Op::Conv,      Ty::Reg,   0, "conv_id",       &ISel::build_id, Want::Reg).with(Cond::Same),
-    rule(Op::Conv,      Ty::Reg,   1, "conv_trunc",    &ISel::build_trunc, Want::Reg).with(Cond::Narrow),
-    rule(Op::Conv,      Ty::Reg,   1, "conv_ext",      &ISel::build_ext, Want::Reg).with(Cond::Widen),
-    rule(Op::Idx,       Ty::Reg,   0, "idx",           &ISel::build_id, Want::Reg).with(Cond::Same),
-    rule(Op::Idx2Nat,   Ty::Reg,   0, "idx2nat_id",    &ISel::build_id, Want::Reg).with(Cond::Same),
-    rule(Op::Idx2Nat,   Ty::Reg,   1, "idx2nat_ext",   &ISel::build_ext, Want::Reg).with(Cond::Widen),
-    rule(Op::Bitcast,   Ty::Reg,   0, "bitcast_id",    &ISel::build_id, Want::Reg).with(Cond::Same),
-    rule(Op::Bitcast,   Ty::Reg,   1, "bitcast_trunc", &ISel::build_trunc, Want::Reg).with(Cond::Narrow),
-    rule(Op::Bitcast,   Ty::Reg,   1, "bitcast_ext",   &ISel::build_ext, Want::Reg).with(Cond::Widen),
-
     rule(Op::Slot,      Ty::Reg,   1, "slot",          &ISel::build_slot),
     rule(Op::Select,    Ty::Reg,   1, "select",        &ISel::build_select, Want::Reg, Want::Reg, Want::Reg),
 };
@@ -387,7 +374,7 @@ void ISel::append_gen(const Rule& rule, const Def* root, u32 swap, Alts& alts) {
             demands(o).emplace_back(Demand{def, want(w)});
         }
     }
-    if (!holds(root, alt)) return;
+    if (!holds(alt)) return;
     alt.metas = std::move(metas);
     alts.emplace_back(std::move(alt));
 }
@@ -402,19 +389,6 @@ const Def* ISel::build_gen(const Def*, const Alt& alt) {
     if (!r.maps) return res;
     map(alt.covers[r.maps - 1].def, res);
     return res->proj(2, 1);
-}
-
-const Def* ISel::build_id(const Def*, const Alt& alt) { return hole(alt.demands[0].def); }
-
-const Def* ISel::build_trunc(const Def* root, const Alt& alt) {
-    return new_world().call<trunc>(*Idx::isa_lit(rewrite(root->type())), hole(alt.demands[0].def));
-}
-
-const Def* ISel::build_ext(const Def* root, const Alt& alt) {
-    auto& w  = new_world();
-    auto dst = *Idx::isa_lit(rewrite(root->type()));
-    auto x   = hole(alt.demands[0].def);
-    return pattern(root)->sign ? w.call<movsx>(dst, x) : w.call<movzx>(dst, x);
 }
 
 const Def* ISel::build_slot(const Def* root, const Alt&) {
@@ -473,10 +447,10 @@ void ISel::match(const Def* def, Alts& alts) {
         for (const auto& rule : generated())
             if (rule.gen->root == axm->flags()) append_gen(rule, def, alts);
     for (const auto& rule : rules_)
-        if (rule.op == node->op) append(rule, def, *node, alts);
+        if (rule.op == node->op) append(rule, *node, alts);
 }
 
-void ISel::append(const Rule& rule, const Def* root, const Node& node, Alts& alts) {
+void ISel::append(const Rule& rule, const Node& node, Alts& alts) {
     if (node.ops.size() != rule.num_slots) return;
     auto alt = Alt();
     alt.rule = &rule;
@@ -487,7 +461,7 @@ void ISel::append(const Rule& rule, const Def* root, const Node& node, Alts& alt
         if (is_literal(want) && !literal(def, want)) return;
         alt.demands.emplace_back(Demand{def, want});
     }
-    if (holds(root, alt)) alts.emplace_back(std::move(alt));
+    if (holds(alt)) alts.emplace_back(std::move(alt));
 }
 
 const App* ISel::sole(const Def* parent, const Def* def) const {
@@ -498,18 +472,9 @@ const App* ISel::sole(const Def* parent, const Def* def) const {
     return uses(def) == 1 ? def->isa<App>() : nullptr;
 }
 
-bool ISel::holds(const Def* root, const Alt& alt) {
+bool ISel::holds(const Alt& alt) {
     switch (alt.rule->cond) {
         case Cond::None: return true;
-        case Cond::Same:
-        case Cond::Narrow:
-        case Cond::Widen: {
-            auto src = new_size(alt.demands[0].def->type());
-            auto dst = new_size(root->type());
-            if (!src || !dst) return false;
-            if (*src == *dst) return alt.rule->cond == Cond::Same;
-            return alt.rule->cond == (reg_width(*src) >= reg_width(*dst) ? Cond::Narrow : Cond::Widen);
-        }
         case Cond::Fold: {
             auto ld = alt.covers[alt.rule->gen->maps - 1].def->as<App>();
             auto bb = chain(ld->arg(2, 0));
@@ -789,7 +754,6 @@ const Def* ISel::rewrite_imm_App(const App* app) {
     auto& w = new_world();
     if (Axm::isa<core::Ptr>(app)) return w.type_i64();
     if (Axm::isa<core::M>(app)) return w.call<core::M>(w.lit_nat_0());
-    if (auto size = Idx::isa(app); size && !Lit::isa(size)) return w.type_i64();
     if (auto res = selected(app)) return res;
     if (auto ptr = strip(app); ptr != app) return rewrite(ptr);
     // Loop hints for LLVM.
