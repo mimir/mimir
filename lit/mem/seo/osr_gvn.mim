@@ -1,0 +1,213 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s
+
+// OSR shadows `i` by a virtual slot for `i * k` whose phi GVN merges with `j`'s.
+// So `i * k == j` folds, `f` and its `take_addr`s are dead, and all slots promote.
+
+plugin core;
+plugin mem;
+
+use core.ops.n;
+
+extern fun dont_know [mem.M 0]: [mem.M 0, Bool];
+extern fun take_addr [mem.M 0, mem.Ptr0 Nat]: [mem.M 0];
+
+// `i` is the second field of a slot.
+extern fun lea (m: mem.M 0, hi: Nat): [mem.M 0, Nat] =
+    ret (m, p)  = mem.slot ([Nat, Nat], 0) $ m;
+    ret (m, pj) = mem.slot (Nat, 0) $ m;
+    let pi = mem.lea (p, 1_2);
+    let m = mem.store (m, mem.lea (p, 0_2), hi);
+    let m = mem.store (m, pi, 1);
+    let m = mem.store (m, pj, 4);
+    head m where
+        con head (m: mem.M 0) =
+            ret (m, cond) = dont_know $ m;
+            (exit, body)#cond m where
+                con body (m: mem.M 0) =
+                    let (m, i) = mem.load (m, pi);
+                    let (m, j) = mem.load (m, pj);
+                    (f, t)#(i * 4 == j) m where
+                        con t (m: mem.M 0) =
+                            n m;
+                        con f (m: mem.M 0) =
+                            ret m = take_addr $ (m, pi);
+                            ret m = take_addr $ (m, pj);
+                            n m;
+                        con n (m: mem.M 0) =
+                            let m = mem.store (m, pi, i + 1);
+                            let m = mem.store (m, pj, j + 4);
+                            head m;
+                    end;
+                con exit (m: mem.M 0) =
+                    let (m, i) = mem.load (m, pi);
+                    let (m, j) = mem.load (m, pj);
+                    return (m, i + j);
+            end;
+    end;
+
+// The factor is a param.
+extern fun param (m: mem.M 0, k: Nat): [mem.M 0, Nat] =
+    ret (m, pi) = mem.slot (Nat, 0) $ m;
+    ret (m, pj) = mem.slot (Nat, 0) $ m;
+    let m = mem.store (m, pi, 1);
+    let m = mem.store (m, pj, k);
+    head m where
+        con head (m: mem.M 0) =
+            ret (m, cond) = dont_know $ m;
+            (exit, body)#cond m where
+                con body (m: mem.M 0) =
+                    let (m, i) = mem.load (m, pi);
+                    let (m, j) = mem.load (m, pj);
+                    (f, t)#(i * k == j) m where
+                        con t (m: mem.M 0) =
+                            n m;
+                        con f (m: mem.M 0) =
+                            ret m = take_addr $ (m, pi);
+                            ret m = take_addr $ (m, pj);
+                            n m;
+                        con n (m: mem.M 0) =
+                            let m = mem.store (m, pi, i + 1);
+                            let m = mem.store (m, pj, j + k);
+                            head m;
+                    end;
+                con exit (m: mem.M 0) =
+                    let (m, i) = mem.load (m, pi);
+                    let (m, j) = mem.load (m, pj);
+                    return (m, i + j);
+            end;
+    end;
+
+// The factor is loaded from a slot and only becomes the constant `4` during the analysis.
+extern fun propagated (m: mem.M 0, hi: Nat): [mem.M 0, Nat] =
+    ret (m, pk) = mem.slot (Nat, 0) $ m;
+    ret (m, pi) = mem.slot (Nat, 0) $ m;
+    ret (m, pj) = mem.slot (Nat, 0) $ m;
+    let m = mem.store (m, pk, 4);
+    let m = mem.store (m, pi, 1);
+    let m = mem.store (m, pj, 4);
+    head m where
+        con head (m: mem.M 0) =
+            ret (m, cond) = dont_know $ m;
+            (exit, body)#cond m where
+                con body (m: mem.M 0) =
+                    let (m, k) = mem.load (m, pk);
+                    let (m, i) = mem.load (m, pi);
+                    let (m, j) = mem.load (m, pj);
+                    (f, t)#(i * k == j) m where
+                        con t (m: mem.M 0) =
+                            n m;
+                        con f (m: mem.M 0) =
+                            ret m = take_addr $ (m, pi);
+                            ret m = take_addr $ (m, pj);
+                            n m;
+                        con n (m: mem.M 0) =
+                            let m = mem.store (m, pi, i + 1);
+                            let m = mem.store (m, pj, j + 4);
+                            head m;
+                    end;
+                con exit (m: mem.M 0) =
+                    let (m, i) = mem.load (m, pi);
+                    let (m, j) = mem.load (m, pj);
+                    return (m, i + j);
+            end;
+    end;
+
+// `i` and `j` start in different slots.
+extern fun scalar (m: mem.M 0, hi: Nat): [mem.M 0, Nat] =
+    ret (m, pi) = mem.slot (Nat, 0) $ m;
+    ret (m, pj) = mem.slot (Nat, 0) $ m;
+    let m = mem.store (m, pi, 1);
+    let m = mem.store (m, pj, 4);
+    head m where
+        con head (m: mem.M 0) =
+            ret (m, cond) = dont_know $ m;
+            (exit, body)#cond m where
+                con body (m: mem.M 0) =
+                    let (m, i) = mem.load (m, pi);
+                    let (m, j) = mem.load (m, pj);
+                    (f, t)#(i * 4 == j) m where
+                        con t (m: mem.M 0) =
+                            n m;
+                        con f (m: mem.M 0) =
+                            ret m = take_addr $ (m, pi);
+                            ret m = take_addr $ (m, pj);
+                            n m;
+                        con n (m: mem.M 0) =
+                            let m = mem.store (m, pi, i + 1);
+                            let m = mem.store (m, pj, j + 4);
+                            head m;
+                    end;
+                con exit (m: mem.M 0) =
+                    let (m, i) = mem.load (m, pi);
+                    let (m, j) = mem.load (m, pj);
+                    return (m, i + j);
+            end;
+    end;
+
+// `4 * i` starts at `4` but `j` at `1`, so `i * 4 == j` doesn't fold.
+extern fun unequal (m: mem.M 0, hi: Nat): [mem.M 0, Nat] =
+    ret (m, pi) = mem.slot (Nat, 0) $ m;
+    ret (m, pj) = mem.slot (Nat, 0) $ m;
+    let m = mem.store (m, pi, 1);
+    let m = mem.store (m, pj, 1);
+    head m where
+        con head (m: mem.M 0) =
+            ret (m, cond) = dont_know $ m;
+            (exit, body)#cond m where
+                con body (m: mem.M 0) =
+                    let (m, i) = mem.load (m, pi);
+                    let (m, j) = mem.load (m, pj);
+                    (f, t)#(i * 4 == j) m where
+                        con t (m: mem.M 0) =
+                            n m;
+                        con f (m: mem.M 0) =
+                            ret m = take_addr $ (m, pi);
+                            ret m = take_addr $ (m, pj);
+                            n m;
+                        con n (m: mem.M 0) =
+                            let m = mem.store (m, pi, i + 1);
+                            let m = mem.store (m, pj, j + 4);
+                            head m;
+                    end;
+                con exit (m: mem.M 0) =
+                    let (m, i) = mem.load (m, pi);
+                    let (m, j) = mem.load (m, pj);
+                    return (m, i + j);
+            end;
+    end;
+
+// CHECK-LABEL: extern con lea
+// CHECK-NOT:   take_addr (
+// CHECK:       con head ({{[_a-z0-9]+}}: core.M 0, [[I:[_a-z0-9]+]]: Nat, [[J:[_a-z0-9]+]]: Nat)
+// CHECK-DAG:   [[NI:[_a-z0-9]+]] = core.nat.add (1, [[I]]);
+// CHECK-DAG:   [[NJ:[_a-z0-9]+]] = core.nat.add (4, [[J]]);
+// CHECK:       head ({{[_a-z0-9]+}}, [[NI]], [[NJ]]);
+// CHECK:       head ({{[_a-z0-9]+}}, 1, 4);
+
+// CHECK-LABEL: extern con param
+// CHECK-NOT:   take_addr (
+// CHECK:       con head{{[_0-9]*}} ({{[_a-z0-9]+}}: core.M 0, [[I:[_a-z0-9]+]]: Nat, [[J:[_a-z0-9]+]]: Nat)
+// CHECK-DAG:   [[NI:[_a-z0-9]+]] = core.nat.add (1, [[I]]);
+// CHECK-DAG:   [[NJ:[_a-z0-9]+]] = core.nat.add (k, [[J]]);
+// CHECK:       head{{[_0-9]*}} ({{[_a-z0-9]+}}, [[NI]], [[NJ]]);
+// CHECK:       head{{[_0-9]*}} ({{[_a-z0-9]+}}, 1, k);
+
+// CHECK-LABEL: extern con propagated
+// CHECK-NOT:   take_addr (
+// CHECK:       con head{{[_0-9]*}} ({{[_a-z0-9]+}}: core.M 0, [[I:[_a-z0-9]+]]: Nat, [[J:[_a-z0-9]+]]: Nat)
+// CHECK-DAG:   [[NI:[_a-z0-9]+]] = core.nat.add (1, [[I]]);
+// CHECK-DAG:   [[NJ:[_a-z0-9]+]] = core.nat.add (4, [[J]]);
+// CHECK:       head{{[_0-9]*}} ({{[_a-z0-9]+}}, [[NI]], [[NJ]]);
+// CHECK:       head{{[_0-9]*}} ({{[_a-z0-9]+}}, 1, 4);
+
+// CHECK-LABEL: extern con scalar
+// CHECK-NOT:   take_addr (
+// CHECK:       con head{{[_0-9]*}} ({{[_a-z0-9]+}}: core.M 0, [[I:[_a-z0-9]+]]: Nat, [[J:[_a-z0-9]+]]: Nat)
+// CHECK-DAG:   [[NI:[_a-z0-9]+]] = core.nat.add (1, [[I]]);
+// CHECK-DAG:   [[NJ:[_a-z0-9]+]] = core.nat.add (4, [[J]]);
+// CHECK:       head{{[_0-9]*}} ({{[_a-z0-9]+}}, [[NI]], [[NJ]]);
+// CHECK:       head{{[_0-9]*}} ({{[_a-z0-9]+}}, 1, 4);
+
+// CHECK-LABEL: extern con unequal
+// CHECK:       take_addr (
+// CHECK:       core.nat.mul (4,
