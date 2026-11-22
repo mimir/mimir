@@ -112,8 +112,8 @@ rule nat_div (op: «2; Nat» → Nat, i: Idx 2)             (a b: Nat): op (a, b
 /// `div` and `idiv` yield both the quotient and the remainder at `i`; they have no 8-bit form, so `i8` widens to `i32` by `ext`.
 /// `core.rem` puts its divisor into a register with `x86.mov`, whose result type only folds for a literal size.
 ///
-rule div  (op: {s a: Nat} → [mem.M a, «2; Idx s»] → [mem.M a, Idx s], insn: {s: Nat} → «2; Idx s» → «2; Idx (x86.gpr16 s)», i: Idx 2)                                        (s: Nat) (m: mem.M 0, a b: Idx s): op (m, (a, b)) => (m, (insn (a, b))#i);
-rule div8 (op: {s a: Nat} → [mem.M a, «2; Idx s»] → [mem.M a, Idx s], insn: {s: Nat} → «2; Idx s» → «2; Idx (x86.gpr16 s)», i: Idx 2, ext: {s: Nat} → [d: Nat] → Idx s → Idx d)          (m: mem.M 0, a b: I8):    op (m, (a, b)) => (m, x86.trunc i8 (insn (ext i32 a, ext i32 b))#i);
+rule div  (op: {s a: Nat} → [mem.M a, «2; Idx s»] → [mem.M a, Idx s], insn: {s: Nat} → «2; Idx s» → «2; Idx (x86.gpr16 s)», i: Idx 2)      (s: Nat)                             (m: mem.M 0, a b: Idx s): op (m, (a, b)) => (m, (insn (a, b))#i);
+rule div8 (op: {s a: Nat} → [mem.M a, «2; Idx s»] → [mem.M a, Idx s], insn: {s: Nat} → «2; Idx s» → «2; Idx (x86.gpr16 s)», i: Idx 2, ext: {s: Nat} → [d: Nat] → Idx s → Idx d) (m: mem.M 0, a b: I8   ): op (m, (a, b)) => (m, x86.trunc i8 (insn (ext i32 a, ext i32 b))#i);
 rule rem8  (d: Nat, x: I8):  core.rem d x => x86.trunc i8 (x86.div (x86.movzx i32 x, x86.mov (core.idx 0 i32 d)))#1_2;
 rule rem16 (d: Nat, x: I16): core.rem d x => (x86.div (x, x86.mov (core.idx 0 i16 d)))#1_2;
 rule rem32 (d: Nat, x: I32): core.rem d x => (x86.div (x, x86.mov (core.idx 0 i32 d)))#1_2;
@@ -145,7 +145,7 @@ rule idx                   (m l: Nat):        core.idx m i64 l              => n
 /// Each family takes the predicate and its condition code.
 ///
 rule icmp (p: {s: Nat} → «2; Idx s» → Bool, c: x86.Flags → Bool) (s: Nat, a b: Idx s): p (a, b) => c (x86.cmp (a, reg_imm b));
-rule ncmp (p: «2; Nat» → Bool, c: x86.Flags → Bool)               (a b: Nat):           p (a, b) => c (x86.cmp (nat a, reg_imm (nat b)));
+rule ncmp (p: «2; Nat» → Bool, c: x86.Flags → Bool)              (a b: Nat):           p (a, b) => c (x86.cmp (nat a, reg_imm (nat b)));
 ///
 /// ### Selects
 ///
@@ -157,60 +157,90 @@ rule select8 (s: Nat) (x y: Idx s, c: Bool): (x, y)#c => x86.trunc s (x86.cmovcc
 /// ### Floating Point
 ///
 /// Float instructions work on `math.F pe` values in XMM registers.
-/// Only `f32` and `f64` are supported, and `u64` does not convert from float or to it.
+/// Each family takes the format `pe`, since neither an operand nor the result names it; only `f32` and `f64` are supported.
+/// A family `op` with an `insn` maps a `math` operation onto an `x86` instruction, `rm` folds a sole load into its source, and `swap` takes the converse predicate.
 ///
-rule farith (pe: «2; Nat»)
-             (op: Nat → {pe: «2; Nat»} → «2; math.F pe» → math.F pe,
-              insn: {pe: «2; Nat»} → «2; math.F pe» → math.F (x86.fpe pe))
-             (m: Nat, a b: math.F pe): op m (a, b) => insn (a, b);
-rule funary (pe: «2; Nat»)
-             (op: Nat → {pe: «2; Nat»} → math.F pe → math.F pe,
-              insn: {pe: «2; Nat»} → math.F pe → math.F (x86.fpe pe))
-             (m: Nat, x: math.F pe): op m x => insn x;
-///
-/// `ucomiss` compares its register operand to its source, which may be a load.
-/// `fcmp_swap` and `fcmp_rm_swap` take the converse predicate, so that `setcc` already gets the unordered case right.
-///
-rule fcmp (pe: «2; Nat»)
-           (op: Nat → {pe: «2; Nat»} → «2; math.F pe» → Bool,
-            c: {pe: «2; Nat»} → «2; math.F pe» → Bool)
-           (k: Nat, a b: math.F pe): op k (a, b) => c (a, b);
-rule fcmp_swap (pe: «2; Nat»)
-                (op: Nat → {pe: «2; Nat»} → «2; math.F pe» → Bool,
-                 c: {pe: «2; Nat»} → «2; math.F pe» → Bool)
-                (k: Nat, a b: math.F pe): op k (a, b) => c (b, a);
-rule fcmp_rm (pe: «2; Nat»)
-              (op: Nat → {pe: «2; Nat»} → «2; math.F pe» → Bool,
-               c: {pe: «2; Nat»} → «2; math.F pe» → Bool)
-              (k: Nat, a: math.F pe, m: mem.M 0, p: mem.Ptr0 (math.F pe)): let (mm, v) = mem.load (m, p); (mm, op k (a, v)) => x86.rm c (m, a, addr p);
-rule fcmp_rm_swap (pe: «2; Nat»)
-                   (op: Nat → {pe: «2; Nat»} → «2; math.F pe» → Bool,
-                    c: {pe: «2; Nat»} → «2; math.F pe» → Bool)
-                   (k: Nat, a: math.F pe, m: mem.M 0, p: mem.Ptr0 (math.F pe)): let (mm, v) = mem.load (m, p); (mm, op k (v, a)) => x86.rm c (m, a, addr p);
-rule frm (pe: «2; Nat»)
-          (op: Nat → {pe: «2; Nat»} → «2; math.F pe» → math.F pe,
-           insn: {pe: «2; Nat»} → «2; math.F pe» → math.F (x86.fpe pe))
-          (k: Nat, a: math.F pe, m: mem.M 0, p: mem.Ptr0 (math.F pe)): let (mm, v) = mem.load (m, p); (mm, op k (a, v)) => x86.rm insn (m, a, addr p);
-rule fselect (pe: «2; Nat») (x y: math.F pe, c: Bool): (x, y)#c => x86.fsel (c, x, y);
-rule fload  (pe: «2; Nat») (m: mem.M 0, p: mem.Ptr0 (math.F pe)):             mem.load (m, p)    => x86.fload pe (m, addr p);
-rule fstore (pe: «2; Nat») (m: mem.M 0, p: mem.Ptr0 (math.F pe), x: math.F pe): mem.store (m, p, x) => x86.fstore (m, addr p, x);
-///
-/// The integer size of a conversion is a family parameter, since neither side determines it.
-/// A float of the same format converts to itself, so `f2f` only has the two mixed pairs.
-///
-rule s2f (s: Nat, pe: «2; Nat») (x: Idx s):     math.conv.s2f pe x => x86.i2f s pe x;
-rule u2f (s: Nat, pe: «2; Nat») (x: Idx s):     math.conv.u2f pe x => x86.u2f s pe x;
-rule f2s (s: Nat, pe: «2; Nat») (x: math.F pe): math.conv.f2s s x  => x86.f2i pe s x;
-rule f2u (s: Nat, pe: «2; Nat») (x: math.F pe): math.conv.f2u s x  => x86.f2u pe s x;
-rule f2f (spe: «2; Nat», dpe: «2; Nat») (x: math.F spe): math.conv.f2f dpe x => x86.f2f spe dpe x;
-///
-/// A unary operation folds a sole load as `x86.rm1`; `u2f` reads its operand twice and does not.
-///
-rule s2f_rm (s: Nat, pe: «2; Nat») (m: mem.M 0, p: mem.Ptr0 (Idx s)):          let (mm, v) = mem.load (m, p); (mm, math.conv.s2f pe v)  => x86.rm1 (x86.i2f s pe) (m, addr p);
-rule f2s_rm (s: Nat, pe: «2; Nat») (m: mem.M 0, p: mem.Ptr0 (math.F pe)):      let (mm, v) = mem.load (m, p); (mm, math.conv.f2s s v)   => x86.rm1 (x86.f2i pe s) (m, addr p);
-rule f2u_rm (s: Nat, pe: «2; Nat») (m: mem.M 0, p: mem.Ptr0 (math.F pe)):      let (mm, v) = mem.load (m, p); (mm, math.conv.f2u s v)   => x86.rm1 (x86.f2u pe s) (m, addr p);
-rule f2f_rm (spe: «2; Nat», dpe: «2; Nat») (m: mem.M 0, p: mem.Ptr0 (math.F spe)): let (mm, v) = mem.load (m, p); (mm, math.conv.f2f dpe v) => x86.rm1 (x86.f2f spe dpe) (m, addr p);
-rule fsqrt_rm (pe: «2; Nat») (k: Nat, m: mem.M 0, p: mem.Ptr0 (math.F pe)):    let (mm, v) = mem.load (m, p); (mm, math.rt.sq k v)      => x86.rm1 (x86.fsqrt @ pe) (m, addr p);
+pub mod float
+    let Op1   = Nat → {pe: «2; Nat»} → math.F pe → math.F pe;
+    let Op2   = Nat → {pe: «2; Nat»} → «2; math.F pe» → math.F pe;
+    let Pred  = Nat → {pe: «2; Nat»} → «2; math.F pe» → Bool;
+    let Insn1 = {pe: «2; Nat»} → math.F pe → math.F (x86.fpe pe);
+    let Insn2 = {pe: «2; Nat»} → «2; math.F pe» → math.F (x86.fpe pe);
+    let Cmp   = {pe: «2; Nat»} → «2; math.F pe» → Bool;
+    ///
+    /// #### Arithmetic
+    ///
+    rule arith (pe: «2; Nat») (op: Op2, insn: Insn2) (k: Nat, a b: math.F pe): op k (a, b) => insn (a, b);
+    rule unary (pe: «2; Nat») (op: Op1, insn: Insn1) (k: Nat, x: math.F pe):   op k x      => insn x;
+    rule rm    (pe: «2; Nat») (op: Op2, insn: Insn2) (k: Nat, a: math.F pe, m: mem.M 0, p: mem.Ptr0 (math.F pe)): let (mm, v) = mem.load (m, p); (mm, op k (a, v)) => x86.rm insn (m, a, addr p);
+    rule sqrt_rm (pe: «2; Nat») (k: Nat, m: mem.M 0, p: mem.Ptr0 (math.F pe)):                               let (mm, v) = mem.load (m, p); (mm, math.rt.sq k v) => x86.rm1 (x86.fsqrt @ pe) (m, addr p);
+    lam ariths (op: Op2, insn: Insn2) = (arith math.f32 (op, insn), arith math.f64 (op, insn));
+    lam rms    (op: Op2, insn: Insn2) = (rm math.f32 (op, insn), rm math.f64 (op, insn));
+    anx let arithmetic = (
+        ariths (math.arith.add, x86.fadd), ariths (math.arith.sub, x86.fsub),
+        ariths (math.arith.mul, x86.fmul), ariths (math.arith.div, x86.fdiv),
+        unary math.f32 (math.abs, x86.fabs), unary math.f64 (math.abs, x86.fabs),
+        unary math.f32 (math.rt.sq, x86.fsqrt), unary math.f64 (math.rt.sq, x86.fsqrt),
+        sqrt_rm math.f32, sqrt_rm math.f64,
+        rms (math.arith.add, x86.fadd), rms (math.arith.sub, x86.fsub),
+        rms (math.arith.mul, x86.fmul), rms (math.arith.div, x86.fdiv));
+    ///
+    /// #### Comparisons
+    ///
+    /// `ucomiss` compares its register operand to its source, which may be a load.
+    /// `swap` takes the converse predicate, so that `setcc` already gets the unordered case right.
+    ///
+    rule cmp     (pe: «2; Nat») (op: Pred, c: Cmp) (k: Nat, a b: math.F pe): op k (a, b) => c (a, b);
+    rule swap    (pe: «2; Nat») (op: Pred, c: Cmp) (k: Nat, a b: math.F pe): op k (a, b) => c (b, a);
+    rule cmp_rm  (pe: «2; Nat») (op: Pred, c: Cmp) (k: Nat, a: math.F pe, m: mem.M 0, p: mem.Ptr0 (math.F pe)): let (mm, v) = mem.load (m, p); (mm, op k (a, v)) => x86.rm c (m, a, addr p);
+    rule swap_rm (pe: «2; Nat») (op: Pred, c: Cmp) (k: Nat, a: math.F pe, m: mem.M 0, p: mem.Ptr0 (math.F pe)): let (mm, v) = mem.load (m, p); (mm, op k (v, a)) => x86.rm c (m, a, addr p);
+    ///
+    /// `cmps` folds a load into the second operand, `swaps` into the first via the converse, and `syms` of a symmetric predicate into either.
+    ///
+    lam cmps  (op: Pred, c: Cmp) = (cmp math.f32 (op, c), cmp math.f64 (op, c), cmp_rm math.f32 (op, c), cmp_rm math.f64 (op, c));
+    lam swaps (op: Pred, c: Cmp) = (swap math.f32 (op, c), swap math.f64 (op, c), swap_rm math.f32 (op, c), swap_rm math.f64 (op, c));
+    lam syms  (op: Pred, c: Cmp) = (cmps (op, c), swap_rm math.f32 (op, c), swap_rm math.f64 (op, c));
+    anx let comparisons = (
+        syms (math.cmp.e, x86.fcmp.e),    syms (math.cmp.ne, x86.fcmp.ne), syms (math.cmp.o, x86.fcmp.o),
+        syms (math.cmp.u, x86.fcmp.u),    syms (math.cmp.ue, x86.fcmp.ue), syms (math.cmp.une, x86.fcmp.une),
+        cmps (math.cmp.g, x86.fcmp.g),    cmps (math.cmp.ge, x86.fcmp.ge),
+        cmps (math.cmp.ul, x86.fcmp.ul),  cmps (math.cmp.ule, x86.fcmp.ule),
+        swaps (math.cmp.l, x86.fcmp.g),   swaps (math.cmp.le, x86.fcmp.ge),
+        swaps (math.cmp.ug, x86.fcmp.ul), swaps (math.cmp.uge, x86.fcmp.ule));
+    ///
+    /// #### Selects, Loads, and Stores
+    ///
+    rule select (pe: «2; Nat») (x y: math.F pe, c: Bool):                          (x, y)#c            => x86.fsel (c, x, y);
+    rule load   (pe: «2; Nat») (m: mem.M 0, p: mem.Ptr0 (math.F pe)):              mem.load (m, p)     => x86.fload pe (m, addr p);
+    rule store  (pe: «2; Nat») (m: mem.M 0, p: mem.Ptr0 (math.F pe), x: math.F pe): mem.store (m, p, x) => x86.fstore (m, addr p, x);
+    anx let memory = (select math.f32, select math.f64, load math.f32, load math.f64, store math.f32, store math.f64);
+    ///
+    /// #### Conversions
+    ///
+    /// The integer size is a family parameter, since neither side determines it.
+    /// A float of the same format converts to itself, so `f2f` only has the two mixed pairs.
+    /// `u2f` and `f2u` have only the `i32` form: not every `u64` is an exact `f64`; `u2f` reads its operand twice, so it folds no load.
+    ///
+    rule s2f (s: Nat, pe: «2; Nat») (x: Idx s):                   math.conv.s2f pe x  => x86.i2f s pe x;
+    rule u2f (s: Nat, pe: «2; Nat») (x: Idx s):                   math.conv.u2f pe x  => x86.u2f s pe x;
+    rule f2s (s: Nat, pe: «2; Nat») (x: math.F pe):               math.conv.f2s s x   => x86.f2i pe s x;
+    rule f2u (s: Nat, pe: «2; Nat») (x: math.F pe):               math.conv.f2u s x   => x86.f2u pe s x;
+    rule f2f (spe: «2; Nat», dpe: «2; Nat») (x: math.F spe):      math.conv.f2f dpe x => x86.f2f spe dpe x;
+    rule s2f_rm (s: Nat, pe: «2; Nat») (m: mem.M 0, p: mem.Ptr0 (Idx s)):              let (mm, v) = mem.load (m, p); (mm, math.conv.s2f pe v)  => x86.rm1 (x86.i2f s pe) (m, addr p);
+    rule f2s_rm (s: Nat, pe: «2; Nat») (m: mem.M 0, p: mem.Ptr0 (math.F pe)):          let (mm, v) = mem.load (m, p); (mm, math.conv.f2s s v)   => x86.rm1 (x86.f2i pe s) (m, addr p);
+    rule f2u_rm (s: Nat, pe: «2; Nat») (m: mem.M 0, p: mem.Ptr0 (math.F pe)):          let (mm, v) = mem.load (m, p); (mm, math.conv.f2u s v)   => x86.rm1 (x86.f2u pe s) (m, addr p);
+    rule f2f_rm (spe: «2; Nat», dpe: «2; Nat») (m: mem.M 0, p: mem.Ptr0 (math.F spe)): let (mm, v) = mem.load (m, p); (mm, math.conv.f2f dpe v) => x86.rm1 (x86.f2f spe dpe) (m, addr p);
+    anx let conversions = (
+        s2f (i32, math.f32), s2f (i32, math.f64), s2f (i64, math.f32), s2f (i64, math.f64),
+        u2f (i32, math.f32), u2f (i32, math.f64),
+        f2s (i32, math.f32), f2s (i32, math.f64), f2s (i64, math.f32), f2s (i64, math.f64),
+        f2u (i32, math.f32), f2u (i32, math.f64),
+        f2f (math.f32, math.f64), f2f (math.f64, math.f32),
+        s2f_rm (i32, math.f32), s2f_rm (i32, math.f64), s2f_rm (i64, math.f32), s2f_rm (i64, math.f64),
+        f2s_rm (i32, math.f32), f2s_rm (i32, math.f64), f2s_rm (i64, math.f32), f2s_rm (i64, math.f64),
+        f2u_rm (i32, math.f32), f2u_rm (i32, math.f64),
+        f2f_rm (math.f32, math.f64), f2f_rm (math.f64, math.f32));
+end
 ///
 /// ### Loads and Stores
 ///
@@ -309,46 +339,6 @@ anx let conversions = (
     idx2nat i32, idx2nat i16, idx2nat i8, idx2nat i1, idx2nat64, idx);
 anx let compares = (icmps, ncmps);
 anx let selects = (select i16, select i32, select i64, select8 i8, select8 i1);
-///
-/// Float instructions take their format as a family parameter, since neither the operand nor the result names it.
-/// `u2f` and `f2u` have only the `i32` form: not every `u64` is an exact `f64`.
-///
-/// `fcmps` folds a load into the second operand, `fcmps_swap` into the first via the converse, and `fcmps_sym` of a symmetric predicate into either.
-///
-lam fcmps (op: Nat → {pe: «2; Nat»} → «2; math.F pe» → Bool, c: {pe: «2; Nat»} → «2; math.F pe» → Bool)
-        = (fcmp math.f32 (op, c), fcmp math.f64 (op, c), fcmp_rm math.f32 (op, c), fcmp_rm math.f64 (op, c));
-lam fcmps_swap (op: Nat → {pe: «2; Nat»} → «2; math.F pe» → Bool, c: {pe: «2; Nat»} → «2; math.F pe» → Bool)
-             = (fcmp_swap math.f32 (op, c), fcmp_swap math.f64 (op, c), fcmp_rm_swap math.f32 (op, c), fcmp_rm_swap math.f64 (op, c));
-lam fcmps_sym (op: Nat → {pe: «2; Nat»} → «2; math.F pe» → Bool, c: {pe: «2; Nat»} → «2; math.F pe» → Bool)
-            = (fcmps (op, c), fcmp_rm_swap math.f32 (op, c), fcmp_rm_swap math.f64 (op, c));
-anx let farithmetic = (
-    farith math.f32 (math.arith.add, x86.fadd), farith math.f64 (math.arith.add, x86.fadd),
-    farith math.f32 (math.arith.sub, x86.fsub), farith math.f64 (math.arith.sub, x86.fsub),
-    farith math.f32 (math.arith.mul, x86.fmul), farith math.f64 (math.arith.mul, x86.fmul),
-    farith math.f32 (math.arith.div, x86.fdiv), farith math.f64 (math.arith.div, x86.fdiv));
-anx let funaries = (
-    funary math.f32 (math.abs, x86.fabs), funary math.f64 (math.abs, x86.fabs),
-    funary math.f32 (math.rt.sq, x86.fsqrt), funary math.f64 (math.rt.sq, x86.fsqrt));
-anx let fcomparisons = (
-    fcmps_sym (math.cmp.e, x86.fcmp.e),   fcmps_sym (math.cmp.ne, x86.fcmp.ne), fcmps_sym (math.cmp.o, x86.fcmp.o),
-    fcmps_sym (math.cmp.u, x86.fcmp.u),   fcmps_sym (math.cmp.ue, x86.fcmp.ue), fcmps_sym (math.cmp.une, x86.fcmp.une),
-    fcmps (math.cmp.g, x86.fcmp.g),       fcmps (math.cmp.ge, x86.fcmp.ge),
-    fcmps (math.cmp.ul, x86.fcmp.ul),     fcmps (math.cmp.ule, x86.fcmp.ule),
-    fcmps_swap (math.cmp.l, x86.fcmp.g),  fcmps_swap (math.cmp.le, x86.fcmp.ge),
-    fcmps_swap (math.cmp.ug, x86.fcmp.ul), fcmps_swap (math.cmp.uge, x86.fcmp.ule));
-anx let fselects = (fselect math.f32, fselect math.f64);
-anx let fmemory = (fload math.f32, fload math.f64, fstore math.f32, fstore math.f64);
-anx let fconversions = (
-    s2f (i32, math.f32), s2f (i32, math.f64), s2f (i64, math.f32), s2f (i64, math.f64),
-    u2f (i32, math.f32), u2f (i32, math.f64),
-    f2s (i32, math.f32), f2s (i32, math.f64), f2s (i64, math.f32), f2s (i64, math.f64),
-    f2u (i32, math.f32), f2u (i32, math.f64),
-    f2f (math.f32, math.f64), f2f (math.f64, math.f32),
-    s2f_rm (i32, math.f32), s2f_rm (i32, math.f64), s2f_rm (i64, math.f32), s2f_rm (i64, math.f64),
-    f2s_rm (i32, math.f32), f2s_rm (i32, math.f64), f2s_rm (i64, math.f32), f2s_rm (i64, math.f64),
-    f2u_rm (i32, math.f32), f2u_rm (i32, math.f64),
-    f2f_rm (math.f32, math.f64), f2f_rm (math.f64, math.f32),
-    fsqrt_rm math.f32, fsqrt_rm math.f64);
 anx let division = (
     div8 (core.div.udiv, x86.div, 0_2, x86.movzx), divs (div (core.div.udiv, x86.div, 0_2)),
     div8 (core.div.urem, x86.div, 1_2, x86.movzx), divs (div (core.div.urem, x86.div, 1_2)),
@@ -375,11 +365,7 @@ anx let mem_ops = (
     mrs (mr x86.gpr   (core.wrap.sub, x86.sub)),
     mrs (mr x86.logic (core.bit2.and, x86.and)),
     mrs (mr x86.logic (core.bit2.or,  x86.or)),
-    mrs (mr x86.logic (core.bit2.xor, x86.xor)),
-    frm math.f32 (math.arith.add, x86.fadd), frm math.f64 (math.arith.add, x86.fadd),
-    frm math.f32 (math.arith.sub, x86.fsub), frm math.f64 (math.arith.sub, x86.fsub),
-    frm math.f32 (math.arith.mul, x86.fmul), frm math.f64 (math.arith.mul, x86.fmul),
-    frm math.f32 (math.arith.div, x86.fdiv), frm math.f64 (math.arith.div, x86.fdiv));
+    mrs (mr x86.logic (core.bit2.xor, x86.xor)));
 ///
 /// ## Phases
 ///
