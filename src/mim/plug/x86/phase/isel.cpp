@@ -412,7 +412,7 @@ const Def* ISel::selected(const Def* def) {
 
 const Def* ISel::hole(const Def* def, Want want) {
     if (auto alt = choice(def); alt && alt->rule) return convert(select(def), alt->rule->type, want);
-    return convert(val(def), leaf_ty(def), want);
+    return convert(rewrite(def), leaf_ty(def), want);
 }
 
 const Def* ISel::convert(const Def* x, Ty from, Want want) {
@@ -429,26 +429,6 @@ const Def* ISel::convert(const Def* x, Ty from, Want want) {
     return x;
 }
 
-const Def* ISel::nat_as_i64(const Def* x) {
-    if (auto l = Lit::isa(x); l && x->type()->isa<Nat>()) return new_world().lit_i64(*l);
-    return nullptr;
-}
-
-const Def* ISel::val(const Def* def) {
-    auto res = rewrite(def);
-    if (auto i = nat_as_i64(res)) return i;
-    return res;
-}
-
-const Def* ISel::rewrite_imm_Lit(const Lit* lit) {
-    if (lit->type()->isa<Nat>()) return new_world().lit_nat(lit->get());
-    return RWPhase::rewrite_imm_Lit(lit);
-}
-
-const Def* ISel::coerce_leaf(const Def* type, const Def* val) {
-    return type == new_world().type_i64() ? nat_as_i64(val) : nullptr;
-}
-
 const Def* ISel::rewrite_imm_Extract(const Extract* ex) {
     if (auto res = selected(ex)) return res;
     return RWPhase::rewrite_imm_Extract(ex);
@@ -456,7 +436,6 @@ const Def* ISel::rewrite_imm_Extract(const Extract* ex) {
 
 const Def* ISel::rewrite_imm_App(const App* app) {
     auto& w = new_world();
-    if (Axm::isa<core::Ptr>(app)) return w.type_i64();
     if (Axm::isa<core::M>(app)) return w.call<core::M>(w.lit_nat_0());
     if (auto res = selected(app)) return res;
     if (auto ptr = strip_ptr_cast(app); ptr != app) return rewrite(ptr);

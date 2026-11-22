@@ -49,12 +49,9 @@ inline const Def* strip(const Def* def) {
     return def;
 }
 
-/// @p def without the casts between pointer types around it, which `mem.legalize_ptr` inserts and which are no-ops.
+/// The `I64` under @p def if @p def is the cast to a pointer type that `x86.legalize` inserts, otherwise @p def.
 inline const Def* strip_ptr_cast(const Def* def) {
-    while (auto cast = Axm::isa<core::bitcast>(def)) {
-        if (!Axm::isa<core::Ptr>(def->type()) || !Axm::isa<core::Ptr>(cast->arg()->type())) break;
-        def = cast->arg();
-    }
+    if (auto cast = Axm::isa<core::bitcast>(def); cast && Axm::isa<core::Ptr>(def->type())) return cast->arg();
     return def;
 }
 

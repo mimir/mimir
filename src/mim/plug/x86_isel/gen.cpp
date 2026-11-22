@@ -348,11 +348,10 @@ std::vector<Table::Meta> Table::metas(const Rule* rule) {
             } else if (math::isa_f(type)) {
                 want = marked(Want::FReg);
             } else if (type->isa<Nat>()) {
-                want = marked(Want::Param);
+                want = Want::Param;
             } else if (Axm::isa<core::Ptr>(type)) {
                 if (mark == marks_.end())
-                    rule->blame("x86_isel: pointer `{}` of `{}` is no `x86_isel.addr` or `x86_isel.reg`", meta, rule)
-                        .bail();
+                    rule->blame("x86_isel: pointer `{}` of `{}` is no `x86_isel.addr`", meta, rule).bail();
                 want = mark->second;
             } else if (Axm::isa<core::M>(type) || type->isa<Pi>()) {
                 want = Want::Param;
@@ -380,7 +379,6 @@ void Table::guard(const Def* g, std::vector<Meta>& metas) {
     }
 
     auto set = [&](const Def* meta, Want from, Want to) {
-        if (auto nat = Axm::isa<x86_isel::nat>(meta)) meta = nat->arg();
         for (size_t i = 0; i != num_metas(); ++i)
             if (var_->proj(num_metas(), i) == meta && metas[i].want == from) {
                 metas[i].want = to;
@@ -415,12 +413,9 @@ u32 Table::node_(const Def* def) {
         if (auto i = Lit::isa(ex->index())) return hole(*i);
 
     if (auto addr = Axm::isa<x86_isel::addr>(def)) return marked(addr->arg(), Want::Addr);
-    if (auto reg = Axm::isa<x86_isel::reg>(def)) return marked(reg->arg(), Want::Reg);
-    if (auto nat = Axm::isa<x86_isel::nat>(def)) return marked(nat->arg(), Want::Reg);
     if (auto ri = Axm::isa<x86_isel::reg_imm>(def)) return widened(ri->arg(), Want::RegImm);
     if (auto rs = Axm::isa<x86_isel::reg_sh>(def)) return widened(rs->arg(), Want::RegSh);
     if (auto scaled = Axm::isa<x86_isel::scaled>(def)) return marked(scaled->arg(), Want::Scaled);
-    if (auto ptr = Axm::isa<x86_isel::ptr>(def)) return node(ptr->arg());
     if (auto axm = def->isa<Axm>()) return make({Kind::Axm, axm->flags(), {}}, axm->sym().str());
     if (auto lit = def->isa<Lit>()) return make({Kind::Lit, lit->get(), {node(lit->type())}});
     if (def->isa<Nat>()) return make({Kind::Nat, 0, {}});

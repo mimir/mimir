@@ -427,6 +427,12 @@ axm f2f: [spe: «2; Nat»] → [dpe: «2; Nat»] → math.F spe → math.F (fpe 
 ///
 /// ## Phases
 ///
+/// ### legalize
+///
+/// Turns every `Nat` value and every pointer into an `I64`, so that `isel` only sees register types.
+///
+axm legalize: compile.Phase;
+///
 /// ### isel
 ///
 /// Instruction selection.

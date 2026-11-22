@@ -7,7 +7,7 @@ plugin math;
 plugin x86;
 import compile;
 
-extern lam _compile (): compile.Phase = compile.phases ff (compile.named "x86.isel", compile.named "x86.schedule");
+extern lam _compile (): compile.Phase = compile.phases ff (compile.named "x86.legalize", compile.named "x86.isel", compile.named "x86.schedule");
 
 use math.ops.none;
 

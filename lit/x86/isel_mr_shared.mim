@@ -5,7 +5,7 @@ plugin mem;
 plugin x86;
 import compile;
 
-extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_ptr, compile.named "x86.isel");
+extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_ptr, compile.named "x86.legalize", compile.named "x86.isel");
 
 // `op m, r` needs the load's memory to have no user but the store.
 extern lam f (m: mem.M 0, p: mem.Ptr0 I32): [mem.M 0, mem.M 0] =
