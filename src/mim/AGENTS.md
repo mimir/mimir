@@ -22,7 +22,8 @@ Plugin-specific notes live in `plug/AGENTS.md` and below; phase-specific ones in
 
 - `Rho`/`Rule`/`Fire` mirror `Pi`/`Lam`/`App`; a Rule's Var binds its meta variables (`Rule::meta`), which matching determines.
   `rule I (dom)* (meta): …` is sugar for `anx lam I (dom)* = rl (meta): …`: the curried Lams make a family that whoever uses it instantiates; their parameters are never matched.
-- Meta variables never occur in a `Rho`, so the type of `r ▷ x` does not depend on the match; the frontend rejects a rule whose type mentions one, which importing it would otherwise recurse on.
+- A Rule's type never mentions the Rule's own Var: a mutable `Rho` (`{s: Nat} Idx s ↝ Idx s`) binds the metas its types mention with a Var of its own, which `Rho::instantiate` solves by matching `Rho::dom` against the argument's *type*.
+  The frontend abstracts the Rule's Var into that Rho and prunes it to the components the types use; `Rule::dom`/`codom` are instantiated by `Rule::lhs`.
 - Patterns are normalized like any term (`a + a` becomes `2 * a`), which is also how they match normalized programs.
 - A tuple pattern matches a non-tuple term by its projections, since a tuple of metas is often η-collapsed in the term (`core.wrap.add m x` for a Var `x`).
 - The Rule of `rule I …` carries the sym `I`, so every instance of the family keeps that name.

@@ -372,6 +372,59 @@ const Def* TypeExpr::emit_(Emitter& e) const {
     return e.world().type(l);
 }
 
+/// Marks the components of @p var that @p def uses; `false` if @p def uses @p var otherwise.
+static bool used_projs(const Def* def, const Var* var, DefSet& done, std::vector<bool>& used) {
+    if (!def->has_free_var(var) || !done.emplace(def).second) return true;
+    if (def == var) return false;
+    if (auto ex = def->isa<Extract>(); ex && ex->tuple() == var) {
+        auto i = Lit::isa(ex->index());
+        return i && *i < used.size() && (used[*i] = true);
+    }
+    for (auto op : def->deps())
+        if (!used_projs(op, var, done, used)) return false;
+    return true;
+}
+
+/// Abstracts the meta variables @p var of type @p meta that @p dom and @p codom mention into a mutable Rho.
+static Rho* abstract_meta(World& w, const Var* var, const Def* meta, const Def* dom, const Def* codom) {
+    auto n     = Lit::isa(var->arity()).value_or(1);
+    auto used  = std::vector<bool>(n);
+    auto done  = DefSet();
+    auto prune = n > 1 && used_projs(dom, var, done, used) && used_projs(codom, var, done, used)
+              && std::ranges::none_of(std::views::iota(size_t(0), n),
+                                      [&](size_t i) { return used[i] && var->proj(n, i)->type()->has_free_var(var); });
+
+    auto rho = w.mut_rho(w.type_pending());
+    if (!prune) {
+        rho->set_meta(meta);
+        auto rw = VarRewriter(var, rho->var());
+        return rho->set_dom(rw.rewrite(dom))->set_codom(rw.rewrite(codom));
+    }
+
+    auto types = DefVec();
+    for (size_t i = 0; i != n; ++i)
+        if (used[i]) types.emplace_back(var->proj(n, i)->type());
+    auto k = types.size();
+    rho->set_meta(k == 1 ? types.front() : w.sigma(types));
+
+    auto vals = DefVec(n, [&](size_t) -> const Def* { return w.lit_nat_0(); }); // unused: never extracted
+    for (size_t i = 0, j = 0; i != n; ++i)
+        if (used[i]) vals[i] = rho->var()->proj(k, j++);
+    auto rw = VarRewriter(var, w.tuple(vals));
+    return rho->set_dom(rw.rewrite(dom))->set_codom(rw.rewrite(codom));
+}
+
+const Def* RhoExpr::emit_(Emitter& e) const {
+    auto& w  = e.world();
+    auto rho = w.mut_rho(w.type_pending());
+    rho->set_meta(meta()->emit_type(e));
+    emit_var(e, meta(), rho);
+    rho->set_dom(dom()->emit(e));
+    rho->set_codom(codom()->emit(e));
+    if (auto imm = rho->immutabilize()) return imm;
+    return rho;
+}
+
 const Def* RuleExpr::emit_(Emitter& e) const {
     auto& w   = e.world();
     auto rule = w.mut_rule(w.rho(w.mut_hole_type(), w.mut_hole_type()));
@@ -381,15 +434,21 @@ const Def* RuleExpr::emit_(Emitter& e) const {
     rule->set_lhs(lhs()->emit(e));
     rule->set_guard(guard()->emit(e));
     rule->set_rhs(rhs()->emit(e));
-    if (auto var = rule->has_var(); var && rule->type()->has_free_var(var))
-        e.error()
-            .e(loc(), "the type of a rule must not depend on its meta variables")
-            .n("its type is `{}`; make what it depends on a parameter of the family", rule->type()->zonk())
-            .bail();
-    if (auto rho = rule->type(); is_norm() && !Check::alpha(rho->dom(), rho->codom()))
+    if (auto var = rule->has_var(); var && rule->type()->has_free_var(var)) {
+        auto rho = abstract_meta(w, var, rule->meta(), rule->dom()->zonk(), rule->codom()->zonk());
+        if (!rho->instantiate(rule->lhs()->type()))
+            e.error()
+                .e(loc(), "the type of a rule depends on meta variables that the type of its left-hand side does not "
+                          "determine")
+                .n("its type is `{}`", rho)
+                .bail();
+        auto ops = DefVec(rule->ops().begin(), rule->ops().end());
+        rule->unset()->set_type(rho)->as<Rule>()->set(ops);
+    }
+    if (is_norm() && !Check::alpha(rule->dom(), rule->codom()))
         e.error()
             .e(loc(), "a normalizing rule must not change the type")
-            .n("its left-hand side has type `{}` but its right-hand side has type `{}`", rho->dom(), rho->codom())
+            .n("its left-hand side has type `{}` but its right-hand side has type `{}`", rule->dom(), rule->codom())
             .bail();
     return rule;
 }

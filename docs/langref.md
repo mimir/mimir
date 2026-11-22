@@ -446,12 +446,15 @@ e   ::= e "→" e
 
 ```ebnf
 e   ::= e "↝" e
+     |  "{" t "}" e "↝" e
      |  "rl" p ":" e ("when" e)? "=>" e
      |  e "▷" e
 ```
 
 - `T ↝ U` is the type of a rule that rewrites a term of type `T` into one of type `U`.
-- `rl p: l when g => r` is a rule expression; `p` binds its meta variables, which may not occur in `T` or `U`.
+- `{t} T ↝ U` binds meta variables in `T` and `U`; firing solves them by matching `T` against the type of the term, as in `{s: Nat} Idx s ↝ Idx s`.
+- `rl p: l when g => r` is a rule expression; `p` binds its meta variables.
+  Its type binds those that the types of `l` and `r` mention, which the type of `l` must determine.
   It extends as far right as it can.
 - `f ▷ x` fires the rule `f` at `x`; an implicit family parameter of `f` is inferred from the type of `x`, as in `rule eq {s: Nat} (a: Idx s): (a, a) => tt`.
   It matches `x` against the left-hand side, which determines the meta variables; if that succeeds and the guard holds, it becomes the right-hand side.

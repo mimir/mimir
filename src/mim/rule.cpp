@@ -76,6 +76,30 @@ private:
 
 } // namespace
 
+const Def* Rho::solve(const Def* type) const {
+    auto var     = has_var();
+    auto matcher = Matcher(world(), var);
+    return var && matcher.match(dom(), type->zonk()) ? matcher.value(var) : nullptr;
+}
+
+std::optional<std::array<const Def*, 2>> Rho::instantiate(const Def* type) const {
+    if (!has_var()) return std::array{dom(), codom()};
+    auto val = solve(type);
+    if (!val) return {};
+    auto ops = reduce(val);
+    return std::array{ops[0], ops[1]};
+}
+
+const Def* Rule::dom() const {
+    if (!type()->isa_mut()) return type()->dom();
+    return (*type()->instantiate(lhs()->type()))[0];
+}
+
+const Def* Rule::codom() const {
+    if (!type()->isa_mut()) return type()->codom();
+    return (*type()->instantiate(lhs()->type()))[1];
+}
+
 const Def* Rule::fire(const Def* arg) const {
     if (isa_mut() && !is_set()) return nullptr;
     auto& w  = world();

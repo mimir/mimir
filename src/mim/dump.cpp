@@ -590,6 +590,10 @@ void full(std::ostream& os, Full d) {
         }
         return std::print(os, "Type {}", d.r(type->level(), Prec::App));
     } else if (auto rho = d->isa<Rho>()) {
+        if (auto var = rho->has_var()) {
+            dom_ptrn(os, d.ctx(), var, rho->meta(), true);
+            os << ' ';
+        }
         return std::print(os, "{} {} {}", d.l(rho->dom(), Prec::Arrow), ascii ? "~>" : "↝",
                           d.r(rho->codom(), Prec::Arrow));
     } else if (auto rule = d->isa<Rule>()) {

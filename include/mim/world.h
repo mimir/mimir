@@ -440,7 +440,7 @@ public:
     /// @name Rho
     ///@{
     // clang-format off
-    const Rho* rho(const Def* dom, const Def* codom) { return unify<Rho>(Rho::infer(dom, codom), dom, codom); }
+    const Rho* rho(const Def* dom, const Def* codom) { return unify<Rho>(Rho::infer(dom, codom), sigma(), dom, codom); }
     const Rho* rho(Defs       dom, const Def* codom) { return rho(sigma(dom), codom); }
     const Rho* rho(const Def* dom, Defs       codom) { return rho(dom, sigma(codom)); }
     const Rho* rho(Defs       dom, Defs       codom) { return rho(sigma(dom), sigma(codom)); }

@@ -373,7 +373,8 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
   `Rewrite::tied` marks the meta variables a two-address instruction of the rhs overwrites (`insn::tied`, which `constraint()` shares); an alternative adds `insn::Copy` for each that something else uses (`ISel::overwritten`), and a swap of a commuting node that saves such a copy is kept.
   An address form converted by `lea` adds 64-bit values without overwriting either, at the cost of an `add`, so it wins exactly where the `add` needs such a copy.
   Without liveness, a parameter or loop φ never counts as overwritten, since its other uses are mostly in other continuations (`lit/mem/seo/dont_prop_old.mim` regresses otherwise).
-  The frontend rejects a rule whose type mentions one of its meta variables, so a size the type names is a family parameter: a conversion of `core.conv` takes both sizes, one instance per pair of register sizes.
+  A rule whose type mentions a meta variable has a dependent type (`{pe: «2; Nat»} math.F pe ↝ math.F (x86.fpe pe)`): `Table::instantiate` enumerates its type's Var over `x86_isel.formats`, keeps the values the `refly.check`s in that type admit, and adds the closed instance with those metas substituted, so its rows equal those of the old family instances.
+  Only the float rules whose instruction puts `x86.fpe` into its codomain do so (`arith`, `unary`, `rm`, `sqrt_rm`, `select`, `load`, the `pe` of `s2f`/`u2f`); `fcmp`, `fstore`, `f2i`/`f2u`, and the source of `f2f` check no format, so their families keep instance lists, as do all integer sizes (no universe of sizes yet).
 - The build runs `mim` with `x86_isel` loaded as a module, so `x86` and `x86_isel` exist only if `MIM_X86` (neither `MIM_STATIC_PLUGINS` nor `MIM_NATIVE_MIM`); lit then excludes `lit/x86/` and drops the `x86_64-linux` feature.
   Generating needs `x86.mim` but not `libmim_x86`.
 

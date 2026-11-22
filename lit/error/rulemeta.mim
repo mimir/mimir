@@ -2,7 +2,7 @@
 
 plugin core;
 
-// The type `Idx s` of the rule mentions its meta variable `s`.
-rule dep (s: Nat, a: Idx s): a => a;
+// The type `Idx s` of the right-hand side mentions `s`, which the type `I8` of the left-hand side does not determine.
+rule dep (s: Nat, a: I8, b: Idx s): a => b;
 
-// CHECK: {{.*}}rulemeta.mim:6:{{.*}}: error: the type of a rule must not depend on its meta variables
+// CHECK: {{.*}}rulemeta.mim:6:{{.*}}: error: the type of a rule depends on meta variables that the type of its left-hand side does not determine

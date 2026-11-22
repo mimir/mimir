@@ -10,11 +10,13 @@
 
 #include <mim/driver.h>
 #include <mim/plugin.h>
+#include <mim/rewrite.h>
 #include <mim/rule.h>
 #include <mim/world.h>
 
 #include <mim/plug/core/core.h>
 #include <mim/plug/math/math.h>
+#include <mim/plug/refly/autogen.h>
 #include <mim/plug/x86/autogen.h>
 #include <mim/plug/x86/insn.h>
 #include <mim/plug/x86/rule_table.h>
@@ -109,6 +111,14 @@ bool uses(const Def* def, const Var* var, size_t i) {
     return uses(def, var, i, done);
 }
 
+/// The conditions of the `refly.check`s in @p def, e.g. the one of `x86.fpe pe`.
+void checks(const Def* def, DefVec& conds, DefSet& done) {
+    if (def->isa_mut() || !done.emplace(def).second) return;
+    if (auto check = Axm::isa<refly::check>(def)) conds.emplace_back(check->arg(3, 0));
+    for (auto op : def->ops())
+        checks(op, conds, done);
+}
+
 /// The summed x86::insn::cost of the instructions in @p def.
 size_t cost(const Def* def, DefSet& done) {
     if (def->isa_mut() || !done.emplace(def).second) return 0;
@@ -148,9 +158,15 @@ public:
             commutes_.emplace(op->as<Axm>()->flags());
     }
 
+    /// The values of a meta variable of type `«2; Nat»` in a rule's type.
+    void formats(const Def* def) {
+        for (auto op : def->projs())
+            formats_.emplace_back(op);
+    }
+
     void collect(const Def* def) {
         if (auto rule = def->isa<Rule>())
-            add(rule);
+            rule->type()->isa_mut() ? instantiate(rule) : add(rule);
         else if (auto tuple = def->isa<Tuple>())
             for (auto op : tuple->ops())
                 collect(op);
@@ -206,6 +222,8 @@ private:
         std::vector<Meta> metas;
     };
 
+    void instantiate(const Rule*);
+    const Rule* fix(const Rule*, const Def* val, size_t n, const std::vector<std::pair<size_t, const Def*>>& fixed);
     void add(const Rule*);
     std::vector<Meta> metas(const Rule*);
     void guard(const Def*, std::vector<Meta>&);
@@ -243,6 +261,7 @@ private:
     u32 tied(const Def* rhs) const;
 
     DefSet seen_;
+    DefVec formats_;
     ankerl::unordered_dense::map<u64, Want> marks_; ///< The marker of each meta variable of the current rule.
     const Var* var_ = nullptr;
     DefMap<u32> def2node_;
@@ -255,6 +274,115 @@ private:
     friend class Code;
     friend std::string sig(const Table&, u32, const std::vector<Meta>&, bool);
 };
+
+/// Adds an instance of @p rule for each value of its type's Var that the `refly.check`s in its type admit.
+void Table::instantiate(const Rule* rule) {
+    auto rho = rule->type();
+    auto var = rule->has_var();
+    auto val = rho->solve(rule->lhs()->type());
+
+    // Which meta variable of the Rule each component of the Rho's Var stands for.
+    auto comps = std::vector<size_t>();
+    auto n     = size_t(1);
+    auto comp  = [&](const Def* def) {
+        if (def == var) return comps.emplace_back(0), true;
+        if (auto ex = def->isa<Extract>(); ex && ex->tuple() == var)
+            if (auto i = Lit::isa(ex->index())) return n = var->num_projs(), comps.emplace_back(*i), true;
+        return false;
+    };
+    if (!comp(val)) {
+        auto tuple = val->isa<Tuple>();
+        if (!tuple || !std::ranges::all_of(tuple->ops(), comp))
+            rule->blame("x86_isel: the type of `{}` must depend on meta variables only", rule).bail();
+    }
+
+    auto domains = std::vector<std::span<const Def* const>>();
+    for (auto i : comps) {
+        auto type = n == 1 ? var->type() : var->proj(n, i)->type();
+        auto& w   = rule->world();
+        if (type != w.arr(2, w.type_nat()))
+            rule->blame("x86_isel: no values to instantiate meta variable of type `{}` of `{}` with", type, rule)
+                .bail();
+        domains.emplace_back(formats_);
+    }
+
+    auto conds = DefVec();
+    auto done  = DefSet();
+    checks(rho->dom(), conds, done);
+    checks(rho->codom(), conds, done);
+
+    auto& w = rule->world();
+    auto k  = comps.size();
+    auto ix = std::vector<size_t>(k);
+    for (;;) {
+        auto vals = DefVec(k, [&](size_t j) { return domains[j][ix[j]]; });
+        auto arg  = k == 1 ? vals.front() : w.tuple(vals);
+        auto ok   = true;
+        for (auto cond : conds) {
+            auto c = Lit::isa<bool>(VarRewriter(rho->has_var(), arg).rewrite(cond));
+            if (!c) rule->blame("x86_isel: cannot decide `{}` of `{}` at `{}`", cond, rule, arg).bail();
+            ok &= *c;
+        }
+        if (ok) {
+            auto fixed = std::vector<std::pair<size_t, const Def*>>();
+            for (size_t j = 0; j != k; ++j)
+                fixed.emplace_back(comps[j], vals[j]);
+            add(fix(rule, arg, n, fixed));
+        }
+
+        size_t j = k;
+        while (j-- != 0 && ++ix[j] == domains[j].size())
+            ix[j] = 0;
+        if (j == size_t(-1)) break;
+    }
+}
+
+/// @p rule of type Rho::reduce @p val with each of its @p n meta variables in @p fixed replaced.
+const Rule*
+Table::fix(const Rule* rule, const Def* val, size_t n, const std::vector<std::pair<size_t, const Def*>>& fixed) {
+    auto& w   = rule->world();
+    auto var  = rule->has_var();
+    auto proj = [&](size_t i) { return n == 1 ? var : var->proj(n, i); };
+    auto tup  = [&](const DefVec& vals) { return n == 1 ? vals.front() : w.tuple(vals); };
+    auto vals = DefVec(n);
+    for (auto [i, v] : fixed)
+        vals[i] = v;
+    auto rest = std::vector<size_t>();
+    for (size_t i = 0; i != n; ++i)
+        if (!vals[i]) rest.emplace_back(i);
+
+    auto sig = rule->type()->reduce(val);
+    auto res = w.mut_rule(w.rho(sig[0], sig[1]));
+    res->set(rule->sym());
+
+    auto m = rest.size();
+    if (m == 0) {
+        res->set_meta(w.sigma());
+    } else if (m == 1) {
+        auto sub     = DefVec(vals);
+        sub[rest[0]] = w.lit_nat_0(); // a type never mentions its own meta variable
+        res->set_meta(VarRewriter(var, tup(sub)).rewrite(proj(rest[0])->type()));
+        vals[rest[0]] = res->var();
+    } else {
+        // A type only mentions the meta variables before it, whose projections exist once they are set.
+        auto sigma = w.mut_sigma(m);
+        auto sub   = DefVec(n, [&](size_t i) { return vals[i] ? vals[i] : w.lit_nat_0(); });
+        for (size_t j = 0; j != m; ++j) {
+            sigma->set(j, VarRewriter(var, tup(sub)).rewrite(proj(rest[j])->type()));
+            sub[rest[j]] = sigma->var()->proj(m, j);
+        }
+        auto imm = sigma->immutabilize();
+        res->set_meta(imm ? imm : sigma);
+        for (size_t j = 0; j != m; ++j)
+            vals[rest[j]] = res->var()->proj(m, j);
+    }
+
+    auto rw = VarRewriter(var, tup(vals));
+    res->set_lhs(rw.rewrite(rule->lhs()));
+    res->set_guard(rw.rewrite(rule->guard()));
+    res->set_rhs(rw.rewrite(rule->rhs()));
+    return res;
+}
 
 void Table::add(const Rule* rule) {
     if (!seen_.emplace(rule).second) return;
@@ -921,6 +1049,7 @@ void Gen::start() {
 
     auto table = Table();
     table.commutes(world().annex<commutes>());
+    table.formats(world().annex<formats>());
     for (auto f : flags)
         table.collect(world().annex(f));
     table.sort();

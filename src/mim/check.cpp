@@ -515,6 +515,12 @@ namespace {
 const Def* check_rule(const Rule* rule, size_t i, const Def* def) {
     if (i == 0) return def;
     if (i == 1) {
+        if (rule->type()->isa_mut()) {
+            if (rule->type()->instantiate(def->type())) return def;
+            def->blame("left-hand side of a rewrite rule does not match its domain")
+                .n("expected `{}`, got `{}`", rule->type()->dom(), type_of(def))
+                .bail();
+        }
         if (auto lhs = Check::coerce(rule->dom(), def)) return lhs;
         def->blame("left-hand side of a rewrite rule is not assignable to its domain")
             .n("expected `{}`, got `{}`", rule->dom(), type_of(def))
