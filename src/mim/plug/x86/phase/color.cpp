@@ -132,7 +132,8 @@ void prune(Lam* fun) {
             auto cond = ex ? isa_sched_cc(ex->index()) : nullptr;
             for (auto insn : block.insns | std::views::reverse) {
                 if (dead.contains(insn) || insn == cond) continue;
-                if (!Axm::isa<sched>(insn) && !Axm::isa<load>(insn) && !Axm::isa<rm>(insn) && !Axm::isa<slot>(insn))
+                if (!Axm::isa<sched>(insn) && !Axm::isa<load>(insn) && !Axm::isa<fload>(insn) && !Axm::isa<rm>(insn)
+                    && !Axm::isa<rm1>(insn) && !Axm::isa<slot>(insn))
                     continue;
                 auto ds = live.defs(insn);
                 if (ds.empty() || !std::ranges::all_of(ds, unused)) continue;

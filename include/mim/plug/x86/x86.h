@@ -74,7 +74,7 @@ inline const App* isa_sched_cc(const Def* cond) {
 inline const Def* prev_mem(const App* app) {
     if (Axm::isa<sched>(app)) return app->callee()->as<App>()->arg();
     if (Axm::isa<load>(app) || Axm::isa<store>(app) || Axm::isa<slot>(app) || Axm::isa<rm>(app) || Axm::isa<mr>(app)
-        || Axm::isa<fload>(app) || Axm::isa<fstore>(app))
+        || Axm::isa<rm1>(app) || Axm::isa<fload>(app) || Axm::isa<fstore>(app))
         return app->arg(app->num_args(), 0);
     return nullptr;
 }

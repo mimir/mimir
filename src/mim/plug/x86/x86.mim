@@ -137,6 +137,12 @@ anx lam fpe (pe: «2; Nat»): «2; Nat» =
 ///
 axm rm: {T C: *, i: Bool} → («2; T» → C) → [mem.M 0, T, Addr i] → [mem.M 0, C];
 ///
+/// ### rm1
+///
+/// `op r, addr` of a unary operation: `rm1 f (m, addr)` is `f b` with `b` loaded from `addr`.
+///
+axm rm1: {T C: *, i: Bool} → (T → C) → [mem.M 0, Addr i] → [mem.M 0, C];
+///
 /// ### mr
 ///
 /// `op addr, r`: `mr f (m, addr, b)` stores `f (a, b)` to `addr` with `a` loaded from `addr`.
@@ -410,14 +416,14 @@ axm fsel: {pe: «2; Nat»} → [Bool, math.F pe, math.F pe] → math.F (fpe pe);
 ///
 /// ### Floating-Point Conversions
 ///
-/// The integer size `s` is explicit, since neither the operand nor the result determines it.
+/// Both formats and sizes are explicit, since a folded load (`x86.rm1`) leaves no operand to infer them from.
 /// The instances of `x86_isel` name the sizes; only `i32` and `i64` are supported.
 ///
 axm i2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (fpe pe);
 axm u2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (fpe pe);
-axm f2i: {pe: «2; Nat»} → [s: Nat] → math.F pe → Idx s;
-axm f2u: {pe: «2; Nat»} → [s: Nat] → math.F pe → Idx s;
-axm f2f: {spe: «2; Nat»} → [dpe: «2; Nat»] → math.F spe → math.F (fpe dpe);
+axm f2i: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx s;
+axm f2u: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx s;
+axm f2f: [spe: «2; Nat»] → [dpe: «2; Nat»] → math.F spe → math.F (fpe dpe);
 ///
 /// ## Phases
 ///

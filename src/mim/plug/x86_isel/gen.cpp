@@ -319,7 +319,7 @@ u32 Table::tied(const Def* rhs) const {
         todo.pop_back();
         if (def->isa_mut() || !done.emplace(def).second) continue;
         if (auto [axm, curry, _] = Axm::get(def); axm && curry == 0 && axm->plugin() == x86::Plugin_Id)
-            if (auto i = x86::insn::tied(axm->base())) {
+            if (auto i = x86::insn::tied(def->as<App>())) {
                 auto arg = def->as<App>()->arg();
                 if (auto m = meta(arg->proj(arg->num_projs(), *i))) res |= 1u << *m;
             }

@@ -29,7 +29,28 @@ extern con sub_load (m: mem.M 0, p: mem.Ptr0 math.F32, x: math.F32, return: Cn [
     let (m, y) = mem.load (m, p);
     return (m, y - x);
 
+/// `ucomiss` reads its source from memory: `y < x` is `x > y`, but `x < y` needs `y` in a register.
+extern con lt_rm (m: mem.M 0, p: mem.Ptr0 math.F32, x: math.F32, return: Cn [mem.M 0, Bool]) =
+    let (m, y) = mem.load (m, p);
+    return (m, math.cmp.l math.mode.none (y, x));
+
+extern con lt_load (m: mem.M 0, p: mem.Ptr0 math.F32, x: math.F32, return: Cn [mem.M 0, Bool]) =
+    let (m, y) = mem.load (m, p);
+    return (m, math.cmp.l math.mode.none (x, y));
+
+extern con conv_rm (m: mem.M 0, p: mem.Ptr0 I64, return: Cn [mem.M 0, math.F64]) =
+    let (m, y) = mem.load (m, p);
+    return (m, math.conv.s2f math.f64 y);
+
+extern con sqrt_rm (m: mem.M 0, p: mem.Ptr0 math.F32, return: Cn [mem.M 0, math.F32]) =
+    let (m, y) = mem.load (m, p);
+    return (m, math.rt.sq math.mode.none y);
+
 // CHECK-DAG: subss (%rdi), %xmm0
 // CHECK-DAG: addss (%rdi), %xmm0
 // CHECK-DAG: mulsd (%rdi), %xmm0
 // CHECK-DAG: movss (%rdi), %xmm{{[0-9]+}}
+// CHECK-DAG: ucomiss (%rdi), %xmm0
+// CHECK-DAG: ucomiss %xmm0, %xmm{{[0-9]+}}
+// CHECK-DAG: cvtsi2sdq (%rdi), %xmm0
+// CHECK-DAG: sqrtss (%rdi), %xmm0

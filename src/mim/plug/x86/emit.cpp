@@ -12,6 +12,7 @@
 #include <mim/plug/math/math.h>
 
 #include "mim/plug/x86/constraint.h"
+#include "mim/plug/x86/insn.h"
 #include "mim/plug/x86/liveness.h"
 #include "mim/plug/x86/x86.h"
 
@@ -39,15 +40,15 @@ constexpr std::array<Names, 16> names = {{
 constexpr std::array<std::string_view, 16> ccs
     = {"o", "no", "b", "ae", "e", "ne", "be", "a", "s", "ns", "p", "np", "l", "ge", "le", "g"};
 
-/// Per `x86.fcmp` subtag: the `setcc` after `ucomiss`, and whether it compares the swapped operands.
-/// An unordered `ucomiss` sets ZF, PF, and CF, which only `e` and `une` have to fix up.
-constexpr std::array<std::pair<std::string_view, bool>, 16> fccs = {{
+/// Per `x86.fcmp` subtag: the `setcc` after `ucomiss`, and the result of an unordered comparison where `setcc` errs.
+/// An unordered `ucomiss` sets ZF, PF, and CF; isel swaps operands so that only `e` and `une` need the fixup.
+constexpr std::array<std::pair<std::string_view, std::optional<bool>>, 16> fccs = {{
     // clang-format off
-    {"", false}, {"e", false}, {"a", true},  {"ae", true},  {"a", false}, {"ae", false}, {"ne", false}, {"np", false},
-    {"p", false}, {"e", false}, {"b", false}, {"be", false}, {"b", true},  {"be", true},  {"ne", false}, {"", false},
+    {"", {}},  {"e", false}, {"b", false}, {"be", false}, {"a", {}},   {"ae", {}},   {"ne", {}},   {"np", {}},
+    {"p", {}}, {"e", {}},    {"b", {}},    {"be", {}},    {"a", true}, {"ae", true}, {"ne", true}, {"", {}},
     // clang-format on
 }};
-constexpr size_t Fcmp_E = 1, Fcmp_Une = 14, Fcmp_T = 15;
+constexpr size_t Fcmp_T                                                         = 15;
 
 size_t log_bytes(nat_t w) { return std::countr_zero(w / 8); }
 std::string_view name(size_t r, nat_t w) { return names[r][log_bytes(w)]; }
@@ -173,6 +174,10 @@ private:
     void move(Reg dst, Reg src);
     void swap(Reg a, Reg b);
     void mov_imm(Reg dst, const Def* lit);
+    /// `ucomiss src, a` and the `setcc` of the `x86.fcmp` subtag @p sub into @p dst.
+    void ucomi(size_t sub, nat_t w, std::string_view src, size_t a, size_t dst);
+    /// The `x86.fsqrt` or conversion @p id of the operand @p src, @p ws bits wide, into the result @p res.
+    void unary(flags_t id, std::string_view src, nat_t ws, const Def* res);
     void use_flags(const Def* fl) const;
 
     void insn(const Def* res, const Def* f, const Def* x);
@@ -429,9 +434,11 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         auto dst    = def_reg(res);
         assert(use_reg(a) == dst);
         line("{}{} {}, {}", farith(id), fsz(w), xmm(use_reg(b)), xmm(dst));
-    } else if (id == Annex::Base<fsqrt>) {
-        auto w = width(res->type());
-        line("sqrt{} {}, {}", fsz(w), xmm(use_reg(x)), xmm(def_reg(res)));
+    } else if (id == Annex::Base<fsqrt> || id == Annex::Base<i2f> || id == Annex::Base<f2i> || id == Annex::Base<f2u>
+               || id == Annex::Base<f2f>) {
+        auto ws = width(x->type());
+        auto r  = use_reg(x);
+        unary(id, math::isa_f(x->type()) ? xmm(r) : std::string(name(r, ws)), ws, res);
     } else if (id == Annex::Base<fabs>) {
         auto w   = width(res->type());
         auto dst = def_reg(res);
@@ -453,20 +460,8 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         auto w = width(res->type());
         line("mov{} {}, {}", fsz(w), slot(slot_of(x)), xmm(def_reg(res)));
     } else if (id == Annex::Base<fcmp>) {
-        auto [a, b]     = x->projs<2>();
-        auto w          = width(a->type());
-        auto dst        = def_reg(res);
-        auto sub        = axm->sub();
-        auto [cc, swap] = fccs[sub];
-        if (cc.empty()) return line("movl ${}, {}", sub == Fcmp_T ? 1 : 0, name(dst, 32));
-        if (swap) std::swap(a, b);
-        line("ucomi{} {}, {}", fsz(w), xmm(use_reg(b)), xmm(use_reg(a)));
-        line("set{} {}", cc, name(dst, 8));
-        if (sub != Fcmp_E && sub != Fcmp_Une) return;
-        auto l = local("fcmp");
-        line("jnp {}", l);
-        line("movl ${}, {}", sub == Fcmp_Une ? 1 : 0, name(dst, 32));
-        std::println(body_, "{}:", l);
+        auto [a, b] = x->projs<2>();
+        ucomi(axm->sub(), width(a->type()), xmm(use_reg(b)), use_reg(a), def_reg(res));
     } else if (id == Annex::Base<fsel>) {
         auto [c, a, b] = x->projs<3>();
         auto dst       = def_reg(res);
@@ -476,10 +471,6 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         line("je {}", l);
         line("movaps {}, {}", xmm(use_reg(b)), xmm(dst));
         std::println(body_, "{}:", l);
-    } else if (id == Annex::Base<i2f>) {
-        auto ws = width(x->type());
-        auto wr = width(res->type());
-        line("cvtsi2{}{} {}, {}", fsz(wr), ws == 64 ? "q" : "l", name(use_reg(x), ws), xmm(def_reg(res)));
     } else if (id == Annex::Base<u2f>) {
         auto ws = width(x->type());
         auto wr = width(res->type());
@@ -494,22 +485,33 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         line("addsd {}, {}", two32(), dst);
         std::println(body_, "{}:", l);
         if (wr == 32) line("cvtsd2ss {}, {}", dst, dst);
-    } else if (id == Annex::Base<f2i>) {
-        auto wx = width(x->type());
-        auto ws = width(res->type());
-        line("cvtt{}2si{} {}, {}", fsz(wx), ws == 64 ? "q" : "l", xmm(use_reg(x)), name(def_reg(res), ws));
-    } else if (id == Annex::Base<f2u>) {
-        auto wx = width(x->type());
-        auto ws = width(res->type());
-        if (ws == 64) f->blame(MIM_X86_BE "`x86.f2u` to `i64` is not supported yet").bail();
-        auto dst = def_reg(res);
-        line("cvtt{}2siq {}, {}", fsz(wx), xmm(use_reg(x)), name(dst, 64));
-        line("movl {}, {}", name(dst, 32), name(dst, 32));
-    } else if (id == Annex::Base<f2f>) {
-        line("cvt{}2{} {}, {}", fsz(width(x->type())), fsz(width(res->type())), xmm(use_reg(x)), xmm(def_reg(res)));
     } else {
         f->blame(MIM_X86_BE "cannot emit `{}`", axm).bail();
     }
+}
+
+void Emitter::ucomi(size_t sub, nat_t w, std::string_view src, size_t a, size_t dst) {
+    auto [cc, unordered] = fccs[sub];
+    if (cc.empty()) return line("movl ${}, {}", sub == Fcmp_T ? 1 : 0, name(dst, 32));
+    line("ucomi{} {}, {}", fsz(w), src, xmm(a));
+    line("set{} {}", cc, name(dst, 8));
+    if (!unordered) return;
+    auto l = local("fcmp");
+    line("jnp {}", l);
+    line("movl ${}, {}", *unordered ? 1 : 0, name(dst, 32));
+    std::println(body_, "{}:", l);
+}
+
+void Emitter::unary(flags_t id, std::string_view src, nat_t ws, const Def* res) {
+    auto wr  = width(res->type());
+    auto dst = def_reg(res);
+    if (id == Annex::Base<fsqrt>) return line("sqrt{} {}, {}", fsz(wr), src, xmm(dst));
+    if (id == Annex::Base<i2f>) return line("cvtsi2{}{} {}, {}", fsz(wr), ws == 64 ? "q" : "l", src, xmm(dst));
+    if (id == Annex::Base<f2i>) return line("cvtt{}2si{} {}, {}", fsz(ws), wr == 64 ? "q" : "l", src, name(dst, wr));
+    if (id == Annex::Base<f2f>) return line("cvt{}2{} {}, {}", fsz(ws), fsz(wr), src, xmm(dst));
+    if (wr == 64) res->blame(MIM_X86_BE "`x86.f2u` to `i64` is not supported yet").bail();
+    line("cvtt{}2siq {}, {}", fsz(ws), src, name(dst, 64));
+    line("movl {}, {}", name(dst, 32), name(dst, 32));
 }
 
 void Emitter::step(const App* app) {
@@ -529,12 +531,19 @@ void Emitter::step(const App* app) {
         auto w         = width(a->type());
         auto dst       = def_reg(app->proj(2, 1));
         auto insn      = op->decurry()->arg()->as<App>()->axm();
+        if (insn->base() == Annex::Base<fcmp>) return ucomi(insn->sub(), w, addr(p), use_reg(a), dst);
         assert(use_reg(a) == dst);
         if (math::isa_f(a->type()))
             line("{}{} {}, {}", farith(insn->base()), fsz(w), addr(p), xmm(dst));
         else
             line("{}{} {}, {}", alu(insn->flags()), suffix(w), addr(p), name(dst, w));
         return;
+    }
+
+    if (Axm::isa<rm1>(app)) {
+        auto [_, p] = app->args<2>();
+        auto f      = app->callee()->as<App>()->arg();
+        return unary(insn::op(app), addr(p), width(f->type()->as<Pi>()->dom()), app->proj(2, 1));
     }
 
     if (auto op = Axm::isa<mr>(app)) {

@@ -40,10 +40,10 @@ extern con mem_ (m: mem.M 0, p: mem.Ptr0 math.F64, return: Cn [mem.M 0, math.F64
 // CHECK-DAG:  (x86.fabs @ (23, 8))
 // CHECK-DAG:  (x86.fdiv @ (23, 8))
 // CHECK-DAG:  (x86.fsqrt @ (23, 8))
-// CHECK-DAG:  (x86.fcmp.le @ (23, 8))
+// CHECK-DAG:  (x86.fcmp.ge @ (23, 8)) m_{{[0-9]+}} (b{{[_0-9]*}}, a{{[_0-9]*}})
 // CHECK-DAG:  (x86.fsel @ (23, 8))
 // CHECK-DAG:  (x86.i2f i32 (23, 8))
-// CHECK-DAG:  (x86.f2f @ (52, 11) (23, 8)
-// CHECK-DAG:  (x86.f2i @ (23, 8) i32)
+// CHECK-DAG:  (x86.f2f (52, 11) (23, 8))
+// CHECK-DAG:  (x86.f2i (23, 8) i32)
 // CHECK-DAG:  x86.fload
 // CHECK-DAG:  x86.fstore

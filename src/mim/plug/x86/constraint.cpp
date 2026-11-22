@@ -19,7 +19,7 @@ Constraint constraint(const App* insn) {
     auto res = Constraint();
     res.ops  = operands(insn);
     if (Axm::isa<rm>(insn)) {
-        res.tied = insn::tied(Annex::Base<rm>);
+        res.tied = insn::tied(insn);
         return res;
     }
     if (!Axm::isa<sched>(insn)) return res;
