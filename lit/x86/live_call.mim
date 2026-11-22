@@ -16,5 +16,5 @@ extern lam _compile (): compile.Phase = compile.phases ff (x86.schedule, x86.liv
 
 // `b` survives the call, and `div` yields two values.
 // CHECK:      fun f
-// CHECK-NEXT: f: in {} out {b{{[_0-9]*}}} max 2 flags 0
-// CHECK-NEXT: k{{[_0-9]*}}: in {b{{[_0-9]*}}} out {} max 2 flags 0
+// CHECK-NEXT: f: in {} out {b{{[_0-9]*}}} max 2 fpr 0 flags 0
+// CHECK-NEXT: k{{[_0-9]*}}: in {b{{[_0-9]*}}} out {} max 2 fpr 0 flags 0

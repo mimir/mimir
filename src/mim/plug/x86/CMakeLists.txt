@@ -8,6 +8,7 @@ add_mim_plugin(x86
         phase/color.cpp
         phase/constrain.cpp
         phase/isel.cpp
+        phase/legalize.cpp
         phase/live.cpp
         phase/schedule.cpp
         phase/spilling.cpp

@@ -48,24 +48,37 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 - `logic`: `Bool` or a `gpr` size — `and`, `or`, `xor`.
 - Not yet checked: `store`, `cmp`/`test` (their codomain does not mention `s`; `refly.check` cannot guard a type) and the conversions (`movzx`/`movsx`/`trunc`).
 
+### Floating point lives in XMM registers
+
+- A `math.F pe` value is a whole XMM register, like an `Idx s` is a general-purpose one; the format `pe` is a family parameter of every float instruction and rule, since neither an operand nor a result names it.
+- The register classes never mix: `Ty::FReg`/`Want::FReg` are separate non-terminals, `rules::Chains` only converts within a class (`rules::same_class`), and `x86.fmov` is the only conversion of a float literal into a register.
+- `x86.fsel` is a compare and a branch around a `movaps`: the then-value lives in the result register, so its operand is tied like a two-address instruction's.
+- Every XMM register is caller-saved, so a float value alive across a call is spilled; `x86.u2f`/`x86.f2u` exist only for an `i32` integer, since not every `u64` is an exact `f64`.
+
 ### Condition codes
 
 - `x86.cc` and `x86.cmovcc` are families in hardware encoding order (`x86.cc.o` = 0, …, `x86.cc.g` = 15), so a code is a subtag rather than an operand: C++ compares `Axm::base()` and reads `Axm::sub()`.
 - `x86.cc.l: Flags → Bool` is `setcc` as a value and `jcc` as a branch condition.
-- `core.icmp` maps onto `x86.cc.<c> (x86.cmp (a, b))` for `e`, `ne`, `sl`, `sle`, `sg`, `sge`, `ul`, `ule`, `ug`, `uge`, and `core.ncmp` for `e`, `ne`, `l`, `le`, `g`, `ge`: the rule families `icmp`/`ncmp` of `x86_isel` take the predicate and its condition code; the other predicates have no instance and are rejected for now.
+- `core.icmp` maps onto `x86.cc.<c> (x86.cmp (a, b))` for `e`, `ne`, `sl`, `sle`, `sg`, `sge`, `ul`, `ule`, `ug`, `uge`, and `x86.legalize` turns `core.ncmp` into the unsigned `core.icmp`: the rule family `icmp` of `x86_isel` takes the predicate and its condition code; the other predicates have no instance and are rejected for now.
 
 ## Status
 
 Done (on `feature/x86`):
 
-- `x86` plugin (`src/mim/plug/x86/`), with `mem.add_mem`, `core.legalize_dyn_idx`, and `mem.legalize_ptr` (each if `x86` is loaded), `x86.isel`, `x86.schedule`, `x86.spilling`, `x86.constrain`, `x86.color`, and `x86.emit` at the end of the default pipeline in `opt.mim`; by then no axiom pins a continuation's type, so every continuation has its `mem.M`.
-- `x86.mim`: `Flags`, `Addr` (`Base`, `Index`), `Spill`, `addr`, `scale_1`/`_2`/`_4`/`_8`, `index`, `lea`, `mov`, `rm`, `mr`, `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `imul`, `shl`, `shr`, `sar`, `movzx`, `movsx`, `trunc`, `cmp`, `test`, the condition-code families `cc` and `cmovcc`, `spill`, `reload`, `in` with the module `reg` of the register lets `x86.reg.rax` … `x86.reg.r15`, plus the size predicates.
+- `x86` plugin (`src/mim/plug/x86/`), with `mem.add_mem`, `core.legalize_dyn_idx`, and `mem.legalize_ptr` (each if `x86` is loaded), `x86.legalize`, `x86.isel`, `x86.schedule`, `x86.spilling`, `x86.constrain`, `x86.color`, and `x86.emit` at the end of the default pipeline in `opt.mim`; by then no axiom pins a continuation's type, so every continuation has its `mem.M`.
+- `x86.mim`: `Flags`, `Addr` (`Base`, `Index`), `Spill`, `addr`, `scale_1`/`_2`/`_4`/`_8`, `index`, `lea`, `mov`, `rm`, `rm1`, `mr`, `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `imul`, `shl`, `shr`, `sar`, `movzx`, `movsx`, `trunc`, `cmp`, `test`, the condition-code families `cc` and `cmovcc`, `spill`, `reload`, `in` with the module `reg` of the register lets `x86.reg.rax` … `x86.reg.r15`, plus the size predicates.
+  For floating point it adds `fin` with the module `freg` of `x86.freg.xmm0` … `xmm15`, `fmov` (a literal from the constant pool), `fload`/`fstore`, `FSpill` with `fspill`/`freload`, `fadd`/`fsub`/`fmul`/`fdiv`, `fsqrt`/`fabs`, the family `fcmp` in the order of `math.cmp`, `fsel`, and `i2f`/`u2f`/`f2i`/`f2u`/`f2f`.
 - `core.legalize_dyn_idx` turns each `Idx n` with a dynamic `n` into `I64`, ignoring the modulus as `ll` does; it must run after the last specialization, which is why it sits here and not in `core.legalize_idx`.
-- `mem.legalize_ptr` (`src/mim/plug/mem/phase/legalize_ptr.cpp`) runs after `ll.emit`, right before `x86.isel`: every `mem.Ptr (T, a)` becomes the byte pointer `mem.Ptr (I8, a)`, an operation that needs a typed pointer gets a `core.bitcast` of it (`coerce_leaf`), and `mem.lea` becomes `mem.ptradd` with x86's layout: a literal byte offset, or `core.wrap.mul (conv.u i64 i, size)` for a dynamic index; `mem.assume` vanishes and `mem.mslot` gets its size in bytes.
+- `mem.legalize_ptr` (`src/mim/plug/mem/phase/legalize_ptr.cpp`) runs after `ll.emit`, right before `x86.legalize`: every `mem.Ptr (T, a)` becomes the byte pointer `mem.Ptr (I8, a)`, an operation that needs a typed pointer gets a `core.bitcast` of it (`coerce_leaf`), and `mem.lea` becomes `mem.ptradd` with x86's layout: a literal byte offset, or `core.wrap.mul (conv.u i64 i, size)` for a dynamic index; `mem.assume` vanishes and `mem.mslot` gets its size in bytes.
   An index `conv.u n y` that `core.legalize_idx` or `core.legalize_dyn_idx` kept for the type of `lea` becomes `core.rem n y` for a literal odd `n` (an `and` for a power of two) and `y` for a dynamic one.
   So no rule mentions a pointee type, isel finds address modes in plain arithmetic, and every conversion it sees is between register sizes.
-- `x86.isel` (`src/mim/plug/x86/phase/isel.cpp`) covers `core.wrap`, `core.bit2` (and/or/xor), `core.shr`, `core.icmp`, `core.conv`, `mem.load`/`mem.store` of integers and pointers, `mem.ptradd`, `mem.mslot`, `core.idx`, `core.idx2nat`, `core.rem`, `core.div`, `core.nat`, `core.ncmp`, integer `core.bitcast`, and a select `(x, y)#c` (as `cmovcc`).
-  `Nat` becomes `I64`; `Nat` literals stay `Nat` so they still work as type-level arguments, and become `I64` only as values.
+- `x86.legalize` (`src/mim/plug/x86/phase/legalize.cpp`) runs right before `x86.isel` and turns every `Nat` value and every pointer into an `I64`, so isel only sees register types.
+  `Nat` literals stay `Nat` so they still work as type-level arguments, and become `I64` only as values.
+  An operation that needs a typed pointer (`mem.load`, `mem.store`) gets a `core.bitcast` of the `I64` (`coerce_leaf`), which a generated matcher looks through (`x86::strip_ptr_cast`).
+  `mem.ptradd` becomes `core.wrap.add`; `core.nat.add`/`mul` become `core.wrap`, `core.nat.sub` a select of `core.wrap.sub` and `0` on `core.icmp.ul`, `core.nat.div`/`rem` `core.div.udiv`/`urem` on a `⊥` memory, `core.ncmp` the unsigned `core.icmp`, `core.idx` and `core.idx2nat` a `core.conv.u`, and a `core.bitcast` between types that became equal its operand.
+  `mem.mslot` of a literal size becomes `x86.slot`; a dynamic size is an error.
+- `x86.isel` (`src/mim/plug/x86/phase/isel.cpp`) covers `core.wrap`, `core.bit2` (and/or/xor), `core.shr`, `core.icmp`, `core.conv`, `mem.load`/`mem.store` of integers, `core.rem`, `core.div`, integer `core.bitcast`, and a select `(x, y)#c` (as `cmovcc`).
+  Of `math` it covers `arith.add`/`sub`/`mul`/`div` in `f32` and `f64`, `abs`, `rt.sq`, `cmp` for the fourteen ordered and unordered predicates (not `f` and `t`, which normalize to constant booleans), a float select, `mem.load`/`mem.store` of a float, and `conv.s2f`/`f2s`/`f2f` plus `conv.u2f`/`f2u` with an `i32` integer; a float literal becomes `fmov`.
   `ll.drop_hints` removes the loop hints `ll.vec`/`ll.novec` before (`opt.mim`).
   Any other `core`/`mem`/`math` operation left in the selected world is an error naming the axiom.
 - `x86.schedule` (`src/mim/plug/x86/phase/schedule.cpp`) is a `NestPhase` that rewrites each function in place (it changes no types): it places every instruction of a function once with `Scheduler::smart` (as late as possible, but out of loops) and threads each continuation's instructions onto its `mem.M 0` chain in topological order.
@@ -73,43 +86,49 @@ Done (on `feature/x86`):
   A closed instruction has no place of its own (`Scheduler::is_remat`): it gets a fresh copy right before each use.
   So do `cmp`/`test` and `cc`, since flags are no register value: each consumer recomputes them right before itself, so at most one flags value is live and nothing clobbers it before its consumer.
   Instructions that `Scheduler::smart` hoists into a block are appended after that block's own ones, i.e., after the condition of its branch; so `chain()` appends a fresh `cmp`/`cc` for the branch at the very end.
-  A continuation without a `mem.M` is an error.
-- `Liveness` (`src/mim/plug/x86/liveness.cpp`) is a side table over one scheduled function: blocks with their chains, predecessors and successors, live-in and live-out sets (path exploration per use), and MaxLive per register class (general-purpose, flags; spill slots are class `Stack` and unbounded).
+  A continuation without a `mem.M`, a direct-style function with one, and a continuation whose body is no jump are errors.
+- `Liveness` (`src/mim/plug/x86/liveness.cpp`) is a side table over one scheduled function: blocks with their chains, predecessors and successors, live-in and live-out sets (path exploration per use), and MaxLive per register class (general-purpose, floating-point, flags; spill slots are class `Stack` and unbounded).
+  A value's class comes from its type: `math.F pe` is `Fpr`, `x86.Spill`/`x86.FSpill` are `Stack`, `x86.Flags` is `Flags`, everything else `Gpr`.
   A value is a non-memory result of a chain instruction or a non-memory parameter; a parameter is defined at block entry and a jump uses its arguments, so a parameter is never live-in.
   A branch on an `x86.cc` uses its flags; the `Bool` is a value only if something else uses it.
   `x86.live` prints it (`-X x86:live=<file>`) and is not part of the default pipeline.
-- `x86.spilling` (`src/mim/plug/x86/phase/spilling.cpp`) brings MaxLive of the general-purpose class down to `k` (14 by default, `-X x86:k=<n>`), per function and in place (Braun & Hack, CC 2009):
+- `x86.spilling` (`src/mim/plug/x86/phase/spilling.cpp`) brings MaxLive of the general-purpose class down to `k` (14 by default, `-X x86:k=<n>`) and then the floating-point class down to `k` (16 by default) in a second, independent pass over the function, per function and in place (Braun & Hack, CC 2009):
   - Global next-use distances by a fixpoint over the CFG, plus `2^20` across an edge into a smaller loop depth; loops are natural loops over the dominator tree (Cooper, Harvey, Kennedy) of the block graph, since `Nest` misses closed blocks.
   - `W_entry`: at a block whose predecessors are all processed, the candidates in a register at the end of all predecessors first, then those of some, by next use; otherwise (loop header) the candidates used in the loop first, then live-through ones only as far as the loop's MaxLive leaves room.
-  - Per instruction: reload missing operands, `limit(W, k − extra)` (`div`/`idiv` need `rdx`), `limit(W, k − #defs)` after it; a call keeps at most `k − 9` values across it (five callee-saved registers at `k = 14`).
-  - A parameter of the entry, a return continuation, or a branch target, and a dead parameter, is always in a register; any other parameter outside `W_entry` becomes a memory φ of type `x86.Spill s`.
+  - Per instruction: reload missing operands, `limit(W, k − extra)` (`div`/`idiv` need `rdx`), `limit(W, k − #defs)` after it; a call keeps at most `k − 9` general-purpose values across it (five callee-saved registers at `k = 14`) and no floating-point one, since every XMM register is caller-saved.
+  - A parameter of the entry, a return continuation, or a branch target, and a dead parameter, is always in a register; any other parameter outside `W_entry` becomes a memory φ of type `x86.Spill s` or `x86.FSpill pe`.
   - A value is spilled right after its definition (or at its block's entry), and only if it is reloaded or flows into a memory φ; a literal flowing into a memory φ is spilled at the end of the predecessor.
   - A closed instruction is recomputed instead of reloaded.
   - Coupling reloads go to the end of the predecessor.
     EtaConv does not quite rule out critical edges: a hash-consed branch tuple can share one wrapper among several branches, so `x86.spilling` first gives each branch to such a target a fresh wrapper.
   - Reloads give a value several definitions; SSA reconstruction (Braun et al., CC 2013, every block sealed, union-find for trivial φ removal) runs symbolically first, so each block whose signature changes is rebuilt as a new Lam exactly once with its memory φs and new φ parameters appended.
-  - `spill`/`reload` are pure instructions on the chain via `sched`; `x86.emit` gives every `Spill` value a stack slot of its own and turns them into stores and loads.
+  - `spill`/`reload` and `fspill`/`freload` are pure instructions on the chain via `sched`; `x86.emit` gives every `Spill`/`FSpill` value a stack slot of its own and turns them into stores and loads.
 - `x86.constrain` (`src/mim/plug/x86/phase/constrain.cpp`) runs after `x86.spilling`: right before an instruction with a fixed operand (`div`'s dividend in `rax`, a shift count in `rcx`) or a two-address operand that stays live, the block jumps to a fresh continuation that takes these operands; the fixed copies are wrapped in `x86.in`.
   Likewise, right after an instruction with fixed results (`div`'s quotient in `rax` and remainder in `rdx`), the live ones go to a fresh continuation as `x86.in rax q`, `x86.in rdx r`, so a precolored live range ends at once; this costs no extra register, as the arguments die where the parameters are defined.
   The table of fixed operands, tied operands, and fixed results is `constraint()` (`src/mim/plug/x86/constraint.cpp`), shared with the spiller and the colorer.
   `x86.spilling` counts these copies as `extra` registers; if an instruction would then need more than `k`, the operands to copy leave their registers at it instead and are reloaded at their next use.
 - `x86.color` (`src/mim/plug/x86/phase/color.cpp`) runs after `x86.constrain`, per function and in place:
   - It first drops chain instructions none of whose results is used (to a fixpoint), so a result without a use is one whose register its instruction implies (`div`'s remainder); and it sets every block's filter to `ff`, since rebuilding a jump must not inline its target (pruning can make both targets of a branch α-equal, and the World then folds the branch).
-  - One PBQP over the general-purpose values with 16 options; `rsp` and `rbp` are ∞, callee-saved registers cost 1.
+  - One PBQP per register class with 16 options: `rsp` and `rbp` are ∞ and callee-saved registers cost 1 in the general-purpose one, all XMM registers are caller-saved and reserved ones do not exist in the floating-point one.
     A dead parameter is no node.
     `-X x86:color-dot=<file>` writes each function's graph in Graphviz DOT format with the chosen options highlighted.
-  - Interference edges (∞ on the diagonal) between a definition and every value live after it or defined along with it; tie edges (∞ off the diagonal) between a two-address result and its tied operand; fixed operands and results are precolored; clobbers are ∞ on the operands (`rdx` at `div`); values live across a call are ∞ on the nine caller-saved registers.
-  - Copies are preferences: a jump argument and its parameter get an edge that costs 4 off the diagonal; entry parameters prefer their SysV argument registers, call arguments theirs, a return continuation's parameter and a returned value prefer `rax`.
+  - Interference edges (∞ on the diagonal) between a definition and every value live after it or defined along with it; tie edges (∞ off the diagonal) between a two-address result and its tied operand; fixed operands and results are precolored (general-purpose only); clobbers are ∞ on the operands (`rdx` at `div`); values live across a call are ∞ on the nine caller-saved registers (`x86.in`) or on all 16 (`x86.fin`).
+  - Copies are preferences: a jump argument and its parameter get an edge that costs 4 off the diagonal; entry parameters prefer their SysV argument registers (`rdi`…`r9`, `xmm0`…`xmm7`), call arguments theirs, a return continuation's parameter and a returned value prefer `rax`/`xmm0`.
   - `rn_priority` is the node id, and nodes are created in block discovery order (which visits a dominator first) and within a block in definition order, so RN eliminates along a PEO.
-  - The rewrite wraps every use in `x86.in r v`; a whole tuple of values (a block's variable, or an instruction passed whole after η-reduction) is rebuilt from its wrapped projections.
-  - A checker then recomputes `Liveness` on the result and verifies the invariants below; any violation is an error naming the values.
+  - The rewrite wraps every use in `x86.in r v`, or an XMM value in `x86.fin r v`; a whole tuple of values (a block's variable, or an instruction passed whole after η-reduction) is rebuilt from its wrapped projections.
+  - A checker then recomputes `Liveness` on the result, once per class, and verifies the invariants below; any violation is an error naming the values.
 - `x86.load`/`x86.store` work on `mem.M 0`; isel collapses `mem.M a` to `mem.M 0`.
 - `x86.emit` (`src/mim/plug/x86/emit.cpp`) writes GAS text in AT&T syntax to `<world>.s` (`-X x86:o=<file>`) on the registers of `x86.color`:
-  - It walks each function's blocks with their chains from `Liveness` and reads "where does `v` live" off the `x86.in` nodes (plus the implied registers of fixed results); an operand that is no `x86.in` and no literal is an error.
+  - It walks each function's blocks with their chains from `Liveness` and reads "where does `v` live" off the `x86.in`/`x86.fin` nodes (plus the implied registers of fixed results); an operand that is no `x86.in`/`x86.fin` and no literal is an error.
   - Instructions use the registers directly; a two-address result is in the register of its tied operand, which `assert`s check.
-  - A jump, a call (arguments into the SysV registers, then the result from `rax` into the return continuation's parameter), a return (into `rax`), and the entry (from the SysV registers into the parameters) are parallel copies: spill slots first via `push`/`pop` (memory φs, cycles included), then register moves in dependency order with `xchg` for cycles, then immediates; a dead parameter receives nothing.
+  - A jump, a call (arguments into the SysV registers, then the result from `rax`/`xmm0` into the return continuation's parameter), a return (into `rax`/`xmm0`), and the entry (from the SysV registers into the parameters) are parallel copies: spill slots first via `push`/`pop` (memory φs, cycles included), then register moves in dependency order with `xchg` for cycles (three `xorps` for XMM ones), then immediates; a dead parameter receives nothing.
   - Flags are emitted where `x86.schedule` placed the `cmp`/`test`; `emit` tracks which result the flags hold and rejects a consumer whose flags something clobbered in between.
-  - The frame is `rbp`-based: the callee-saved registers that hold values are pushed after `rbp`, and spill slots and `x86.slot` areas follow, aligned so that `rsp` is a multiple of 16 at calls.
+  - The frame is `rbp`-based: the callee-saved general-purpose registers that hold values are pushed after `rbp`, and spill slots and `x86.slot` areas follow, aligned so that `rsp` is a multiple of 16 at calls.
+  - A float literal is a 16-byte-aligned constant in one `.rodata` pool per output file (`f64` uses both halves, `f32` the low one), loaded RIP-relative by `fmov`; `fabs` takes its mask from the same pool and `u2f`/`f2u` their 2^32.
+  - A float comparison is `ucomiss`/`ucomisd` plus `setcc`; an unordered one sets ZF, PF, and CF, so `e`, `l`, `le`, `ug`, `uge`, and `une` need a `jnp` over a fixup, and `f`/`t` are a constant.
+    Isel only produces `e` and `une` of these: `x86_isel` turns `l`/`le`/`ug`/`uge` into the converse `g`/`ge`/`ul`/`ule` of the swapped operands.
+  - `fsel` tests the condition and branches around a `movaps`.
+  - `i2f`/`f2i` are `cvtsi2ss`/`cvttss2si` at the operand's size; `u2f` from `i32` converts signed to `f64` and adds 2^32 after a `testl`/`jns`, then rounds once to `f32` if need be, `f2u` to `i32` converts to `i64` and truncates; `f2f` is `cvtss2sd`/`cvtsd2ss`.
   - Blocks are laid out by chasing each block's last jump (a jump's target, a call's return continuation, a branch's else target or its trampoline's target) and fall through to the next block where possible.
   - A non-power-of-two `trunc` is a `div` with `rax`, `rcx`, and `rdx` saved around it by `push`/`pop`, as nothing reserves them.
   - A non-external callee is emitted as a local function `<name>_<gid>`; an external declaration is called by its symbol.
@@ -122,7 +141,7 @@ Done (on `feature/x86`):
   A rule that maps a cover's memory (an `rm` rule) requires the availability of the root's holes at the load whose memory the replacement takes over (`holds`).
   `root_of` says which rules a Def is a root for: those of its axiom if some rule has it as root, those of `0` if it is an Extract at a dynamic index; every other Def is no node.
   The generator puts the rules of a root next to each other and indexes them in `rules::roots`; a matcher does not check the root's axiom again.
-  Every rule is a rule of `x86_isel`; `mem.mslot` only has one for a literal size in address space 0, so a dynamic size is an error.
+  Every rule is a rule of `x86_isel`.
   An Extract at a dynamic index has root `0`, which is how the rules for a select `(x, y)#c` apply.
   A cast between pointer types is a no-op to isel: a generated matcher binds a pointer hole to what is under it (`x86::strip_ptr_cast`), and the rewrite drops it.
   Which operand sizes an x86 instruction takes is stated by the `refly.check` in its codomain; the instance lists of `x86_isel` only name sizes it accepts.
@@ -137,21 +156,23 @@ Done (on `feature/x86`):
   `-X x86:isel-dot=<file>` writes the graph in Graphviz DOT format with the chosen options highlighted.
 - `Want::Sh` is a shift count: any literal, since x86 masks it, where `Want::Imm` must fit a sign-extended `i32`.
 - `x86.emit` prints a literal operand as `$c` (it must fit a sign-extended `i32`) and rejects one where the instruction needs a register.
-- Address rules: the `mem.ptradd` normalizer merges nested offsets with `core.wrap.add`, so the base `p` of a `ptradd` is never an address, and the rules of `x86_isel` match the offset arithmetic with `p` in a register (the marker `x86_isel.reg p`).
-  A literal offset that fits `i32` is the `disp`, `x + i` puts `p + x` into the base with an `x86.lea`, and any other offset is the index.
+- Address rules: a pointer is an `I64`, so the address forms are rules of `core.wrap.add` (`index_disp`, `base_index`, `disp`, `index`), declared after `arithmetic` to lose a tie against its `add`.
+  The `mem.ptradd` normalizer merges nested offsets, and the `core.wrap.add` normalizer pulls a literal out of a nested sum, so a displacement sits outermost.
+  A literal summand that fits `i32` is the `disp`, `p + (x + i)` puts `p + x` into the base with an `x86.lea`, and any other summand is the index.
+  Since a base and an offset commute, which of two equally cheap covers isel picks depends on the solver, e.g. `lea (r + c·4) + a` instead of `lea (a + r) + c·4` for a row-major access (`isel_addr.mim`).
   An index is the non-terminal `Scaled` (`[I64, I2]`, the hole marker `x86_isel.scaled i`): the `scale` family makes a `core.wrap.mul` by 2, 4, or 8 or a `core.wrap.shl` by 1, 2, or 3 one, any other register takes scale 1, so a product shared by several addresses is one node that each folds.
   `base_index` keeps `x` a register, so it and the scaled `i` differ and both orders of the `add` stay matches; with both `Scaled`, the generator drops the swap and `p + i * 4` can land in the `lea` of a loop.
   Of two matches that cost the same, the solver keeps the first, so the rules come larger first; within a root, the table follows the declaration order of `x86_isel`'s annexes, where a closed `rule` is an annex of its own and a family's instances sit in their tuple.
-- `<op>_rm` folds a sole load into `add`/`sub`/`and`/`or`/`xor`/`imul` as `x86.rm f (m, a, addr)` (`op r, addr`): the user moves to the load's place in the memory order, so its other operand must be in scope of the load's block and must not depend on the load.
+- `<op>_rm` folds a sole load into `add`/`sub`/`and`/`or`/`xor`/`imul` (and `float.rm`/`float.cmp_rm` into the float arithmetic and comparisons) as `x86.rm f (m, a, addr)` (`op r, addr`): the user moves to the load's place in the memory order, so its other operand must be in scope of the load's block and must not depend on the load.
   `mr` folds a store right behind the load (the load's memory has no other user) of an operation on the loaded value to the same address into `x86.mr f (m, addr, b)` (`op addr, r/imm`; not `imul`).
   `cmp`/`test` do not fold since `x86.schedule` rematerializes them per consumer, and `div` does not since `cltd` clobbers the index register.
 - `x86.div`/`idiv` yield quotient and remainder as a pair, so a quotient and a remainder of the same operands share one instruction; `x86.slot n` reserves `n` frame bytes on the `mem.M` chain; `trunc` to a non-power-of-two size is an unsigned remainder.
 - The rules `mul8`, `div8`, `rem8`, and `select8` widen 8-bit operations to `i32` (`movzx`/`movsx`, the instruction, `trunc`), since `imul`, `div`, `idiv`, and `cmovcc` have no 8-bit form.
 - A select is `cmovcc.ne (test (c, c), x, y)`; `x86.cmovcc`'s normalizer turns it into `cmovcc.l (f, x, y)` if `c` is `cc.l f`, so a `cmp` feeding a `setcc` and a `cmov` stays one.
-- `core.nat` selects on `I64`; `core.nat.sub` saturates as `cmovcc.b (cmp (a, b), sub (a, b), mov 0)`, and `core.rem` puts its divisor into a register with one closed rule per size, since `x86.mov`'s result type only folds for a literal size.
-- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/isel_nlogic.mim`, `lit/x86/isel_mr_shared.mim`, `lit/x86/isel_index_shared.mim` (a shared scaled index), `lit/x86/isel_index_shl.mim`, `lit/x86/isel_disp_shared.mim` (look-through), `lit/x86/isel_abs.mim` (literal addresses), `lit/x86/isel_addr.mim` (merged offsets), `lit/x86/isel_rules.mim` (the generated C++), `lit/x86/isel_select.mim`, `lit/x86/isel_lea.mim` (an `add` that would need a copy), `lit/x86/isel_slot.mim`, `lit/x86/isel_slot_dyn.mim` (no rule for a dynamic size), `lit/mem/legalize_ptr_index.mim`, `lit/x86/conv_fold.mim`, `lit/x86/addr_fold.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/emit_pbqp.mim` (competing folds), `lit/x86/sched.mim`, `lit/x86/sched_join.mim` (one placement in the dominator), `lit/x86/sched_loop.mim` (hoisting), `lit/x86/sched_remat.mim`, `lit/x86/sched_closed_tuple.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/sched_no_chain.mim`, `lit/x86/live_loop.mim`, `lit/x86/live_call.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`, `lit/x86/spill_loop.mim` (live-through values spilled outside the loop), `lit/x86/spill_phi.mim` (memory φ), `lit/x86/spill_ssa.mim` (new φ for a reloaded value), `lit/x86/spill_call.mim` (callee-saved limit), `lit/x86/constrain.mim` (also at `k = 3`), `lit/x86/color.mim` (fixed results, a value across a call; also at `k = 3`); `lit/x86/emit_cf.mim` also runs at `k = 3`.
+- `core.nat.sub` saturates as `cmovcc.b (cmp (a, b), sub (a, b), mov 0)` via the select rule, and `core.rem` puts its divisor into a register with one closed rule per size, since `x86.mov`'s result type only folds for a literal size.
+- Tests: `lit/x86/types.mim`, `lit/x86/isel.mim` (with `-o` round-trip), `lit/x86/isel_imul8.mim`, `lit/x86/isel_nlogic.mim`, `lit/x86/isel_mr_shared.mim`, `lit/x86/isel_index_shared.mim` (a shared scaled index), `lit/x86/isel_index_shl.mim`, `lit/x86/isel_disp_shared.mim` (look-through), `lit/x86/isel_abs.mim` (literal addresses), `lit/x86/isel_addr.mim` (merged offsets), `lit/x86/isel_rules.mim` (the generated C++), `lit/x86/isel_select.mim`, `lit/x86/isel_lea.mim` (an `add` that would need a copy), `lit/x86/isel_slot.mim`, `lit/x86/isel_slot_dyn.mim` (a dynamic size is an error), `lit/mem/legalize_ptr_index.mim`, `lit/x86/conv_fold.mim`, `lit/x86/addr_fold.mim`, `lit/x86/emit_run.mim`, `lit/x86/emit_nat.mim` (the `Nat` lowering of `x86.legalize`), `lit/x86/emit_cf.mim` (loop with a parameter swap, recursion), `lit/x86/emit_addr.mim` (folded address modes), `lit/x86/emit_rmw.mim` (`rm`/`mr`), `lit/x86/emit_pbqp.mim` (competing folds), `lit/x86/sched.mim`, `lit/x86/sched_join.mim` (one placement in the dominator), `lit/x86/sched_loop.mim` (hoisting), `lit/x86/sched_remat.mim`, `lit/x86/sched_closed_tuple.mim`, `lit/x86/sched_no_mem.mim`, `lit/x86/sched_no_chain.mim`, `lit/x86/live_loop.mim`, `lit/x86/live_call.mim`, `lit/x86/size_imul8.mim`, `lit/x86/size_add5.mim`, `lit/x86/spill_loop.mim` (live-through values spilled outside the loop), `lit/x86/spill_phi.mim` (memory φ), `lit/x86/spill_ssa.mim` (new φ for a reloaded value), `lit/x86/spill_call.mim` (callee-saved limit), `lit/x86/spill_float.mim` (a float across a call), `lit/x86/constrain.mim` (also at `k = 3`), `lit/x86/color.mim` (fixed results, a value across a call; also at `k = 3`), `lit/x86/isel_float.mim` (the float rules, with `-o` round-trip), `lit/x86/emit_float.mim` (float arguments and the pool), `lit/x86/emit_float_cmp.mim` (NaN semantics of every predicate kind, two fixups), `lit/x86/emit_float_unary.mim` (abs, sqrt, div, select, `f2f`), `lit/x86/emit_float_u2f.mim` (unsigned conversion, single rounding to `f32`), `lit/x86/emit_float_spill.mim` (an `fspill`/`freload` pair in the assembly), `lit/x86/emit_float_rm.mim` (folded float loads into arithmetic, `ucomiss`, a conversion, and `sqrt`); `lit/x86/emit_cf.mim` also runs at `k = 3`.
 
-Known gaps and bugs, as of 2026-11-21.
+Known gaps and bugs, as of 2026-11-22.
 
 Open bugs and risks (wrong code or a crash is possible, or only a later check catches it):
 
@@ -164,6 +185,7 @@ Open bugs and risks (wrong code or a crash is possible, or only a later check ca
 - `emit`'s flags tracking turns a clobbered flags value into a compile error; it can still happen where two `cmovcc`s share one hash-consed `cmp` copy (the memoization noted below under *Scheduling*) and a flag-clobbering instruction lands between them.
 - `prune` in `x86.color` drops a dead `load`, which removes a possible fault; volatile accesses are not modeled.
 - `prune` sets every block's filter to `ff` for good, so backend dumps show η-wrappers without their `tt` filter.
+- The two spilling passes rewrite one function in sequence, and the second maps the other class' live-ins to the defs the first built; running one class again on its own output would leave those defs dangling.
 
 Scheduling:
 
@@ -184,6 +206,7 @@ Spilling:
 - Rematerialization covers closed instructions only; a `reload` is never folded into a memory operand (`x86.rm`).
 - A `trunc` to a non-power-of-two size (a `div` in `emit`) has no constraint and no `extra` registers; `emit` saves `rax`, `rcx`, and `rdx` around it with `push`/`pop` instead.
 - Calls are modeled only as "at most `k − 9` values live across"; all arguments must be in registers at the call, and nothing reloads an argument directly into its argument register.
+- A call keeps no floating-point value in a register, since every XMM register is caller-saved: a float alive across a call costs a slot even at `k = 16`.
 - More register arguments or operands than `k` at a function entry, a return continuation, a call, or an instruction is an error, not a fallback: at `k < 6`, a function or call with six arguments fails, and at `k = 2` a `div` (three registers) fails; three allowlist programs hit the latter.
 - Every parameter of a branch target stays in a register, since both targets share one argument tuple; so the branch forces all its arguments into registers.
 - A dead parameter takes a register at its block's entry in the spiller's count (if its argument is not in a register, the jump passes a literal `0`), although `x86.color` gives it none and `emit` copies nothing into it.
@@ -206,20 +229,25 @@ Emission:
 
 - Every `Spill` value has a stack slot of its own: no slot coloring and no memory-φ coalescing, so a memory φ costs a `push`/`pop` per jump.
 - Block layout greedily chains each block's last jump; a branch whose then target takes parameters goes through a trampoline and always jumps to its else target.
-- Every function sets up `rbp`, even a leaf without slots, and every call sets `eax` to 0, even for a non-variadic callee.
+- Every function sets up `rbp`, even a leaf without slots, and every call sets `eax` to the number of XMM arguments, even for a non-variadic callee.
 - `x86.emit` handles neither switches with more than two targets, indirect calls, more than six arguments, nor `movsx`/`trunc` to non-power-of-two `Idx` sizes; it does not prefix symbols for Mach-O.
 
 Instruction selection:
 
 - A looked-through inner node keeps the cost of its own selection in the PBQP even if no chosen alternative uses its value; the rewrite then never builds it.
-- An identity rule such as `cast_int` (`core.bitcast (mem.Ptr0 I8) x ↦ x`) wants `x` in a register, so a literal behind it costs a `mov` instead of becoming an absolute address.
 - A swap that only exchanges two holes of the same want gives an alternative of the same PBQP cost, so the generator drops it; but the cost model does not see loop invariance, so which operand lands in a `lea` is the program's order (see `base_index`).
-- The `load`/`store` rules take `mem.M 0` and a pointer value only as `mem.Ptr0 I8`, so a memory operation in another address space has no rule.
+- The `load`/`store` rules take `mem.M 0` and a pointer only as `mem.Ptr0 T`, so a memory operation in another address space has no rule.
 - `isel` still emits size-check failures for non-register sizes (e.g. `core.wrap.add` on `Idx 5`); these need masking or a clear rejection.
 - An array index that `core.legalize_idx` narrowed is still reduced modulo its size in `mem.legalize_ptr` (an `and`, or a `div` for a size that is no power of two), although it is in range.
-- `malloc`/`free`, aggregate loads and stores, `bitcast` of unions or floats, `core.mulrem`, and `math` are not selected; `core.nat.div`/`rem` do not guard against zero like `ll`.
+- `malloc`/`free`, aggregate loads and stores, `bitcast` of unions or floats, and `core.mulrem` are not selected; `core.nat.div`/`rem` do not guard against zero like `ll`, and `x86.legalize` gives their `core.div` a `⊥` memory, since a `Nat` operation has none.
+- Floating point is `f32` and `f64` only: `math.F` of another format (`f16`, `bf16`, `nvtf32`, …), vector types, `math.arith.rem`, `math.extrema`, the transcendentals, and `is_finite` have no rule, and `fmov` rejects another format.
+- `u2f`/`f2u` exist for an `i32` integer only; an `i64` one would need a 2^63 split, and `emit` rejects it.
+- `x86.rm` takes any operand type and is tied only if its operation is; `float.rm` folds a load into `fadd`/`fsub`/`fmul`/`fdiv` and `float.cmp_rm`/`float.swap_rm` into `ucomiss`, as its source: the second operand of a direct predicate, or the first of `l`/`le`/`ug`/`uge` and the symmetric ones via the converse; `x < y` with `y` loaded stays a load, since `seta` needs `y` in the register.
+- `x86.rm1 f (m, addr)` is a unary operation on a loaded value: `s2f`, `f2s`/`f2u`, `f2f`, and `sqrt` fold a sole load, `u2f` (which reads its operand twice) does not; so `x86.f2i`/`f2u`/`f2f` take their source format explicitly, since a builder drops implicit arguments and nothing would determine it.
+- SSE has no `op addr, r` form, so there is no float `mr`; a constant still costs an `fmov` instead of a pool operand.
+- A float select is `fsel`, which branches and materializes both sides; there is no `blend`-style form.
 - The operand markers of `x86_isel` are a hack: opaque axioms that only the generator understands, so a rule applied by `▷` leaves them stuck and the rules are no executable specification.
-  `reg`, `addr`, `nat`, `scaled`, and `ptr` cast a meta variable from its lhs type (`mem.Ptr0 I8`, `Nat`) to an x86 operand type so the rhs type-checks, and double as its `Want`; they exist because one rule spans the change of representation, so lowering `Nat` (and pointers) to `I64` before isel removes most of them.
+  `addr` and `scaled` cast a meta variable from its lhs type (`mem.Ptr0 T`, `I64`) to an x86 operand type so the rhs type-checks, and double as its `Want`; since `x86.legalize` lowers `Nat` and pointers to `I64`, only these two remain, and they mark an address and a scaled index, not a change of representation.
   `reg_imm`/`reg_sh` only state an operand form; which operand of an instruction may be an immediate is a machine fact like `insn::tied`, so `insn.h` should state it and the generator derive `RegImm`/`RegSh` from the hole's position, which also drops the family parameter `r: mark`.
 
 Frontend bugs that `x86_isel` hits (libmim, not fixed):
@@ -229,11 +257,11 @@ Frontend bugs that `x86_isel` hits (libmim, not fixed):
 Testing and tooling:
 
 - Only `emit_cf.mim`, `constrain.mim`, and `color.mim` run at a small `k` by default; `scripts/x86_ksweep.sh` runs the whole allowlist at `k = 2`, `3`, `4`, and `6` via `--param x86_k=<n>` against each test's expected exit codes, but no CI job runs it yet.
-  At `k = 2`, nine tests stop with "needs more than 2 registers", the error without fallback described under *Spilling*.
+  At `k = 2`, ten tests stop with "needs more than 2 registers", the error without fallback described under *Spilling*.
 - No lit test pins the parallel-copy cases directly (an `xchg` cycle, a memory-φ `push`/`pop`, callee-saved saves, the `trunc` division); only the manual sweep exercises them, at small `k`.
 - The emit tests match registers by pattern now; they check the chosen instructions and address modes, not the assignment.
 - Re-running the full pipeline on backend output is not meaningful (`core.legalize_idx` η-wraps `x86.trunc` to `Idx 4`); round-trip backend dumps with `--no-opt`.
-- Loading `plugin x86` in a source file pulls `x86.emit` into the default pipeline; tests of isel or scheduling alone use a local `_compile` with just those phases, starting with `mem.legalize_ptr` (and `core.legalize_dyn_idx` for dynamic `Idx` sizes).
+- Loading `plugin x86` in a source file pulls `x86.emit` into the default pipeline; tests of isel or scheduling alone use a local `_compile` with just those phases, starting with `mem.legalize_ptr` (and `core.legalize_dyn_idx` for dynamic `Idx` sizes) and `x86.legalize`.
 - A user-file `axm` with a checked codomain dumped as `… → Idx _1` with `_1` unbound; likely a dumper round-trip bug.
 
 Pitfalls already hit (fixed, but each is a rule for any new backend phase):
@@ -242,11 +270,17 @@ Pitfalls already hit (fixed, but each is a rule for any new backend phase):
 - Rewriting a block in place must not let `World::app` inline a `tt`-filtered target or fold a branch whose targets became α-equal; freeze the filters to `ff` first.
 - A callee that is a known block is a jump only if it is a basic block: the function itself is block 0 of its `Liveness`, so a self-recursive call looked like a jump to the spiller and escaped the caller-saved limit.
 - An instruction off the chain is invisible to `Liveness`; `x86.color`'s checker now rejects any it reaches.
+- A builder of `x86_isel.gen` drops an implicit argument for `World::implicit_app`, so `(x86.f2i @ pe) s` lost `pe` where no operand determines it; write such a parameter explicitly in the axiom.
+- `Reg` equality includes the register class; a `Reg` built from a bare number is general-purpose, which emitted a `movq %rax, %rax` for a float return.
+- A `Lit` meta's type is not checked when matching, so the format-generic `fmov` matched `math.F16` although its rule instances name only `f32`/`f64`; `emit` rejects another format.
+- `use_reg` must accept `x86.fin` as well as `x86.in`, or every XMM operand fails as "not in a register".
+- A pass that rebuilds blocks must map a live-in of the other register class to the def the earlier pass built for it, since its defining block was rebuilt and the old def no longer dominates the use.
 
 ## Next Steps
 
 1. **PBQP instruction selection**: rules are data and the solvability checks run over the rule set now (see *Solvability*); next is rules in bulk (`cc` for flags consumed by branches and `cmov`, the `and` mask for `trunc` → `movzx`).
 2. **Register allocation**: spilling, `x86.constrain`, `x86.color`, and `emit` on the colored registers (SSA destruction by parallel copies) are done; next are spill-slot coloring with memory-φ coalescing, loop-depth weights for copies, and pressure-aware list scheduling (see *Register Assignment*); each piece is checked against the allowlist, also at small `k`.
+3. **Floating point**: `f32`/`f64` run through every phase; next are `i64`↔float (an unsigned convert needs the 2^63 split), pool constants as memory operands, callee-saved XMM registers, `f16`/`bf16` (with the VEX zeroing of the upper halves), and calling libm for the transcendentals.
 
 ## Instruction Selection with PBQP
 
@@ -268,9 +302,9 @@ This keeps their rule shape and solvability argument and adds the factoring of a
   The type of a rule is the type of its replacement.
 - A literal in a pattern is a pattern node, not a hole, like `Const` in the paper's `Add+Const`; it carries a range condition.
   Literals are no PBQP nodes (see *Instruction types are plain integers*), so they may overlap freely, and a register hole that lands on one costs an `x86.mov`.
-- Operand forms are rules of their own, written once: `core.wrap.mul (i, 4) ↦ (i, scale_4)` has type `[I64, I2]`, and `mem.ptradd (p, i: [I64, I2]) ↦ x86.index (x86.addr (0, p)) i` has type `Index`.
+- Operand forms are rules of their own, written once: `core.wrap.mul (i, 4) ↦ (i, scale_4)` has type `[I64, I2]`, and `core.wrap.add (p, i: [I64, I2]) ↦ x86.index (x86.addr (0, p)) i` has type `Index`.
   Instruction rules only mention the hole: `mem.load (m, p: Addr i) ↦ x86.load (m, p)`.
-  So the rule count is instructions plus operand forms; `mem.ptradd` chains of any length fold, since the normalizer merges them into one offset.
+  So the rule count is instructions plus operand forms; `mem.ptradd` chains of any length fold, since its normalizer merges them into one offset.
 - A multi-node instruction is a graph pattern with typed inner nodes, as in the paper: `add (a, (mem.load (m, p: Addr i))#1) ↦ x86.rm x86.add (m, a, p)`.
 - A conversion is a rule whose pattern is a single hole: `a: Addr i ↦ x86.lea a`, `c ↦ x86.mov c` for a literal `c`.
 
@@ -319,7 +353,6 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 ### Staging
 
 - `isel.cpp` has no rules of its own; `ISel::build` is the only builder.
-  The marker `x86_isel.ptr x` types the register `x` as `mem.Ptr0 I8` in an rhs (`slot`'s `k (m, ptr p)`); the builder drops it.
   The PBQP construction, the rewrite, and the solvability checks are generic over the tables.
 - The rules move to Mim: the plugin `x86_isel` (`src/mim/plug/x86_isel/x86_isel.mim`) holds rule families, their instance tuples, and the phase `x86_isel.gen`, which writes every closed rule reachable from its annexes to `build/include/mim/plug/x86/isel_rules.h` (types in `rule_table.h`): one C++ matcher per distinct lhs, one builder per distinct rhs, and a `Rewrite` row per rule with its cost, root axiom, non-terminal, and the `Want` of each meta.
   The non-terminal of a rule and the want of a meta come from one classification of their types: `x86.Addr ff`/`tt` is `Base`/`Index` (`Addr` for a meta of a dynamic `i`), `[I64, I2]` is `Scaled`, anything else a register; a memory operation's rhs counts by its value, and an rhs of a dynamic address form is an error.
@@ -333,11 +366,12 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
   Builders drop implicit arguments for `World::implicit_app`, so the holes determine them, e.g. the `i` of the `x86.Addr i` that the marker `x86_isel.addr p` stands for.
   A pure inner node whose value something else uses is looked through (`Cover::through`): the match takes its operands but leaves the node to its own selection, so a shared inner node of an address still folds into each; a memory operation never is.
   Rules apply by their exact root axiom, so a member of an annex without a rule is no node.
-  The ALU forms (reg, imm, widened `mul8`, `Bool` logic, `nand`/`nor`/`nxor`), the comparisons, the selects, the conversions, `core.nat`, `core.div`, `core.rem`, loads and stores, the memory forms (`rm`, `mr`), and the address forms are generated now, with selection byte-identical up to gids; `x86.movzx`/`movsx`/`trunc` fold a literal, so a widened immediate stays one.
-  The generator derives what a rule wants of each meta variable: a meta the rhs does not use, another meta's type mentions, or of type `mem.M` or a continuation is a `Param`, otherwise its type gives `Reg` (`Idx s`), its marker `Addr`/`Reg` (`mem.Ptr` under `x86_isel.addr`/`reg`, `Nat` under `x86_isel.nat`; an unmarked `Nat` is a `Param`, like the divisor of `core.rem`) or `Base`/`Index`/`Addr` (`x86.Addr`), and the guard atoms `x86_isel.imm`/`sh` give `Imm`/`Sh` and `x86_isel.lit` makes a `Param` a `Lit`, which must match a literal (and a conversion one from a literal); any other guard is an error, and a guard of `ff` drops the instance.
+  The float rules sit in `pub mod float` with local type aliases for their family parameters, each instance tuple right after its rules; a rule's name is its own sym, so rows read `rm(math.arith.add)`, not `float.rm(…)`.
+  The ALU forms (reg, imm, widened `mul8`, `Bool` logic, `nand`/`nor`/`nxor`), the comparisons, the selects, the conversions, `core.nat`, `core.div`, `core.rem`, loads and stores, the memory forms (`rm`, `mr`), the address forms, and the float arithmetic, comparisons, select, conversions, and memory forms are generated now, with selection byte-identical up to gids; `x86.movzx`/`movsx`/`trunc` fold a literal, so a widened immediate stays one.
+  The generator derives what a rule wants of each meta variable: a meta the rhs does not use, another meta's type mentions, or of type `mem.M` or a continuation is a `Param`, otherwise its type gives `Reg` (`Idx s`) or `FReg` (`math.F pe`), its marker `Addr` (`mem.Ptr` under `x86_isel.addr`; a `Nat` is a `Param`, like the divisor of `core.rem`) or `Base`/`Index`/`Addr` (`x86.Addr`), and the guard atoms `x86_isel.imm`/`sh` give `Imm`/`Sh` and `x86_isel.lit` makes a `Param` a `Lit`, which must match a literal (and a conversion one from a literal); any other guard is an error, and a guard of `ff` drops the instance.
   A rule costs the summed `x86::insn::cost` of its rhs (`include/mim/plug/x86/insn.h`): each instruction's latency on recent cores (uops.info) plus one, so of two equally fast covers the shorter wins; an address costs nothing, `rm`/`mr` a load plus their operation, and a `trunc` to a register size nothing.
   `Rewrite::tied` marks the meta variables a two-address instruction of the rhs overwrites (`insn::tied`, which `constraint()` shares); an alternative adds `insn::Copy` for each that something else uses (`ISel::overwritten`), and a swap of a commuting node that saves such a copy is kept.
-  `lea_add`/`lea_disp` add 64-bit values without overwriting either, at the cost of an `add`, so they win exactly where the `add` needs such a copy.
+  An address form converted by `lea` adds 64-bit values without overwriting either, at the cost of an `add`, so it wins exactly where the `add` needs such a copy.
   Without liveness, a parameter or loop φ never counts as overwritten, since its other uses are mostly in other continuations (`lit/mem/seo/dont_prop_old.mim` regresses otherwise).
   The frontend rejects a rule whose type mentions one of its meta variables, so a size the type names is a family parameter: a conversion of `core.conv` takes both sizes, one instance per pair of register sizes.
 - The build runs `mim` with `x86_isel` loaded as a module, so `x86` and `x86_isel` exist only if `MIM_X86` (neither `MIM_STATIC_PLUGINS` nor `MIM_NATIVE_MIM`); lit then excludes `lit/x86/` and drops the `x86_64-linux` feature.
@@ -370,13 +404,14 @@ The result of coloring lives in the graph: every use of a value is wrapped in
 
 ```
 axm in: [r: I4] → {s: Nat} → Idx s → Idx s;
+axm fin: [r: I4] → {pe: «2; Nat»} → math.F pe → math.F pe;
 ```
 
-- `x86.in r v` is `v`, which lives in register `r` in hardware encoding order (rax = 0, rcx = 1, rdx = 2, rbx = 3, rsp = 4, rbp = 5, rsi = 6, rdi = 7, r8 = 8, …, r15 = 15).
-  The lets `x86.reg.rax = 0I4` etc. form the module `x86.reg`, whose subtags are in that order; C++ takes `Num_Regs` and a register's encoding from them (`Annex::num<reg>()`, `encoding(reg::rax)`), so the registers are written down once.
-- `I4` makes "a general-purpose register" a typing fact; the width comes from `s`, so al/ax/eax/rax need no names, and since one value occupies a whole physical register, subregisters cannot alias.
-- `in` is no instruction: it is not scheduled and sits on no chain, like `x86.addr`.
-- Not wrapped: literals (immediates), `mem.M`, `Flags` (one flags register), `Spill s` (a stack slot each, in `emit`), `Addr` itself (its base and index are wrapped inside it), and the `Bool` of a `cc` that only a branch consumes.
+- `x86.in r v` is `v`, which lives in register `r` in hardware encoding order (rax = 0, rcx = 1, rdx = 2, rbx = 3, rsp = 4, rbp = 5, rsi = 6, rdi = 7, r8 = 8, …, r15 = 15) and `x86.fin` the same for an XMM register.
+  The lets `x86.reg.rax = 0I4` etc. form the module `x86.reg` and the lets `x86.freg.xmm0 = 0I4` etc. the module `x86.freg`, whose subtags are in that order; C++ takes `Num_Regs`/`Num_Fpr` and a register's encoding from them (`Annex::num<reg>()`, `encoding(reg::rax)`), so the registers are written down once.
+- `I4` makes "a general-purpose register" a typing fact and the `math.F pe` of `fin` a floating-point one; the width comes from `s`, so al/ax/eax/rax need no names, and since one value occupies a whole physical register, subregisters cannot alias.
+- `in` and `fin` are no instructions: they are not scheduled and sit on no chain, like `x86.addr`.
+- Not wrapped: literals (immediates), `mem.M`, `Flags` (one flags register), `Spill s`/`FSpill pe` (a stack slot each, in `emit`), `Addr` itself (its base and index are wrapped inside it), and the `Bool` of a `cc` that only a branch consumes.
 - `Liveness::values` already looks through non-instruction Defs, so `in r v` counts as a use of `v` without changes.
 
 Use-wrapping is def-annotation:
@@ -408,7 +443,7 @@ A `div` is isolated as `pre (m, a)` into `con pre (m: mem.M 0, a: I64)`, which d
 
 Invariants after coloring, checked by `x86.color` over a fresh `Liveness`:
 
-1. Every use of a register-class value is `in r v`, and all `in · v` agree on `r`.
+1. Every use of a value of a register class is `in r v` (general-purpose) or `fin r v` (floating-point), and all of them agree on `r`.
 2. Values live at the same point have distinct registers.
 3. Two-address: `reg(result) = reg(operand 0)`.
 4. Fixed registers: operands and results of `div`/`idiv`, shifts by `cl`; clobbered registers are not those of operands.
@@ -426,10 +461,10 @@ Phases:
   Entry parameters and a return continuation's parameter are treated the same way without a graph change: they only prefer their ABI register, and `emit` copies them out of it.
   Call arguments and returned values need no split either: the jump is the parallel copy into the callee's parameter registers.
   An operand that is split off and stays live occupies two registers at the jump, so `x86.spilling` has to count it in `extra`; shifts by `cl` need it, too.
-- `x86.color` builds one PBQP per function over the general-purpose class (16 options, rsp and rbp ∞): fixed operands and results (`constraint()`) are precolored; interference edges are ∞ on the diagonal, tie edges ∞ off it, jump-argument–parameter affinities cost a move off it; clobbers go into the cost vectors (`rdx` on `div`'s operands, caller-saved registers across a call); `rn_priority` is the position of the definition in an order that visits dominators first (see *Status*).
-- `x86.emit` reads the registers from the `in` map, sequentializes each jump's moves, saves the callee-saved registers it uses, and falls through where its layout allows (see *Status*).
+- `x86.color` builds one PBQP per function and register class (16 options, rsp and rbp ∞ in the general-purpose one and none reserved in the floating-point one): fixed operands and results (`constraint()`) are precolored; interference edges are ∞ on the diagonal, tie edges ∞ off it, jump-argument–parameter affinities cost a move off it; clobbers go into the cost vectors (`rdx` on `div`'s operands, caller-saved registers across a call); `rn_priority` is the position of the definition in an order that visits dominators first (see *Status*).
+- `x86.emit` reads the registers from the `in`/`fin` map, sequentializes each jump's moves, saves the callee-saved general-purpose registers it uses, and falls through where its layout allows (see *Status*).
 
-Each stage dumps and round-trips, so lit tests check `x86.in` directly.
+Each stage dumps and round-trips, so lit tests check `x86.in` and `x86.fin` directly.
 
 ## Pattern Database
 
@@ -453,6 +488,6 @@ The explosion is in forms (widths, register/memory/immediate operands, VEX/EVEX)
 
 - Integer-only lit tests that run under `-p ll` should also run under `-p x86` with the same expected output.
   The allowlist is a set of `%if x86_64-linux %{ … %}` RUN lines in those tests (feature set in `lit/lit.cfg.py`): every test that `-p opt … -p x86` compiles and runs correctly, 50 in `lit/` besides `lit/x86/`.
-  The others need calls to `malloc`/`free`, aggregate memory operations, unions, or `math`.
+  The others need calls to `malloc`/`free`, aggregate memory operations, unions, or a `math` operation beyond `f32`/`f64` arithmetic and conversion.
 - `mim-pbqp-test` checks `solve` against `solve_exhaustive` on small instances; there is no `mim-x86-test` yet, and the register-allocation invariants are checked by `x86.color` on every compiled function instead.
 - The optimizer-dump oracle for any change to the pre-isel pipeline.

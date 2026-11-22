@@ -1,0 +1,24 @@
+// REQUIRES: x86_64-linux
+// RUN: %mim -p opt %s -p x86 -X x86:o=%t.s
+// RUN: %FileCheck %s < %t.s
+// RUN: clang %t.s -o %t
+// RUN: %t ; test $? -eq 126
+// RUN: %t 1 ; test $? -eq 37
+
+plugin core;
+plugin mem;
+plugin x86;
+
+// `x86.legalize` lowers the `Nat` operations to `I64` ones, a select of `Nat` literals included.
+extern con main (m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char», return: Cn [mem.M 0, I32]) =
+    let n = core.idx2nat argc;
+    let a = core.nat.add (core.nat.mul (n, 10), 7);
+    let b = core.nat.sub (3, n);
+    let c = core.nat.div (a, core.nat.add (n, 2));
+    let d = core.nat.rem (a, core.nat.add (n, 4));
+    let e = (0, 100)#(core.ncmp.l (n, 2));
+    let s = core.nat.add (core.nat.add (core.nat.add (a, b), core.nat.add (c, d)), e);
+    return (m, core.idx 0 i32 s);
+
+// CHECK: divq
+// CHECK: cmov

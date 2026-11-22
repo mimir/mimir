@@ -5,9 +5,9 @@ plugin mem;
 plugin x86;
 import compile;
 
-extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_ptr, compile.named "x86.isel");
+extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_ptr, compile.named "x86.legalize", compile.named "x86.isel");
 
-// The row offset goes into the base, the column into the scaled index.
+// The row offset, the column, and the base fold into one `lea` and an address, the column as a scaled index.
 extern lam row (m: mem.M 0, a: mem.Ptr0 «256; «256; I32»», i j: I8): [mem.M 0, I32] =
     mem.load (m, mem.lea (mem.lea (a, i), j));
 
@@ -18,7 +18,8 @@ extern lam field (m: mem.M 0, a: mem.Ptr0 «256; [I32, I32]», i: I8): [mem.M 0,
 // CHECK-NOT: x86.imul @ 0 ({{.*}}, {{[48]}}I64)
 // CHECK-DAG: let [[LEA:_[0-9]+]] = x86.lea
 // CHECK-DAG: let [[BASE:_[0-9]+]] = x86.addr (0I32, [[LEA]]);
-// CHECK-DAG: x86.index [[BASE]] ({{_[0-9]+}}, 2I2);
+// CHECK-DAG: x86.index [[BASE]] ({{a(_[0-9]+)?}}, 0I2);
+// CHECK-DAG: x86.index {{_[0-9]+}} ({{_[0-9]+}}, 2I2);
 // CHECK-DAG: let [[DISP:_[0-9]+]] = x86.addr (4I32, a);
 // CHECK-DAG: x86.index [[DISP]] ({{_[0-9]+}}, 3I2);
 // CHECK-NOT: x86.imul @ 0 ({{.*}}, {{[48]}}I64)

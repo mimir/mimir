@@ -85,8 +85,14 @@ pbqp::Cost cost(u32 c) { return c == rules::Inf ? Inf : pbqp::Cost(c); }
 
 pbqp::Cost conv(Ty from, Want want) { return cost(rules::chains.conv(from, want)); }
 
+/// The non-terminal of @p def, which is no node: a literal, a floating-point register, or a general-purpose one.
+Ty leaf_ty(const Def* def) {
+    if (Lit::isa(def)) return Ty::Lit;
+    return math::isa_f(def->type()) ? Ty::FReg : Ty::Reg;
+}
+
 /// Cost of the operand @p def, which is no node, in a hole of type @p want.
-pbqp::Cost leaf(const Def* def, Want want) { return conv(Lit::isa(def) ? Ty::Lit : Ty::Reg, want); }
+pbqp::Cost leaf(const Def* def, Want want) { return conv(leaf_ty(def), want); }
 
 /// Does @p def satisfy a hole of type @p want that requires a literal?
 bool literal(const Def* def, Want want) { return Lit::isa(def) && (want == Want::Sh || fits_imm(def)); }
@@ -398,7 +404,7 @@ const Def* ISel::select(const Def* def) {
 const Def* ISel::selected(const Def* def) {
     auto alt = choice(def);
     if (!alt) return nullptr;
-    if (alt->rule) return convert(select(def), alt->rule->type, Want::Reg);
+    if (alt->rule) return convert(select(def), alt->rule->type, rules::reg_want(alt->rule->type));
     // The root of the match covering this inner node builds it.
     rewrite(roots_.at(def));
     return lookup(def);
@@ -406,13 +412,13 @@ const Def* ISel::selected(const Def* def) {
 
 const Def* ISel::hole(const Def* def, Want want) {
     if (auto alt = choice(def); alt && alt->rule) return convert(select(def), alt->rule->type, want);
-    return convert(val(def), Ty::Reg, want);
+    return convert(rewrite(def), leaf_ty(def), want);
 }
 
 const Def* ISel::convert(const Def* x, Ty from, Want want) {
     if (rules::is_literal(want)) return x;
     auto& w = new_world();
-    if (from == Ty::Reg && Lit::isa(x)) from = Ty::Lit;
+    if (Lit::isa(x) && (from == Ty::Reg || from == Ty::FReg)) from = Ty::Lit;
     auto to = rules::chains.target(from, want).first;
     for (auto t = from; t != to;) {
         auto c     = &rules::conversions[rules::chains.first[size_t(t)][size_t(to)]];
@@ -423,26 +429,6 @@ const Def* ISel::convert(const Def* x, Ty from, Want want) {
     return x;
 }
 
-const Def* ISel::nat_as_i64(const Def* x) {
-    if (auto l = Lit::isa(x); l && x->type()->isa<Nat>()) return new_world().lit_i64(*l);
-    return nullptr;
-}
-
-const Def* ISel::val(const Def* def) {
-    auto res = rewrite(def);
-    if (auto i = nat_as_i64(res)) return i;
-    return res;
-}
-
-const Def* ISel::rewrite_imm_Lit(const Lit* lit) {
-    if (lit->type()->isa<Nat>()) return new_world().lit_nat(lit->get());
-    return RWPhase::rewrite_imm_Lit(lit);
-}
-
-const Def* ISel::coerce_leaf(const Def* type, const Def* val) {
-    return type == new_world().type_i64() ? nat_as_i64(val) : nullptr;
-}
-
 const Def* ISel::rewrite_imm_Extract(const Extract* ex) {
     if (auto res = selected(ex)) return res;
     return RWPhase::rewrite_imm_Extract(ex);
@@ -450,7 +436,6 @@ const Def* ISel::rewrite_imm_Extract(const Extract* ex) {
 
 const Def* ISel::rewrite_imm_App(const App* app) {
     auto& w = new_world();
-    if (Axm::isa<core::Ptr>(app)) return w.type_i64();
     if (Axm::isa<core::M>(app)) return w.call<core::M>(w.lit_nat_0());
     if (auto res = selected(app)) return res;
     if (auto ptr = strip_ptr_cast(app); ptr != app) return rewrite(ptr);

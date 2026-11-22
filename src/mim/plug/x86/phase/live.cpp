@@ -27,8 +27,9 @@ void Live::visit(Lam* fun) {
     auto live = Liveness(fun);
     std::println(os, "fun {}", fun);
     for (const auto& block : live.blocks())
-        std::println(os, "  {}: in {{{}}} out {{{}}} max {} flags {}", block.lam, str(block.live_in),
-                     str(block.live_out), block.max_live[Liveness::Gpr], block.max_live[Liveness::Flags]);
+        std::println(os, "  {}: in {{{}}} out {{{}}} max {} fpr {} flags {}", block.lam, str(block.live_in),
+                     str(block.live_out), block.max_live[Liveness::Gpr], block.max_live[Liveness::Fpr],
+                     block.max_live[Liveness::Flags]);
 }
 
 } // namespace mim::plug::x86::phase

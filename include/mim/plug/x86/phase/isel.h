@@ -47,8 +47,8 @@ using Alts = fe::Vector<Alt>;
 
 ///@}
 
-/// Rewrites the `core` and `mem` operations of a lowered world into x86 instructions.
-/// Pointers and `Nat` become `I64`; everything else this phase does not know is an error.
+/// Rewrites the `core` and `mem` operations of a world that `x86.legalize` lowered into x86 instructions.
+/// Everything this phase does not know is an error.
 ///
 /// Selection is a cover of the program by matches of rules, found as a PBQP (Buchwald & Zwinkau, CASES 2010), where
 /// the holes of a pattern are typed.
@@ -74,10 +74,6 @@ private:
     const App* sole_value(const Def* def) const;
     /// The old_world() operand @p def as @p want in new_world().
     const Def* hole(const Def* def, Want want = Want::Reg);
-    /// The rewritten @p def with a `Nat` literal as `I64`, for value operands.
-    const Def* val(const Def* def);
-    /// The `Nat` literal @p x as `I64`, if it is one.
-    const Def* nat_as_i64(const Def* x);
     /// Builds the rhs of the rule of @p alt.
     const Def* build(const Alt& alt);
     ///@}
@@ -109,11 +105,8 @@ private:
     /// @p x of non-terminal @p from as @p want, by the cheapest chain of conversion rules.
     const Def* convert(const Def* x, Ty from, Want want);
 
-    const Def* rewrite_imm_Nat(const Nat*) final { return new_world().type_i64(); }
-    const Def* rewrite_imm_Lit(const Lit*) final;
     const Def* rewrite_imm_App(const App*) final;
     const Def* rewrite_imm_Extract(const Extract*) final;
-    const Def* coerce_leaf(const Def*, const Def*) final;
 
     DefMap<size_t> uses_;
     DefSet counted_;

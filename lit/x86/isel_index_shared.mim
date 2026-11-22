@@ -5,7 +5,7 @@ plugin mem;
 plugin x86;
 import compile;
 
-extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_ptr, compile.named "x86.isel");
+extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_ptr, compile.named "x86.legalize", compile.named "x86.isel");
 
 // Both addresses share the product `i * 4`, which each folds into its scale nevertheless.
 extern lam f (m: mem.M 0, a b: mem.Ptr0 «65536; I32», i: I16): [mem.M 0, I32] =

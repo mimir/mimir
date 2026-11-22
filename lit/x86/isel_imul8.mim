@@ -5,7 +5,7 @@ plugin mem;
 plugin x86;
 import compile;
 
-extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_ptr, compile.named "x86.isel");
+extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_ptr, compile.named "x86.legalize", compile.named "x86.isel");
 
 extern lam f (a b: I8): I8 = core.wrap.mul 0 (a, b);
 extern lam g (a: I8): I8 = core.wrap.mul 0 (a, 3I8);

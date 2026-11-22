@@ -14,6 +14,7 @@
 #include <mim/world.h>
 
 #include <mim/plug/core/core.h>
+#include <mim/plug/math/math.h>
 #include <mim/plug/x86/autogen.h>
 #include <mim/plug/x86/insn.h>
 #include <mim/plug/x86/rule_table.h>
@@ -50,12 +51,13 @@ constexpr std::string_view name(Ty ty) {
     std::unreachable();
 }
 
-/// What an operand of @p type is: `Base`, `Index`, `Addr` for either, `Scaled` for `[I64, I2]`, else `Reg`.
+/// What an operand of @p type is: `Base`, `Index`, `Addr` for either, `Scaled` for `[I64, I2]`, `FReg`, else `Reg`.
 Want classify(const Def* type) {
     if (auto addr = Axm::isa<x86::Addr>(type)) {
         auto i = Lit::isa(addr->arg());
         return !i ? Want::Addr : *i ? Want::Index : Want::Base;
     }
+    if (math::isa_f(type)) return Want::FReg;
     auto& w = type->world();
     if (type == w.sigma({w.type_i64(), w.type_i2()})) return Want::Scaled;
     return Want::Reg;
@@ -68,6 +70,7 @@ Ty nonterminal(const Rule* rule, const Def* type) {
         case Want::Index: return Ty::Index;
         case Want::Scaled: return Ty::Scaled;
         case Want::Reg: return Ty::Reg;
+        case Want::FReg: return Ty::FReg;
         default: rule->blame("x86_isel: `{}` must fix its address form in `{}`", type, rule).bail();
     }
 }
@@ -316,7 +319,7 @@ u32 Table::tied(const Def* rhs) const {
         todo.pop_back();
         if (def->isa_mut() || !done.emplace(def).second) continue;
         if (auto [axm, curry, _] = Axm::get(def); axm && curry == 0 && axm->plugin() == x86::Plugin_Id)
-            if (auto i = x86::insn::tied(axm->base())) {
+            if (auto i = x86::insn::tied(def->as<App>())) {
                 auto arg = def->as<App>()->arg();
                 if (auto m = meta(arg->proj(arg->num_projs(), *i))) res |= 1u << *m;
             }
@@ -342,12 +345,13 @@ std::vector<Table::Meta> Table::metas(const Rule* rule) {
             auto marked = [&](Want dflt) { return mark == marks_.end() ? dflt : mark->second; };
             if (Idx::isa(type)) {
                 want = marked(Want::Reg);
+            } else if (math::isa_f(type)) {
+                want = marked(Want::FReg);
             } else if (type->isa<Nat>()) {
-                want = marked(Want::Param);
+                want = Want::Param;
             } else if (Axm::isa<core::Ptr>(type)) {
                 if (mark == marks_.end())
-                    rule->blame("x86_isel: pointer `{}` of `{}` is no `x86_isel.addr` or `x86_isel.reg`", meta, rule)
-                        .bail();
+                    rule->blame("x86_isel: pointer `{}` of `{}` is no `x86_isel.addr`", meta, rule).bail();
                 want = mark->second;
             } else if (Axm::isa<core::M>(type) || type->isa<Pi>()) {
                 want = Want::Param;
@@ -375,7 +379,6 @@ void Table::guard(const Def* g, std::vector<Meta>& metas) {
     }
 
     auto set = [&](const Def* meta, Want from, Want to) {
-        if (auto nat = Axm::isa<x86_isel::nat>(meta)) meta = nat->arg();
         for (size_t i = 0; i != num_metas(); ++i)
             if (var_->proj(num_metas(), i) == meta && metas[i].want == from) {
                 metas[i].want = to;
@@ -410,12 +413,9 @@ u32 Table::node_(const Def* def) {
         if (auto i = Lit::isa(ex->index())) return hole(*i);
 
     if (auto addr = Axm::isa<x86_isel::addr>(def)) return marked(addr->arg(), Want::Addr);
-    if (auto reg = Axm::isa<x86_isel::reg>(def)) return marked(reg->arg(), Want::Reg);
-    if (auto nat = Axm::isa<x86_isel::nat>(def)) return marked(nat->arg(), Want::Reg);
     if (auto ri = Axm::isa<x86_isel::reg_imm>(def)) return widened(ri->arg(), Want::RegImm);
     if (auto rs = Axm::isa<x86_isel::reg_sh>(def)) return widened(rs->arg(), Want::RegSh);
     if (auto scaled = Axm::isa<x86_isel::scaled>(def)) return marked(scaled->arg(), Want::Scaled);
-    if (auto ptr = Axm::isa<x86_isel::ptr>(def)) return node(ptr->arg());
     if (auto axm = def->isa<Axm>()) return make({Kind::Axm, axm->flags(), {}}, axm->sym().str());
     if (auto lit = def->isa<Lit>()) return make({Kind::Lit, lit->get(), {node(lit->type())}});
     if (def->isa<Nat>()) return make({Kind::Nat, 0, {}});
@@ -755,7 +755,7 @@ void Table::check(const std::vector<Shape>& shapes, const std::vector<size_t>& i
     auto atomic = ankerl::unordered_dense::set<flags_t>();
     for (size_t i = 0, e = rewrites_.size(); i != e; ++i) {
         const auto& r = rewrites_[i];
-        if (chains.conv(r.type, Want::Reg) == x86::rules::Inf)
+        if (chains.conv(r.type, x86::rules::reg_want(r.type)) == x86::rules::Inf)
             fe::throwf("x86_isel: rule `{}` yields a value that does not convert to a register", r.name);
         for (auto m : r.metas)
             if (!x86::rules::is_param(m.want) && !x86::rules::is_literal(m.want) && !chains.reachable(m.want))

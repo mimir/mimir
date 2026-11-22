@@ -1,0 +1,37 @@
+// REQUIRES: x86_64-linux
+// RUN: %mim %s -p x86 -X x86:o=%t.s
+// RUN: %FileCheck %s < %t.s
+// RUN: clang %t.s -o %t
+// RUN: %t ; test $? -eq 6
+// RUN: %t a b ; test $? -eq 7
+// RUN: %t a b c d ; test $? -eq 6
+// RUN: %t a b c d e f ; test $? -eq 7
+
+plugin core;
+plugin mem;
+plugin math;
+plugin x86;
+
+use math.ops.none;
+
+/// `u32` to `f64` and back; the round-trip holds on both sides of 2^31.
+/// `u32` to `f32` rounds once: 2^31 + 129 + k becomes 2^31 + 256, where rounding twice gives 2^31.
+extern con main (m: mem.M 0, argc: I32, return: Cn [mem.M 0, I32]) =
+    let u = core.wrap.mul 0 (argc, 1000000001I32);
+    let f = math.conv.u2f math.f64 u;
+    let g = math.cmp.g math.mode.none (f, 2147483648.0:math.F64);
+    let r = math.conv.f2u i32 f;
+    let e = core.icmp.e (r, u);
+    let s = math.conv.u2f math.f32 (core.wrap.add 0 (argc, 2147483776I32));
+    let h = math.cmp.e math.mode.none (s, 2147483904.0:math.F32);
+    let r = core.wrap.add 0 (core.conv.u i32 g, core.wrap.mul 0 (core.conv.u i32 e, 2I32));
+    return (m, core.wrap.add 0 (r, core.wrap.mul 0 (core.conv.u i32 h, 4I32)));
+
+// A signed convert plus a conditional 2^32 makes the unsigned one.
+// CHECK-DAG: cvtsi2sdl
+// CHECK-DAG: testl
+// CHECK-DAG: jns .L
+// CHECK-DAG: addsd .Lpool{{[0-9]+}}(%rip)
+// CHECK-DAG: cvttsd2siq
+// CHECK-DAG: cvtsd2ss
+// CHECK-DAG: .quad 0x41f0000000000000

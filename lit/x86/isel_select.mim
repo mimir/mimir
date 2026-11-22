@@ -6,7 +6,7 @@ plugin mem;
 plugin x86;
 import compile;
 
-extern lam _compile (): compile.Phase = compile.phases ff (compile.named "x86.isel", compile.named "x86.schedule");
+extern lam _compile (): compile.Phase = compile.phases ff (compile.named "x86.legalize", compile.named "x86.isel", compile.named "x86.schedule");
 
 extern con fused (m: mem.M 0, a b x y: I32, return: Cn [mem.M 0, I32]) = return (m, (x, y)#(core.icmp.sl (a, b)));
 extern con plain (m: mem.M 0, c: Bool, x y: I64, return: Cn [mem.M 0, I64]) = return (m, (x, y)#c);

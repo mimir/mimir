@@ -5,7 +5,7 @@ plugin mem;
 plugin x86;
 import compile;
 
-extern lam _compile (): compile.Phase = compile.phases ff (compile.named "x86.isel");
+extern lam _compile (): compile.Phase = compile.phases ff (compile.named "x86.legalize", compile.named "x86.isel");
 
 // A left shift by 2 is the index scaled by 4, so no `shl` remains.
 extern lam f (m: mem.M 0, p: mem.Ptr0 I8, i: I64): [mem.M 0, I8] =

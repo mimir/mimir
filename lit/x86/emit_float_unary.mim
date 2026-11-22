@@ -1,0 +1,36 @@
+// REQUIRES: x86_64-linux
+// RUN: %mim %s -p x86 -X x86:o=%t.s
+// RUN: %FileCheck %s < %t.s
+// RUN: clang %t.s -o %t
+// RUN: %t a ; test $? -eq 14
+// RUN: %t a b ; test $? -eq 17
+
+plugin core;
+plugin mem;
+plugin math;
+plugin x86;
+
+use math.ops.none;
+
+/// `|x - 5| + sqrt(x + 7) + 12 / (x + 2) + select (x < 3) 7 3 + f32 (f64 x)`.
+extern con main (m: mem.M 0, argc: I32, return: Cn [mem.M 0, I32]) =
+    let x = math.conv.s2f math.f32 argc;
+    let a = math.abs math.mode.none (x - 5.0:math.F32);
+    let b = math.rt.sq math.mode.none (x + 7.0:math.F32);
+    let c = 12.0:math.F32 / (x + 2.0:math.F32);
+    let d = (7.0:math.F32, 3.0:math.F32)#(math.cmp.l math.mode.none (x, 3.0:math.F32));
+    let e = math.conv.f2f math.f32 (math.conv.f2f math.f64 x);
+    let add = core.wrap.add 0;
+    let res = add (add (add (add (math.conv.f2s i32 a, math.conv.f2s i32 b), math.conv.f2s i32 c),
+                         math.conv.f2s i32 d),
+                   math.conv.f2s i32 e);
+    return (m, res);
+
+// `fabs` is an `andps` with a mask from the pool; `fsel` branches around a `movaps`.
+// CHECK-DAG: andps .Lpool{{[0-9]+}}(%rip)
+// CHECK-DAG: sqrtss %xmm{{[0-9]+}}, %xmm{{[0-9]+}}
+// CHECK-DAG: divss %xmm{{[0-9]+}}, %xmm{{[0-9]+}}
+// CHECK-DAG: movaps %xmm{{[0-9]+}}, %xmm{{[0-9]+}}
+// CHECK-DAG: cvtss2sd %xmm{{[0-9]+}}, %xmm{{[0-9]+}}
+// CHECK-DAG: cvtsd2ss %xmm{{[0-9]+}}, %xmm{{[0-9]+}}
+// CHECK-DAG: .quad 0x7fffffff7fffffff

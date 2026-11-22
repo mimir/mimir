@@ -14,12 +14,14 @@ class World;
 /// The closed rewrite rules of the `x86_isel` plugin as C++; `x86_isel.gen` writes them to `isel_rules.h`.
 namespace mim::plug::x86::rules {
 
-#define MIM_X86_RULE_WANTS(X) X(Param) X(Lit) X(Reg) X(Imm) X(Sh) X(RegImm) X(RegSh) X(Base) X(Index) X(Addr) X(Scaled)
+#define MIM_X86_RULE_WANTS(X) \
+    X(Param) X(Lit) X(Reg) X(FReg) X(Imm) X(Sh) X(RegImm) X(RegSh) X(Base) X(Index) X(Addr) X(Scaled)
 
 /// What a rule wants of the term a meta variable matches; a Param is bound but no operand.
 /// A Lit is a Param that must be a literal.
-/// Reg is a register, Base/Index an `x86.Base`/`x86.Index`, Addr an `x86.Addr i` for any `i`, and Scaled an index with
-/// its scale. Imm is a literal that fits a sign-extended `i32` immediate, Sh a literal shift count, which x86 masks.
+/// Reg is a general-purpose register, FReg a floating-point one, and Base/Index an `x86.Base`/`x86.Index`.
+/// Addr is an `x86.Addr i` for any `i`, and Scaled an index with its scale.
+/// Imm is a literal that fits a sign-extended `i32` immediate, Sh a literal shift count, which x86 masks.
 /// RegImm and RegSh are a Reg, or an Imm and a Sh for a literal that is one.
 enum class Want : u8 {
 #define X(w) w,
@@ -27,10 +29,10 @@ enum class Want : u8 {
 #undef X
 };
 
-#define MIM_X86_RULE_TYS(X) X(Reg) X(Base) X(Index) X(Scaled) X(Lit)
+#define MIM_X86_RULE_TYS(X) X(Reg) X(FReg) X(Base) X(Index) X(Scaled) X(Lit)
 
-/// The non-terminal a rule yields, by the type of its rhs: a register, `x86.Base`, `x86.Index`, or an index with its
-/// scale `[I64, I2]`. Lit is no rule's type but that of a literal operand.
+/// The non-terminal a rule yields by the type of its rhs: a register of either class, `x86.Base`, `x86.Index`, or
+/// `[I64, I2]`. Lit is no rule's type but that of a literal operand.
 enum class Ty : u8 {
 #define X(t) t,
     MIM_X86_RULE_TYS(X)
@@ -132,12 +134,23 @@ constexpr bool fills(Ty ty, Want want) {
         case Want::Reg:
         case Want::RegImm:
         case Want::RegSh: return ty == Ty::Reg;
+        case Want::FReg: return ty == Ty::FReg;
         case Want::Base: return ty == Ty::Base;
         case Want::Index: return ty == Ty::Index;
         case Want::Addr: return ty == Ty::Base || ty == Ty::Index;
         case Want::Scaled: return ty == Ty::Scaled;
         default: return false;
     }
+}
+
+/// The register hole that a value of non-terminal @p ty fills.
+constexpr Want reg_want(Ty ty) { return ty == Ty::FReg ? Want::FReg : Want::Reg; }
+
+/// Is a value of non-terminal @p ty in the same register class as a hole of type @p want?
+/// Conversions never cross between general-purpose and floating-point registers.
+constexpr bool same_class(Ty ty, Want want) {
+    if (want == Want::FReg) return ty == Ty::FReg;
+    return ty != Ty::FReg;
 }
 
 /// The cheapest chains of conversions between two non-terminals: their costs and each one's first conversion.
@@ -176,17 +189,18 @@ struct Chains {
         return target(from, want).second;
     }
 
-    /// Does every non-terminal convert into a hole of type @p w, as an atomic rule's holes must?
+    /// Does every non-terminal of @p w's register class convert into a hole of type @p w, as an atomic rule's holes
+    /// must?
     constexpr bool total(Want w) const {
         for (size_t t = 0; t != Num_Tys; ++t)
-            if (conv(Ty(t), w) == Inf) return false;
+            if (same_class(Ty(t), w) && conv(Ty(t), w) == Inf) return false;
         return true;
     }
 
-    /// Does some non-terminal of a rule convert into a hole of type @p w?
+    /// Does some non-terminal of the register class of a rule convert into a hole of type @p w?
     constexpr bool reachable(Want w) const {
         for (size_t t = 0; t != Num_Tys; ++t)
-            if (Ty(t) != Ty::Lit && conv(Ty(t), w) != Inf) return true;
+            if (Ty(t) != Ty::Lit && same_class(Ty(t), w) && conv(Ty(t), w) != Inf) return true;
         return false;
     }
 };

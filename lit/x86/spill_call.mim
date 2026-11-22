@@ -23,5 +23,5 @@ extern lam _compile (): compile.Phase = compile.phases ff (x86.schedule, x86.spi
 // CHECK-NOT:  x86.reload
 // CHECK:      g ([[S]]#ff, [[X]]#tt, k{{[_0-9]*}});
 // LIVE:       fun f
-// LIVE-NEXT:  f: {{.*}} max 6 flags 0
-// LIVE-NEXT:  k{{[_0-9]*}}: {{.*}} max 6 flags 0
+// LIVE-NEXT:  f: {{.*}} max 6 fpr 0 flags 0
+// LIVE-NEXT:  k{{[_0-9]*}}: {{.*}} max 6 fpr 0 flags 0

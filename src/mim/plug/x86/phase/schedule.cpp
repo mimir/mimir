@@ -10,7 +10,7 @@ bool is_insn(const Def* def) {
     if (auto app = def->isa<App>())
         if (auto axm = app->axm())
             return axm->plugin() == Plugin_Id && !app->type()->isa<Pi>() && !Axm::isa<Addr>(app->type())
-                && !Axm::isa<in>(app);
+                && !Axm::isa<in>(app) && !Axm::isa<fin>(app);
     return false;
 }
 
@@ -78,6 +78,12 @@ void Schedule::thread(Lam* lam) {
     // Direct style has no chain, so an instruction in there runs into rewrite_imm_App.
     if (i == n && Lam::isa_cn(lam))
         lam->blame(MIM_X86_BE "continuation `{}` has no `mem.M` to schedule on", lam).bail();
+    if (i != n && !Lam::isa_cn(lam))
+        lam->blame(MIM_X86_BE "direct-style function `{}` takes a `mem.M`, which only a continuation can schedule on",
+                   lam)
+            .bail();
+    if (i != n && !lam->body()->isa<App>())
+        lam->blame(MIM_X86_BE "the body of continuation `{}` is no jump: `{}`", lam, lam->body()).bail();
 
     push(Vars(lam->has_var()), Vars(lam->has_var()));
     if (i != n) chain(lam, i);

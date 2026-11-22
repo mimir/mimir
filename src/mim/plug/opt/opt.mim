@@ -113,6 +113,7 @@ extern lam _default_compile (): compile.Phase =
         compile.cond "x86" mem.add_mem,
         compile.cond "x86" core.legalize_dyn_idx,
         compile.cond "x86" mem.legalize_ptr,
+        compile.named "x86.legalize",
         compile.named "x86.isel",
         compile.named "x86.schedule",
         compile.named "x86.spilling",
