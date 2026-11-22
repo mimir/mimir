@@ -5,6 +5,8 @@
 
 #include <mim/driver.h>
 
+#include <mim/plug/math/math.h>
+
 #include "mim/plug/x86/constraint.h"
 #include "mim/plug/x86/liveness.h"
 #include "mim/plug/x86/subst.h"
@@ -20,10 +22,8 @@ constexpr size_t Loop_Exit = 1 << 20;
 
 size_t add(size_t a, size_t b) { return a > Inf - b ? Inf : a + b; }
 
-DefVec gpr(DefVec values) {
-    std::erase_if(values, [](const Def* v) { return !is_gpr(v); });
-    return values;
-}
+/// The `pe` of a `math.F pe`.
+const Def* fpe(const Def* type) { return Axm::isa<math::F>(type)->arg(); }
 
 const App* root(const Def* value) {
     while (auto ex = value->isa<Extract>())
@@ -47,10 +47,11 @@ bool is_remat(const Def* value) {
 
 class Spiller {
 public:
-    Spiller(Lam* fun, size_t k)
+    Spiller(Lam* fun, Liveness::Class cls, size_t k)
         : world_(fun->world())
         , fun_(fun)
         , live_(fun)
+        , cls_(cls)
         , k_(k)
         , n_(live_.blocks().size()) {}
 
@@ -79,6 +80,19 @@ private:
 
     const Liveness::Block& block(size_t b) const { return live_.blocks()[b]; }
     size_t size(size_t b) const { return block(b).insns.size(); }
+    bool member(const Def* v) const { return is_value(v, cls_); }
+    DefVec members(DefVec values) const {
+        std::erase_if(values, [&](const Def* v) { return !member(v); });
+        return values;
+    }
+    /// The registers of this class that a call may clobber.
+    size_t caller_saved() const { return cls_ == Liveness::Fpr ? Num_Fpr : Num_Caller_Saved; }
+    /// @p G applied to the size of a general-purpose @p type, or @p F to the format of a floating-point one.
+    template<class G, class F>
+    const Def* by_class(const Def* type) const {
+        return cls_ == Liveness::Fpr ? world_.app(world_.annex<F>(), fpe(type))
+                                     : world_.app(world_.annex<G>(), Idx::as(type));
+    }
     const App* term(size_t b) const { return block(b).lam->body()->as<App>(); }
     size_t index(Lam* lam) const { return size_t(live_.block(lam) - live_.blocks().data()); }
     Term kind(size_t b) const;
@@ -112,6 +126,7 @@ private:
     World& world_;
     Lam* fun_;
     Liveness live_;
+    Liveness::Class cls_;
     size_t k_;
     size_t n_;
 
@@ -140,6 +155,7 @@ private:
     LamMap<Lam*> new_lams_;
     fe::Vector<const Def*> vers_;
     DefMap<const Def*> stack_; ///< The spill slot of a value.
+    Def2Def new_defs_;         ///< Values of already rebuilt blocks.
     const Def* m_ = nullptr;
 };
 
@@ -249,9 +265,9 @@ void Spiller::next_uses() {
     nu_out_.resize(n_);
     for (size_t b = 0; b != n_; ++b) {
         for (size_t i = 0; i != size(b); ++i)
-            for (auto v : gpr(live_.uses(block(b).insns[i])))
+            for (auto v : members(live_.uses(block(b).insns[i])))
                 uses_[b][v].emplace_back(i);
-        for (auto v : gpr(live_.term_uses(block(b))))
+        for (auto v : members(live_.term_uses(block(b))))
             uses_[b][v].emplace_back(size(b));
     }
 
@@ -259,7 +275,7 @@ void Spiller::next_uses() {
         todo = false;
         for (auto b : rpo_ | std::views::reverse) {
             for (auto v : block(b).live_out) {
-                if (!is_gpr(v)) continue;
+                if (!member(v)) continue;
                 auto d = Inf;
                 for (auto s : block(b).succs)
                     if (block(s).live_in.contains(v))
@@ -299,7 +315,7 @@ void Spiller::entry(size_t b) {
     auto n      = lam->num_vars();
     auto params = DefVec();
     for (size_t i = 0; i != n; ++i)
-        if (auto x = lam->var(n, i); is_gpr(x)) params.emplace_back(x);
+        if (auto x = lam->var(n, i); member(x)) params.emplace_back(x);
 
     auto take   = DefVec();
     auto by_use = [&](DefVec& vs) {
@@ -314,7 +330,7 @@ void Spiller::entry(size_t b) {
     auto vars  = lam->vars();
     auto cands = DefVec();
     for (auto v : block(b).live_in)
-        if (is_gpr(v)) cands.emplace_back(v);
+        if (member(v)) cands.emplace_back(v);
 
     // These parameters cannot become memory φs; a dead one leaves its register right away.
     auto fixed = b == 0 || ret_cont_[b] || branch_target_[b];
@@ -346,7 +362,7 @@ void Spiller::entry(size_t b) {
         fill(in_loop, k_);
         auto pressure = size_t(0);
         for (auto x : loop_[b])
-            pressure = std::max(pressure, block(x).max_live[Liveness::Gpr]);
+            pressure = std::max(pressure, block(x).max_live[cls_]);
         auto busy = pressure > through.size() ? pressure - through.size() : 0;
         fill(through, std::min(k_, take.size() + (k_ > busy ? k_ - busy : 0)));
     }
@@ -370,8 +386,11 @@ void Spiller::walk(size_t b) {
 
     for (size_t i = 0; i != n; ++i) {
         auto insn = block(b).insns[i];
-        auto us   = gpr(live_.uses(insn));
+        auto us   = members(live_.uses(insn));
         auto c    = constraint(insn);
+        // Fixed operands, results, and clobbers of an instruction are general-purpose registers.
+        if (cls_ != Liveness::Gpr) c.fixed.clear(), c.clobbers.clear();
+        if (c.tied && !member(c.ops[*c.tied])) c.tied.reset();
         auto live = [&](const Def* v) { return next_use(b, v, i + 1) != Inf; };
         auto cp   = DefVec();
         for (auto [j, _] : copies(c, live))
@@ -382,7 +401,7 @@ void Spiller::walk(size_t b) {
         if (evict)
             for (auto v : cp)
                 w.erase(v);
-        auto ds = gpr(live_.defs(insn));
+        auto ds = members(live_.defs(insn));
         if (is_sched_cc(insn)) std::erase_if(ds, [&](const Def* d) { return !live(d); });
         if (ds.size() > k_) insn->blame(MIM_X86_BE "`{}` defines more than {} registers", insn, k_).bail();
         limit(b, w, k_ - ds.size(), i + 1);
@@ -390,8 +409,8 @@ void Spiller::walk(size_t b) {
     }
 
     auto t = kind(b);
-    if (t != Term::Jump) use(gpr(live_.term_uses(block(b))), n, 0, term(b));
-    if (t == Term::Call) limit(b, w, k_ > Num_Caller_Saved ? k_ - Num_Caller_Saved : 0, n + 1);
+    if (t != Term::Jump) use(members(live_.term_uses(block(b))), n, 0, term(b));
+    if (t == Term::Call) limit(b, w, k_ > caller_saved() ? k_ - caller_saved() : 0, n + 1);
     w_exit_[b] = std::move(w);
     done_[b]   = true;
 }
@@ -415,7 +434,7 @@ void Spiller::couple() {
             for (size_t i = 0; i != n; ++i) {
                 auto x = lam->var(n, i);
                 auto a = arg(p, b, i);
-                if (!a || !is_gpr(x) || Lit::isa(a)) continue;
+                if (!a || !member(x) || Lit::isa(a)) continue;
                 if (!w_entry_[b].contains(x)) {
                     if (!mphi_.contains(a)) spill_.emplace(a);
                 } else if (next_use(b, x, 0) != Inf) {
@@ -437,7 +456,7 @@ void Spiller::versions() {
             for (auto& r : reloads_[b][i])
                 last_[b][r.value] = r.ver = new_ver();
             if (i == n) break;
-            for (auto d : gpr(live_.defs(block(b).insns[i])))
+            for (auto d : members(live_.defs(block(b).insns[i])))
                 last_[b][d] = def_ver_[d] = new_ver();
         }
     }
@@ -509,7 +528,7 @@ const Def* Spiller::sched(const Def* f, const Def* x) {
     return res->proj(2, 1);
 }
 
-const Def* Spiller::spill(const Def* x) { return sched(world_.app(world_.annex<x86::spill>(), Idx::as(x->type())), x); }
+const Def* Spiller::spill(const Def* x) { return sched(by_class<x86::spill, fspill>(x->type()), x); }
 
 void Spiller::build() {
     vers_.resize(parent_.size());
@@ -523,7 +542,7 @@ void Spiller::build() {
         auto dom = DefVec();
         for (size_t i = 0; i != n; ++i) {
             auto x = lam->var(n, i);
-            dom.emplace_back(mphi_.contains(x) ? world_.call<Spill>(Idx::as(x->type())) : x->type());
+            dom.emplace_back(mphi_.contains(x) ? by_class<Spill, FSpill>(x->type()) : x->type());
         }
         for (auto phi : phis_[b])
             dom.emplace_back(phi_[phi].value->type());
@@ -564,6 +583,10 @@ void Spiller::build(size_t b) {
         vers_[phis_[b][j]] = new_lam->var(m, n + j);
     for (const auto& [v, ver] : entry_[b])
         cur[v] = vers_[find(ver)];
+    // Another class' live-in was already rebuilt together with its own block.
+    for (auto v : block(b).live_in)
+        if (Liveness::cls(v) != cls_)
+            if (auto nv = fe::lookup(new_defs_, v)) cur[v] = nv;
     for (auto x : old->vars())
         if (spill_.contains(x)) stack_[x] = spill(cur[x]);
 
@@ -571,20 +594,21 @@ void Spiller::build(size_t b) {
     auto reloads = [&](size_t pos) {
         for (auto [v, ver] : reloads_[b][pos]) {
             auto app = root(v);
-            cur[v] = vers_[ver] = is_remat(v)
-                                    ? reroot(v, app->proj(2, 1), sched(sched_insn(app), app->arg()))
-                                    : sched(world_.app(world_.annex<x86::reload>(), Idx::as(v->type())), slot(v));
+            cur[v] = vers_[ver] = is_remat(v) ? reroot(v, app->proj(2, 1), sched(sched_insn(app), app->arg()))
+                                              : sched(by_class<x86::reload, freload>(v->type()), slot(v));
         }
     };
 
     for (size_t i = 0, e = size(b); i != e; ++i) {
         reloads(i);
-        auto insn    = block(b).insns[i];
-        auto new_app = Subst(world_, cur, m_, &new_lams_).Rewriter::rewrite(insn);
-        m_           = is_mem(new_app) ? new_app : new_app->proj(2, 0);
-        cur[insn]    = new_app;
+        auto insn       = block(b).insns[i];
+        auto new_app    = Subst(world_, cur, m_, &new_lams_).Rewriter::rewrite(insn);
+        m_              = is_mem(new_app) ? new_app : new_app->proj(2, 0);
+        cur[insn]       = new_app;
+        new_defs_[insn] = new_app;
         for (auto d : live_.defs(insn)) {
-            cur[d] = reroot(d, insn, new_app);
+            cur[d]       = reroot(d, insn, new_app);
+            new_defs_[d] = cur[d];
             if (auto ver = fe::lookup(def_ver_, d)) vers_[*ver] = cur[d];
             if (spill_.contains(d)) stack_[d] = spill(cur[d]);
         }
@@ -603,8 +627,8 @@ void Spiller::build(size_t b) {
             auto x = target->var(k, i);
             auto a = t->arg(k, i);
             if (!mphi_.contains(x)) {
-                // A dead parameter may receive anything.
-                auto dead = is_gpr(a) && !Lit::isa(a) && !cur.contains(a);
+                // A value this block does not define belongs to a dead parameter, which may receive anything.
+                auto dead = member(a) && !Lit::isa(a) && !cur.contains(a);
                 args.emplace_back(dead ? world_.lit(x->type(), 0) : subst(a));
             } else if (Lit::isa(a)) {
                 args.emplace_back(spill(a));
@@ -673,17 +697,18 @@ void split_critical_edges(Lam* fun) {
 
 Spilling::Spilling(World& world, flags_t annex)
     : ClosedMutPhase(world, annex, true)
-    , k_(driver().arg_nat("x86", "k").value_or(Num_Allocatable)) {
+    , k_(driver().arg_nat("x86", "k")) {
     if (k_ == 0) {
         log().w("ignoring `-X x86:k=0`");
-        k_ = Num_Allocatable;
+        k_.reset();
     }
 }
 
 void Spilling::visit(Lam* fun) {
     if (Lam::isa_mut_returning(fun)) {
         split_critical_edges(fun);
-        Spiller(fun, k_).run();
+        Spiller(fun, Liveness::Gpr, k_.value_or(Num_Allocatable)).run();
+        Spiller(fun, Liveness::Fpr, k_.value_or(Num_Fpr)).run();
     }
 }
 

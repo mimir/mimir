@@ -1,0 +1,35 @@
+// REQUIRES: x86_64-linux
+// RUN: %mim %s -p x86 -X x86:o=%t.s
+// RUN: %FileCheck %s < %t.s
+// RUN: clang -c %t.s -o %t.o
+
+plugin core;
+plugin mem;
+plugin math;
+plugin x86;
+
+use math.ops.none;
+
+/// The loaded operand comes second, so it folds.
+extern con sub_rm (m: mem.M 0, p: mem.Ptr0 math.F32, x: math.F32, return: Cn [mem.M 0, math.F32]) =
+    let (m, y) = mem.load (m, p);
+    return (m, x - y);
+
+/// The loaded operand comes first, but `add` and `mul` commute.
+extern con add_rm (m: mem.M 0, p: mem.Ptr0 math.F32, x: math.F32, return: Cn [mem.M 0, math.F32]) =
+    let (m, y) = mem.load (m, p);
+    return (m, y + x);
+
+extern con mul_rm (m: mem.M 0, p: mem.Ptr0 math.F64, x: math.F64, return: Cn [mem.M 0, math.F64]) =
+    let (m, y) = mem.load (m, p);
+    return (m, y * x);
+
+/// `sub` does not commute, so a loaded first operand stays a load.
+extern con sub_load (m: mem.M 0, p: mem.Ptr0 math.F32, x: math.F32, return: Cn [mem.M 0, math.F32]) =
+    let (m, y) = mem.load (m, p);
+    return (m, y - x);
+
+// CHECK-DAG: subss (%rdi), %xmm0
+// CHECK-DAG: addss (%rdi), %xmm0
+// CHECK-DAG: mulsd (%rdi), %xmm0
+// CHECK-DAG: movss (%rdi), %xmm{{[0-9]+}}

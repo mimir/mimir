@@ -14,6 +14,7 @@
 #include <mim/world.h>
 
 #include <mim/plug/core/core.h>
+#include <mim/plug/math/math.h>
 #include <mim/plug/x86/autogen.h>
 #include <mim/plug/x86/insn.h>
 #include <mim/plug/x86/rule_table.h>
@@ -50,12 +51,13 @@ constexpr std::string_view name(Ty ty) {
     std::unreachable();
 }
 
-/// What an operand of @p type is: `Base`, `Index`, `Addr` for either, `Scaled` for `[I64, I2]`, else `Reg`.
+/// What an operand of @p type is: `Base`, `Index`, `Addr` for either, `Scaled` for `[I64, I2]`, `FReg`, else `Reg`.
 Want classify(const Def* type) {
     if (auto addr = Axm::isa<x86::Addr>(type)) {
         auto i = Lit::isa(addr->arg());
         return !i ? Want::Addr : *i ? Want::Index : Want::Base;
     }
+    if (math::isa_f(type)) return Want::FReg;
     auto& w = type->world();
     if (type == w.sigma({w.type_i64(), w.type_i2()})) return Want::Scaled;
     return Want::Reg;
@@ -68,6 +70,7 @@ Ty nonterminal(const Rule* rule, const Def* type) {
         case Want::Index: return Ty::Index;
         case Want::Scaled: return Ty::Scaled;
         case Want::Reg: return Ty::Reg;
+        case Want::FReg: return Ty::FReg;
         default: rule->blame("x86_isel: `{}` must fix its address form in `{}`", type, rule).bail();
     }
 }
@@ -342,6 +345,8 @@ std::vector<Table::Meta> Table::metas(const Rule* rule) {
             auto marked = [&](Want dflt) { return mark == marks_.end() ? dflt : mark->second; };
             if (Idx::isa(type)) {
                 want = marked(Want::Reg);
+            } else if (math::isa_f(type)) {
+                want = marked(Want::FReg);
             } else if (type->isa<Nat>()) {
                 want = marked(Want::Param);
             } else if (Axm::isa<core::Ptr>(type)) {
@@ -755,7 +760,7 @@ void Table::check(const std::vector<Shape>& shapes, const std::vector<size_t>& i
     auto atomic = ankerl::unordered_dense::set<flags_t>();
     for (size_t i = 0, e = rewrites_.size(); i != e; ++i) {
         const auto& r = rewrites_[i];
-        if (chains.conv(r.type, Want::Reg) == x86::rules::Inf)
+        if (chains.conv(r.type, x86::rules::reg_want(r.type)) == x86::rules::Inf)
             fe::throwf("x86_isel: rule `{}` yields a value that does not convert to a register", r.name);
         for (auto m : r.metas)
             if (!x86::rules::is_param(m.want) && !x86::rules::is_literal(m.want) && !chains.reachable(m.want))

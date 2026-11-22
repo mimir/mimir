@@ -1,0 +1,49 @@
+// RUN: %mim %s -o %t.mim
+// RUN: %mim --no-opt %t.mim -o - | %FileCheck %s
+
+plugin core;
+plugin mem;
+plugin math;
+plugin x86;
+import compile;
+
+extern lam _compile (): compile.Phase = compile.phases ff (compile.named "x86.isel", compile.named "x86.schedule");
+
+use math.ops.none;
+
+extern con arith (m: mem.M 0, a b: math.F32, return: Cn [mem.M 0, math.F32]) =
+    let x = a + b;
+    let y = x / math.abs math.mode.none b;
+    return (m, math.rt.sq math.mode.none y);
+
+extern con cmp (m: mem.M 0, a b: math.F32, return: Cn [mem.M 0, math.F32]) =
+    return (m, (a, b)#(math.cmp.le math.mode.none (a, b)));
+
+extern con conv (m: mem.M 0, i: I32, f: math.F64, return: Cn [mem.M 0, I32]) =
+    let a = math.conv.s2f math.f32 i;
+    let b = math.conv.f2f math.f32 f;
+    return (m, math.conv.f2s i32 (a * b));
+
+extern con mem_ (m: mem.M 0, p: mem.Ptr0 math.F64, return: Cn [mem.M 0, math.F64]) =
+    let (m, x) = mem.load (m, p);
+    let m = mem.store (m, p, math.arith.add math.mode.none (x, x));
+    return (m, x);
+
+// CHECK-NOT:  math.arith
+// CHECK-NOT:  math.conv
+// CHECK-NOT:  math.cmp
+// CHECK-NOT:  math.abs
+// CHECK-NOT:  math.rt
+// CHECK-NOT:  mem.load
+// CHECK-NOT:  mem.store
+// CHECK-DAG:  (x86.fadd @ (23, 8))
+// CHECK-DAG:  (x86.fabs @ (23, 8))
+// CHECK-DAG:  (x86.fdiv @ (23, 8))
+// CHECK-DAG:  (x86.fsqrt @ (23, 8))
+// CHECK-DAG:  (x86.fcmp.le @ (23, 8))
+// CHECK-DAG:  (x86.fsel @ (23, 8))
+// CHECK-DAG:  (x86.i2f i32 (23, 8))
+// CHECK-DAG:  (x86.f2f @ (52, 11) (23, 8)
+// CHECK-DAG:  (x86.f2i @ (23, 8) i32)
+// CHECK-DAG:  x86.fload
+// CHECK-DAG:  x86.fstore

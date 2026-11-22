@@ -23,6 +23,15 @@ constexpr pbqp::Cost Callee_Saved = 1;
 
 size_t phys(const Def* r) { return *Lit::isa(r); }
 
+bool is_reserved(Liveness::Class cls, size_t r) { return cls == Liveness::Gpr && reserved(r); }
+
+pbqp::Costs base_costs(Liveness::Class cls) {
+    return pbqp::Costs(Num_Regs, [cls](size_t r) {
+        if (is_reserved(cls, r)) return pbqp::Cost::inf();
+        return caller_saved(cls, r) ? pbqp::Cost(0) : Callee_Saved;
+    });
+}
+
 /// Rewrites the filter and body of each block of @p live in place.
 void rewrite_blocks(const Liveness& live, Rewriter& rw) {
     for (const auto& block : live.blocks()) {
@@ -58,10 +67,10 @@ void interferences(const Liveness& live, const Liveness::Block& block, auto keep
     auto alive = DefSet();
     auto gen   = [&](const auto& values) {
         for (auto v : values)
-            if (is_gpr(v) && keep(v)) alive.emplace(v);
+            if (keep(v)) alive.emplace(v);
     };
     auto def = [&](DefVec ds) {
-        std::erase_if(ds, [&](const Def* d) { return !is_gpr(d) || !keep(d); });
+        std::erase_if(ds, [&](const Def* d) { return !keep(d); });
         for (auto d : ds)
             alive.erase(d);
         for (size_t i = 0; i != ds.size(); ++i) {
@@ -140,23 +149,26 @@ void prune(Lam* fun) {
     rewrite_blocks(live, prune);
 }
 
-/// Wraps every use of a value in `x86.in`.
+/// Wraps every use of a value in `x86.in`, or an XMM value in `x86.fin`.
 class Assign : public Rewriter {
 public:
-    Assign(World& world, const Liveness& live, const DefMap<size_t>& regs)
+    Assign(World& world, Liveness::Class cls, const Liveness& live, const DefMap<size_t>& regs)
         : Rewriter(world)
+        , cls_(cls)
         , live_(live)
         , regs_(regs) {}
 
     const Def* rewrite(const Def* def) final {
         auto& w = world();
         if (def->isa_mut() || def->is_closed()) return def;
-        if (Axm::isa<x86::in>(def)) {
+        if (Axm::isa<x86::in>(def) || Axm::isa<x86::fin>(def)) {
             auto app = def->as<App>();
             return w.app(rewrite(app->callee()), raw(app->arg()));
         }
         if (live_.local(def)) {
-            if (auto r = fe::lookup(regs_, def)) return w.call<x86::in>(w.lit_idx(Num_Regs, *r), raw(def));
+            if (auto r = fe::lookup(regs_, def))
+                return cls_ == Liveness::Gpr ? w.call<x86::in>(w.lit_idx(Num_Regs, *r), raw(def))
+                                             : w.call<x86::fin>(w.lit_idx(Num_Fpr, *r), raw(def));
             // A tuple of values, e.g. the whole variable of a block or an instruction, is used through its projections.
             if (auto projs = def->projs(); projs.size() > 1 && std::ranges::any_of(projs, [&](const Def* d) {
                                                return regs_.contains(d) || d->num_projs() > 1;
@@ -179,16 +191,19 @@ private:
         return Rewriter::rewrite(def);
     }
 
+    Liveness::Class cls_;
     const Liveness& live_;
     const DefMap<size_t>& regs_;
 };
 
 class Colorer {
 public:
-    Colorer(Lam* fun, std::ostream* dot = nullptr)
+    Colorer(Lam* fun, Liveness::Class cls, std::ostream* dot = nullptr)
         : fun_(fun)
         , live_(fun)
-        , dot_(dot) {}
+        , cls_(cls)
+        , dot_(dot)
+        , base_(base_costs(cls)) {}
 
     void run() {
         nodes();
@@ -199,7 +214,7 @@ public:
         constraints();
         copies();
         solve();
-        auto assign = Assign(fun_->world(), live_, regs_);
+        auto assign = Assign(fun_->world(), cls_, live_, regs_);
         rewrite_blocks(live_, assign);
     }
 
@@ -241,6 +256,7 @@ private:
 
     Lam* fun_;
     Liveness live_;
+    Liveness::Class cls_;
     std::ostream* dot_;
     pbqp::Graph graph_;
     DefMap<pbqp::NodeId> ids_;
@@ -251,9 +267,7 @@ private:
     const pbqp::Matrix tie_
         = pbqp::Matrix(Num_Regs, Num_Regs, [](size_t i, size_t j) { return i == j ? 0 : pbqp::Cost::inf(); });
     const pbqp::Matrix move_ = pbqp::Matrix(Num_Regs, Num_Regs, [](size_t i, size_t j) { return i == j ? 0 : Move; });
-    const pbqp::Costs base_  = pbqp::Costs(Num_Regs, [](size_t r) {
-        return reserved(r) ? pbqp::Cost::inf() : Caller_Saved[r] ? pbqp::Cost(0) : Callee_Saved;
-    });
+    const pbqp::Costs base_;
     DefMap<size_t> regs_;
 };
 
@@ -270,13 +284,13 @@ void Colorer::nodes() {
 
     for (const auto& block : live_.blocks()) {
         for (auto x : live_.params(block))
-            if (is_gpr(x) && used.contains(x)) add(x);
+            if (is_value(x, cls_) && used.contains(x)) add(x);
         for (auto insn : block.insns) {
             auto implied = DefSet();
             for (auto [j, _] : constraint(insn).results)
                 implied.emplace(result(insn, j));
             for (auto d : live_.defs(insn))
-                if (is_gpr(d) && (used.contains(d) || implied.contains(d))) add(d);
+                if (is_value(d, cls_) && (used.contains(d) || implied.contains(d))) add(d);
         }
     }
 }
@@ -285,15 +299,17 @@ void Colorer::constraints() {
     for (const auto& block : live_.blocks()) {
         for (auto insn : block.insns) {
             auto c = constraint(insn);
-            for (auto [j, r] : c.fixed)
-                fix(c.ops[j], phys(r));
-            for (auto [j, r] : c.results)
-                fix(result(insn, j), phys(r));
-            if (c.tied) link(c.ops[*c.tied], result(insn, 0), tie_);
-            const auto& uses = live_.uses(insn);
-            for (auto r : c.clobbers)
-                for (auto u : uses)
-                    forbid(u, phys(r));
+            // Fixed operands, results, and clobbers of an instruction are general-purpose registers.
+            if (cls_ == Liveness::Gpr) {
+                for (auto [j, r] : c.fixed)
+                    fix(c.ops[j], phys(r));
+                for (auto [j, r] : c.results)
+                    fix(result(insn, j), phys(r));
+                for (auto r : c.clobbers)
+                    for (auto u : live_.uses(insn))
+                        forbid(u, phys(r));
+            }
+            if (c.tied && is_value(c.ops[*c.tied], cls_)) link(c.ops[*c.tied], result(insn, 0), tie_);
         }
     }
 }
@@ -301,14 +317,14 @@ void Colorer::constraints() {
 void Colorer::copies() {
     auto n = fun_->num_vars();
     for (size_t i = 0, a = 0; i + 1 < n; ++i)
-        if (auto x = fun_->var(n, i); !is_mem(x) && a < Arg_Regs.size()) prefer(x, Arg_Regs[a++]);
+        if (auto x = fun_->var(n, i); is_value(x, cls_) && a < num_arg_regs(cls_)) prefer(x, arg_reg(cls_, a++));
 
     for (const auto& block : live_.blocks()) {
         auto term   = block.lam->body()->as<App>();
         auto callee = term->callee();
         if (callee == fun_->ret_var()) {
             for (auto a : term->args())
-                if (!is_mem(a)) prefer(a, encoding(reg::rax));
+                if (is_value(a, cls_)) prefer(a, ret_reg(cls_));
         } else if (auto ex = callee->isa<Extract>()) {
             for (auto target : ex->tuple()->projs())
                 if (auto bb = Lam::isa_mut_basicblock(target); bb && live_.block(bb)) jump(bb, term->arg());
@@ -317,14 +333,15 @@ void Colorer::copies() {
         } else if (Lam::isa_mut_returning(callee)) {
             auto m = term->num_args();
             for (size_t i = 0, a = 0; i + 1 < m; ++i)
-                if (auto x = term->arg(m, i); !is_mem(x) && a < Arg_Regs.size()) prefer(x, Arg_Regs[a++]);
+                if (auto x = term->arg(m, i); is_value(x, cls_) && a < num_arg_regs(cls_))
+                    prefer(x, arg_reg(cls_, a++));
             if (auto k = call_cont(live_, fun_, block)) {
                 for (auto v : k->live_in)
                     if (auto cs = costs(v))
                         for (size_t r = 0; r != Num_Regs; ++r)
-                            if (Caller_Saved[r]) (*cs)[r] = pbqp::Cost::inf();
+                            if (caller_saved(cls_, r)) (*cs)[r] = pbqp::Cost::inf();
                 for (auto x : live_.params(*k))
-                    if (!is_mem(x)) prefer(x, encoding(reg::rax));
+                    if (is_value(x, cls_)) prefer(x, ret_reg(cls_));
             }
         }
     }
@@ -357,9 +374,10 @@ void Colorer::solve() {
 /// Checks the invariants of an assignment over a fresh Liveness of @p fun.
 class Checker {
 public:
-    explicit Checker(Lam* fun)
+    Checker(Lam* fun, Liveness::Class cls)
         : fun_(fun)
-        , live_(fun) {}
+        , live_(fun)
+        , cls_(cls) {}
 
     void run();
 
@@ -375,23 +393,25 @@ private:
 
     Lam* fun_;
     Liveness live_;
+    Liveness::Class cls_;
     DefMap<size_t> regs_;
 };
 
 void Checker::walk(const Def* def, const Def* at) {
     if (def->isa_mut() || def->is_closed() || is_mem(def)) return;
-    if (auto in = Axm::isa<x86::in>(def)) {
-        auto v        = in->arg();
+    auto wrapped = cls_ == Liveness::Gpr ? Axm::isa<x86::in>(def) : Axm::isa<x86::fin>(def);
+    if (wrapped) {
+        auto v        = wrapped->arg();
         auto r        = in_reg(def);
         auto [i, ins] = regs_.emplace(v, r);
-        if (!live_.local(v) || !is_gpr(v)) fail(at, std::format("`{}` is no value", v));
-        if (reserved(r)) fail(at, std::format("`{}` is in a reserved register", v));
+        if (!live_.local(v) || !is_value(v, cls_)) fail(at, std::format("`{}` is no value", v));
+        if (is_reserved(cls_, r)) fail(at, std::format("`{}` is in a reserved register", v));
         if (!ins && i->second != r) fail(at, std::format("`{}` is in two registers", v));
         return;
     }
     if (live_.local(def)) {
         for (auto d : def->projs())
-            if (is_gpr(d)) fail(at, std::format("`{}` is used without a register", d));
+            if (is_value(d, cls_)) fail(at, std::format("`{}` is used without a register", d));
         return;
     }
     if (auto app = def->isa<App>(); app && prev_mem(app)) fail(at, std::format("`{}` is off the chain", app));
@@ -417,19 +437,21 @@ void Checker::run() {
     for (const auto& block : live_.blocks()) {
         for (auto insn : block.insns) {
             auto c = constraint(insn);
-            for (auto [j, r] : c.results) {
-                auto d = result(insn, j);
-                if (regs_.emplace(d, phys(r)).first->second != phys(r))
-                    fail(insn, std::format("`{}` is not in its fixed register", d));
+            if (cls_ == Liveness::Gpr) {
+                for (auto [j, r] : c.results) {
+                    auto d = result(insn, j);
+                    if (regs_.emplace(d, phys(r)).first->second != phys(r))
+                        fail(insn, std::format("`{}` is not in its fixed register", d));
+                }
+                for (auto [j, r] : c.fixed)
+                    if (!Axm::isa<x86::in>(c.ops[j]) || in_reg(c.ops[j]) != phys(r))
+                        fail(insn, std::format("operand `{}` is not in its fixed register", c.ops[j]));
+                for (auto r : c.clobbers)
+                    for (auto u : live_.uses(insn))
+                        if (reg(u) == phys(r)) fail(insn, std::format("operand `{}` is in a clobbered register", u));
             }
-            for (auto [j, r] : c.fixed)
-                if (!Axm::isa<x86::in>(c.ops[j]) || in_reg(c.ops[j]) != phys(r))
-                    fail(insn, std::format("operand `{}` is not in its fixed register", c.ops[j]));
-            if (c.tied && reg(c.ops[*c.tied]) != reg(result(insn, 0)))
+            if (c.tied && is_value(c.ops[*c.tied], cls_) && reg(c.ops[*c.tied]) != reg(result(insn, 0)))
                 fail(insn, std::format("`{}` is not in the register of operand `{}`", result(insn, 0), c.ops[*c.tied]));
-            for (auto r : c.clobbers)
-                for (auto u : live_.uses(insn))
-                    if (reg(u) == phys(r)) fail(insn, std::format("operand `{}` is in a clobbered register", u));
         }
     }
 
@@ -442,7 +464,7 @@ void Checker::run() {
             });
         if (auto k = call_cont(live_, fun_, block))
             for (auto v : k->live_in)
-                if (auto r = reg(v); r && Caller_Saved[*r])
+                if (auto r = reg(v); r && caller_saved(cls_, *r))
                     fail(block.lam, std::format("`{}` lives across a call in a caller-saved register", v));
     }
 }
@@ -453,8 +475,10 @@ void Color::visit(Lam* fun) {
     if (!Lam::isa_mut_returning(fun)) return;
 
     prune(fun);
-    Colorer(fun, dot()).run();
-    Checker(fun).run();
+    Colorer(fun, Liveness::Gpr, dot()).run();
+    Colorer(fun, Liveness::Fpr, dot()).run();
+    Checker(fun, Liveness::Gpr).run();
+    Checker(fun, Liveness::Fpr).run();
 }
 
 std::ostream* Color::dot() {

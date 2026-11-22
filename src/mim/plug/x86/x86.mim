@@ -15,6 +15,7 @@
 ///
 plugin core;
 plugin mem;
+plugin math;
 plugin opt;
 plugin refly;
 import compile;
@@ -75,6 +76,12 @@ anx let scale_8 = 3I2;
 ///
 axm Spill: Nat → *;
 ///
+/// ### FSpill
+///
+/// A spill slot holding a floating-point value of type `math.F pe`.
+///
+axm FSpill: «2; Nat» → *;
+///
 /// ## Operand Sizes
 ///
 /// Instructions are polymorphic in the operand size `s` and state which sizes they support via `refly.check` in their codomain.
@@ -106,6 +113,18 @@ anx lam logic (s: Nat): Nat =
     let ok = core.bit2.or 0 (is (s, 2), core.bit2.or 0 (core.bit2.or 0 (is (s, i8), is (s, i16)), core.bit2.or 0 (is (s, i32), is (s, i64))));
     refly.check (ok, s, "x86: operand size must be Bool, i8, i16, i32, or i64");
 ///
+/// ### fpe
+///
+/// `math.f32` or `math.f64`.
+///
+anx lam fpe (pe: «2; Nat»): «2; Nat» =
+    let (p, e) = pe;
+    let (p32, e32) = math.f32;
+    let (p64, e64) = math.f64;
+    let eq32 = core.bit2.and 0 (core.ncmp.e (p, p32), core.ncmp.e (e, e32));
+    let eq64 = core.bit2.and 0 (core.ncmp.e (p, p64), core.ncmp.e (e, e64));
+    refly.check (core.bit2.or 0 (eq32, eq64), pe, "x86: float type must be f32 or f64");
+///
 /// ## Instruction Forms
 ///
 /// The plugin pretends that x86 uses three-address code and copes with x86's two-address code later on.
@@ -116,7 +135,7 @@ anx lam logic (s: Nat): Nat =
 ///
 /// `op r, addr`: `rm f (m, a, addr)` is `f (a, b)` with `b` loaded from `addr`.
 ///
-axm rm: {s: Nat, C: *, i: Bool} → («2; Idx s» → C) → [mem.M 0, Idx s, Addr i] → [mem.M 0, C];
+axm rm: {T C: *, i: Bool} → («2; T» → C) → [mem.M 0, T, Addr i] → [mem.M 0, C];
 ///
 /// ### mr
 ///
@@ -141,6 +160,12 @@ axm sched: {D C: *} → (D → C) → mem.M 0 → D → [mem.M 0, C];
 ///
 axm in: [r: I4] → {s: Nat} → Idx s → Idx s;
 ///
+/// ### fin
+///
+/// `fin r v` is the floating-point value `v`, which lives in XMM register `r`.
+///
+axm fin: [r: I4] → {pe: «2; Nat»} → math.F pe → math.F pe;
+///
 /// ### reg
 ///
 /// The general-purpose registers in hardware encoding order.
@@ -163,6 +188,30 @@ pub mod reg
     anx let r13 = 13I4;
     anx let r14 = 14I4;
     anx let r15 = 15I4;
+end
+///
+/// ### freg
+///
+/// The floating-point registers in hardware encoding order.
+/// A register's subtag is its hardware encoding, so they have to stay in this order.
+///
+pub mod freg
+    anx let xmm0  = 0I4;
+    anx let xmm1  = 1I4;
+    anx let xmm2  = 2I4;
+    anx let xmm3  = 3I4;
+    anx let xmm4  = 4I4;
+    anx let xmm5  = 5I4;
+    anx let xmm6  = 6I4;
+    anx let xmm7  = 7I4;
+    anx let xmm8  = 8I4;
+    anx let xmm9  = 9I4;
+    anx let xmm10 = 10I4;
+    anx let xmm11 = 11I4;
+    anx let xmm12 = 12I4;
+    anx let xmm13 = 13I4;
+    anx let xmm14 = 14I4;
+    anx let xmm15 = 15I4;
 end
 ///
 /// ## Instructions
@@ -280,6 +329,95 @@ axm cc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): Flags → Bool;
 /// `cmovcc.ne (test (cc.l f, cc.l f), x, y)` normalizes to `cmovcc.l (f, x, y)`.
 ///
 axm cmovcc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): {s: Nat} → [Flags, Idx s, Idx s] → Idx (gpr16 s), normalize_cmovcc;
+///
+/// ## Floating-Point Instructions
+///
+/// Floating-point values live in the XMM registers; the type `math.F pe` is one value, so its format depends on `pe`.
+/// An operand is never an immediate: a literal is materialized by `fmov` first.
+///
+/// ### fmov
+///
+/// `mov r, imm` materializes a floating-point constant from the constant pool.
+///
+axm fmov: {pe: «2; Nat»} → math.F pe → math.F (fpe pe);
+///
+/// ### fload
+///
+/// `movss`/`movsd r, addr`.
+///
+axm fload: [pe: «2; Nat»] → {i: Bool} → [mem.M 0, Addr i] → [mem.M 0, math.F (fpe pe)];
+///
+/// ### fstore
+///
+/// `movss`/`movsd addr, r`.
+///
+axm fstore: {pe: «2; Nat», i: Bool} → [mem.M 0, Addr i, math.F pe] → mem.M 0;
+///
+/// ### fspill
+///
+/// `fspill x` stores the floating-point value `x` into a spill slot; it is placed on the chain via `sched` like any other pure instruction.
+///
+axm fspill: {pe: «2; Nat»} → math.F pe → FSpill pe;
+///
+/// ### freload
+///
+/// `freload x` loads `x` from its floating-point spill slot.
+///
+axm freload: {pe: «2; Nat»} → FSpill pe → math.F (fpe pe);
+///
+/// ### Floating-Point Arithmetic
+///
+/// Two-address arithmetic `op r, r`.
+///
+axm (fadd, fsub, fmul, fdiv): {pe: «2; Nat»} → «2; math.F pe» → math.F (fpe pe);
+///
+/// ### Floating-Point Unary
+///
+/// `sqrtss`/`sqrtsd` and `andps`/`andpd` with a mask clearing the sign bit.
+///
+axm (fsqrt, fabs): {pe: «2; Nat»} → math.F pe → math.F (fpe pe);
+///
+/// ### fcmp
+///
+/// Floating-point comparison; the predicates are those of `math.cmp` in its order:
+///
+/// | Subtag | Meaning                       |
+/// |--------|-------------------------------|
+/// | `f`    | always false                  |
+/// | `e`    | ordered and equal             |
+/// | `l`    | ordered and less              |
+/// | `le`   | ordered and less or equal     |
+/// | `g`    | ordered and greater           |
+/// | `ge`   | ordered and greater or equal  |
+/// | `ne`   | ordered and not equal         |
+/// | `o`    | ordered (no NaNs)             |
+/// | `u`    | unordered (either is NaN)     |
+/// | `ue`   | unordered or equal            |
+/// | `ul`   | unordered or less             |
+/// | `ule`  | unordered or less or equal    |
+/// | `ug`   | unordered or greater          |
+/// | `uge`  | unordered or greater or equal |
+/// | `une`  | unordered or not equal        |
+/// | `t`    | always true                   |
+///
+axm fcmp.(f, e, l, le, g, ge, ne, o, u, ue, ul, ule, ug, uge, une, t): {pe: «2; Nat»} → «2; math.F pe» → Bool;
+///
+/// ### fsel
+///
+/// `fsel (c, x, y)` yields `y` if `c` holds, else `x`, like `(x, y)#c`.
+///
+axm fsel: {pe: «2; Nat»} → [Bool, math.F pe, math.F pe] → math.F (fpe pe);
+///
+/// ### Floating-Point Conversions
+///
+/// The integer size `s` is explicit, since neither the operand nor the result determines it.
+/// The instances of `x86_isel` name the sizes; only `i32` and `i64` are supported.
+///
+axm i2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (fpe pe);
+axm u2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (fpe pe);
+axm f2i: {pe: «2; Nat»} → [s: Nat] → math.F pe → Idx s;
+axm f2u: {pe: «2; Nat»} → [s: Nat] → math.F pe → Idx s;
+axm f2f: {spe: «2; Nat»} → [dpe: «2; Nat»] → math.F spe → math.F (fpe dpe);
 ///
 /// ## Phases
 ///

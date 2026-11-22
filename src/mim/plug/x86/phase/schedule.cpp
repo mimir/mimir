@@ -10,7 +10,7 @@ bool is_insn(const Def* def) {
     if (auto app = def->isa<App>())
         if (auto axm = app->axm())
             return axm->plugin() == Plugin_Id && !app->type()->isa<Pi>() && !Axm::isa<Addr>(app->type())
-                && !Axm::isa<in>(app);
+                && !Axm::isa<in>(app) && !Axm::isa<fin>(app);
     return false;
 }
 

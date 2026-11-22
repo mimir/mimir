@@ -15,7 +15,7 @@ extern lam _compile (): compile.Phase = compile.phases ff (x86.schedule, x86.liv
 
 // `n` and `a` are live around the loop, while `i` and `acc` are parameters of `head`; the branch consumes the flags, not the `Bool` of the `cc`.
 // CHECK:      fun f
-// CHECK-NEXT: f: in {} out {n{{[_0-9]*}}, a{{[_0-9]*}}} max 2 flags 0
-// CHECK-NEXT: head{{[_0-9]*}}: in {n{{[_0-9]*}}, a{{[_0-9]*}}} out {i{{[_0-9]*}}, n{{[_0-9]*}}, acc{{[_0-9]*}}, a{{[_0-9]*}}} max 4 flags 1
-// CHECK-DAG:  exit{{[_0-9]*}}: in {acc{{[_0-9]*}}, a{{[_0-9]*}}} out {} max 2 flags 0
-// CHECK-DAG:  body{{[_0-9]*}}: in {i{{[_0-9]*}}, n{{[_0-9]*}}, acc{{[_0-9]*}}, a{{[_0-9]*}}} out {n{{[_0-9]*}}, a{{[_0-9]*}}} max 4 flags 0
+// CHECK-NEXT: f: in {} out {n{{[_0-9]*}}, a{{[_0-9]*}}} max 2 fpr 0 flags 0
+// CHECK-NEXT: head{{[_0-9]*}}: in {n{{[_0-9]*}}, a{{[_0-9]*}}} out {i{{[_0-9]*}}, n{{[_0-9]*}}, acc{{[_0-9]*}}, a{{[_0-9]*}}} max 4 fpr 0 flags 1
+// CHECK-DAG:  exit{{[_0-9]*}}: in {acc{{[_0-9]*}}, a{{[_0-9]*}}} out {} max 2 fpr 0 flags 0
+// CHECK-DAG:  body{{[_0-9]*}}: in {i{{[_0-9]*}}, n{{[_0-9]*}}, acc{{[_0-9]*}}, a{{[_0-9]*}}} out {n{{[_0-9]*}}, a{{[_0-9]*}}} max 4 fpr 0 flags 0

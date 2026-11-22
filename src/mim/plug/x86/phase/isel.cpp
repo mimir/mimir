@@ -85,8 +85,14 @@ pbqp::Cost cost(u32 c) { return c == rules::Inf ? Inf : pbqp::Cost(c); }
 
 pbqp::Cost conv(Ty from, Want want) { return cost(rules::chains.conv(from, want)); }
 
+/// The non-terminal of @p def, which is no node: a literal, a floating-point register, or a general-purpose one.
+Ty leaf_ty(const Def* def) {
+    if (Lit::isa(def)) return Ty::Lit;
+    return math::isa_f(def->type()) ? Ty::FReg : Ty::Reg;
+}
+
 /// Cost of the operand @p def, which is no node, in a hole of type @p want.
-pbqp::Cost leaf(const Def* def, Want want) { return conv(Lit::isa(def) ? Ty::Lit : Ty::Reg, want); }
+pbqp::Cost leaf(const Def* def, Want want) { return conv(leaf_ty(def), want); }
 
 /// Does @p def satisfy a hole of type @p want that requires a literal?
 bool literal(const Def* def, Want want) { return Lit::isa(def) && (want == Want::Sh || fits_imm(def)); }
@@ -398,7 +404,7 @@ const Def* ISel::select(const Def* def) {
 const Def* ISel::selected(const Def* def) {
     auto alt = choice(def);
     if (!alt) return nullptr;
-    if (alt->rule) return convert(select(def), alt->rule->type, Want::Reg);
+    if (alt->rule) return convert(select(def), alt->rule->type, rules::reg_want(alt->rule->type));
     // The root of the match covering this inner node builds it.
     rewrite(roots_.at(def));
     return lookup(def);
@@ -406,13 +412,13 @@ const Def* ISel::selected(const Def* def) {
 
 const Def* ISel::hole(const Def* def, Want want) {
     if (auto alt = choice(def); alt && alt->rule) return convert(select(def), alt->rule->type, want);
-    return convert(val(def), Ty::Reg, want);
+    return convert(val(def), leaf_ty(def), want);
 }
 
 const Def* ISel::convert(const Def* x, Ty from, Want want) {
     if (rules::is_literal(want)) return x;
     auto& w = new_world();
-    if (from == Ty::Reg && Lit::isa(x)) from = Ty::Lit;
+    if (Lit::isa(x) && (from == Ty::Reg || from == Ty::FReg)) from = Ty::Lit;
     auto to = rules::chains.target(from, want).first;
     for (auto t = from; t != to;) {
         auto c     = &rules::conversions[rules::chains.first[size_t(t)][size_t(to)]];

@@ -18,6 +18,7 @@ namespace mim::plug::x86 {
 constexpr size_t encoding(reg r) { return Annex::flags2sub(std::to_underlying(r)); }
 
 constexpr size_t Num_Regs = Annex::num<reg>();
+constexpr size_t Num_Fpr  = Annex::num<freg>();
 
 /// System V AMD64 ABI.
 // clang-format off
@@ -41,9 +42,10 @@ inline size_t in_reg(const Def* in) {
     return *Lit::isa(in->as<App>()->callee()->as<App>()->callee()->as<App>()->arg());
 }
 
-/// The `v` of `x86.in r v`, otherwise @p def.
+/// The `v` of `x86.in r v` or `x86.fin r v`, otherwise @p def.
 inline const Def* strip(const Def* def) {
     if (auto in = Axm::isa<x86::in>(def)) return in->arg();
+    if (auto in = Axm::isa<x86::fin>(def)) return in->arg();
     return def;
 }
 
@@ -71,7 +73,8 @@ inline const App* isa_sched_cc(const Def* cond) {
 /// The memory @p app continues, if @p app is an instruction on a `mem.M 0` chain.
 inline const Def* prev_mem(const App* app) {
     if (Axm::isa<sched>(app)) return app->callee()->as<App>()->arg();
-    if (Axm::isa<load>(app) || Axm::isa<store>(app) || Axm::isa<slot>(app) || Axm::isa<rm>(app) || Axm::isa<mr>(app))
+    if (Axm::isa<load>(app) || Axm::isa<store>(app) || Axm::isa<slot>(app) || Axm::isa<rm>(app) || Axm::isa<mr>(app)
+        || Axm::isa<fload>(app) || Axm::isa<fstore>(app))
         return app->arg(app->num_args(), 0);
     return nullptr;
 }

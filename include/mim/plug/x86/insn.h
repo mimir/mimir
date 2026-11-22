@@ -22,8 +22,10 @@ inline std::optional<size_t> tied(flags_t base) {
     if (base == Annex::Base<add> || base == Annex::Base<sub> || base == Annex::Base<and_> || base == Annex::Base<or_>
      || base == Annex::Base<xor_> || base == Annex::Base<imul> || base == Annex::Base<shl> || base == Annex::Base<shr>
      || base == Annex::Base<sar>) return 0;
+    if (base == Annex::Base<fadd> || base == Annex::Base<fsub> || base == Annex::Base<fmul>
+     || base == Annex::Base<fdiv> || base == Annex::Base<fabs>) return 0;
     // clang-format on
-    if (base == Annex::Base<cmovcc> || base == Annex::Base<rm>) return 1;
+    if (base == Annex::Base<cmovcc> || base == Annex::Base<rm> || base == Annex::Base<fsel>) return 1;
     return {};
 }
 
@@ -31,7 +33,9 @@ inline std::optional<size_t> tied(flags_t base) {
 inline u32 latency(flags_t base, nat_t s) {
     if (base == Annex::Base<imul>) return 3;
     if (base == Annex::Base<div> || base == Annex::Base<idiv>) return reg_width(s) == 64 ? 18 : 14;
-    if (base == Annex::Base<load>) return Load;
+    if (base == Annex::Base<fdiv>) return 11;
+    if (base == Annex::Base<fsqrt>) return 14;
+    if (base == Annex::Base<load> || base == Annex::Base<fload>) return Load;
     if (base == Annex::Base<slot>) return 0;
     return 1;
 }
