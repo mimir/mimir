@@ -11,8 +11,8 @@ class MimCode extends Code {
         /// `C_DECL` of `src/mim/ast/family.h`, `end`, and the modifiers of `Parser::parse_modifiers`.
         decl: new Set(["anx", "as", "axm", "con", "end", "extern", "fun", "import", "lam", "let", "mod", "mutual", "nom",
                        "norm", "plugin", "priv", "pub", "rec", "rule", "use"]),
-        type: new Set(["Bool", "Cn", "Fn", "I1", "I8", "I16", "I32", "I64", "Idx", "Level", "Nat", "Type"]),
-        literal: new Set(["bot", "ff", "i1", "i8", "i16", "i32", "i64", "top", "tt", "⊥", "⊤"]),
+        type: new Set(["Bool", "Cn", "Fn", "I1", "I2", "I4", "I8", "I16", "I32", "I64", "Idx", "Level", "Nat", "Type"]),
+        literal: new Set(["bot", "ff", "i1", "i2", "i4", "i8", "i16", "i32", "i64", "top", "tt", "⊥", "⊤"]),
         special: new Set(["_", "return"])
     }
     static PLAYGROUND = "https://mimir.github.io/playground/"
