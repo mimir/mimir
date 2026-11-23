@@ -1,5 +1,6 @@
 #include "mim/ast/ast.h"
 
+#include <optional>
 #include <set>
 
 #include "mim/check.h"
@@ -87,18 +88,16 @@ public:
     /// Each rule becomes its own function, so a failed match can just `return nullptr` and the next rule is tried.
     /// A rule that mentions a nominal type gets an erased twin, which keeps it firing after NomErasure.
     /// A @p family's normalizer is a template over its sub-tags that only tries the rules headed by that sub-tag.
-    void emit(std::ostream& os, Sym name, const std::vector<const RuleDecl*>& rules, const AnnexInfo* family) {
+    void emit(std::ostream& os, Sym name, const std::vector<const LetDecl*>& rules, const AnnexInfo* family) {
         auto norm  = escape(name, Cpp_Keywords);
         auto heads = std::vector<std::pair<const AnnexInfo*, sub_t>>();
         auto fn    = [&]() { return std::format("{}_{}", norm, heads.size()); };
         for (auto decl : rules) {
             auto rule = decl->def()->as<Rule>();
-            heads.emplace_back(emit(os, fn(), decl, rule));
+            heads.emplace_back(emit(os, fn(), decl, rule, false));
             if (RWPhase::mentions(rule,
-                                  [](const Def* d) { return d->isa<Nom>() || d->isa<Name>() || d->isa<Struc>(); })) {
-                auto eraser = RuleEraser(rule->world(), "nom_erasure");
-                heads.emplace_back(emit(os, fn(), decl, eraser.rewrite(rule)->as<Rule>()));
-            }
+                                  [](const Def* d) { return d->isa<Nom>() || d->isa<Name>() || d->isa<Struc>(); }))
+                heads.emplace_back(emit(os, fn(), decl, rule, true));
         }
 
         if (family) std::println(os, "template<{} id>", tag_name(*family));
@@ -119,20 +118,24 @@ public:
 private:
     /// @returns the annex and sub-tag that head the lhs of @p rule, or `{nullptr, 0}` if no axiom does.
     std::pair<const AnnexInfo*, sub_t>
-    emit(std::ostream& os, const std::string& fn, const RuleDecl* decl, const Rule* rule) {
+    emit(std::ostream& os, const std::string& fn, const LetDecl* decl, const Rule* rule, bool erase) {
         metas_.clear();
         names_.clear();
         bound_.clear();
         body_.str("");
         num_tmps_ = 0;
 
-        auto [lhs, guard, rhs] = instantiate(decl, rule);
+        auto ops    = instantiate(decl, rule);
+        auto eraser = std::optional<RuleEraser>();
+        if (erase) ops = this->erase(eraser.emplace(rule->world(), "nom_erasure"), ops);
+        auto [lhs, guard, rhs] = ops;
         auto app               = lhs->isa<App>();
 
         // TODO a non-App lhs, such as a nullary axiom, has no (callee, arg) to match against
         // TODO an Axm with a custom curry or trip counter normalizes at another spot than after its last argument
         if (!app) {
-            ast_.error().e(decl->lhs()->loc(), "the left-hand side of a `norm` rule must be an application");
+            ast_.error().e(decl->value()->as<RuleExpr>()->lhs()->loc(),
+                           "the left-hand side of a `norm` rule must be an application");
             return {nullptr, 0};
         }
 
@@ -158,14 +161,29 @@ private:
     }
 
     /// Replaces each binder by a placeholder, since eta folds `(a, b)` of the rule's single Var back into it.
-    std::array<const Def*, 3> instantiate(const RuleDecl* decl, const Rule* rule) {
+    std::array<const Def*, 3> instantiate(const LetDecl* decl, const Rule* rule) {
         auto ops = std::array{rule->lhs(), rule->guard(), rule->rhs()};
         if (auto var = rule->has_var()) {
-            auto rw = VarRewriter(var, placeholder(decl->var(), rule->dom()));
+            auto rw = VarRewriter(var, placeholder(decl->value()->as<RuleExpr>()->meta(), rule->meta()));
             for (auto& op : ops)
                 op = rw.rewrite(op);
         }
         return {ops[0]->zonk(), ops[1]->zonk(), ops[2]->zonk()};
+    }
+
+    /// Erases the instantiated rule, since rewriting the Rule itself would recurse on a type that mentions its Var.
+    std::array<const Def*, 3> erase(RuleEraser& eraser, std::array<const Def*, 3> ops) {
+        auto metas = std::vector<std::pair<const Def*, std::string>>(metas_.begin(), metas_.end());
+        std::ranges::sort(metas, [](const auto& m1, const auto& m2) { return m1.first->gid() < m2.first->gid(); });
+        metas_.clear();
+        for (const auto& [meta, name] : metas) {
+            auto erased = eraser.new_world().axm(eraser.rewrite(meta->type()))->set(meta->sym());
+            eraser.map(meta, erased);
+            metas_.emplace(erased, name);
+        }
+        for (auto& op : ops)
+            op = eraser.rewrite(op);
+        return ops;
     }
 
     const Def* placeholder(const Ptrn* ptrn, const Def* type) {
@@ -339,9 +357,9 @@ void AST::bootstrap(Sym plugin, std::ostream& h) {
     auto targets = std::set<std::string>();
 
     // Generate the rule-based normalizers first, so an unsupported rule fails before anything is written.
-    auto rule_norms = std::vector<std::pair<Sym, std::vector<const RuleDecl*>>>();
+    auto rule_norms = std::vector<std::pair<Sym, std::vector<const LetDecl*>>>();
     for (auto rule : plugin2norms(plugin)) {
-        auto name = rule->dbg().sym();
+        auto name = rule->value()->as<RuleExpr>()->name();
         auto i    = std::ranges::find(rule_norms, name, [](const auto& p) { return p.first; });
         if (i == rule_norms.end()) i = rule_norms.insert(i, {name, {}});
         i->second.emplace_back(rule);

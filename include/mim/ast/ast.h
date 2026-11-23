@@ -18,7 +18,7 @@ namespace mim::ast {
 class Decl;
 class Expr;
 class LamDecl;
-class RuleDecl;
+class LetDecl;
 class File;
 class Scopes;
 class Emitter;
@@ -171,7 +171,7 @@ public:
     const auto& plugin2foreign_aliases(Sym plugin) { return plugin2foreign_aliases_[plugin]; }
 
     /// A `norm` rule of @p plugin; bootstrapping turns all rules of the same name into the C++ normalizer of that name.
-    void add_norm(Sym plugin, const RuleDecl* rule) { plugin2norms_[plugin].emplace_back(rule); }
+    void add_norm(Sym plugin, const LetDecl* norm) { plugin2norms_[plugin].emplace_back(norm); }
     const auto& plugin2norms(Sym plugin) { return plugin2norms_[plugin]; }
     ///@}
 
@@ -206,7 +206,7 @@ private:
     // so the elements must not be relocated when further annexes are inserted into the same plugin.
     std::unordered_map<fe::Sym, std::unordered_map<fe::Sym, AnnexInfo>> plugin2sym2annex_;
     std::unordered_map<fe::Sym, std::vector<ForeignAlias>> plugin2foreign_aliases_;
-    std::unordered_map<fe::Sym, std::vector<const RuleDecl*>> plugin2norms_;
+    std::unordered_map<fe::Sym, std::vector<const LetDecl*>> plugin2norms_;
 };
 
 /// Base class of all AST nodes.
@@ -611,22 +611,39 @@ private:
     Ptr<Expr> level_;
 };
 
-/// `Rule dom`
+/// `rl meta: lhs when guard => rhs`; RuleExpr::is_norm, if it stems from a `norm` declaration.
 class RuleExpr : public Expr {
 public:
-    RuleExpr(Loc loc, Ptr<Expr> dom)
+    RuleExpr(Loc loc, Ptr<Ptrn> meta, Ptr<Expr> lhs, Ptr<Expr> guard, Ptr<Expr> rhs, bool is_norm, Sym name)
         : Expr(loc)
-        , dom_(dom) {}
+        , meta_(meta)
+        , lhs_(lhs)
+        , guard_(guard)
+        , rhs_(rhs)
+        , is_norm_(is_norm)
+        , name_(name) {}
 
-    const Expr* dom() const { return dom_.get(); }
+    const Ptrn* meta() const { return meta_.get(); } ///< `nullptr` if there are no meta variables.
+    const Expr* lhs() const { return lhs_.get(); }
+    const Expr* guard() const { return guard_.get(); }
+    const Expr* rhs() const { return rhs_.get(); }
+    bool is_norm() const { return is_norm_; }
+    Sym name() const { return name_; } ///< The name of the `rule` declaration, if any.
 
     void bind(Scopes&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
+    /// `meta: lhs when guard => rhs`
+    void stream_body(fe::Tab&, std::ostream&) const;
 
 private:
     const Def* emit_(Emitter&) const override;
 
-    Ptr<Expr> dom_;
+    Ptr<Ptrn> meta_;
+    Ptr<Expr> lhs_;
+    Ptr<Expr> guard_;
+    Ptr<Expr> rhs_;
+    bool is_norm_;
+    Sym name_;
 };
 
 // prefix/infix
@@ -713,8 +730,8 @@ public:
         Dbg ctor() const { return ctor_; }
 
         virtual void bind(Scopes&) const;
-        /// @p dom is the case's payload type if the scrutinee is a Variant; otherwise ptrn() determines the domain.
-        Lam* emit(Emitter&, const Def* dom = nullptr) const;
+        /// @p dom is the payload type of the case this arm handles.
+        Lam* emit(Emitter&, const Def* dom) const;
         void stream(fe::Tab&, std::ostream&) const override;
 
     private:
@@ -1289,39 +1306,6 @@ private:
     mutable AnnexInfo* annex_ = nullptr;
     mutable sub_t sub_        = 0;
     mutable Sym foreign_; ///< Qualified name of a ForeignAlias, which is registered in its own plugin.
-};
-
-/// `rule dbg var: lhs when guard => rhs;` or `norm` instead of `rule` if RuleDecl::is_normalizer.
-class RuleDecl : public ValDecl {
-public:
-    RuleDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Ptrn> var, Ptr<Expr> lhs, Ptr<Expr> rhs, Ptr<Expr> guard, bool is_norm)
-        : ValDecl(loc, mods)
-        , dbg_(dbg)
-        , var_(var)
-        , lhs_(lhs)
-        , rhs_(rhs)
-        , guard_(guard)
-        , is_norm_(is_norm) {}
-
-    Dbg dbg() const override { return dbg_; }
-    const Ptrn* var() const { return var_.get(); }
-    const Expr* lhs() const { return lhs_.get(); }
-    const Expr* rhs() const { return rhs_.get(); }
-    const Expr* guard() const { return guard_.get(); }
-    bool is_norm() const { return is_norm_; }
-
-    void bind(Scopes&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
-
-private:
-    void emit(Emitter&) const override;
-
-    Dbg dbg_;
-    Ptr<Ptrn> var_;
-    Ptr<Expr> lhs_;
-    Ptr<Expr> rhs_;
-    Ptr<Expr> guard_;
-    bool is_norm_;
 };
 
 /// `mod dbg decls end`; also the base of the anonymous File.

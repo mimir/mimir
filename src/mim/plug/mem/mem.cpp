@@ -6,6 +6,7 @@
 #include "mim/plug/mem/phase/add_mem.h"
 #include "mim/plug/mem/phase/free_locals.h"
 #include "mim/plug/mem/phase/heap2stack.h"
+#include "mim/plug/mem/phase/legalize_ptr.h"
 #include "mim/plug/mem/phase/seo.h"
 
 using namespace mim;
@@ -29,6 +30,7 @@ static void reg_phases(Flags2Phases& phases) {
     Phase::hook<mem::add_mem,     mem::phase::AddMem    >(phases);
     Phase::hook<mem::free_locals, mem::phase::FreeLocals>(phases);
     Phase::hook<mem::heap2stack,  mem::phase::Heap2Stack>(phases);
+    Phase::hook<mem::legalize_ptr, mem::phase::LegalizePtr>(phases);
     Phase::hook<mem::seo,         mem::phase::SEO       >(phases);
     // clang-format on
 }

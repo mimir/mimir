@@ -106,7 +106,15 @@ public:
 
         auto& scope = top();
         if (rebind) {
-            scope[dbg.sym()] = Bind{decl, vis};
+            auto [i, ins] = scope.try_emplace(dbg.sym(), Bind{decl, vis});
+            if (!ins) {
+                // An annex is registered by name, so it must not shadow another one.
+                if (!quiet && decl->is_anx() && i->second.decl->is_anx())
+                    error()
+                        .e(dbg.loc(), "redeclaration of `{}`", dbg)
+                        .n(i->second.decl->dbg().loc(), "previous declaration here");
+                i->second = Bind{decl, vis};
+            }
         } else if (auto [i, ins] = scope.try_emplace(dbg.sym(), Bind{decl, vis}); !ins) {
             auto prev = i->second.decl;
             if (!quiet && !prev->isa<DummyDecl>()) // if prev stems from an error - don't complain
@@ -229,11 +237,19 @@ void Path::bind(Scopes& s, bool quiet) const {
 // clang-format off
 void PathExpr   ::bind(Scopes& s) const { path()->bind(s); }
 void TypeExpr   ::bind(Scopes& s) const { level()->bind(s); }
-void RuleExpr   ::bind(Scopes& s) const { dom()->bind(s); }
 void ErrorExpr  ::bind(Scopes&) const {}
 void HoleExpr   ::bind(Scopes&) const {}
 void PrimaryExpr::bind(Scopes&) const {}
 // clang-format on
+
+void RuleExpr::bind(Scopes& s) const {
+    s.push();
+    if (meta()) meta()->bind(s, true, false);
+    lhs()->bind(s);
+    guard()->bind(s);
+    rhs()->bind(s);
+    s.pop();
+}
 
 void LitExpr::bind(Scopes& s) const {
     if (type()) {
@@ -501,6 +517,8 @@ void LetDecl::bind(Scopes& s) const {
     }
     ptrn()->bind(s, true, false);
     if (id && is_anx()) id->annex_ = s.ast().name2annex(s, id->dbg(), &id->sub_, value());
+    if (auto rule = value()->isa<RuleExpr>(); rule && rule->is_norm())
+        s.ast().add_norm(loc2plugin(s.ast(), loc()), this);
 }
 
 void RecDecl::bind(Scopes& s) const {
@@ -641,20 +659,6 @@ void UseDecl::bind(Scopes& s) const {
 
     scope_ = mod;
     s.bind(dbg(), this);
-}
-
-void RuleDecl::bind(Scopes& s) const {
-    s.push();
-    var()->bind(s, true, false);
-    lhs()->bind(s);
-    rhs()->bind(s);
-    guard()->bind(s);
-    s.pop();
-    // All `norm` rules of one name together form the normalizer of that name.
-    auto prev = is_norm() ? s.find(dbg(), true) : nullptr;
-    auto rule = prev ? prev->isa<RuleDecl>() : nullptr;
-    s.bind(dbg(), this, rule && rule->is_norm());
-    if (is_norm()) s.ast().add_norm(loc2plugin(s.ast(), loc()), this);
 }
 
 } // namespace mim::ast

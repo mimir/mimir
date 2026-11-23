@@ -1,0 +1,26 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin compile;
+plugin core;
+plugin mem;
+plugin math;
+plugin x86;
+
+use math.ops.none;
+
+extern con g (m: mem.M 0, x: math.F32, return: Cn [mem.M 0, math.F32]) =
+    return (m, x * 2.0:math.F32);
+
+/// `a` is live across the call to `g`, which clobbers every XMM register, so it goes to memory.
+extern con main (m: mem.M 0, argc: I32, return: Cn [mem.M 0, I32]) =
+    let a = math.conv.s2f math.f32 argc;
+    let b = a + 1.5:math.F32;
+    con k (m: mem.M 0, y: math.F32) = return (m, math.conv.f2s i32 (b + y));
+    g (m, a, k);
+
+extern lam _compile (): compile.Phase =
+    compile.phases ff (compile.named "x86.legalize", compile.named "x86.isel", x86.schedule, x86.spilling, x86.live);
+
+// CHECK-DAG: (x86.fspill @ (23, 8))
+// CHECK-DAG: (x86.freload @ (23, 8))
+// CHECK-DAG: k{{[_0-9]*}}: {{.*}} fpr 3 flags 0

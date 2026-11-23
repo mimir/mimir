@@ -2,6 +2,8 @@
 
 #include <ranges>
 
+#include <mim/plug/math/math.h>
+
 #include "mim/plug/x86/x86.h"
 
 namespace mim::plug::x86 {
@@ -66,7 +68,9 @@ void Liveness::chain(size_t b) {
 
 Liveness::Class Liveness::cls(const Def* value) {
     auto type = value->type();
-    return Axm::isa<x86::Flags>(type) ? Flags : Axm::isa<Spill>(type) ? Stack : Gpr;
+    if (Axm::isa<x86::Flags>(type)) return Flags;
+    if (Axm::isa<Spill>(type) || Axm::isa<FSpill>(type)) return Stack;
+    return math::isa_f(type) ? Fpr : Gpr;
 }
 
 bool Liveness::local(const Def* def) const {

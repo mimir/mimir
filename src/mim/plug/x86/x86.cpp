@@ -6,6 +6,7 @@
 #include "mim/plug/x86/phase/color.h"
 #include "mim/plug/x86/phase/constrain.h"
 #include "mim/plug/x86/phase/isel.h"
+#include "mim/plug/x86/phase/legalize.h"
 #include "mim/plug/x86/phase/live.h"
 #include "mim/plug/x86/phase/schedule.h"
 #include "mim/plug/x86/phase/spilling.h"
@@ -13,6 +14,7 @@
 using namespace mim;
 
 static void reg_phases(Flags2Phases& phases) {
+    Phase::hook<plug::x86::legalize, plug::x86::phase::Legalize>(phases);
     Phase::hook<plug::x86::isel, plug::x86::phase::ISel>(phases);
     Phase::hook<plug::x86::schedule, plug::x86::phase::Schedule>(phases);
     Phase::hook<plug::x86::spilling, plug::x86::phase::Spilling>(phases);
@@ -33,7 +35,8 @@ static constexpr PluginArg known_args[] = {
 // clang-format on
 
 MIM_PLUGIN_ENTRY(x86) {
-    plugin.register_phases = reg_phases;
-    plugin.args            = known_args;
-    plugin.num_args        = std::size(known_args);
+    plugin.register_normalizers = plug::x86::register_normalizers;
+    plugin.register_phases      = reg_phases;
+    plugin.args                 = known_args;
+    plugin.num_args             = std::size(known_args);
 }

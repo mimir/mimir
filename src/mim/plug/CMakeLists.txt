@@ -21,8 +21,10 @@ set(MIM_PLUGINS
     tensor
     tuple
     vec
-    x86
 )
+if(MIM_X86)
+    list(APPEND MIM_PLUGINS x86 x86_isel)
+endif()
 
 foreach(PLUGIN IN LISTS MIM_PLUGINS)
     add_subdirectory(${PLUGIN})
@@ -53,6 +55,26 @@ if(MIM_STATIC_PLUGINS)
 endif()
 
 add_dependencies(mim_all mim_all_plugins)
+
+if(MIM_X86)
+    set(ISEL_RULES "${CMAKE_BINARY_DIR}/include/mim/plug/x86/isel_rules.h")
+    set(ISEL_GEN   "${CMAKE_CURRENT_BINARY_DIR}/x86_isel_gen.mim")
+    file(GENERATE OUTPUT "${ISEL_GEN}" CONTENT
+        "plugin compile;\nplugin x86_isel;\nextern lam _compile (): compile.Phase = x86_isel.gen;\n"
+    )
+    set(ISEL_PLUGINS ${MIM_PLUGIN_LIST})
+    list(REMOVE_ITEM ISEL_PLUGINS x86)
+    list(TRANSFORM ISEL_PLUGINS PREPEND "mim_")
+    add_custom_command(
+        OUTPUT "${ISEL_RULES}"
+        COMMAND $<TARGET_FILE:mim> "${ISEL_GEN}" -P "${MIM_PLUGIN_DIR}" -X "x86_isel:o=${ISEL_RULES}"
+        DEPENDS mim ${ISEL_PLUGINS} mim_internal_x86 "${MIM_PLUGIN_DIR}/x86.mim" "${MIM_PLUGIN_DIR}/x86_isel.mim"
+        COMMENT "Generating the x86 instruction-selection rules"
+        VERBATIM
+    )
+    add_custom_target(mim_x86_isel_rules DEPENDS "${ISEL_RULES}")
+    add_dependencies(mim_x86 mim_x86_isel_rules)
+endif()
 
 # `--bootstrap` never loads the plugin libraries, so it cannot exercise the normalizers an annex
 # relies on: a type error in a .mim only surfaces once something imports it for real.

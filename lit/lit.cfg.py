@@ -64,7 +64,10 @@ if getattr(config, 'fp16', False):
 # Tests that only work on e.g. Linux operating systems specify this via `// REQUIRES: system-linux`.
 config.available_features.add(f"system-{sys.platform}")
 # The native x86 backend emits SysV/ELF assembly; tests run its binaries via `%if x86_64-linux %{ ... %}`.
-if sys.platform == 'linux' and platform.machine() == 'x86_64':
+# Static and cross builds have no x86 plugin.
+if not getattr(config, 'x86', True):
+    config.excludes.add('x86')
+elif sys.platform == 'linux' and platform.machine() == 'x86_64':
     config.available_features.add('x86_64-linux')
 # `--param x86_k=<n>` compiles every `-p x86 … -X x86:o=` run with `-X x86:k=<n>`, so the expected exit codes check the spiller at small k.
 x86_k = lit_config.params.get('x86_k')

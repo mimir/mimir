@@ -18,6 +18,15 @@ Plugin-specific notes live in `plug/AGENTS.md` and below; phase-specific ones in
 - The one-argument `proj(i)`/`var(i)`/`arg(i)` are deleted on purpose (a collapsed Pack makes `proj(0)` silently wrong); the `t`-variants keep theirs, since peeling a 1-tuple is the calling convention.
 - `World::annex(flags)` throws when the plugin is not loaded; `World::reduce(var, arg, i)` must not guard on the whole mutable being set, since the frontend projects out of a mutable it is still filling.
 
+## Rules (`rule.h`, `rule.cpp`)
+
+- `Rho`/`Rule`/`Fire` mirror `Pi`/`Lam`/`App`; a Rule's Var binds its meta variables (`Rule::meta`), which matching determines.
+  `rule I (dom)* (meta): …` is sugar for `anx lam I (dom)* = rl (meta): …`: the curried Lams make a family that whoever uses it instantiates; their parameters are never matched.
+- Meta variables never occur in a `Rho`, so the type of `r ▷ x` does not depend on the match; the frontend rejects a rule whose type mentions one, which importing it would otherwise recurse on.
+- Patterns are normalized like any term (`a + a` becomes `2 * a`), which is also how they match normalized programs.
+- A tuple pattern matches a non-tuple term by its projections, since a tuple of metas is often η-collapsed in the term (`core.wrap.add m x` for a Var `x`).
+- The Rule of `rule I …` carries the sym `I`, so every instance of the family keeps that name.
+
 ## Analysis and RWPhase (`phase.cpp`)
 
 - `Analysis` iterates sparsely: `touch()` records `curr_mut()` as dirty; a sparse round replays the lattice (skipping mutable keys) and drains the dirty muts in `GIDLt` order; only a quiet *full* round certifies the fixed point, and `finalize()` runs only in full rounds.
@@ -46,4 +55,5 @@ Plugin-specific notes live in `plug/AGENTS.md` and below; phase-specific ones in
 - `+ - * / %` have no built-in meaning: `a op b` desugars to `` `op (a, b) ``, and the escaped Sym includes the backtick (needed for the `--output-ast` round trip).
 - Literal signs are parsed, not lexed (`f -3` subtracts); don't reintroduce sign lexing, it makes `a-1` a silent application.
 - An `axm F` and a `mod F` in one scope are a redeclaration error, so an axiom cannot have child annexes under its own name.
+- An `anx let` may shadow a plain declaration (`priv nom Tensor …; pub anx let Tensor = Tensor;`) but not another annex, whose flags would collide in `World::Annexes::attach`.
 - Verify parser refactors by diffing `mim --output-ast -` over all lit/extra `.mim`; no lit test covers the AST stream.

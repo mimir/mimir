@@ -9,7 +9,7 @@
 #include "mim/rule.h"
 #include "mim/single.h"
 #include "mim/tuple.h"
-#include "mim/union.h"
+#include "mim/variant.h"
 
 namespace mim {
 

@@ -89,8 +89,8 @@ extern lam _default_compile (): compile.Phase =
 
         // type legalization
         compile.nom_erasure,
-        compile.join2variant,
         compile.single_erasure,
+        core.lower_dyn_extract,
         core.lower_variant,
         core.legalize_idx,
 
@@ -109,7 +109,11 @@ extern lam _default_compile (): compile.Phase =
 
         // x86
         // By now no Axm pins a continuation's type anymore, so every continuation gets the mem.M to schedule on.
+        compile.cond "x86" (compile.named "ll.drop_hints"),
         compile.cond "x86" mem.add_mem,
+        compile.cond "x86" core.legalize_dyn_idx,
+        compile.cond "x86" mem.legalize_ptr,
+        compile.named "x86.legalize",
         compile.named "x86.isel",
         compile.named "x86.schedule",
         compile.named "x86.spilling",

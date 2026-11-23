@@ -28,7 +28,7 @@ void for_each_succ(const App* term, auto f) {
 /// A branch on an `x86.cc` uses its flags; the `Bool` is a value only if something else uses it.
 class Liveness {
 public:
-    enum Class : size_t { Gpr, Flags, Stack, Num_Classes };
+    enum Class : size_t { Gpr, Fpr, Flags, Stack, Num_Classes };
     using Pressure = std::array<size_t, Num_Classes>;
 
     struct Block {
@@ -77,9 +77,15 @@ private:
     DefMap<std::pair<size_t, size_t>> insn2block_; ///< Block and position.
 };
 
-/// Is @p value a value of class Liveness::Gpr?
-inline bool is_gpr(const Def* value) {
-    return !is_mem(value) && !value->type()->isa<Pi>() && Liveness::cls(value) == Liveness::Gpr;
+/// Is @p value a value of class @p cls?
+inline bool is_value(const Def* value, Liveness::Class cls) {
+    return !is_mem(value) && !value->type()->isa<Pi>() && Liveness::cls(value) == cls;
 }
+
+/// System V AMD64 ABI per register class: the XMM registers are their own argument registers and all caller-saved.
+inline size_t num_arg_regs(Liveness::Class cls) { return cls == Liveness::Gpr ? Arg_Regs.size() : 8; }
+inline size_t arg_reg(Liveness::Class cls, size_t i) { return cls == Liveness::Gpr ? Arg_Regs[i] : i; }
+inline size_t ret_reg(Liveness::Class cls) { return cls == Liveness::Gpr ? encoding(reg::rax) : 0; }
+inline bool caller_saved(Liveness::Class cls, size_t r) { return cls != Liveness::Gpr || Caller_Saved[r]; }
 
 } // namespace mim::plug::x86

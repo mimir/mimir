@@ -17,7 +17,6 @@ target_sources(libmim
         rule.cpp
         schedule.cpp
         tuple.cpp
-        union.cpp
         world.cpp
         ast/ast.cpp
         ast/bind.cpp
@@ -36,7 +35,6 @@ target_sources(libmim
         phase/dispatch_normalize.cpp
         phase/single_erasure.cpp
         phase/nom_erasure.cpp
-        phase/join2variant.cpp
         phase/ret_wrap.cpp
         phase/sccp_analysis.cpp
         phase/sccp_transform.cpp

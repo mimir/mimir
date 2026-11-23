@@ -1,0 +1,36 @@
+// REQUIRES: x86_64-linux
+// RUN: %mim %s -p x86 -X x86:o=%t.s
+// RUN: %FileCheck %s < %t.s
+// RUN: %FileCheck --check-prefix=JNP %s < %t.s
+// RUN: clang %t.s -o %t
+// RUN: %t a ; test $? -eq 83
+// RUN: %t a b ; test $? -eq 99
+
+plugin core;
+plugin mem;
+plugin math;
+plugin x86;
+
+use math.ops.none;
+
+/// Compares both ways with a NaN and with a number; `ule`, `uge`, and `une` hold on a NaN, the others do not.
+extern con main (m: mem.M 0, argc: I32, return: Cn [mem.M 0, I32]) =
+    let x = math.conv.s2f math.f32 argc;
+    let n = math.nan math.f32;
+    let add = core.wrap.add 0;
+    let mul = core.wrap.mul 0;
+    let a = mul (core.conv.u i32 (math.cmp.ule math.mode.none (n, x)), 1I32);
+    let b = mul (core.conv.u i32 (math.cmp.uge math.mode.none (n, x)), 2I32);
+    let c = mul (core.conv.u i32 (math.cmp.l math.mode.none (n, x)), 4I32);
+    let d = mul (core.conv.u i32 (math.cmp.le math.mode.none (x, n)), 8I32);
+    let e = mul (core.conv.u i32 (math.cmp.l math.mode.none (x, 3.0:math.F32)), 16I32);
+    let f = mul (core.conv.u i32 (math.cmp.ge math.mode.none (x, 3.0:math.F32)), 32I32);
+    let g = mul (core.conv.u i32 (math.cmp.e math.mode.none (n, x)), 128I32);
+    let h = mul (core.conv.u i32 (math.cmp.une math.mode.none (x, n)), 64I32);
+    return (m, add (add (add (add (add (add (add (a, b), c), d), e), f), g), h));
+
+// Only `e` and `une` fix up the unordered case after the `setcc`; the others pick a `setcc` that already gets it right.
+// CHECK-COUNT-8: ucomiss
+// CHECK-NOT:     ucomiss
+// JNP-COUNT-2:   jnp
+// JNP-NOT:       jnp

@@ -1,102 +1,94 @@
 #include "mim/rule.h"
 
-#include <utility>
-
-#include "mim/def.h"
 #include "mim/rewrite.h"
-#include "mim/tuple.h"
 #include "mim/world.h"
 
 namespace mim {
 
-static std::tuple<const Var*, const Def*> tuple_of_dict(World& world, Def2Def& v2v) {
-    if (v2v.empty()) return {nullptr, nullptr};
-    fe::Vector<std::pair<const Def*, size_t>> tuple_of_args;
-    const Var* var_of_rule = nullptr;
-    size_t tuple_size      = 1;
-    for (auto [var, val] : v2v) {
-        if (auto v = var->isa<Var>()) return {v, val}; // we have found all values already
-        if (auto e = var->isa<Extract>()) {
-            auto i      = e->index()->as<Lit>()->get();
-            var_of_rule = e->tuple()->isa<Var>();
-            tuple_size  = e->tuple()->arity()->as<Lit>()->get();
-            tuple_of_args.push_back(std::make_pair(val, i));
+namespace {
+
+/// Matches a pattern against a term; the pattern's meta variables are the Var of its Rule.
+class Matcher {
+public:
+    Matcher(World& world, const Var* meta)
+        : world_(world)
+        , meta_(meta) {}
+
+    bool match(const Def* ptrn, const Def* term) {
+        ptrn = ptrn->zonk();
+        if (ptrn == term) return true;
+        if (is_meta(ptrn)) {
+            if (auto val = bound(ptrn)) return val == term;
+            binds_[ptrn] = term;
+            return match(ptrn->type(), term->type());
         }
-    }
+        // Hash-consing makes a pattern without Var%s match only itself.
+        if (ptrn->local_vars().empty()) return false;
 
-    auto fin = DefVec(tuple_size);
-    for (auto val_pos : tuple_of_args)
-        fin[val_pos.second] = val_pos.first;
-    if (var_of_rule) {
-        for (size_t i = 0; i < tuple_size; i++)
-            if (fin[i] == nullptr) fin[i] = world.mut_hole(world.mut_hole_type());
-        return {var_of_rule, world.tuple(fin)};
-    }
-    return {nullptr, nullptr};
-}
+        // η: a tuple pattern matches any term of its type by its projections.
+        if (auto tuple = ptrn->isa<Tuple>(); tuple && !term->isa<Tuple>()) {
+            if (!match(ptrn->type(), term->type())) return false;
+            auto n = tuple->num_ops();
+            for (size_t i = 0; i != n; ++i)
+                if (!match(tuple->op(i), term->proj(n, i))) return false;
+            return true;
+        }
 
-bool Rule::is_in_rule(const Def* expr) {
-    return std::ranges::any_of(expr->free_vars(), [](const Var* v) { return v->binder()->isa<Rule>(); });
-}
-
-bool Rule::its_a_match(const Def* expr, Def2Def& v2v) const {
-    if (is_in_rule(expr)) return false;
-    return Rule::its_a_match_(expr, lhs(), v2v);
-}
-
-bool Rule::its_a_match_(const Def* exp1, const Def* exp2, Def2Def& already_seen) const {
-    // we assume all vars in exp2 are pattern matching meta variables
-    // therefore they match everything
-    if (exp1 == exp2) return true;
-    auto v = exp2->isa<Var>();
-    if (auto e2 = exp2->isa<Extract>()) v = e2->tuple()->isa<Var>();
-    if (v) {
-        if (auto seen = fe::lookup(already_seen, exp2)) return exp1 == seen;
-        if (!v->binder()->isa<Rule>()) return false;
-        already_seen[exp2] = exp1;
-        return !exp1->type() || !exp2->type() || its_a_match_(exp1->type(), exp2->type(), already_seen);
-    }
-
-    if (exp1->node() == exp2->node()) {
-        if (exp1->type() != nullptr && exp2->type() != nullptr)
-            if (!its_a_match_(exp1->type(), exp2->type(), already_seen)) return false;
-
-        // else we need to check for a match in all branches (except if no dependencies, then check equality)
-        if (auto l1 = exp1->isa<Lit>(); auto l2 = exp2->isa<Lit>()) return l1->get() == l2->get();
-        if (auto a1 = exp1->isa<Axm>(); auto a2 = exp2->isa<Axm>()) return a1->flags() == a2->flags();
-        if (exp2->num_ops() == 0) return true;
-        if (exp2->num_ops() != exp1->num_ops()) return false;
-        for (size_t i = 0; i < exp2->num_ops(); i++)
-            if (!its_a_match_(exp1->op(i), exp2->op(i), already_seen)) return false;
+        // Only the same node can match, and a Var or an Axm only itself.
+        if (ptrn->isa_mut() || ptrn->isa<Var>() || ptrn->isa<Axm>() || ptrn->node() != term->node()
+            || ptrn->flags() != term->flags() || ptrn->num_ops() != term->num_ops())
+            return false;
+        if (ptrn->type() && term->type() && !match(ptrn->type(), term->type())) return false;
+        for (size_t i = 0, e = ptrn->num_ops(); i != e; ++i)
+            if (!match(ptrn->op(i), term->op(i))) return false;
         return true;
     }
 
-    if (auto l1 = exp1->isa<Lit>()) {
-        // l1 can come from a normalized axm
-        // we check if there is an evaluation of exp2 s.t. it is normalized to l1
-        if (!its_a_match_(exp1->type(), exp2->type(), already_seen)) return false;
-        // we gathered all values we could for meta vars; we try to evaluate exp2 and see if it gives l1
-        auto [var, values] = tuple_of_dict(world(), already_seen);
-        // wtf happens if we could not gather all meta vars values ?
-        if (var) {
-            auto rw         = VarRewriter(var, values);
-            auto eval_right = rw.rewrite(exp2);
-            if (auto l2 = eval_right->isa<Lit>()) {
-                // we have obtained a value; we can compare
-                return l1->get() == l2->get();
-            }
-        }
+    /// The value of the meta variable @p var; a tuple Var may be bound by its projections only.
+    const Def* value(const Def* var) {
+        if (auto val = bound(var)) return val;
+        auto n = Lit::isa(var->arity());
+        if (!n || *n < 2) return nullptr;
+        auto elems = DefVec(*n);
+        for (size_t i = 0; i != *n; ++i)
+            if (elems[i] = value(var->proj(*n, i)); !elems[i]) return nullptr;
+        return world_.tuple(elems);
     }
-    return false;
-}
 
-const Def* Rule::replace(const Def* expr, Def2Def& v2v) const {
-    auto [var, meta_values] = tuple_of_dict(world(), v2v);
-    assert(var);
-    auto rw = VarRewriter(var, meta_values);
-    auto g  = rw.rewrite(guard());
-    if (g == world().lit_tt()) return rw.rewrite(rhs());
-    return expr;
+private:
+    bool is_meta(const Def* def) const {
+        if (auto var = def->isa<Var>()) return var == meta_;
+        if (auto ex = def->isa<Extract>(); ex && Lit::isa(ex->index())) return is_meta(ex->tuple());
+        return false;
+    }
+
+    const Def* bound(const Def* meta) {
+        if (auto val = fe::lookup(binds_, meta)) return val;
+        if (auto ex = meta->isa<Extract>())
+            if (auto tuple = bound(ex->tuple())) return binds_[meta] = world_.extract(tuple, ex->index());
+        return nullptr;
+    }
+
+    World& world_;
+    const Var* meta_;
+    Def2Def binds_;
+};
+
+} // namespace
+
+const Def* Rule::fire(const Def* arg) const {
+    if (isa_mut() && !is_set()) return nullptr;
+    auto& w  = world();
+    auto var = has_var();
+    if (!var) return lhs() == arg && guard() == w.lit_tt() ? rhs() : nullptr;
+
+    auto matcher = Matcher(w, var);
+    if (!matcher.match(lhs(), arg)) return nullptr;
+    auto val = matcher.value(var);
+    if (!val) return nullptr;
+
+    auto ops = reduce(val);
+    return ops[1] == w.lit_tt() ? ops[2] : nullptr;
 }
 
 } // namespace mim
