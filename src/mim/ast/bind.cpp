@@ -543,17 +543,18 @@ bool RecDecl::has_mut_body() const {
 }
 
 void RecDecl::bind_decl(Scopes& s) const {
+    s.bind(dbg(), this);
+    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_, body());
+}
+
+void RecDecl::bind_body(Scopes& s) const {
     // A `nom` over any other body is merely not recursive.
     if (!isa<NomDecl>() && !has_mut_body())
         s.error()
             .e(body()->loc(), "unsupported expression in a recursive declaration")
             .n("must be a sigma, a variant, or a function type; use `lam`/`con`/`fun` to declare a recursive function");
-
-    s.bind(dbg(), this);
-    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_, body());
+    body()->bind(s);
 }
-
-void RecDecl::bind_body(Scopes& s) const { body()->bind(s); }
 
 void NomDecl::bind_body(Scopes& s) const {
     rep_vis_ = s.top_decl() ? s.top_decl()->vis() : Vis::Pub;
@@ -593,15 +594,15 @@ void LamDecl::bind_decl(Scopes& s) const {
 
     s.pop();
     s.bind(dbg(), this);
-    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_, nom_sugar() ? nom_sugar()->body() : nullptr);
+    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_, rec_sugar() ? rec_sugar()->body() : nullptr);
 }
 
 void LamDecl::bind_body(Scopes& s) const {
     s.push();
     for (auto dom : doms())
         dom->bind(s, true);
-    if (auto nom = nom_sugar())
-        nom->bind_body(s);
+    if (auto rec = rec_sugar())
+        rec->bind_body(s);
     else if (body())
         body()->bind(s);
     s.pop();

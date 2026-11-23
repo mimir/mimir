@@ -672,9 +672,9 @@ Ptrs<ValDecl> Parser::parse_decls(Mods group) {
             case Tag::K_axm: decls.emplace_back(parse_axm_decl(track, mods)); break;
             case Tag::K_let: decls.emplace_back(parse_let_decl(track, mods)); break;
             case Tag::K_mod: decls.emplace_back(parse_mod_decl(track, mods)); break;
-            case Tag::K_nom: decls.emplace_back(parse_nom_decl(track, mods)); break;
             case Tag::K_use: decls.emplace_back(parse_use_decl(track, mods)); break;
             case Tag::K_mutual: decls.emplace_back(parse_mutual_decl(track, mods)); break;
+            case Tag::K_nom:
             case Tag::K_rec: decls.emplace_back(parse_rec_decl(track, mods)); break;
             case Tag::C_LAM: decls.emplace_back(parse_lam_decl(track, mods)); break;
             case Tag::C_RULE: decls.emplace_back(parse_rule_decl(track, mods)); break;
@@ -788,12 +788,30 @@ Ptr<ValDecl> Parser::parse_use_decl(Tracker track, Mods mods) {
 }
 
 Ptr<RecDecl> Parser::parse_rec_decl(Tracker track, Mods mods) {
-    check_no_extern(mods, "recursive declaration");
-    eat(Tag::K_rec);
-    auto dbg = parse_id("recursive declaration");
-    expect(Tag::T_assign, "recursive declaration");
-    auto body = parse_expr("body of a recursive declaration");
-    return ptr<RecDecl>(track, mods, dbg, body);
+    auto is_nom = ahead().tag() == Tag::K_nom;
+    auto entity = is_nom ? fe::Cite("nominal type declaration") : fe::Cite("recursive declaration");
+    auto ctxt   = is_nom ? fe::Cite("underlying type of a nominal type declaration")
+                         : fe::Cite("body of a recursive declaration");
+    check_no_extern(mods, entity);
+    lex();
+    auto dbg = parse_id(entity);
+    if (accept(Tag::T_assign)) {
+        auto body = parse_expr(ctxt);
+        if (is_nom) return ptr<NomDecl>(track, mods, dbg, body);
+        return ptr<RecDecl>(track, mods, dbg, body);
+    }
+
+    // `rec I (dom)+ = e` is sugar for `lam I (dom)+ = rec I = e; I`, as is `nom I (dom)+ = e`; within `e`, `I` names
+    // the type constructor.
+    auto doms = parse_doms(Prec::Pi, entity, {.required = true});
+    expect(Tag::T_assign, entity);
+    auto body  = parse_expr(ctxt);
+    auto rec   = is_nom ? Ptr<RecDecl>(ptr<NomDecl>(track, Mods{}, dbg, body)) : ptr<RecDecl>(track, Mods{}, dbg, body);
+    auto sugar = rec.get();
+    auto decls = Ptrs<ValDecl>();
+    decls.emplace_back(std::move(rec));
+    auto inst = ptr<DeclExpr>(track, ptr<PathExpr>(ptr<Path>(dbg.loc(), Dbgs{dbg})), false, decls);
+    return ptr<LamDecl>(track, mods, Tag::K_lam, dbg, nullptr, inst, sugar, doms);
 }
 
 Ptr<ValDecl> Parser::parse_mutual_decl(Tracker track, Mods mods) {
@@ -806,27 +824,6 @@ Ptr<ValDecl> Parser::parse_mutual_decl(Tracker track, Mods mods) {
             error().e(decl->loc(), "only `rec`, `nom`, `lam`, `con`, and `fun` declarations may be mutually recursive");
     expect(Tag::K_end, "end of a mutual block");
     return ptr<MutualDecl>(track, decls);
-}
-
-Ptr<RecDecl> Parser::parse_nom_decl(Tracker track, Mods mods) {
-    check_no_extern(mods, "nominal type declaration");
-    eat(Tag::K_nom);
-    auto dbg = parse_id("nominal type declaration");
-    if (accept(Tag::T_assign)) {
-        auto body = parse_expr("underlying type of a nominal type declaration");
-        return ptr<NomDecl>(track, mods, dbg, body);
-    }
-
-    // `nom I (dom)+ = e` is sugar for `lam I (dom)+ = nom I = e; I`; within `e`, `I` names the type constructor.
-    auto doms = parse_doms(Prec::Pi, "nominal type declaration", {.required = true});
-    expect(Tag::T_assign, "nominal type declaration");
-    auto body  = parse_expr("underlying type of a nominal type declaration");
-    auto nom   = ptr<NomDecl>(track, Mods{}, dbg, body);
-    auto sugar = nom.get();
-    auto decls = Ptrs<ValDecl>();
-    decls.emplace_back(std::move(nom));
-    auto inst = ptr<DeclExpr>(track, ptr<PathExpr>(ptr<Path>(dbg.loc(), Dbgs{dbg})), false, decls);
-    return ptr<LamDecl>(track, mods, Tag::K_lam, dbg, nullptr, inst, sugar, doms);
 }
 
 Ptrs<LamDecl::Dom> Parser::parse_doms(Prec prec, fe::Cite entity, DomStyle style) {

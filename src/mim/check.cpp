@@ -271,8 +271,13 @@ bool Check::alpha_impl_(const Def* d1, const Def* d2) {
 
         if (mut1 && mut2 && mut1 == mut2) return true;
 
-        if (auto [i, ins] = bind(mut1, d2); !ins) return i->second == d2;
-        if (auto [i, ins] = bind(mut2, d1); !ins) return i->second == d1;
+        // Only a Var needs a unique partner; else, a mutable may be α-equivalent to several copies of a recursive type.
+        if ((mut1 && mut1->has_var()) || (mut2 && mut2->has_var())) {
+            if (auto [i, ins] = bind(mut1, d2); !ins) return i->second == d2;
+            if (auto [i, ins] = bind(mut2, d1); !ins) return i->second == d1;
+        } else if ((mut1 || mut2) && !assumed_.emplace(memo_key(d1, d2)).second) {
+            return true;
+        }
 
         auto t1 = d1->type();
         auto t2 = d2->type();
