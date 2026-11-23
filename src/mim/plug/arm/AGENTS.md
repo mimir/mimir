@@ -12,7 +12,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 
 ### Everything stays in MimIR
 
-- Legalize, isel, scheduling, spilling, coloring, and emission are all phases on the World; only `mem.legalize_native` and `arm.isel` change types (`RWPhase`), the others rewrite each function in place.
+- Legalize, isel, scheduling, spilling, coloring, and emission are all phases on the World; only `core.legalize_dyn_idx`, `mach.legalize`, and `arm.isel` change types (`RWPhase`), the others rewrite each function in place.
 - Dumping, `-o` round-trip, lit tests, and the type checker work at every backend stage.
 
 ### Instruction types
@@ -21,11 +21,11 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 - `mach.in r v` is `v` living in register `r` of the module `arm.reg`; it is no instruction and never on the chain.
 - A literal operand stays a literal in the IR: the emitter prints it as an immediate where the encoding has one and otherwise loads it with `ldr wD, =imm`/`ldr xD, =imm` into a scratch register.
   So every hole of an `arm_isel` rule is a `Reg`, and the conversion `mov` of a literal into one is the identity at cost 0.
-- `mach.slot n` reserves `n` frame bytes on the chain and yields their address; `mem.mslot` of a literal size becomes it in `mem.legalize_native`.
+- `mach.slot n` reserves `n` frame bytes on the chain and yields their address; `mem.mslot` of a literal size becomes it in `mach.legalize`.
 
 ### The schedule is the `mem.M 0` chain
 
-- Scheduling makes the `mem.M 0` chain total over a block's instructions; memory instructions sit on it and pure ones join it via `mem.sched`.
+- Scheduling makes the `mem.M 0` chain total over a block's instructions; memory instructions sit on it and pure ones join it via `mach.sched`.
 - Every block and function takes an `M`, and every jump and call passes the current one.
 
 ### Condition codes
@@ -63,7 +63,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 
 - The plugin `mach` holds `Flags`, `Spill`, `in`, `slot`, `spill`, `reload`, the float format checks `fpe`/`fok`, the float rule types and the families `float.arith`/`float.unary`, the isel guard `lit`, and the phases `spilling`, `constrain`, `color`, and `live`, which take the target from the `Driver`; `arm.mim` only adds its registers, instructions, and condition codes.
 - `mim::Target` (`include/mim/target.h`) holds the register classes, the register file and ABI per class, and `constraint`; `mach::Target` (`include/mim/plug/mach/target.h`) implements what `mach` determines, so `arm::Target` (`include/mim/plug/arm/target.h`) is just the register file, ABI, and memory instructions; `arm::target()` registers it via `Plugin::target`.
-- `mem.legalize_native` and `mem.schedule` are `mem` phases that take the target from the `Driver`.
+- `mach.legalize` and `mach.schedule` are `mach` phases; `mach.schedule` takes the target from the `Driver` via `native::hook`.
 - libmim (`src/mim/native/`) holds the phases parametrized by a Target: `native::ISel` (PBQP over a generated `rules::Table`), `native::Spilling`, `native::Constrain`, `native::Color` (PBQP with its checker), `native::Live`, and `native::Emitter` (blocks, jumps, calls, returns, parallel copies, `mach.slot`/`spill`/`reload` via hooks, frame bookkeeping); the plugin `mach` holds `mach::Gen`, the rule generator behind `arm_isel.gen`.
 - `mim::Liveness`, `Assign`, `layout`, and `AsmEmit` stay in libmim.
 - Since `arm.isel` compiles in the table that the `mim` it builds generates, `arm` and `arm_isel` exist only if `MIM_NATIVE_BACKENDS`, like `x86`.
@@ -72,7 +72,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 
 Done:
 
-- `arm` plugin (`src/mim/plug/arm/`), with `ll.drop_hints`, `mem.add_mem`, `core.legalize_dyn_idx`, `mem.legalize_ptr`, `mem.legalize_native`, `arm.isel`, `mem.schedule`, `mach.spilling`, `mach.color`, and `arm.emit` at the end of the default pipeline in `opt.mim`; `mach.live` prints `Liveness` (`-X arm:live=<file>`).
+- `arm` plugin (`src/mim/plug/arm/`), with `ll.drop_hints`, `mem.add_mem`, `core.legalize_dyn_idx`, `mach.legalize`, `arm.isel`, `mach.schedule`, `mach.spilling`, `mach.color`, and `arm.emit` at the end of the default pipeline in `opt.mim`; `mach.live` prints `Liveness` (`-X arm:live=<file>`).
 - `arm.mim`: the modules `reg` (`x0`…`x30`) and `fpr` (`d0`…`d31`), `load`, `store`, `add`/`sub`/`and`/`or`/`xor`/`mul`, `madd`, `shl`/`shr`/`sar`, `udiv`/`sdiv`, `zext`/`sext`/`trunc`, `cmp`, the families `cc`, `csel`, and `fcsel`, `fmov`, `fload`/`fstore`, `fadd`/`fsub`/`fmul`/`fdiv`, `fsqrt`/`fabs`, `fcmp`, `i2f`/`u2f`/`f2i`/`f2u`/`f2f`, and the phases `isel` and `emit`.
 - `arm_isel.mim` (`src/mim/plug/arm_isel/`) holds the rules: `core.wrap` (add/sub/mul/shl), `core.bit2` (and/or/xor, and nand/nor/nxor with an `eor`), `core.shr`, `madd` for a sum with a sole product, `core.div` (quotient and remainder via a `mul` and a `sub`), `core.rem` by a literal, `core.icmp`, `core.conv`, an integer `core.bitcast`, `mem.load`/`mem.store` of integers, and a select `(x, y)#c`.
   The float module converts `math`'s arithmetic, unary operations, comparisons, loads/stores, selects, and integer↔float conversions into the `arm` axioms, and `fmov` turns a float literal into a register.

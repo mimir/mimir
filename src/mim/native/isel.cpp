@@ -411,7 +411,6 @@ const Def* ISel::rewrite_imm_App(const App* app) {
     const auto& ann = target_.annexes();
     if (Target::is_axm(ann.mem, app)) return w.call(w.annex(ann.mem), w.lit_nat_0());
     if (auto res = selected(app)) return res;
-    if (auto ptr = target_.strip_ptr_cast(app); ptr != app) return rewrite(ptr);
 
     if (auto axm = app->axm(); axm && target_.is_lowered(axm) && !Target::is_axm(ann.sched, app)
                                && !app->type()->isa<Pi>() && !app->type()->isa<Type>() && !app->type()->isa<Nat>())

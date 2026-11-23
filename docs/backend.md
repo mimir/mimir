@@ -89,13 +89,13 @@ Right before emission, the x86 World reads (with `-o -`, abridged and with binde
 extern con f (m: mem.M 0, a b: I64, ret: Cn [mem.M 0, I64]) =
     let a_rax = mach.in 0I4 a;
     let b_rsi = mach.in 6I4 b;
-    let x     = mem.sched (x86.add @ 0) m (a_rax, b_rsi);
+    let x     = mach.sched (x86.add @ 0) m (a_rax, b_rsi);
     let x_rax = mach.in 0I4 x#tt;
-    let y     = mem.sched (x86.imul @ 0) x#ff (x_rax, 3I64);
+    let y     = mach.sched (x86.imul @ 0) x#ff (x_rax, 3I64);
     ret (y#ff, mach.in 0I4 y#tt);
 ```
 
-Every instruction sits on the `mem.M` chain via `mem.sched`, and every use of a value states its register with `mach.in`.
+Every instruction sits on the `mem.M` chain via `mach.sched`, and every use of a value states its register with `mach.in`.
 The entry parameter `a` arrives in `rdi` but lives in `rax`, so the emitter copies it there; the return is the copy `rax → rax`, which vanishes.
 
 ## Code Organization {#backend_code}
@@ -103,11 +103,10 @@ The entry parameter `a` arrives in `rdi` but lives in `rax`, so the emitter copi
 | Where | What |
 | ----- | ---- |
 | `src/mim/native/`, `include/mim/native/` | The target-independent phases in libmim: `native::ISel`, `native::Spilling`, `native::Constrain`, `native::Color`, `native::Live`, and `native::Emitter`, all parametrized by a `mim::Target`. |
-| `include/mim/target.h` | `mim::Target`: register classes, the register file and ABI per class, and fixed-register constraints. |
-| `src/mim/plug/mach/` | The machine-independent axioms (`mach.Flags`, `mach.Spill`, `mach.in`, `mach.slot`, `mach.spill`/`reload`, the float format checks `fpe`/`fok`), the phases `mach.spilling`, `mach.constrain`, `mach.color`, `mach.live`, the rule generator `mach::Gen`, and `mach::Target`. |
+| `include/mim/target.h` | `mim::Target`: what the libmim phases need of a backend: register classes, the register file and ABI per class, and fixed-register constraints. |
+| `src/mim/plug/mach/` | The machine-independent axioms (`mach.Flags`, `mach.Spill`, `mach.in`, `mach.sched`, `mach.slot`, `mach.load`/`store`, `mach.spill`/`reload`, the float format checks `fpe`/`fok`), the phases `mach.legalize` and `mach.schedule` (`mach::Legalize`, `mach::Schedule`), the hooks of `mach.spilling`, `mach.constrain`, `mach.color`, and `mach.live`, the rule generator `mach::Gen`, and `mach::Target`. |
 | `src/mim/plug/x86/`, `src/mim/plug/arm/` | Registers, instructions, and condition codes as axioms; the target description (`target.h`: memory instructions, register file, ABI, constraints); instruction costs (`insn.h`); the phases `<backend>.isel` and `<backend>.emit`. |
 | `src/mim/plug/x86_isel/`, `src/mim/plug/arm_isel/` | The instruction-selection rules in Mim and the phase `<backend>_isel.gen`, which writes them as C++ tables into `build/include/mim/plug/<backend>/isel_rules.h`. |
-| `src/mim/plug/mem/phase/` | `mem.add_mem`, `mem.legalize_ptr`, `mem.legalize_native`, and `mem.schedule`, which take the target from the [`Driver`](@ref mim::Driver). |
 | `src/pbqp/` | The PBQP solver with the RN heuristic and a `rn_priority` hook. |
 
 A backend plugin is thin: it registers its `Target` via `Plugin::target` and supplies its instructions, its rules, and the textual form of its instructions; the rest is shared.
@@ -121,16 +120,15 @@ The backend phases run at the end of the default pipeline, after the usual optim
 | `ll.drop_hints` | rewrite | Removes the loop hints `ll.vec`/`ll.novec`. |
 | `mem.add_mem` | rewrite | Gives every continuation a `mem.M`, so every block can carry the schedule. |
 | `core.legalize_dyn_idx` | rewrite | Turns each `Idx n` with a dynamic `n` into `I64`. |
-| `mem.legalize_ptr` | rewrite | Makes every pointer a byte pointer and every `mem.lea` a `mem.ptradd` with the target's layout. |
-| `mem.legalize_native` | rewrite | Turns every `Nat` value and every pointer into `I64` and every literal-sized `mem.mslot` into `mach.slot`, so isel only sees register types. |
-| `<backend>.isel` | `RWPhase` | Covers `core`/`mem`/`math` operations with machine instructions by PBQP. |
-| `mem.schedule` | in place | Places every instruction and threads it onto its block's `mem.M` chain. |
+| `mach.legalize` | rewrite | Turns every `Nat` value and every pointer into `I64`, every `mem.lea` into a `core.wrap.add` of its byte offset, `mem.load`/`store` into `mach.load`/`store`, and every literal-sized `mem.mslot` into `mach.slot`, so isel only sees register types. |
+| `<backend>.isel` | `RWPhase` | Covers `core`/`mach`/`math` operations with machine instructions by PBQP. |
+| `mach.schedule` | in place | Places every instruction and threads it onto its block's `mem.M` chain. |
 | `mach.spilling` | in place | Brings register pressure down to `k` per register class. |
 | `mach.constrain` | in place | Splits live ranges around fixed-register and two-address instructions (x86 only; AArch64 has none). |
 | `mach.color` | in place | Assigns registers by PBQP and checks the result. |
 | `<backend>.emit` | output | Writes the assembly. |
 
-Only the legalizations and isel change types; the later phases rewrite each function in place and create a new continuation only where a block's signature changes.
+Only `core.legalize_dyn_idx`, `mach.legalize`, and isel change types; the later phases rewrite each function in place and create a new continuation only where a block's signature changes.
 
 ## Instructions as Axioms {#backend_insns}
 
@@ -158,13 +156,13 @@ MimIR generalizes the holes of a pattern from "a value in a register" to typed t
 
 ### Rules
 
-A rule rewrites a `core`/`mem`/`math` pattern into machine instructions:
+A rule rewrites a `core`/`mach`/`math` pattern into machine instructions:
 
 ```mim
-rule load  {s: Nat} (m: mem.M 0, p: mem.Ptr0 (Idx s)): mem.load (m, p) => x86.load s (m, addr p);
+rule load  {s: Nat} (m: mem.M 0, p: I64): mach.load (Idx s) (m, p) => x86.load s (m, addr p);
 rule icmp  (p: …, c: mach.Flags → Bool) (s: Nat, a b: Idx s): p (a, b) => c (x86.cmp (a, reg_imm b));
-rule rm    … (k: Nat, a: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)):
-    let (mm, v) = mem.load (m, p); (mm, op k (a, v)) when x86.is_gpr s => x86.rm insn (m, a, addr p);
+rule rm    … (k: Nat, a: Idx s, m: mem.M 0, p: I64):
+    let (mm, v) = mach.load (Idx s) (m, p); (mm, op k (a, v)) when x86.is_gpr s => x86.rm insn (m, a, addr p);
 rule lea   (i: Bool) (a: x86.Addr i): a => x86.lea a;
 ```
 
@@ -195,18 +193,18 @@ It also checks the rule set for solvability and fails the build naming the offen
 - Conversions live on edges, so each user converts for itself: one shared address can fold into a load and be materialized by `lea` for a call.
 - A two-address instruction (x86) charges a copy for each overwritten operand that something else uses, so the solver prefers a `lea` where an `add` would need a copy.
 
-After solving, the rewrite builds each root alternative's replacement with its holes substituted by the rewritten and converted operands; any `core`/`mem`/`math` operation left over is an error naming the axiom.
+After solving, the rewrite builds each root alternative's replacement with its holes substituted by the rewritten and converted operands; any `core`/`mem`/`math` operation or `mach.load`/`store` left over is an error naming the axiom.
 
 ## Scheduling {#backend_sched}
 
 There is no list of instructions per block.
-Instead, the schedule is the `mem.M` chain: after `mem.schedule`, every instruction of a block sits on that block's chain, memory instructions directly and pure ones via
+Instead, the schedule is the `mem.M` chain: after `mach.schedule`, every instruction of a block sits on that block's chain, memory instructions directly and pure ones via
 
 ```mim
-axm sched: {D C: *} → (D → C) → M 0 → D → [M 0, C]; // in mem.mim
+axm sched: {D C: *} → (D → C) → mem.M 0 → D → [mem.M 0, C]; // in mach.mim
 ```
 
-e.g. `let (m, x) = mem.sched x86.add m (a, b)`.
+e.g. `let (m, x) = mach.sched x86.add m (a, b)`.
 
 - Each instruction is placed once, as late as possible but out of loops, and the chain follows a topological order.
 - The chain token makes each placement a distinct Def, so copies, spills, reloads, and rematerializations at different program points never merge under hash-consing.
@@ -271,7 +269,7 @@ Any violation is an error naming the values.
 - **Jumps, calls, returns, and the entry are parallel copies**, which is where SSA destruction happens: spill slots first, then register moves in dependency order, breaking cycles with `xchg` (x86) or a scratch register (AArch64), then immediates.
   A call copies its arguments into the ABI registers, and its return continuation's parameter out of the result register.
 - **The frame** holds the callee-saved registers in use, one slot per `mach.Spill` value, and the `mach.slot` areas, keeping the stack 16-byte aligned at calls.
-- **Flags** are emitted where `mem.schedule` placed the comparison; the emitter tracks which result the flags hold and rejects a consumer whose flags something clobbered.
+- **Flags** are emitted where `mach.schedule` placed the comparison; the emitter tracks which result the flags hold and rejects a consumer whose flags something clobbered.
 - **Float literals** come from a `.rodata` constant pool (x86) or an `fmov` immediate or a general-purpose register (AArch64).
 
 ## x86-64 and AArch64 Compared {#backend_compare}
@@ -295,7 +293,7 @@ Vectors, aggregates, the transcendental `math` functions, `malloc`/`free`, more 
 - `lit/x86/` and `lit/arm/` test each stage, mostly with FileCheck over the assembly; the x86 tests also assemble and run the result on an x86-64 Linux host.
 - Integer and float programs elsewhere in `lit/` that run under `-p ll` also run under the host's native backend, via `%if native %{ … -p %native … %}` RUN lines; see `lit/lit.cfg.py`.
 - [`scripts/native_ksweep.sh`](@ref native_ksweep) reruns that allowlist at small register counts `k`, which exercises spilling, memory φs, and parallel-copy cycles.
-- Each stage dumps and round-trips, so `-o -` shows the IR after the backend: `mem.sched` chains, `mach.spill`/`reload`, and `mach.in` registers.
+- Each stage dumps and round-trips, so `-o -` shows the IR after the backend: `mach.sched` chains, `mach.spill`/`reload`, and `mach.in` registers.
   To stop after a stage, write a local `_compile` with just the phases you need.
 - `-X x86:isel-dot=` and `-X <backend>:color-dot=` show the PBQPs and the chosen options; `mach.live` prints liveness.
 - `mim-pbqp-test` checks the solver against exhaustive search on small instances.

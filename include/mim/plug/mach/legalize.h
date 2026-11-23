@@ -2,13 +2,13 @@
 
 #include <mim/phase.h>
 
-namespace mim::plug::mem::phase {
+namespace mim::plug::mach {
 
 /// Turns every `Nat` value and every pointer into an `I64`, so that instruction selection only sees register types.
 /// `Nat` literals stay `Nat` as type-level arguments and become `I64` only as values.
-/// `mem.ptradd` becomes `core.wrap.add`, the `Nat` operations become their `I64` counterparts, and `mem.mslot` becomes
-/// the backend's `slot`. An operation that needs a typed pointer gets a `core.bitcast` of the `I64`.
-class LegalizeNative : public RWPhase {
+/// `mem.lea` becomes a `core.wrap.add` of the byte offset by the layout of `core.trait`, `mem.load`/`mem.store` become
+/// `mach.load`/`mach.store`, `mem.mslot` becomes `mach.slot`, and the `Nat` operations become their `I64` counterparts.
+class Legalize : public RWPhase {
 public:
     using RWPhase::RWPhase;
 
@@ -17,6 +17,8 @@ private:
     bool is_value(const Def* args);
     /// The rewritten @p def with a `Nat` literal as `I64`.
     const Def* val(const Def* def);
+    /// The rewritten array index @p i at register size.
+    const Def* index(const Def* i);
 
     const Def* rewrite_imm_Nat(const Nat*) final { return new_world().type_i64(); }
     const Def* rewrite_imm_Lit(const Lit*) final;
@@ -25,4 +27,4 @@ private:
     const Def* coerce_leaf(const Def*, const Def*) final;
 };
 
-} // namespace mim::plug::mem::phase
+} // namespace mim::plug::mach

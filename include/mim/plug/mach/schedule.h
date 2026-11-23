@@ -2,20 +2,23 @@
 
 #include <mim/phase.h>
 #include <mim/schedule.h>
-#include <mim/target.h>
 
-namespace mim::plug::mem::phase {
+#include "mim/plug/mach/target.h"
 
-/// Makes each continuation's `mem.M 0` chain total over the instructions of the Driver::target, in a topological order.
-/// Memory instructions are rethreaded onto the chain; all others are wrapped in `mem.sched`.
+namespace mim::plug::mach {
+
+/// Makes each continuation's `mem.M 0` chain total over the instructions of the Target, in a topological order.
+/// Memory instructions are rethreaded onto the chain; all others are wrapped in `mach.sched`.
 /// Scheduler::smart picks the continuation of an instruction; a closed one is rematerialized right before each use.
 /// Every use of a memory token outside an instruction receives the end of the chain.
 /// No type changes, so each Nest is rewritten in place.
 class Schedule : public NestPhase<Lam>, private Rewriter {
 public:
-    Schedule(World& world, flags_t annex)
+    /// Every backend's @p target is a mach::Target.
+    Schedule(World& world, flags_t annex, const mim::Target& target)
         : NestPhase(world, annex, true)
-        , Rewriter(world) {}
+        , Rewriter(world)
+        , target_(static_cast<const Target&>(target)) {}
 
     using NestPhase::world;
 
@@ -31,11 +34,11 @@ private:
     /// @p curr is the continuation of the user of @p def.
     void place(Lam* curr, const Def* def);
 
-    bool is_insn(const Def* def) const { return def->isa<App>() && target_->is_insn(def->as<App>()); }
+    bool is_insn(const Def* def) const { return def->isa<App>() && target_.is_insn(def->as<App>()); }
     /// An instruction without a place of its own: a fresh copy goes right before each use.
-    bool is_remat(const Def* def) const { return is_insn(def) && (Scheduler::is_remat(def) || target_->is_flags(def)); }
+    bool is_remat(const Def* def) const { return is_insn(def) && (Scheduler::is_remat(def) || target_.is_flags(def)); }
 
-    const Target* target_ = nullptr;
+    const Target& target_;
     Scheduler* scheduler_ = nullptr;
     DefSet placed_;
     LamSet threaded_;
@@ -44,4 +47,4 @@ private:
     LamMap<DefVec> mems_;
 };
 
-} // namespace mim::plug::mem::phase
+} // namespace mim::plug::mach

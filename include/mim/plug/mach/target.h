@@ -19,7 +19,7 @@ public:
         : mim::Target(name,
                       {
                           .mem    = Annex::Base<core::M>,
-                          .sched  = Annex::Base<mem::sched>,
+                          .sched  = Annex::Base<mach::sched>,
                           .slot   = Annex::Base<slot>,
                           .spill  = Annex::Base<mach::spill>,
                           .reload = Annex::Base<mach::reload>,
@@ -34,12 +34,17 @@ public:
         if (Axm::isa<Spill>(type)) return Stack;
         return math::isa_f(type) ? Fpr : Gpr;
     }
-    /// An application of an axiom of the backend or of `mach` that is no `Pi` and no `mach.in`.
-    bool is_machine_insn(const App* app) const override {
+    /// Is @p app an instruction of this backend, other than `mach.sched`, that belongs on a `mem.M 0` chain?
+    /// By default, an application of an axiom of the backend or of `mach` that is no `Pi` and no `mach.in`.
+    virtual bool is_machine_insn(const App* app) const {
         auto axm = app->axm();
         return axm && (axm->plugin() == plugin_ || axm->plugin() == Plugin_Id) && !app->type()->isa<Pi>()
             && !Axm::isa<mach::in>(app);
     }
+    /// Is @p app an instruction that belongs on a `mem.M 0` chain?
+    bool is_insn(const App* app) const { return Axm::isa<mach::sched>(app) || is_machine_insn(app); }
+    /// Is @p def a `Flags` value or a condition tested on one, neither of which is a register value?
+    bool is_flags(const Def* def) const { return Axm::isa<mach::Flags>(def->type()) || is_axm(annexes().cc, def); }
     /// `mach.slot`; a backend adds its loads and stores.
     bool is_mem_insn(const App* app) const override { return Axm::isa<slot>(app); }
     bool is_in(const Def* def) const final { return Axm::isa<mach::in>(def); }
@@ -48,12 +53,12 @@ public:
         return w.call<mach::in>(w.lit_idx(num_regs(cls), r), v);
     }
     nat_t ptr_size() const override { return 8; }
-    /// An axiom of `core`, `mem`, or `math`.
+    /// An axiom of `core`, `mem`, or `math`, or `mach.load`/`mach.store`.
     bool is_lowered(const Axm* axm) const final {
         auto p = axm->plugin();
-        return p == core::Plugin_Id || p == mem::Plugin_Id || p == math::Plugin_Id;
+        return p == core::Plugin_Id || p == mem::Plugin_Id || p == math::Plugin_Id
+            || axm->flags() == Annex::Base<mach::load> || axm->flags() == Annex::Base<mach::store>;
     }
-    const Def* strip_ptr_cast(const Def* def) const final { return mem::strip_ptr_cast(def); }
 
     /// `mach.slot` besides what mim::Target removes; a backend adds its loads.
     bool is_removable(const App* insn) const override {

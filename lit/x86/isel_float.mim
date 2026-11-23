@@ -4,10 +4,11 @@
 plugin core;
 plugin mem;
 plugin math;
+plugin mach;
 plugin x86;
 import compile;
 
-extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_native, compile.named "x86.isel", mem.schedule);
+extern lam _compile (): compile.Phase = compile.phases ff (mach.legalize, compile.named "x86.isel", mach.schedule);
 
 use math.ops.none;
 

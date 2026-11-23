@@ -20,7 +20,7 @@ extern con main (m: mem.M 0, argc: I32, return: Cn [mem.M 0, I32]) =
     g (m, a, k);
 
 extern lam _compile (): compile.Phase =
-    compile.phases ff (mem.legalize_native, compile.named "x86.isel", mem.schedule, mach.spilling, mach.live);
+    compile.phases ff (mach.legalize, compile.named "x86.isel", mach.schedule, mach.spilling, mach.live);
 
 // CHECK-DAG: (mach.spill @ (math.F (23, 8)))
 // CHECK-DAG: (mach.reload @ (math.F (23, 8)))

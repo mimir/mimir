@@ -2,10 +2,11 @@
 
 plugin core;
 plugin mem;
+plugin mach;
 plugin x86;
 import compile;
 
-extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_native, compile.named "x86.isel");
+extern lam _compile (): compile.Phase = compile.phases ff (mach.legalize, compile.named "x86.isel");
 
 // A literal address is a displacement if it fits `i32`, else its base goes into a register.
 extern lam near (m: mem.M 0): [mem.M 0, I8] = mem.load (m, 4096:(mem.Ptr0 I8));

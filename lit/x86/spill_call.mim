@@ -15,11 +15,11 @@ extern con f (m: mem.M 0, a b c d e: I32, return: Cn [mem.M 0, I32]) =
         return (m, x86.add (x86.add (x86.add (x86.add (x86.add (x86.add (r, a), b), c), d), e), x));
     g (m, x, k);
 
-extern lam _compile (): compile.Phase = compile.phases ff (mem.schedule, mach.spilling, mach.live);
+extern lam _compile (): compile.Phase = compile.phases ff (mach.schedule, mach.spilling, mach.live);
 
 // `x` is used last after the call, so it is the one that goes to memory.
-// CHECK:      [[X:_[0-9]+]] = mem.sched @ («2; I32», I32) (x86.add @ i32) m (a, b);
-// CHECK-NEXT: [[S:_[0-9]+]] = mem.sched @ (I32, mach.Spill I32) (mach.spill @ I32) [[X]]#ff [[X]]#tt;
+// CHECK:      [[X:_[0-9]+]] = mach.sched @ («2; I32», I32) (x86.add @ i32) m (a, b);
+// CHECK-NEXT: [[S:_[0-9]+]] = mach.sched @ (I32, mach.Spill I32) (mach.spill @ I32) [[X]]#ff [[X]]#tt;
 // CHECK:      (mach.reload @ I32) {{.*}} [[S]]#tt;
 // CHECK-NOT:  mach.reload
 // CHECK:      g ([[S]]#ff, [[X]]#tt, k{{[_0-9]*}});

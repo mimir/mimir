@@ -13,7 +13,7 @@
 namespace mim::native {
 
 /// @name Rules
-/// A rule rewrites a pattern over `core`/`mem`/`math` into a backend's term; the holes of the pattern are typed.
+/// A rule rewrites a pattern over `core`/`mach`/`math` into a backend's term; the holes of the pattern are typed.
 ///@{
 
 using rules::Ty;
@@ -51,7 +51,7 @@ using Alts = fe::Vector<Alt>;
 
 ///@}
 
-/// Rewrites the `core`, `mem`, and `math` operations of a world that `mem.legalize_native` lowered into the
+/// Rewrites the `core`, `mach`, and `math` operations of a world that `mach.legalize` lowered into the
 /// instructions of a backend by the rules of its generated rules::Table. Everything this phase does not know is an
 /// error.
 ///

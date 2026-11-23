@@ -15,7 +15,7 @@ Constraint Target::constraint(const App* insn) const {
         res.tied = insn::tied(insn);
         return res;
     }
-    if (!Axm::isa<mem::sched>(insn)) return res;
+    if (!Axm::isa<mach::sched>(insn)) return res;
 
     auto axm = std::get<0>(Axm::get(Target::sched_insn(insn)));
     if (!axm) return res;

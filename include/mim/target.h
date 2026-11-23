@@ -28,8 +28,8 @@ inline fe::Vector<std::pair<size_t, std::optional<size_t>>> copies(const Constra
     return res;
 }
 
-/// The machine facts that the target-independent parts of a native backend need, such as Liveness and `mem.schedule`.
-/// A backend plugin registers its Target via Plugin::target; see Driver::target.
+/// The machine facts that the target-independent parts of a native backend need, such as Liveness and register
+/// allocation. A backend plugin registers its Target via Plugin::target; see Driver::target.
 class Target {
 public:
     /// The register classes; `Stack` values live in a spill slot and are unbounded.
@@ -40,7 +40,7 @@ public:
     /// The base flags of the annexes that libmim knows only through the Target.
     struct Annexes {
         flags_t mem;    ///< `core.M`.
-        flags_t sched;  ///< `mem.sched`.
+        flags_t sched;  ///< `sched`, which places a pure instruction on the chain.
         flags_t slot;   ///< `slot n m`, which allocates `n` bytes of the stack frame.
         flags_t spill;  ///< `spill T`, the instruction that spills a value of type `T`.
         flags_t reload; ///< `reload T`, the instruction that reloads it.
@@ -57,23 +57,21 @@ public:
     std::string_view name() const { return name_; }
     const Annexes& annexes() const { return annexes_; }
     /// The object format of the host that the emitted assembly is assembled and linked on.
-    virtual Format format() const {
+    static constexpr Format format() {
 #ifdef __APPLE__
         return Format::MachO;
 #else
         return Format::Elf;
 #endif
     }
-    bool is_elf() const { return format() == Format::Elf; }
+    static constexpr bool is_elf() { return format() == Format::Elf; }
     /// The prefix that the object format adds to a C symbol.
-    std::string_view global_prefix() const { return is_elf() ? "" : "_"; }
+    static constexpr std::string_view global_prefix() { return is_elf() ? "" : "_"; }
     /// The prefix of an assembler-local label.
-    std::string_view local_prefix() const { return is_elf() ? ".L" : "L"; }
+    static constexpr std::string_view local_prefix() { return is_elf() ? ".L" : "L"; }
 
     /// The register class of the value @p def, from its type.
     virtual Class cls(const Def* def) const = 0;
-    /// Is @p app an instruction of this backend, other than `mem.sched`, that belongs on a `mem.M 0` chain?
-    virtual bool is_machine_insn(const App* app) const = 0;
     /// Is @p app an instruction that takes the `mem.M 0` it continues as its first argument?
     virtual bool is_mem_insn(const App* app) const = 0;
     /// Is @p def a register operand `in r v`?
@@ -84,8 +82,6 @@ public:
     virtual nat_t ptr_size() const = 0;
     /// Is @p axm an operation that instruction selection must have replaced?
     virtual bool is_lowered(const Axm* axm) const = 0;
-    /// The integer under @p def if @p def is a cast of one to a pointer, otherwise @p def.
-    virtual const Def* strip_ptr_cast(const Def* def) const = 0;
 
     /// @name Register File and ABI
     /// Registers are hardware encodings within their Class.
@@ -114,7 +110,7 @@ public:
     }
     /// May @p insn go if nothing uses its results, e.g. a load?
     virtual bool is_removable(const App* insn) const { return is_axm(annexes_.sched, insn); }
-    /// The instruction `f` of `mem.sched f m x` that spills a value of class @p cls and @p type, or `nullptr`.
+    /// The instruction `f` of `sched f m x` that spills a value of class @p cls and @p type, or `nullptr`.
     virtual const Def* spill(Class, const Def*) const { return nullptr; }
     /// The instruction that reloads a value of class @p cls and @p type from its spill slot.
     virtual const Def* reload(Class, const Def*) const { return nullptr; }
@@ -133,15 +129,13 @@ public:
         auto [axm, c, _] = Axm::get(def);
         return axm && c == curry && axm->base() == base;
     }
-    /// The `f` of `mem.sched f m x`.
+    /// The `f` of `sched f m x`.
     static const Def* sched_insn(const App* app) { return app->callee()->as<App>()->callee()->as<App>()->arg(); }
     /// The register `r` of `in r v`.
     static size_t in_reg(const Def* in) {
         return *Lit::isa(in->as<App>()->callee()->as<App>()->callee()->as<App>()->arg());
     }
 
-    /// Is @p app an instruction that belongs on a `mem.M 0` chain?
-    bool is_insn(const App* app) const { return is_axm(annexes_.sched, app) || is_machine_insn(app); }
     bool is_mem(const Def* def) const {
         auto type = def->type(); // Level has no type
         return type && is_axm(annexes_.mem, type);
@@ -157,12 +151,10 @@ public:
     }
     /// The `v` of `in r v`, otherwise @p def.
     const Def* strip(const Def* def) const { return is_in(def) ? def->as<App>()->arg() : def; }
-    /// Is @p def a `Flags` value or a condition tested on one, neither of which is a register value?
-    bool is_flags(const Def* def) const { return is_axm(annexes_.flags, def->type()) || is_axm(annexes_.cc, def); }
     bool is_sched_cc(const App* app) const {
         return is_axm(annexes_.sched, app) && is_axm(annexes_.cc, sched_insn(app), 1);
     }
-    /// The `mem.sched` of a `cc` that yields @p cond, if any.
+    /// The `sched` of a `cc` that yields @p cond, if any.
     const App* isa_sched_cc(const Def* cond) const {
         if (auto ex = cond->isa<Extract>())
             if (auto app = ex->tuple()->isa<App>(); app && is_sched_cc(app)) return app;

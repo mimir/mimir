@@ -1,14 +1,19 @@
 #include "mim/plug/mach/mach.h"
 
+#include <mim/phase.h>
 #include <mim/plugin.h>
 
 #include <mim/native/regalloc.h>
 
 #include "mim/plug/mach/gen.h"
+#include "mim/plug/mach/legalize.h"
+#include "mim/plug/mach/schedule.h"
 
 using namespace mim;
 
 static void reg_phases(Flags2Phases& phases) {
+    Phase::hook<plug::mach::legalize, plug::mach::Legalize>(phases);
+    native::hook<plug::mach::schedule, plug::mach::Schedule>(phases);
     native::hook<plug::mach::spilling, native::Spilling>(phases);
     native::hook<plug::mach::constrain, native::Constrain>(phases);
     native::hook<plug::mach::color, native::Color>(phases);

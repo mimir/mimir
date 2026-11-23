@@ -438,10 +438,6 @@ std::vector<Table::Meta> Table::metas(const Rule* rule) {
                 want = marked(Want::FReg);
             } else if (type->isa<Nat>()) {
                 want = Want::Param;
-            } else if (Axm::isa<core::Ptr>(type)) {
-                if (mark == marks_.end())
-                    rule->blame("{}: pointer `{}` of `{}` is no `addr` or `reg`", gen_.isel(), meta, rule).bail();
-                want = mark->second;
             } else if (Axm::isa<core::M>(type) || type->isa<Pi>()) {
                 want = Want::Param;
             } else if (auto addr = gen_.classify(type)) {
@@ -503,7 +499,6 @@ u32 Table::node_(const Def* def) {
 
     const auto& a = gen_.annexes();
     if (auto addr = isa_marker(a.addr, def)) return marked(addr->arg(), Want::Addr);
-    if (auto reg = isa_marker(a.reg, def)) return marked(reg->arg(), Want::Reg);
     if (auto ri = isa_marker(a.reg_imm, def)) return widened(ri->arg(), Want::RegImm);
     if (auto rs = isa_marker(a.reg_sh, def)) return widened(rs->arg(), Want::RegSh);
     if (auto scaled = isa_marker(a.scaled, def)) return marked(scaled->arg(), Want::Scaled);
@@ -571,13 +566,6 @@ private:
     std::string fresh(char prefix) { return std::format("{}{}", prefix, next_++); }
     const Table::Node& node(u32 n) const { return t_.nodes_[n]; }
     const std::string& comment(u32 n) const { return t_.comments_[n]; }
-    /// Is the type @p n a `core.Ptr`, whose casts the matcher looks through?
-    bool is_ptr(u32 n) const {
-        const auto& x = node(n);
-        if (x.kind != Kind::App) return false;
-        const auto& f = node(x.ops[0]);
-        return f.kind == Kind::Axm && f.val == Annex::base<core::Ptr>();
-    }
     bool inner(u32 n) const { return !in_type_ && node(n).kind == Kind::App && node(n).val & Inner && n != root_; }
     /// Binds @p expr to a fresh variable, unless it is one.
     std::string name(const std::string& expr);
@@ -709,9 +697,8 @@ void Code::match(u32 n, const std::string& e, bool spine) {
         case Kind::Hole: {
             auto i = x.val;
             if (!in_type_) shape_.uses.emplace_back(rules::Use{owner_, u8(i), false});
-            auto ptr = is_ptr(types_[i]);
             if (bound_[i]) {
-                line("if (m[{}] != {}) return false;", i, ptr ? std::format("strip_ptr_cast({})", e) : e);
+                line("if (m[{}] != {}) return false;", i, e);
                 return;
             }
             bound_[i] = true;
@@ -719,7 +706,6 @@ void Code::match(u32 n, const std::string& e, bool spine) {
             auto outer = std::exchange(in_type_, true);
             match(types_[i], std::format("m[{}]->type()", i));
             in_type_ = outer;
-            if (ptr) line("m[{0}] = strip_ptr_cast(m[{0}]);", i);
             return;
         }
         case Kind::Axm: {
