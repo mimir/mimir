@@ -40,6 +40,7 @@ public:
         auto heads = std::vector<std::pair<const AnnexInfo*, sub_t>>();
         auto fn    = [&]() { return std::format("{}_{}", norm, heads.size()); };
         for (auto decl : rules) {
+            // AST::bootstrap emitted the rule's File, so LetDecl::emit stored the Rule in Decl::def.
             auto rule = decl->def()->as<Rule>();
             heads.emplace_back(emit(os, fn(), name, decl, rule, false));
             if (RWPhase::mentions(rule,

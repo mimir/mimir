@@ -84,6 +84,8 @@ void AST::bootstrap(Sym plugin, std::ostream& h) {
             if (annex.sym.plugin == plugin && !annex.subs.empty() && annex.normalizer.sym() == norm) return &annex;
         return nullptr;
     };
+    // Bootstrap skips File::compile, so emit just the Files with rules, and all of each, since a rule uses its axioms.
+    // LetDecl::emit then leaves each Rule in the LetDecl's Decl::def, where emit_norm reads it.
     // Bootstrap mode loads no plugin library, so no normalizer touches the rules while they are emitted.
     for (auto rule : plugin2norms(plugin))
         if (auto i = files_->find(rule->loc().src); i != files_->end()) i->second->emit(*this);

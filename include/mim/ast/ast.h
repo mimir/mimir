@@ -171,9 +171,10 @@ public:
     const auto& plugin2foreign_aliases(Sym plugin) { return plugin2foreign_aliases_[plugin]; }
 
     /// A `norm` rule of @p plugin; bootstrapping turns all rules of the same name into the C++ normalizer of that name.
+    /// Its Rule is only in Decl::def once AST::bootstrap has emitted its File.
     void add_norm(Sym plugin, const LetDecl* norm) { plugin2norms_[plugin].emplace_back(norm); }
     const auto& plugin2norms(Sym plugin) { return plugin2norms_[plugin]; }
-    /// Every emitted annex, even of a plugin whose library is not loaded, so World::annexes misses it.
+    /// Every emitted annex, even of a plugin whose library is not loaded, which World::Annexes::attach skips.
     void add_annex_def(flags_t flags, const Def* def) { flags2annex_def_[flags] = def; }
     const auto& flags2annex_def() const { return flags2annex_def_; }
     ///@}
