@@ -119,22 +119,16 @@ rule select8 {s: Nat} (x y: Idx s, c: Bool): (x, y)#c when core.bit2.or 0 (core.
 /// ### Floating Point
 ///
 /// Float instructions work on `math.F pe` values in XMM registers.
-/// A family takes the format as `{pe: «2; Nat»}`, which gen instantiates at each of `formats` that the `x86.fpe` or `x86.fok` in its rule's type admits.
+/// A family takes the format as `{pe: «2; Nat»}`, which gen instantiates at each of `formats` that the `mach.fpe` or `mach.fok` in its rule's type admits.
 /// `f2f` takes both formats explicitly, since one of the same format would convert a float to itself.
 /// A family `op` with an `insn` maps a `math` operation onto an `x86` instruction, `rm` folds a sole load into its source, and `swap` takes the converse predicate.
 ///
 pub mod float
-    let Op1   = Nat → {pe: «2; Nat»} → math.F pe → math.F pe;
-    let Op2   = Nat → {pe: «2; Nat»} → «2; math.F pe» → math.F pe;
-    let Pred  = Nat → {pe: «2; Nat»} → «2; math.F pe» → Bool;
-    let Insn1 = {pe: «2; Nat»} → math.F pe → math.F (x86.fpe pe);
-    let Insn2 = {pe: «2; Nat»} → «2; math.F pe» → math.F (x86.fpe pe);
-    let Cmp   = {pe: «2; Nat»} → «2; math.F pe» → Idx (x86.fok pe 2);
+    use mach.float;
+    let Cmp   = {pe: «2; Nat»} → «2; math.F pe» → Idx (mach.fok pe 2);
     ///
     /// #### Arithmetic
     ///
-    rule arith (op: Op2, insn: Insn2) {pe: «2; Nat»} (k: Nat, a b: math.F pe): op k (a, b) => insn (a, b);
-    rule unary (op: Op1, insn: Insn1) {pe: «2; Nat»} (k: Nat, x: math.F pe):   op k x      => insn x;
     rule rm    (op: Op2, insn: Insn2) {pe: «2; Nat»} (k: Nat, a: math.F pe, m: mem.M 0, p: mem.Ptr0 (math.F pe)): let (mm, v) = mem.load (m, p); (mm, op k (a, v)) => x86.rm insn (m, a, addr p);
     rule sqrt_rm {pe: «2; Nat»} (k: Nat, m: mem.M 0, p: mem.Ptr0 (math.F pe)):                                 let (mm, v) = mem.load (m, p); (mm, math.rt.sq k v) => x86.rm1 (x86.fsqrt @ pe) (m, addr p);
     anx let arithmetic = (
@@ -236,7 +230,7 @@ rule unscale (s: [I64, I2]): s => x86.lea (x86.index (x86.addr (0I32, 0I64)) s);
 ///
 /// ## Instances
 ///
-/// The values of a family's `{pe: «2; Nat»}`; the `x86.fpe`s in its rule's type keep those x86 supports.
+/// The values of a family's `{pe: «2; Nat»}`; the `mach.fpe`s in its rule's type keep those x86 supports.
 ///
 anx let formats = (math.f16, math.f32, math.f64, math.bf16, math.nvtf32, math.amdfp24, math.pxr24);
 ///

@@ -1,0 +1,29 @@
+// RUN: %mim -p opt %s -p arm -X arm:k=2 -X arm:o=- | %FileCheck %s
+
+plugin core;
+plugin mem;
+plugin math;
+
+use math.ops.none;
+
+/// Eight live `f64` values, more than the two registers `k = 2` leaves, so they spill.
+extern con many (m: mem.M 0, a: math.F64, return: Cn [mem.M 0, math.F64]) =
+    let p0 = a + 1.0:math.F64;
+    let p1 = a * 2.0:math.F64;
+    let p2 = a - 3.0:math.F64;
+    let p3 = a / 4.0:math.F64;
+    let p4 = a + 5.0:math.F64;
+    let p5 = a * 6.0:math.F64;
+    let p6 = a - 7.0:math.F64;
+    let p7 = a / 8.0:math.F64;
+    let s0 = p0 + p1;
+    let s1 = p2 + p3;
+    let s2 = p4 + p5;
+    let s3 = p6 + p7;
+    return (m, (s0 + s1) * (s2 + s3));
+
+// CHECK: .globl many
+// CHECK: sub sp, sp, #64
+// CHECK-COUNT-8: str d{{[0-9]+}}, [sp, #{{[0-9]+}}]
+// CHECK: ldr d{{[0-9]+}}, [sp, #{{[0-9]+}}]
+// CHECK: ret

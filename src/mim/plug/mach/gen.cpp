@@ -77,7 +77,7 @@ bool uses(const Def* def, const Def* meta, const Var* var) {
     return uses(def, meta, var, done);
 }
 
-/// The conditions of the `refly.check`s in @p def, e.g. the one of `x86.fpe pe`.
+/// The conditions of the `refly.check`s in @p def, e.g. the one of `mach.fpe pe`.
 void checks(const Def* def, DefVec& conds, DefSet& done) {
     if (def->isa_mut() || !done.emplace(def).second) return;
     if (auto check = Axm::isa<refly::check>(def)) conds.emplace_back(check->arg(3, 0));

@@ -141,8 +141,9 @@ void Emitter::insn(const App* app) {
     if (Target::is_axm(ann.sched, app)) {
         auto f   = Target::sched_insn(app);
         auto res = app->proj(2, 1);
-        if (Target::is_axm(ann.spill, f, 1)) return spill(app->arg(), spill_slot(res));
-        if (Target::is_axm(ann.reload, f, 1)) return reload(res, spill_slot(app->arg()));
+        if (Target::is_axm(ann.spill, f, 1)) return spill(source(app->arg()), app->arg()->type(), spill_slot(res));
+        if (Target::is_axm(ann.reload, f, 1))
+            return reload(Reg{def_reg(res), target_.cls(res)}, res->type(), spill_slot(app->arg()));
     } else if (Target::is_axm(ann.slot, app)) {
         auto first = alloc_slots(nat(app->callee()->as<App>()->arg()));
         return slot_addr(def_reg(app->proj(2, 1)), first, num_slots_ - first);
@@ -216,12 +217,16 @@ void Emitter::emit(bool global) {
         }
         collect(b.lam->body(), done);
     }
-    auto used = fe::Vector<bool>(target_.num_regs(Target::Gpr), false);
+    auto used = std::array<fe::Vector<bool>, Target::Num_Classes>{};
+    for (size_t c = 0; c != Target::Num_Classes; ++c)
+        used[c].resize(target_.num_regs(Target::Class(c)));
     for (auto [def, r] : regs_)
-        if (target_.cls(def) == Target::Gpr) used[r] = true;
-    for (size_t r = 0; r != used.size(); ++r)
-        if (!target_.caller_saved(Target::Gpr, r) && !target_.reserved(Target::Gpr, r) && used[r])
-            saved_.emplace_back(r);
+        if (auto& u = used[target_.cls(def)]; r < u.size()) u[r] = true;
+    for (size_t c = 0; c != Target::Num_Classes; ++c) {
+        auto cls = Target::Class(c);
+        for (size_t r = 0; r != used[c].size(); ++r)
+            if (used[c][r] && !target_.caller_saved(cls, r) && !target_.reserved(cls, r)) saved_[c].emplace_back(r);
+    }
 
     auto order = layout(live_);
 

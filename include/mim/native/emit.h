@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <optional>
 #include <print>
 #include <sstream>
@@ -19,7 +20,7 @@ struct Reg {
     bool operator==(const Reg&) const = default;
 };
 
-/// The source of a copy: a register or a literal.
+/// The source of a copy: a register or a literal; `reg.cls` is the class of either.
 struct Src {
     Reg reg        = {};
     const Def* imm = nullptr;
@@ -29,7 +30,7 @@ using Moves = fe::Vector<std::pair<Reg, Src>>;
 
 /// Writes the GNU assembler code of one function on the registers that Color assigned.
 /// The control flow is target-independent: jumps, calls, returns, and the entry are parallel copies, the blocks are
-/// laid out by layout(), and the callee-saved general-purpose registers that hold values are saved.
+/// laid out by layout(), and the callee-saved registers that hold values are saved.
 /// A backend derives from it and emits its instructions, moves, branches, prologue, and epilogue.
 class Emitter {
 public:
@@ -58,10 +59,10 @@ protected:
     /// Pushes the spill slot @p i; the pops come in reverse order.
     virtual void push_slot(size_t i) = 0;
     virtual void pop_slot(size_t i)  = 0;
-    /// Stores @p x, a register operand or a literal, into the spill slot @p i.
-    virtual void spill(const Def* x, size_t i) = 0;
-    /// Loads the spill slot @p i into the register of the result @p res.
-    virtual void reload(const Def* res, size_t i) = 0;
+    /// Stores @p src, a value of @p type, into the spill slot @p i.
+    virtual void spill(Src src, const Def* type, size_t i) = 0;
+    /// Loads the spill slot @p i, a value of @p type, into @p dst.
+    virtual void reload(Reg dst, const Def* type, size_t i) = 0;
     /// Puts the address of the @p n slots from @p first on into the register @p dst.
     virtual void slot_addr(size_t dst, size_t first, size_t n) = 0;
     virtual void jmp(std::string_view label)                   = 0;
@@ -101,7 +102,8 @@ protected:
         return {};
     }
     Src source(const Def* def) const {
-        return Lit::isa(def) ? Src{.imm = def} : Src{.reg = {use_reg(def), target_.cls(target_.strip(def))}};
+        auto cls = target_.cls(target_.strip(def));
+        return Lit::isa(def) ? Src{.reg = {0, cls}, .imm = def} : Src{.reg = {use_reg(def), cls}};
     }
 
     /// @name Flags
@@ -126,14 +128,17 @@ protected:
         return res;
     }
     size_t num_slots() const { return num_slots_; }
-    /// The callee-saved general-purpose registers that hold values.
-    const fe::Vector<size_t>& saved() const { return saved_; }
+    /// The callee-saved registers of class @p cls that hold values.
+    const fe::Vector<size_t>& saved(Target::Class cls) const { return saved_[cls]; }
+    size_t num_saved() const {
+        return std::ranges::fold_left(saved_, size_t(0), [](size_t n, const auto& rs) { return n + rs.size(); });
+    }
     ///@}
 
     std::ostringstream& body() { return body_; }
 
     /// The bytes of the callee-saved registers, slots, and spill slots, rounded up to keep `sp` 16-byte aligned.
-    size_t frame_size() const { return fe::pad(8 * (saved_.size() + num_slots_), 16); }
+    size_t frame_size() const { return fe::pad(8 * (num_saved() + num_slots_), 16); }
 
 private:
     void insn(const App*);
@@ -154,7 +159,7 @@ private:
     DefMap<size_t> regs_;
     DefMap<size_t> slots_;
     size_t num_slots_ = 0;
-    fe::Vector<size_t> saved_;
+    std::array<fe::Vector<size_t>, Target::Num_Classes> saved_;
     Lam* next_        = nullptr;
     const Def* flags_ = nullptr; ///< The result of the instruction that set the flags.
 };

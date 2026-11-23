@@ -94,25 +94,6 @@ anx lam logic (s: Nat): Nat =
     let ok = core.bit2.or 0 (is (s, 2), core.bit2.or 0 (core.bit2.or 0 (is (s, i8), is (s, i16)), core.bit2.or 0 (is (s, i32), is (s, i64))));
     refly.check (ok, s, "x86: operand size must be Bool, i8, i16, i32, or i64");
 ///
-/// ### fpe
-///
-/// `math.f32` or `math.f64`.
-///
-lam is_fpe (pe: «2; Nat»): Bool =
-    let (p, e) = pe;
-    let (p32, e32) = math.f32;
-    let (p64, e64) = math.f64;
-    let eq32 = core.bit2.and 0 (core.ncmp.e (p, p32), core.ncmp.e (e, e32));
-    let eq64 = core.bit2.and 0 (core.ncmp.e (p, p64), core.ncmp.e (e, e64));
-    core.bit2.or 0 (eq32, eq64);
-anx lam fpe (pe: «2; Nat»): «2; Nat» = refly.check (is_fpe pe, pe, "x86: float type must be f32 or f64");
-///
-/// ### fok
-///
-/// `x`, if `pe` is `math.f32` or `math.f64`: the check of `fpe` for a codomain that does not name the format, e.g. `Idx (fok pe 2)` for `Bool`.
-///
-anx lam fok {T: *} (pe: «2; Nat») (x: T): T = refly.check (is_fpe pe, x, "x86: float type must be f32 or f64");
-///
 /// ## Instruction Forms
 ///
 /// The plugin pretends that x86 uses three-address code and copes with x86's two-address code later on.
@@ -294,31 +275,31 @@ axm cmovcc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): {s: Nat} �
 ///
 /// `mov r, imm` materializes a floating-point constant from the constant pool.
 ///
-axm fmov: {pe: «2; Nat»} → math.F pe → math.F (fpe pe);
+axm fmov: {pe: «2; Nat»} → math.F pe → math.F (mach.fpe pe);
 ///
 /// ### fload
 ///
 /// `movss`/`movsd r, addr`.
 ///
-axm fload: [pe: «2; Nat»] → {i: Bool} → [mem.M 0, Addr i] → [mem.M 0, math.F (fpe pe)];
+axm fload: [pe: «2; Nat»] → {i: Bool} → [mem.M 0, Addr i] → [mem.M 0, math.F (mach.fpe pe)];
 ///
 /// ### fstore
 ///
 /// `movss`/`movsd addr, r`.
 ///
-axm fstore: {pe: «2; Nat», i: Bool} → [mem.M 0, Addr i, math.F pe] → mem.M (fok pe 0);
+axm fstore: {pe: «2; Nat», i: Bool} → [mem.M 0, Addr i, math.F pe] → mem.M (mach.fok pe 0);
 ///
 /// ### Floating-Point Arithmetic
 ///
 /// Two-address arithmetic `op r, r`.
 ///
-axm (fadd, fsub, fmul, fdiv): {pe: «2; Nat»} → «2; math.F pe» → math.F (fpe pe);
+axm (fadd, fsub, fmul, fdiv): {pe: «2; Nat»} → «2; math.F pe» → math.F (mach.fpe pe);
 ///
 /// ### Floating-Point Unary
 ///
 /// `sqrtss`/`sqrtsd` and `andps`/`andpd` with a mask clearing the sign bit.
 ///
-axm (fsqrt, fabs): {pe: «2; Nat»} → math.F pe → math.F (fpe pe);
+axm (fsqrt, fabs): {pe: «2; Nat»} → math.F pe → math.F (mach.fpe pe);
 ///
 /// ### fcmp
 ///
@@ -343,24 +324,24 @@ axm (fsqrt, fabs): {pe: «2; Nat»} → math.F pe → math.F (fpe pe);
 /// | `une`  | unordered or not equal        |
 /// | `t`    | always true                   |
 ///
-axm fcmp.(f, e, l, le, g, ge, ne, o, u, ue, ul, ule, ug, uge, une, t): {pe: «2; Nat»} → «2; math.F pe» → Idx (fok pe 2);
+axm fcmp.(f, e, l, le, g, ge, ne, o, u, ue, ul, ule, ug, uge, une, t): {pe: «2; Nat»} → «2; math.F pe» → Idx (mach.fok pe 2);
 ///
 /// ### fsel
 ///
 /// `fsel (c, x, y)` yields `y` if `c` holds, else `x`, like `(x, y)#c`.
 ///
-axm fsel: {pe: «2; Nat»} → [Bool, math.F pe, math.F pe] → math.F (fpe pe);
+axm fsel: {pe: «2; Nat»} → [Bool, math.F pe, math.F pe] → math.F (mach.fpe pe);
 ///
 /// ### Floating-Point Conversions
 ///
 /// Both formats and sizes are explicit, since a folded load (`x86.rm1`) leaves no operand to infer them from.
 /// The instances of `x86_isel` name the sizes; only `i32` and `i64` are supported.
 ///
-axm i2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (fpe pe);
-axm u2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (fpe pe);
-axm f2i: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx (fok pe s);
-axm f2u: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx (fok pe s);
-axm f2f: [spe: «2; Nat»] → [dpe: «2; Nat»] → math.F spe → math.F (fpe dpe);
+axm i2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (mach.fpe pe);
+axm u2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (mach.fpe pe);
+axm f2i: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx (mach.fok pe s);
+axm f2u: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx (mach.fok pe s);
+axm f2f: [spe: «2; Nat»] → [dpe: «2; Nat»] → math.F spe → math.F (mach.fpe dpe);
 ///
 /// ## Phases
 ///

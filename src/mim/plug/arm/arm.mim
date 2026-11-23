@@ -6,7 +6,7 @@
 ///
 /// The native AArch64 backend.
 /// Loading this plugin (`mim foo.mim -p arm`) appends instruction selection, register allocation, and emission to the compilation pipeline.
-/// Instruction selection rewrites a small integer subset of `core` and `mem` into the axioms below and those of `mach`; register allocation is the phases of `mach`.
+/// Instruction selection rewrites a scalar subset of `core`, `mem`, and `math` into the axioms below and those of `mach`; register allocation is the phases of `mach`.
 /// AArch64 is three-address, so no operand is tied to a result.
 /// Registers are no concern of these types; register allocation introduces them later.
 /// The schedule is the `mem.M 0` chain: memory instructions sit on it, and `mem.schedule` threads all other instructions onto it via `mem.sched`.
@@ -15,6 +15,7 @@
 ///
 plugin core;
 plugin mem;
+plugin math;
 plugin mach;
 plugin opt;
 import compile;
@@ -58,6 +59,47 @@ pub mod reg
     anx let x28 = 28I5;
     anx let x29 = 29I5;
     anx let x30 = 30I5;
+end
+///
+/// ### fpr
+///
+/// The floating-point registers in hardware encoding order, as the register `r` of `mach.in r v` for a `math.F pe` value `v`.
+/// The operand size selects the `s` or `d` name of a register.
+/// A register's subtag is its hardware encoding, so they have to stay in this order.
+///
+pub mod fpr
+    anx let d0  = 0I5;
+    anx let d1  = 1I5;
+    anx let d2  = 2I5;
+    anx let d3  = 3I5;
+    anx let d4  = 4I5;
+    anx let d5  = 5I5;
+    anx let d6  = 6I5;
+    anx let d7  = 7I5;
+    anx let d8  = 8I5;
+    anx let d9  = 9I5;
+    anx let d10 = 10I5;
+    anx let d11 = 11I5;
+    anx let d12 = 12I5;
+    anx let d13 = 13I5;
+    anx let d14 = 14I5;
+    anx let d15 = 15I5;
+    anx let d16 = 16I5;
+    anx let d17 = 17I5;
+    anx let d18 = 18I5;
+    anx let d19 = 19I5;
+    anx let d20 = 20I5;
+    anx let d21 = 21I5;
+    anx let d22 = 22I5;
+    anx let d23 = 23I5;
+    anx let d24 = 24I5;
+    anx let d25 = 25I5;
+    anx let d26 = 26I5;
+    anx let d27 = 27I5;
+    anx let d28 = 28I5;
+    anx let d29 = 29I5;
+    anx let d30 = 30I5;
+    anx let d31 = 31I5;
 end
 ///
 /// ## Instructions
@@ -142,17 +184,74 @@ axm cmp: {s: Nat} → «2; Idx s» → mach.Flags;
 ///
 axm csel.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): {s: Nat} → [mach.Flags, Idx s, Idx s] → Idx s, normalize_csel;
 ///
+/// ### fcsel
+///
+/// `fcsel.<c> (f, x, y)` yields `y` if `<c>` holds on `f`, else `x`, and normalizes like `csel`.
+///
+axm fcsel.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): {pe: «2; Nat»} → [mach.Flags, math.F pe, math.F pe] → math.F (mach.fpe pe), normalize_fcsel;
+///
 /// ### cc
 ///
 /// Tests a condition code on the flags: `bcc` as a branch condition, `cset` otherwise.
 ///
 axm cc.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): mach.Flags → Bool;
 ///
+/// ## Floating-Point Instructions
+///
+/// A `math.F pe` value is a whole `d` register, whatever its format; the instruction names the `s` or `d` form.
+/// An operand is always a register: a literal is materialized by `fmov` first.
+///
+/// ### fmov
+///
+/// Materializes a floating-point constant via a general-purpose scratch register.
+///
+axm fmov: {pe: «2; Nat»} → math.F pe → math.F (mach.fpe pe);
+///
+/// ### fload
+///
+/// `ldr` of an `s` or `d` register.
+///
+axm fload: [pe: «2; Nat»] → [mem.M 0, I64] → [mem.M 0, math.F (mach.fpe pe)];
+///
+/// ### fstore
+///
+/// `str` of an `s` or `d` register.
+///
+axm fstore: {pe: «2; Nat»} → [mem.M 0, I64, math.F pe] → mem.M (mach.fok pe 0);
+///
+/// ### Floating-Point Arithmetic
+///
+/// `fadd`, `fsub`, `fmul`, and `fdiv`.
+///
+axm (fadd, fsub, fmul, fdiv): {pe: «2; Nat»} → «2; math.F pe» → math.F (mach.fpe pe);
+///
+/// ### Floating-Point Unary
+///
+/// `fsqrt` and `fabs`.
+///
+axm (fsqrt, fabs): {pe: «2; Nat»} → math.F pe → math.F (mach.fpe pe);
+///
+/// ### fcmp
+///
+/// `fcmp a, b` sets the flags: `Z C` if equal, `N` if less, `C` if greater, and `C V` if unordered.
+///
+axm fcmp: {pe: «2; Nat»} → «2; math.F pe» → mach.Flags;
+///
+/// ### Floating-Point Conversions
+///
+/// Both formats and sizes are explicit, since a conversion has no operand that names them.
+///
+axm i2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (mach.fpe pe);
+axm u2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (mach.fpe pe);
+axm f2i: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx (mach.fok pe s);
+axm f2u: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx (mach.fok pe s);
+axm f2f: [spe: «2; Nat»] → [dpe: «2; Nat»] → math.F spe → math.F (mach.fpe dpe);
+///
 /// ## Phases
 ///
 /// ### isel
 ///
-/// Instruction selection for an integer subset of `core` and `mem` by the rules of `arm_isel`.
+/// Instruction selection for a scalar subset of `core`, `mem`, and `math` by the rules of `arm_isel`.
 ///
 axm isel: compile.Phase;
 ///

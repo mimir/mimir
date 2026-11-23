@@ -11,6 +11,7 @@
 /// ## Dependencies
 ///
 plugin core;
+plugin math;
 import compile;
 import mem;
 plugin mach;
@@ -99,6 +100,69 @@ rule select {s: Nat} (x y: Idx s, c: Bool): (x, y)#c => arm.csel.ne (arm.cmp (c,
 rule load  {s: Nat} (m: mem.M 0, p: mem.Ptr0 (Idx s)):         mem.load (m, p)     => arm.load s (m, reg p);
 rule store (s: Nat, m: mem.M 0, p: mem.Ptr0 (Idx s), x: Idx s): mem.store (m, p, x) => arm.store s (m, reg p, x);
 ///
+/// ### Floating Point
+///
+/// Float instructions work on `math.F pe` values in the registers of `arm.fpr`.
+/// A family takes the format as `{pe: «2; Nat»}`, which gen instantiates at each of `formats` that the `mach.fpe` or `mach.fok` in its rule admits.
+/// AArch64 has no memory operand, so no rule folds a load.
+///
+pub mod float
+    use mach.float;
+    ///
+    /// #### Arithmetic
+    ///
+    anx let arithmetic = (
+        arith (math.arith.add, arm.fadd), arith (math.arith.sub, arm.fsub),
+        arith (math.arith.mul, arm.fmul), arith (math.arith.div, arm.fdiv),
+        unary (math.abs, arm.fabs), unary (math.rt.sq, arm.fsqrt));
+    ///
+    /// #### Comparisons
+    ///
+    /// Each predicate is a condition code on the flags of `arm.fcmp`, except `ne` and `ue`, which take two.
+    ///
+    rule cmp  (op: Pred, c: mach.Flags → Bool) {pe: «2; Nat»} (k: Nat, a b: math.F pe):   op k (a, b) => mach.fok pe (c (arm.fcmp (a, b)));
+    rule cmp2 (op: Pred, c d: mach.Flags → Bool) {pe: «2; Nat»} (k: Nat, a b: math.F pe): op k (a, b) => mach.fok pe (arm.or (c (arm.fcmp (a, b)), d (arm.fcmp (a, b))));
+    anx let comparisons = (
+        cmp (math.cmp.e,   arm.cc.eq), cmp (math.cmp.l,   arm.cc.mi), cmp (math.cmp.le,  arm.cc.ls), cmp (math.cmp.g,  arm.cc.gt),
+        cmp (math.cmp.ge,  arm.cc.ge), cmp (math.cmp.o,   arm.cc.vc), cmp (math.cmp.u,   arm.cc.vs), cmp (math.cmp.ul, arm.cc.lt),
+        cmp (math.cmp.ule, arm.cc.le), cmp (math.cmp.ug,  arm.cc.hi), cmp (math.cmp.uge, arm.cc.cs), cmp (math.cmp.une, arm.cc.ne),
+        cmp2 (math.cmp.ne, arm.cc.mi, arm.cc.gt), cmp2 (math.cmp.ue, arm.cc.eq, arm.cc.vs));
+    ///
+    /// #### Selects, Loads, and Stores
+    ///
+    rule select {pe: «2; Nat»} (x y: math.F pe, c: Bool):                           (x, y)#c            => arm.fcsel.ne (arm.cmp (c, 0_2), x, y);
+    rule load   {pe: «2; Nat»} (m: mem.M 0, p: mem.Ptr0 (math.F pe)):               mem.load (m, p)     => arm.fload pe (m, reg p);
+    rule store  {pe: «2; Nat»} (m: mem.M 0, p: mem.Ptr0 (math.F pe), x: math.F pe): mem.store (m, p, x) => arm.fstore (m, reg p, x);
+    ///
+    /// #### Conversions
+    ///
+    /// The integer size is a family parameter, since neither side determines it.
+    /// `f2f` takes both formats explicitly and only has the two mixed pairs, since a float of the same format converts to itself.
+    ///
+    rule s2f (s: Nat) {pe: «2; Nat»} (x: Idx s):              math.conv.s2f pe x  => arm.i2f s pe x;
+    rule u2f (s: Nat) {pe: «2; Nat»} (x: Idx s):              math.conv.u2f pe x  => arm.u2f s pe x;
+    rule f2s (s: Nat) {pe: «2; Nat»} (x: math.F pe):         math.conv.f2s s x   => arm.f2i pe s x;
+    rule f2u (s: Nat) {pe: «2; Nat»} (x: math.F pe):         math.conv.f2u s x   => arm.f2u pe s x;
+    rule f2f (spe: «2; Nat», dpe: «2; Nat») (x: math.F spe): math.conv.f2f dpe x => arm.f2f spe dpe x;
+    ///
+    /// A narrower integer converts through a `w` register.
+    ///
+    rule s2f_ext   (s: Nat) {pe: «2; Nat»} (x: Idx s):      math.conv.s2f pe x => arm.i2f i32 pe (arm.sext i32 x);
+    rule u2f_ext   (s: Nat) {pe: «2; Nat»} (x: Idx s):      math.conv.u2f pe x => arm.u2f i32 pe (arm.zext i32 x);
+    rule f2s_trunc (s: Nat) {pe: «2; Nat»} (x: math.F pe): math.conv.f2s s x  => arm.trunc s (arm.f2i pe i32 x);
+    rule f2u_trunc (s: Nat) {pe: «2; Nat»} (x: math.F pe): math.conv.f2u s x  => arm.trunc s (arm.f2u pe i32 x);
+    anx let conversions = (
+        s2f i32, s2f i64, u2f i32, u2f i64,
+        f2s i32, f2s i64, f2u i32, f2u i64,
+        s2f_ext i8, s2f_ext i16, u2f_ext i8, u2f_ext i16,
+        f2s_trunc i8, f2s_trunc i16, f2u_trunc i8, f2u_trunc i16,
+        f2f (math.f32, math.f64), f2f (math.f64, math.f32));
+end
+///
+/// A float literal becomes a register with `fmov`.
+///
+rule fmov {pe: «2; Nat»} (x: math.F pe): x when mach.lit x => arm.fmov x;
+///
 /// ### Non-Terminals
 ///
 /// A literal stays a literal operand; the emitter puts it into a register where the encoding has no immediate.
@@ -111,9 +175,9 @@ rule mov (x: I64): x when mach.lit x => x;
 ///
 anx let sizes = (i1, i8, i16, i32, i64);
 ///
-/// The values of a family's `{pe: «2; Nat»}`; the backend has no floating point yet.
+/// The values of a family's `{pe: «2; Nat»}`.
 ///
-anx let formats = ();
+anx let formats = (math.f32, math.f64);
 ///
 /// ## Phases
 ///

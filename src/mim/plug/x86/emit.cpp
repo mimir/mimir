@@ -95,7 +95,7 @@ public:
 
 private:
     std::string slot(size_t i, size_t off = 0) const {
-        return std::format("{}(%rbp)", int64_t(off) - int64_t(8 * (saved().size() + i + 1)));
+        return std::format("{}(%rbp)", int64_t(off) - int64_t(8 * (saved(Target::Gpr).size() + i + 1)));
     }
     /// An operand that is a register or an immediate.
     std::string src(const Def* def, nat_t w) const;
@@ -125,8 +125,8 @@ private:
     void mov_imm(Reg dst, const Def* lit) final;
     void push_slot(size_t i) final { line("pushq {}", slot(i)); }
     void pop_slot(size_t i) final { line("popq {}", slot(i)); }
-    void spill(const Def* x, size_t i) final;
-    void reload(const Def* res, size_t i) final;
+    void spill(Src src, const Def* type, size_t i) final;
+    void reload(Reg dst, const Def* type, size_t i) final;
     /// The area grows down from `rbp`, so its address is that of its last slot.
     void slot_addr(size_t dst, size_t first, size_t n) final {
         line("leaq {}, {}", slot(first + n - 1), name(dst, 64));
@@ -461,33 +461,34 @@ void Emitter::step(const App* app) {
     line("mov{} {}, {}", suffix(w), src(v, w), addr(p));
 }
 
-void Emitter::spill(const Def* x, size_t i) {
-    if (!math::isa_f(x->type())) {
-        auto src = Lit::isa(x) ? imm(x, 64) : std::string(name(use_reg(x), 64));
-        return line("movq {}, {}", src, slot(i));
+void Emitter::spill(Src src, const Def* type, size_t i) {
+    if (src.reg.cls != Target::Fpr) {
+        auto s = src.imm ? imm(src.imm, 64) : std::string(name(src.reg.num, 64));
+        return line("movq {}, {}", s, slot(i));
     }
-    auto w = width(x->type());
-    if (auto l = Lit::isa(x)) {
-        line("movl ${}, {}", u32(*l), slot(i));
-        if (w == 64) line("movl ${}, {}", u32(*l >> 32), slot(i, 4));
+    auto w = width(type);
+    if (src.imm) {
+        auto l = *Lit::isa(src.imm);
+        line("movl ${}, {}", u32(l), slot(i));
+        if (w == 64) line("movl ${}, {}", u32(l >> 32), slot(i, 4));
     } else {
-        line("mov{} {}, {}", fsz(w), xmm(use_reg(x)), slot(i));
+        line("mov{} {}, {}", fsz(w), xmm(src.reg.num), slot(i));
     }
 }
 
-void Emitter::reload(const Def* res, size_t i) {
-    if (math::isa_f(res->type()))
-        line("mov{} {}, {}", fsz(width(res->type())), slot(i), xmm(def_reg(res)));
+void Emitter::reload(Reg dst, const Def* type, size_t i) {
+    if (dst.cls == Target::Fpr)
+        line("mov{} {}, {}", fsz(width(type)), slot(i), xmm(dst.num));
     else
-        line("movq {}, {}", slot(i), name(def_reg(res), 64));
+        line("movq {}, {}", slot(i), name(dst.num, 64));
 }
 
 void Emitter::epilogue() {
-    if (saved().empty()) {
+    if (saved(Target::Gpr).empty()) {
         line("leave");
     } else {
-        line("leaq -{}(%rbp), %rsp", 8 * saved().size());
-        for (auto r : saved() | std::views::reverse)
+        line("leaq -{}(%rbp), %rsp", 8 * saved(Target::Gpr).size());
+        for (auto r : saved(Target::Gpr) | std::views::reverse)
             line("popq {}", name(r, 64));
         line("popq %rbp");
     }
@@ -495,10 +496,10 @@ void Emitter::epilogue() {
 }
 
 void Emitter::prologue(std::ostream& os) {
-    auto frame = frame_size() - 8 * saved().size();
+    auto frame = frame_size() - 8 * saved(Target::Gpr).size();
     std::println(os, "\tpushq %rbp");
     std::println(os, "\tmovq %rsp, %rbp");
-    for (auto r : saved())
+    for (auto r : saved(Target::Gpr))
         std::println(os, "\tpushq {}", name(r, 64));
     if (frame != 0) std::println(os, "\tsubq ${}, %rsp", frame);
 }

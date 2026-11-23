@@ -6,11 +6,14 @@
 
 #include <mim/native/emit.h>
 
+#include <mim/plug/math/math.h>
+
 #include "mim/plug/arm/target.h"
 
 namespace mim::plug::arm {
 
 using native::Reg;
+using native::Src;
 
 namespace {
 
@@ -18,16 +21,34 @@ namespace {
 constexpr std::array<std::string_view, 16> ccs
     = {"eq", "ne", "cs", "cc", "mi", "pl", "vs", "vc", "hi", "ls", "ge", "lt", "gt", "le", "al", "nv"};
 
+/// Are the @p bits of a float of width @p w the 8-bit immediate of `fmov`, i.e. `a:¬b:b…b:cdefgh:0…0`?
+bool is_fimm8(u64 bits, nat_t w) {
+    auto [zeros, exp] = w == 64 ? std::pair{48, (bits >> 54) & 0x1ff} : std::pair{19, (bits >> 25) & 0x3f};
+    auto b1           = w == 64 ? 0x0ffu : 0x1fu;
+    return (bits & ((u64(1) << zeros) - 1)) == 0 && (exp == b1 || exp == b1 + 1);
+}
+
 /// `x17` holds a literal operand; `x16` holds a second one, breaks a copy cycle, or carries a spill slot.
 constexpr size_t Scratch = encoding(reg::x16), Scratch2 = encoding(reg::x17);
 
 /// The bit width of the register holding a value of @p type.
-nat_t width(const Def* type) { return Idx::expect_bitwidth(type, "an integer"); }
+nat_t width(const Def* type) {
+    if (auto w = math::isa_f(type)) return *w;
+    return Idx::expect_bitwidth(type, "an integer");
+}
 
 /// The `b`/`h` suffix of a load or store of width @p w.
 std::string_view suffix(nat_t w) { return w <= 8 ? "b" : w <= 16 ? "h" : ""; }
 
+/// The prefix of a whole 64-bit register of class @p cls.
+char wide(Target::Class cls) { return cls == Target::Fpr ? 'd' : 'x'; }
+
 std::string reg(size_t r, nat_t w) { return std::format("{}{}", w == 64 ? 'x' : 'w', r); }
+/// The `w`/`x` or `s`/`d` name of the register @p r holding a value of @p type.
+std::string name(size_t r, const Def* type) {
+    if (!math::isa_f(type)) return reg(r, width(type));
+    return std::format("{}{}", width(type) == 64 ? 'd' : 's', r);
+}
 
 /// Writes one function in AArch64 syntax.
 class Emitter : public native::Emitter {
@@ -38,19 +59,26 @@ public:
 private:
     /// The frame address @p off bytes above `sp`, also while push_slot() moved `sp` down.
     std::string at(size_t off) const { return std::format("[sp, #{}]", off + pushed_); }
-    std::string slot(size_t i) const { return at(8 * (saved().size() + i)); }
+    std::string slot(size_t i) const { return at(8 * (num_saved() + i)); }
+    /// The saved registers in frame order.
+    fe::Vector<Reg> saved_regs() const;
     /// The register operand @p def of width @p w; a literal goes into @p scratch.
     std::string operand(const Def* def, nat_t w, size_t scratch);
     /// The second operand @p b after @p a: an immediate below @p limit, otherwise a register.
     std::string operand(const Def* a, const Def* b, nat_t w, nat_t limit);
     void insn(const Def* res, const Def* f, const Def* x);
+    void fmov_imm(size_t dst, const Def* lit);
 
     void step(const App*) final;
     void move(Reg dst, Reg src) final {
-        if (dst != src) line("mov x{}, x{}", dst.num, src.num);
+        auto c = wide(dst.cls);
+        if (dst != src) line("{} {}{}, {}{}", c == 'd' ? "fmov" : "mov", c, dst.num, c, src.num);
     }
-    std::optional<Reg> scratch(Target::Class) const final { return Reg{Scratch}; }
+    std::optional<Reg> scratch(Target::Class cls) const final {
+        return cls == Target::Fpr ? Reg{Fpr_Scratch, Target::Fpr} : Reg{Scratch};
+    }
     void mov_imm(Reg dst, const Def* lit) final {
+        if (dst.cls == Target::Fpr) return fmov_imm(dst.num, lit);
         line("ldr {}, ={}", reg(dst.num, width(lit->type())), *Lit::isa(lit));
     }
     void push_slot(size_t i) final {
@@ -67,8 +95,11 @@ private:
     void branch_cc(size_t cc, std::string_view label) final { line("b.{} {}", ccs[cc], label); }
     void branch_if(size_t r, std::string_view label) final { line("cbnz w{}, {}", r, label); }
     void call_insn(std::string_view sym, const std::array<size_t, Target::Num_Classes>&) final { line("bl {}", sym); }
-    void spill(const Def* x, size_t i) final { line("str {}, {}", operand(x, 64, Scratch2), slot(i)); }
-    void reload(const Def* res, size_t i) final { line("ldr x{}, {}", def_reg(res), slot(i)); }
+    void spill(Src src, const Def*, size_t i) final {
+        if (src.imm) return line("str {}, {}", operand(src.imm, 64, Scratch2), slot(i));
+        line("str {}{}, {}", wide(src.reg.cls), src.reg.num, slot(i));
+    }
+    void reload(Reg dst, const Def*, size_t i) final { line("ldr {}{}, {}", wide(dst.cls), dst.num, slot(i)); }
     void slot_addr(size_t dst, size_t first, size_t) final;
     void prologue(std::ostream& os) final;
     void epilogue() final;
@@ -98,6 +129,14 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         auto lhs    = operand(a, w, Scratch2);
         auto rhs    = operand(a, b, w, limit);
         line("{} {}, {}, {}", mnemonic, reg(def_reg(res), w), lhs, rhs);
+    };
+    auto fthree = [&](std::string_view mnemonic) {
+        auto [a, b] = x->projs<2>();
+        auto t      = res->type();
+        line("{} {}, {}, {}", mnemonic, name(def_reg(res), t), name(use_reg(a), t), name(use_reg(b), t));
+    };
+    auto two = [&](std::string_view mnemonic) {
+        line("{} {}, {}", mnemonic, name(def_reg(res), res->type()), name(use_reg(x), x->type()));
     };
     constexpr nat_t Imm12 = 4096;
 
@@ -156,26 +195,72 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         auto ra = operand(a, w, Scratch2);
         auto rb = operand(a, b, w, 0);
         line("csel {}, {}, {}, {}", reg(def_reg(res), w), rb, ra, ccs[axm->sub()]);
+    } else if (id == Annex::Base<fadd>)
+        fthree("fadd");
+    else if (id == Annex::Base<fsub>)
+        fthree("fsub");
+    else if (id == Annex::Base<fmul>)
+        fthree("fmul");
+    else if (id == Annex::Base<fdiv>)
+        fthree("fdiv");
+    else if (id == Annex::Base<fsqrt>)
+        two("fsqrt");
+    else if (id == Annex::Base<fabs>)
+        two("fabs");
+    else if (id == Annex::Base<i2f>)
+        two("scvtf");
+    else if (id == Annex::Base<u2f>)
+        two("ucvtf");
+    else if (id == Annex::Base<f2i>)
+        two("fcvtzs");
+    else if (id == Annex::Base<f2u>)
+        two("fcvtzu");
+    else if (id == Annex::Base<f2f>)
+        two("fcvt");
+    else if (id == Annex::Base<fmov>)
+        mov_imm(Reg{def_reg(res), Target::Fpr}, x);
+    else if (id == Annex::Base<fcmp>) {
+        auto [a, b] = x->projs<2>();
+        line("fcmp {}, {}", name(use_reg(a), a->type()), name(use_reg(b), b->type()));
+        set_flags(res);
+    } else if (id == Annex::Base<fcsel>) {
+        auto [fl, a, b] = x->projs<3>();
+        use_flags(fl);
+        auto t = res->type();
+        line("fcsel {}, {}, {}, {}", name(def_reg(res), t), name(use_reg(b), t), name(use_reg(a), t), ccs[axm->sub()]);
     } else {
         f->blame("{} backend: cannot emit `{}`", backend(), axm).bail();
     }
 }
 
+void Emitter::fmov_imm(size_t dst, const Def* lit) {
+    auto w    = width(lit->type());
+    auto bits = *Lit::isa(lit);
+    auto d    = name(dst, lit->type());
+    if (bits == 0) return line("fmov {}, {}", d, w == 64 ? "xzr" : "wzr");
+    if (is_fimm8(bits, w)) {
+        auto imm = std::format("{}", w == 64 ? std::bit_cast<f64>(bits) : f64(std::bit_cast<f32>(u32(bits))));
+        if (imm.find('.') == std::string::npos) imm += ".0";
+        return line("fmov {}, #{}", d, imm);
+    }
+    line("ldr {}, ={}", reg(Scratch2, w), w == 64 ? bits : u32(bits));
+    line("fmov {}, {}", d, reg(Scratch2, w));
+}
+
 void Emitter::step(const App* app) {
     if (Axm::isa<sched>(app)) return insn(app->proj(2, 1), Target::sched_insn(app), app->arg());
 
-    if (Axm::isa<load>(app)) {
+    if (Axm::isa<load>(app) || Axm::isa<fload>(app)) {
         auto [_, p] = app->args<2>();
         auto res    = app->proj(2, 1);
-        auto w      = width(res->type());
-        line("ldr{} {}, [x{}]", suffix(w), reg(def_reg(res), w), use_reg(p));
+        line("ldr{} {}, [x{}]", suffix(width(res->type())), name(def_reg(res), res->type()), use_reg(p));
         return;
     }
 
-    if (Axm::isa<store>(app)) {
+    if (Axm::isa<store>(app) || Axm::isa<fstore>(app)) {
         auto [_, p, v] = app->args<3>();
         auto w         = width(v->type());
-        auto src       = operand(v, w, Scratch2);
+        auto src       = Lit::isa(v) ? operand(v, w, Scratch2) : name(use_reg(v), v->type());
         line("str{} {}, [x{}]", suffix(w), src, use_reg(p));
         return;
     }
@@ -184,10 +269,18 @@ void Emitter::step(const App* app) {
 }
 
 void Emitter::slot_addr(size_t dst, size_t first, size_t) {
-    auto off = 8 * (saved().size() + first);
+    auto off = 8 * (num_saved() + first);
     if (off <= 4095) return line("add x{}, sp, #{}", dst, off);
     line("ldr x{}, ={}", Scratch2, off);
     line("add x{}, sp, x{}", dst, Scratch2);
+}
+
+fe::Vector<Reg> Emitter::saved_regs() const {
+    auto regs = fe::Vector<Reg>();
+    for (auto cls : {Target::Gpr, Target::Fpr})
+        for (auto r : saved(cls))
+            regs.emplace_back(r, cls);
+    return regs;
 }
 
 void Emitter::prologue(std::ostream& os) {
@@ -195,13 +288,15 @@ void Emitter::prologue(std::ostream& os) {
     std::println(os, "\tstp x29, x30, [sp, #-16]!");
     std::println(os, "\tmov x29, sp");
     if (frame != 0) std::println(os, "\tsub sp, sp, #{}", frame);
-    for (size_t i = 0; i != saved().size(); ++i)
-        std::println(os, "\tstr x{}, {}", saved()[i], at(8 * i));
+    auto regs = saved_regs();
+    for (size_t i = 0; i != regs.size(); ++i)
+        std::println(os, "\tstr {}{}, {}", wide(regs[i].cls), regs[i].num, at(8 * i));
 }
 
 void Emitter::epilogue() {
-    for (size_t i = 0; i != saved().size(); ++i)
-        line("ldr x{}, {}", saved()[i], at(8 * i));
+    auto regs = saved_regs();
+    for (size_t i = 0; i != regs.size(); ++i)
+        line("ldr {}{}, {}", wide(regs[i].cls), regs[i].num, at(8 * i));
     line("mov sp, x29");
     line("ldp x29, x30, [sp], #16");
     line("ret");

@@ -1,0 +1,73 @@
+// RUN: %mim -p opt %s -p arm -X arm:o=- | %FileCheck %s
+
+plugin core;
+plugin mem;
+plugin math;
+
+use math.ops.none;
+
+/// Compares both ways with a NaN and with a number; `ule`, `uge`, and `une` hold on a NaN, the others do not.
+extern con main (m: mem.M 0, argc: I32, return: Cn [mem.M 0, I32]) =
+    let x = math.conv.s2f math.f32 argc;
+    let n = math.nan math.f32;
+    let add = core.wrap.add 0;
+    let mul = core.wrap.mul 0;
+    let a = mul (core.conv.u i32 (math.cmp.ule math.mode.none (n, x)), 1I32);
+    let b = mul (core.conv.u i32 (math.cmp.uge math.mode.none (n, x)), 2I32);
+    let c = mul (core.conv.u i32 (math.cmp.l math.mode.none (n, x)), 4I32);
+    let d = mul (core.conv.u i32 (math.cmp.le math.mode.none (x, n)), 8I32);
+    let e = mul (core.conv.u i32 (math.cmp.l math.mode.none (x, 3.0:math.F32)), 16I32);
+    let f = mul (core.conv.u i32 (math.cmp.ge math.mode.none (x, 3.0:math.F32)), 32I32);
+    let g = mul (core.conv.u i32 (math.cmp.e math.mode.none (n, x)), 128I32);
+    let h = mul (core.conv.u i32 (math.cmp.une math.mode.none (x, n)), 64I32);
+    return (m, add (add (add (add (add (add (add (a, b), c), d), e), f), g), h));
+
+/// The remaining predicates, on registers only.
+extern con preds (m: mem.M 0, x y: math.F64, return: Cn [mem.M 0, I32]) =
+    let add = core.wrap.add 0;
+    let conv = core.conv.u i32;
+    let a = conv (math.cmp.ne math.mode.none (x, y));
+    let b = conv (math.cmp.g math.mode.none (x, y));
+    let c = conv (math.cmp.o math.mode.none (x, y));
+    let d = conv (math.cmp.u math.mode.none (x, y));
+    let e = conv (math.cmp.ue math.mode.none (x, y));
+    let f = conv (math.cmp.ul math.mode.none (x, y));
+    let g = conv (math.cmp.ug math.mode.none (x, y));
+    return (m, add (a, add (b, add (c, add (d, add (e, add (f, g)))))));
+
+// Each predicate is one condition code on the `fcmp`'s flags, except `ne` (`mi` or `gt`) and `ue` (`eq` or `vs`).
+// CHECK: .globl main
+// CHECK-DAG: fcmp s{{[0-9]+}}, s{{[0-9]+}}
+// CHECK-DAG: fcmp s{{[0-9]+}}, s{{[0-9]+}}
+// CHECK-DAG: fcmp s{{[0-9]+}}, s{{[0-9]+}}
+// CHECK-DAG: fcmp s{{[0-9]+}}, s{{[0-9]+}}
+// CHECK-DAG: fcmp s{{[0-9]+}}, s{{[0-9]+}}
+// CHECK-DAG: fcmp s{{[0-9]+}}, s{{[0-9]+}}
+// CHECK-DAG: fcmp s{{[0-9]+}}, s{{[0-9]+}}
+// CHECK-DAG: fcmp s{{[0-9]+}}, s{{[0-9]+}}
+// CHECK-DAG: cset w{{[0-9]+}}, eq
+// CHECK-DAG: cset w{{[0-9]+}}, ne
+// CHECK-DAG: cset w{{[0-9]+}}, mi
+// CHECK-DAG: cset w{{[0-9]+}}, ls
+// CHECK-DAG: cset w{{[0-9]+}}, ge
+// CHECK-DAG: cset w{{[0-9]+}}, cs
+// CHECK-DAG: cset w{{[0-9]+}}, le
+// CHECK: .globl preds
+// CHECK-DAG: fcmp d{{[0-9]+}}, d{{[0-9]+}}
+// CHECK-DAG: fcmp d{{[0-9]+}}, d{{[0-9]+}}
+// CHECK-DAG: fcmp d{{[0-9]+}}, d{{[0-9]+}}
+// CHECK-DAG: fcmp d{{[0-9]+}}, d{{[0-9]+}}
+// CHECK-DAG: fcmp d{{[0-9]+}}, d{{[0-9]+}}
+// CHECK-DAG: fcmp d{{[0-9]+}}, d{{[0-9]+}}
+// CHECK-DAG: fcmp d{{[0-9]+}}, d{{[0-9]+}}
+// CHECK-DAG: cset w[[MI:[0-9]+]], mi
+// CHECK-DAG: cset w[[GT:[0-9]+]], gt
+// CHECK-DAG: orr w{{[0-9]+}}, w[[MI]], w[[GT]]
+// CHECK-DAG: cset w{{[0-9]+}}, gt
+// CHECK-DAG: cset w{{[0-9]+}}, vc
+// CHECK-DAG: cset w{{[0-9]+}}, vs
+// CHECK-DAG: cset w{{[0-9]+}}, lt
+// CHECK-DAG: cset w{{[0-9]+}}, hi
+// CHECK-DAG: cset w[[EQ:[0-9]+]], eq
+// CHECK-DAG: cset w[[VS:[0-9]+]], vs
+// CHECK-DAG: orr w{{[0-9]+}}, w[[EQ]], w[[VS]]
