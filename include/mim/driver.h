@@ -257,8 +257,8 @@ private:
     Normalizers normalizers_;
     fe::Vector<const Target*> targets_;
     fe::StrMap<fe::Vector<std::string>> plugin_args_;
-    std::vector<std::pair<std::string, fe::View<PluginArg>>> known_args_;
-    std::vector<std::pair<std::string, fe::View<PluginEnv>>> known_envs_;
+    fe::Vector<std::pair<std::string, fe::View<PluginArg>>> known_args_;
+    fe::Vector<std::pair<std::string, fe::View<PluginEnv>>> known_envs_;
     Imports imports_;
     Keys keys_;
 };

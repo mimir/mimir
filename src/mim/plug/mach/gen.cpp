@@ -244,10 +244,10 @@ private:
     DefMap<size_t> meta_ids_;
     DefMap<u32> def2node_;
     ankerl::unordered_dense::map<Node, u32, Node::Hash> node2id_;
-    std::vector<Node> nodes_;
-    std::vector<std::string> comments_;
-    std::vector<Rewrite> rewrites_;
-    std::vector<Conversion> conversions_;
+    fe::Vector<Node> nodes_;
+    fe::Vector<std::string> comments_;
+    fe::Vector<Rewrite> rewrites_;
+    fe::Vector<Conversion> conversions_;
     ankerl::unordered_dense::set<flags_t> commutes_;
     friend class Code;
     friend std::string sig(const Table&, u32, const std::vector<Meta>&, bool);

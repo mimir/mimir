@@ -113,6 +113,7 @@ set(DOXY_EXTRA_FILES
     plugins.md
     rewriting.md
     phases.md
+    backend.md
     README.md
 )
 list(TRANSFORM DOXY_EXTRA_FILES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
