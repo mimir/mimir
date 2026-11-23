@@ -150,6 +150,12 @@ const Def* mul_i64(const Def* a, nat_t b) {
     return w.call(core::wrap::mul, core::Mode::none, Defs{a, w.lit_i64(b)});
 }
 
+/// `mem.lea` with an `I64` index, converted to the pointee's index type.
+const Def* lea_i64(const Def* ptr, const Def* i) {
+    auto& w = ptr->world();
+    return mem::op_lea(ptr, w.call(core::conv::u, Axm::as<mem::Ptr>(ptr->type())->arg(2, 0)->arity(), i));
+}
+
 /// `{mem', x / c, x mod c}` on the `I64` @p x.
 std::tuple<const Def*, const Def*, const Def*> divmod(const Def* mem, const Def* x, nat_t c) {
     auto& w      = x->world();
@@ -445,8 +451,8 @@ Kernel build_kernel_gemm(const Op& op, const Split& split, const Vector<nat_t>& 
     auto tile_ty   = [&](const Def* t) { return w.arr(w.lit_nat(tile), w.arr(w.lit_nat(tile + 1), t)); };
     auto shared_ty = w.sigma({tile_ty(op.ins[0].t), tile_ty(op.ins[1].t)});
     auto k         = mk_kernel(op, n_blocks0 * n_blocks1, tile * tile, shared_ty, "gemmTiledKernel");
-    auto shared0   = mem::op_lea_unsafe(k.shared_ptr, u64(0));
-    auto shared1   = mem::op_lea_unsafe(k.shared_ptr, u64(1));
+    auto shared0   = lea_i64(k.shared_ptr, w.lit_i64(0));
+    auto shared1   = lea_i64(k.shared_ptr, w.lit_i64(1));
 
     auto [g0, block0, block1] = divmod(k.global, group_i64(k), n_blocks1);
     auto [g1, ty, tx]         = divmod(g0, item_i64(k), tile);
@@ -577,7 +583,7 @@ Kernel build_kernel_conv(const Op& op,
     auto [lm, load_coords] = unflatten_index(w, load_flat, filter_ext, entry);
     auto load_val          = load_at(weight, k.ins[weight_idx], op.n(), mr.Sr, iters(load_coords), lm).second;
     load->app(true, load_yield,
-              w.call<mem::store>(Defs{load_shared, mem::op_lea_unsafe(k.shared_ptr, load_flat), load_val}));
+              w.call<mem::store>(Defs{load_shared, lea_i64(k.shared_ptr, load_flat), load_val}));
 
     auto [bar_mem, bar_shared] = w.app(w.annex<gpu::sync_work_items>(), Defs{entry, after_load->var()})->projs<2>();
 
@@ -598,7 +604,7 @@ Kernel build_kernel_conv(const Op& op,
     const Def* weight_flat = w.lit_i64(0);
     for (nat_t j = 0; j != op.rr; ++j)
         weight_flat = add_i64(weight_flat, mul_i64(raw[j], filter_strides[j]));
-    auto weight_val = w.call<mem::load>(Defs{bar_shared, mem::op_lea_unsafe(k.shared_ptr, weight_flat)})->proj(2, 1);
+    auto weight_val = w.call<mem::load>(Defs{bar_shared, lea_i64(k.shared_ptr, weight_flat)})->proj(2, 1);
 
     DefVec elems(2);
     elems[data_idx]   = data_val;
