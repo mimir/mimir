@@ -116,9 +116,8 @@ void Emitter::insn(const App* app) {
     if (Axm::isa<sched>(app)) {
         auto f   = Target::sched_insn(app);
         auto res = app->proj(2, 1);
-        if (Target::is_axm(Annex::base<mach::spill>(), f, 1))
-            return spill(source(app->arg()), app->arg()->type(), spill_slot(res));
-        if (Target::is_axm(Annex::base<mach::reload>(), f, 1))
+        if (Axm::isa<mach::spill, 1>(f)) return spill(source(app->arg()), app->arg()->type(), spill_slot(res));
+        if (Axm::isa<mach::reload, 1>(f))
             return reload(Reg{def_reg(res), target_.cls(res)}, res->type(), spill_slot(app->arg()));
     } else if (Axm::isa<slot>(app)) {
         auto first = alloc_slots(nat(app->callee()->as<App>()->arg()));
@@ -153,7 +152,7 @@ void Emitter::block(Lam* lam, const fe::Vector<const App*>& insns) {
         auto [e, t] = targets->projs<2>([](const Def* d) { return Lam::isa_mut_basicblock(d); });
         if (!e || !t) lam->blame("{} backend: `{}` branches to something other than blocks", backend(), lam).bail();
         auto c          = ex->index();
-        auto trampoline = takes_values(target_, t);
+        auto trampoline = takes_values(t);
         auto t_lbl      = trampoline ? label(lam) + ".t" : label(t);
         if (auto app = target_.isa_sched_cc(c)) {
             use_flags(app->arg());

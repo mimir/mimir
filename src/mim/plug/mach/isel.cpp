@@ -22,13 +22,13 @@ bool mem_valued(const Def* def) {
 }
 
 /// The continuation whose `mem.M` chain @p m is on.
-Lam* chain(const Target& target, const Def* m) {
+Lam* chain(const Def* m) {
     for (;;) {
         if (auto ex = m->isa<Extract>()) m = ex->tuple();
         if (auto var = m->isa<Var>()) return var->binder()->isa<Lam>();
         auto app = m->isa<App>();
         if (!app) return nullptr;
-        m = target.mem_def(app->arg());
+        m = core::mem_def(app->arg());
         if (!m) return nullptr;
     }
 }
@@ -202,7 +202,7 @@ bool ISel::holds(const Alt& alt) {
     // The replacement sits at the inner node whose memory it replaces, so the root's holes must be available there.
     if (!alt.rule->maps) return true;
     auto ld = alt.covers[alt.rule->maps - 1].def->as<App>();
-    auto bb = chain(target_, ld->arg(2, 0));
+    auto bb = chain(ld->arg(2, 0));
     if (!bb) return false;
     // `done` is shared, since a Def that does not reach `ld` never will.
     auto done = DefSet();

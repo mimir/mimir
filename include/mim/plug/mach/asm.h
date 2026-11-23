@@ -18,9 +18,8 @@ namespace mim::plug::mach {
 /// calls. The output goes to `<world>.s` (or `a.s` if the World is unnamed), or to `<file>` of `-X <plugin>:o=<file>`.
 class AsmEmit : public Phase {
 public:
-    AsmEmit(World& world, flags_t annex, const Target& target)
-        : Phase(world, annex)
-        , target_(target) {}
+    AsmEmit(World& world, flags_t annex)
+        : Phase(world, annex) {}
 
     void start() final {
         auto path = std::string(arg_value(args(), "o", "output").value_or(""));
@@ -34,7 +33,7 @@ public:
         std::println(os, "\t.text");
         for (auto mut : muts) {
             auto lam = mut->isa<Lam>();
-            if (!lam) mut->blame("{} backend: cannot emit `{}`", target_.name(), mut).bail();
+            if (!lam) mut->blame("{} backend: cannot emit `{}`", Target::of(driver()).name(), mut).bail();
             if (lam->is_set() && seen_.emplace(lam).second) emit(os, lam, true);
         }
         while (!todo_.empty()) {
@@ -59,7 +58,6 @@ protected:
     virtual void finish(std::ostream&) {}
 
 private:
-    const Target& target_;
     std::deque<Lam*> todo_;
     LamSet seen_;
 };

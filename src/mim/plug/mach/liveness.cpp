@@ -164,7 +164,7 @@ void Liveness::sweep(Block& block) {
 namespace {
 
 /// The block that @p block should fall through to; @p ret is the return continuation of its function.
-Lam* fall_through(const Target& target, const Liveness::Block& block, const Def* ret) {
+Lam* fall_through(const Liveness::Block& block, const Def* ret) {
     auto term   = block.lam->body()->as<App>();
     auto callee = term->callee();
     if (callee == ret) return nullptr;
@@ -176,15 +176,15 @@ Lam* fall_through(const Target& target, const Liveness::Block& block, const Def*
         if (ex->tuple()->num_projs() != 2) return nullptr;
         auto [e, t] = ex->tuple()->projs<2>([](const Def* d) { return Lam::isa_mut_basicblock(d); });
         if (!e || !t) return nullptr;
-        return takes_values(target, t) ? t : e;
+        return takes_values(t) ? t : e;
     }
     return Lam::isa_mut_basicblock(callee);
 }
 
 } // namespace
 
-bool takes_values(const Target& target, Lam* lam) {
-    return std::ranges::any_of(lam->vars(), [&](const Def* x) { return !target.is_mem(x); });
+bool takes_values(Lam* lam) {
+    return std::ranges::any_of(lam->vars(), [](const Def* x) { return !Target::is_mem(x); });
 }
 
 fe::Vector<const Liveness::Block*> layout(const Liveness& live) {
@@ -197,7 +197,7 @@ fe::Vector<const Liveness::Block*> layout(const Liveness& live) {
             order.emplace_back(b);
             for (auto s : b->succs)
                 queue.emplace_back(live.blocks()[s].lam);
-            lam = fall_through(live.target(), *b, ret);
+            lam = fall_through(*b, ret);
             if (lam && !live.block(lam)) lam = nullptr;
         }
     }

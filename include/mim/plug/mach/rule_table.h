@@ -15,7 +15,7 @@ class World;
 /// The closed rewrite rules of a backend's isel plugin as C++; its `gen` writes them to the backend's `isel_rules.h`.
 namespace mim::plug::mach::rules {
 
-#define MIM_NATIVE_RULE_WANTS(X) \
+#define MIM_MACH_RULE_WANTS(X) \
     X(Param) X(Lit) X(Reg) X(FReg) X(Imm) X(Sh) X(RegImm) X(RegSh) X(Base) X(Index) X(Addr) X(Scaled)
 
 /// What a rule wants of the term a meta variable matches; a Param is bound but no operand.
@@ -26,17 +26,17 @@ namespace mim::plug::mach::rules {
 /// RegImm and RegSh are a Reg, or an Imm and a Sh for a literal that is one.
 enum class Want : u8 {
 #define X(w) w,
-    MIM_NATIVE_RULE_WANTS(X)
+    MIM_MACH_RULE_WANTS(X)
 #undef X
 };
 
-#define MIM_NATIVE_RULE_TYS(X) X(Reg) X(FReg) X(Base) X(Index) X(Scaled) X(Lit)
+#define MIM_MACH_RULE_TYS(X) X(Reg) X(FReg) X(Base) X(Index) X(Scaled) X(Lit)
 
 /// The non-terminal a rule yields by the type of its rhs: a register of either class, an address without/with an index,
 /// or `[I64, I2]`. Lit is no rule's type but that of a literal operand.
 enum class Ty : u8 {
 #define X(t) t,
-    MIM_NATIVE_RULE_TYS(X)
+    MIM_MACH_RULE_TYS(X)
 #undef X
 };
 
@@ -113,7 +113,7 @@ struct Conversion {
 inline constexpr u32 Inf = u32(-1);
 
 #define X(_) +1
-inline constexpr size_t Num_Tys = 0 MIM_NATIVE_RULE_TYS(X);
+inline constexpr size_t Num_Tys = 0 MIM_MACH_RULE_TYS(X);
 #undef X
 
 /// A register-to-register copy, which move elimination makes free of latency.

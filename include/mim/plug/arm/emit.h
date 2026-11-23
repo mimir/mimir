@@ -10,8 +10,7 @@ namespace mim::plug::arm {
 /// Values live in the registers that `mach.color` assigned; jumps, calls, returns, and the entry are parallel copies.
 class Emit : public mach::AsmEmit {
 public:
-    Emit(World& world, flags_t annex)
-        : mach::AsmEmit(world, annex, target()) {}
+    using mach::AsmEmit::AsmEmit;
 
 private:
     void emit(std::ostream& os, Lam* fun, bool global) final;

@@ -88,7 +88,7 @@ inline bool is_value(const Def* value, Liveness::Class cls, const Target& target
 }
 
 /// Does a jump to @p lam pass values, which a branch cannot do on its own?
-bool takes_values(const Target& target, Lam* lam);
+bool takes_values(Lam* lam);
 
 /// The blocks of @p live in emission order: each block is followed by the one it falls through to, where possible.
 fe::Vector<const Liveness::Block*> layout(const Liveness& live);

@@ -42,7 +42,7 @@ constexpr std::string_view name(Ty ty) {
     switch (ty) {
 #define X(t) \
     case Ty::t: return #t;
-        MIM_NATIVE_RULE_TYS(X)
+        MIM_MACH_RULE_TYS(X)
 #undef X
     }
     std::unreachable();
@@ -52,7 +52,7 @@ constexpr std::string_view name(Want want) {
     switch (want) {
 #define X(w) \
     case Want::w: return #w;
-        MIM_NATIVE_RULE_WANTS(X)
+        MIM_MACH_RULE_WANTS(X)
 #undef X
     }
     std::unreachable();
@@ -434,9 +434,7 @@ std::vector<Table::Meta> Table::metas(const Rule* rule) {
                 want = marked(Want::Reg);
             } else if (math::isa_f(type)) {
                 want = marked(Want::FReg);
-            } else if (type->isa<Nat>()) {
-                want = Want::Param;
-            } else if (Axm::isa<core::M>(type) || type->isa<Pi>()) {
+            } else if (type->isa<Nat>() || Axm::isa<core::M>(type) || type->isa<Pi>()) {
                 want = Want::Param;
             } else if (auto addr = gen_.classify(type)) {
                 want = *addr;

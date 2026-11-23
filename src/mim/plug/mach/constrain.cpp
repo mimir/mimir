@@ -58,7 +58,7 @@ void Constrain::visit(Lam* fun) {
         auto filter       = lam->filter();
         auto term         = lam->body()->as<App>();
         auto seg          = lam;
-        auto m            = t.mem_var(lam);
+        auto m            = core::mem_var(lam);
 
         auto finish = [&](const Def* body) {
             if (seg != lam)

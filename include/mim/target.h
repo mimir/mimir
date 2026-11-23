@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-#include "mim/def.h"
+#include "mim/util/types.h"
 
 namespace mim {
 

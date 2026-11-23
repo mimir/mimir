@@ -38,9 +38,6 @@ class Target : public mim::Target {
 public:
     /// The register classes; `Stack` values live in a spill slot and are unbounded.
     enum Class : size_t { Gpr, Fpr, Flags, Stack, Num_Classes };
-    /// The object format of the assembler output.
-    enum class Format { Elf, MachO };
-
     /// @p plugin is the backend's plugin id and @p cc the base flags of its condition-code family.
     Target(std::string_view name, plugin_t plugin, flags_t cc)
         : mim::Target(name)
@@ -48,21 +45,20 @@ public:
         , cc_(cc) {}
 
     /// The Target of the one loaded backend; every backend's Target is a mach::Target.
-    static const Target& of(Driver& driver, Loc loc = {}) { return static_cast<const Target&>(driver.target(loc)); }
+    static const Target& of(Driver& driver) { return static_cast<const Target&>(driver.target()); }
 
     nat_t ptr_size() const override { return 8; }
 
     /// @name Object Format
     ///@{
-    /// The object format of the host that the emitted assembly is assembled and linked on.
-    static constexpr Format format() {
+    /// Is the host that the emitted assembly is assembled and linked on ELF, not Mach-O?
+    static constexpr bool is_elf() {
 #ifdef __APPLE__
-        return Format::MachO;
+        return false;
 #else
-        return Format::Elf;
+        return true;
 #endif
     }
-    static constexpr bool is_elf() { return format() == Format::Elf; }
     /// The prefix that the object format adds to a C symbol.
     static constexpr std::string_view global_prefix() { return is_elf() ? "" : "_"; }
     /// The prefix of an assembler-local label.
@@ -195,17 +191,6 @@ public:
         auto type = def->type(); // Level has no type
         return type && Axm::isa<core::M>(type);
     }
-    /// The memory in @p def, or `nullptr`; see `core::mem_def`.
-    static const Def* mem_def(const Def* def) {
-        if (is_mem(def)) return def;
-        if (def->isa<Arr>() || def->type()->isa<Arr>()) return nullptr; // don't look into possibly gigantic arrays
-        if (def->num_projs() > 1)
-            for (auto proj : def->projs())
-                if (auto m = mem_def(proj)) return m;
-        return nullptr;
-    }
-    /// The memory parameter of @p lam, or `nullptr`.
-    static const Def* mem_var(Lam* lam) { return mem_def(lam->var()); }
     /// The memory @p app continues, if @p app is an instruction on a `mem.M 0` chain.
     const Def* prev_mem(const App* app) const {
         if (Axm::isa<sched>(app)) return app->callee()->as<App>()->arg();

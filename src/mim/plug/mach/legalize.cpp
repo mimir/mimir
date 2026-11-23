@@ -56,11 +56,11 @@ const Def* Legalize::val(const Def* def) {
 
 /// A literal odd `n` of `conv.u n y` is a remainder, a dynamic one is ignored.
 const Def* Legalize::index(const Def* i) {
-    auto conv = Axm::isa(core::conv::u, i);
-    if (!conv) return rewrite(i);
-    auto n = Lit::isa(Idx::isa(i->type()));
-    if (!n) return rewrite(conv->arg());
-    if (core::isa_odd_idx(i->type())) return new_world().call<core::rem>(new_world().lit_nat(*n), rewrite(conv->arg()));
+    if (auto conv = Axm::isa(core::conv::u, i)) {
+        if (!Idx::isa_lit(i->type())) return rewrite(conv->arg());
+        if (auto n = core::isa_odd_idx(i->type()))
+            return new_world().call<core::rem>(new_world().lit_nat(*n), rewrite(conv->arg()));
+    }
     return rewrite(i);
 }
 
@@ -156,8 +156,7 @@ const Def* Legalize::rewrite_imm_App(const App* app) {
     if (auto idx = Axm::isa<core::idx>(app); idx && is_value(idx->arg()))
         return w.call(core::conv::u, rewrite(Idx::isa(idx->type())), val(idx->arg()));
 
-    if (auto i2n = Axm::isa<core::idx2nat>(app))
-        return w.call(core::conv::u, Idx::isa(w.type_i64()), rewrite(i2n->arg()));
+    if (auto i2n = Axm::isa<core::idx2nat>(app)) return core::zext(w, rewrite(i2n->arg()));
 
     if (auto cast = Axm::isa<core::bitcast>(app)) {
         auto type = rewrite(cast->type());
