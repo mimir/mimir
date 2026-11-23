@@ -108,16 +108,27 @@ extern lam _default_compile (): compile.Phase =
         compile.named "nvptx.emit",
 
         // x86
-        // By now no Axm pins a continuation's type anymore, so every continuation gets the mem.M to schedule on.
         compile.cond "x86" (compile.named "ll.drop_hints"),
         compile.cond "x86" mem.add_mem,
         compile.cond "x86" core.legalize_dyn_idx,
         compile.cond "x86" mem.legalize_ptr,
-        compile.named "x86.legalize",
+        compile.cond "x86" mem.legalize_native,
         compile.named "x86.isel",
-        compile.named "x86.schedule",
-        compile.named "x86.spilling",
-        compile.named "x86.constrain",
-        compile.named "x86.color",
+        compile.cond "x86" mem.schedule,
+        compile.cond "x86" (compile.named "mach.spilling"),
+        compile.cond "x86" (compile.named "mach.constrain"),
+        compile.cond "x86" (compile.named "mach.color"),
         compile.named "x86.emit",
+
+        // arm
+        compile.cond "arm" (compile.named "ll.drop_hints"),
+        compile.cond "arm" mem.add_mem,
+        compile.cond "arm" core.legalize_dyn_idx,
+        compile.cond "arm" mem.legalize_ptr,
+        compile.cond "arm" mem.legalize_native,
+        compile.named "arm.isel",
+        compile.cond "arm" mem.schedule,
+        compile.cond "arm" (compile.named "mach.spilling"),
+        compile.cond "arm" (compile.named "mach.color"),
+        compile.named "arm.emit",
     );

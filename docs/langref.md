@@ -80,9 +80,9 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 <div class="terminals-code">
 
 ```text
-Bool Cn Fn I1 I8 I16 I32 I64 Idx Level Nat Type
+Bool Cn Fn I1 I2 I4 I8 I16 I32 I64 Idx Level Nat Type
 anx as axm cn con end extern ff fn fun
-i1 i8 i16 i32 i64 import inj lam let match mod mutual
+i1 i2 i4 i8 i16 i32 i64 import inj lam let match mod mutual
 nom norm plugin priv pub rec ret rl rule tt use when where with
 ```
 
@@ -96,11 +96,15 @@ The following names are predefined aliases:
 | `ff`   | `0₂`            |
 | `Bool` | `Idx i1`        |
 | `I1`   | `Idx i1`        |
+| `I2`   | `Idx i2`        |
+| `I4`   | `Idx i4`        |
 | `I8`   | `Idx i8`        |
 | `I16`  | `Idx i16`       |
 | `I32`  | `Idx i32`       |
 | `I64`  | `Idx i64`       |
 | `i1`   | `2`             |
+| `i2`   | `4`             |
+| `i4`   | `0x10`          |
 | `i8`   | `0x100`         |
 | `i16`  | `0x1'0000`      |
 | `i32`  | `0x1'0000'0000` |

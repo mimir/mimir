@@ -11,13 +11,14 @@
 ///
 plugin core;
 plugin math;
+plugin mach;
 import compile;
 import mem;
 import x86;
 ///
 /// ## Guards
 ///
-/// A guard is `tt` after instantiation or a conjunction of these atoms on meta variables.
+/// A guard is `tt` after instantiation or a conjunction of `mach.lit` and these atoms on meta variables.
 ///
 /// ### imm
 ///
@@ -25,17 +26,11 @@ import x86;
 ///
 axm imm: {s: Nat} → Idx s → Bool, normalize_imm;
 ///
-/// ### lit
-///
-/// A literal.
-///
-axm lit: {T: *} → T → Bool, normalize_lit;
-///
 /// ## Operands
 ///
 /// ### addr
 ///
-/// The pointer `p`, an `I64` under the cast of `x86.legalize`, as an address operand.
+/// The pointer `p`, an `I64` under the cast of `mem.legalize_native`, as an address operand.
 /// isel picks its form, `x86.Base` or `x86.Index`, and the builder infers which.
 ///
 axm addr: {T: *, a: Nat} → mem.Ptr (T, a) → x86.Base;
@@ -95,7 +90,7 @@ rule rem64 (d: Nat, x: I64): core.rem d x => (x86.div (x, x86.mov (core.idx 0 i6
 ///
 /// ### Conversions
 ///
-/// `mem.legalize_ptr` and `x86.legalize` leave only register sizes; each family takes the source and the destination size.
+/// `mem.legalize_ptr` and `mem.legalize_native` leave only register sizes; each family takes the source and the destination size.
 /// A conversion between sizes of the same register width truncates; `rank` is the register width of a size.
 ///
 lam rank (s: Nat): Nat = (((1, 2)#(core.ncmp.e (s, i16)), 3)#(core.ncmp.e (s, i32)), 4)#(core.ncmp.e (s, i64));
@@ -112,7 +107,7 @@ rule cast_zext  {s: Nat} {d: Nat} (x: Idx s): core.bitcast (Idx d) x when widens
 ///
 /// Each family takes the predicate and its condition code.
 ///
-rule icmp (p: {s: Nat} → «2; Idx s» → Bool, c: x86.Flags → Bool) (s: Nat, a b: Idx s): p (a, b) => c (x86.cmp (a, reg_imm b));
+rule icmp (p: {s: Nat} → «2; Idx s» → Bool, c: mach.Flags → Bool) (s: Nat, a b: Idx s): p (a, b) => c (x86.cmp (a, reg_imm b));
 ///
 /// ### Selects
 ///
@@ -124,22 +119,16 @@ rule select8 {s: Nat} (x y: Idx s, c: Bool): (x, y)#c when core.bit2.or 0 (core.
 /// ### Floating Point
 ///
 /// Float instructions work on `math.F pe` values in XMM registers.
-/// A family takes the format as `{pe: «2; Nat»}`, which gen instantiates at each of `formats` that the `x86.fpe` or `x86.fok` in its rule's type admits.
+/// A family takes the format as `{pe: «2; Nat»}`, which gen instantiates at each of `formats` that the `mach.fpe` or `mach.fok` in its rule's type admits.
 /// `f2f` takes both formats explicitly, since one of the same format would convert a float to itself.
 /// A family `op` with an `insn` maps a `math` operation onto an `x86` instruction, `rm` folds a sole load into its source, and `swap` takes the converse predicate.
 ///
 pub mod float
-    let Op1   = Nat → {pe: «2; Nat»} → math.F pe → math.F pe;
-    let Op2   = Nat → {pe: «2; Nat»} → «2; math.F pe» → math.F pe;
-    let Pred  = Nat → {pe: «2; Nat»} → «2; math.F pe» → Bool;
-    let Insn1 = {pe: «2; Nat»} → math.F pe → math.F (x86.fpe pe);
-    let Insn2 = {pe: «2; Nat»} → «2; math.F pe» → math.F (x86.fpe pe);
-    let Cmp   = {pe: «2; Nat»} → «2; math.F pe» → Idx (x86.fok pe 2);
+    use mach.float;
+    let Cmp   = {pe: «2; Nat»} → «2; math.F pe» → Idx (mach.fok pe 2);
     ///
     /// #### Arithmetic
     ///
-    rule arith (op: Op2, insn: Insn2) {pe: «2; Nat»} (k: Nat, a b: math.F pe): op k (a, b) => insn (a, b);
-    rule unary (op: Op1, insn: Insn1) {pe: «2; Nat»} (k: Nat, x: math.F pe):   op k x      => insn x;
     rule rm    (op: Op2, insn: Insn2) {pe: «2; Nat»} (k: Nat, a: math.F pe, m: mem.M 0, p: mem.Ptr0 (math.F pe)): let (mm, v) = mem.load (m, p); (mm, op k (a, v)) => x86.rm insn (m, a, addr p);
     rule sqrt_rm {pe: «2; Nat»} (k: Nat, m: mem.M 0, p: mem.Ptr0 (math.F pe)):                                 let (mm, v) = mem.load (m, p); (mm, math.rt.sq k v) => x86.rm1 (x86.fsqrt @ pe) (m, addr p);
     anx let arithmetic = (
@@ -204,7 +193,7 @@ end
 ///
 /// ### Loads and Stores
 ///
-/// A pointer is an `I64` by now, which `x86.legalize` casts to the pointer type of each memory operation.
+/// A pointer is an `I64` by now, which `mem.legalize_native` casts to the pointer type of each memory operation.
 ///
 rule load  {s: Nat} (m: mem.M 0, p: mem.Ptr0 (Idx s)):          mem.load (m, p)     => x86.load s (m, addr p);
 rule store (s: Nat, m: mem.M 0, p: mem.Ptr0 (Idx s), x: Idx s):  mem.store (m, p, x) => x86.store (m, addr p, reg_imm x);
@@ -229,23 +218,23 @@ rule scale (op: Nat → {s: Nat} → «2; Idx s» → Idx s, k: I64, sc: I2) (n:
 ///
 /// A rule whose lhs is all of its meta variables converts between non-terminals; isel chains them.
 /// `x86.addr` and `x86.lea` normalize away what a literal makes trivial.
-/// A literal converts by `x86_isel.lit`: into an absolute address for free, else into a register first; the builder of `mov` takes any size.
+/// A literal converts by `mach.lit`: into an absolute address for free, else into a register first; the builder of `mov` takes any size.
 ///
 rule base (x: I64): x => x86.addr (0I32, x);
-rule abs (x: I64): x when lit x => x86.addr (0I32, x);
-rule mov (x: I64): x when lit x => x86.mov x;
-rule fmov (pe: «2; Nat») (x: math.F pe): x when lit x => x86.fmov x;
+rule abs (x: I64): x when mach.lit x => x86.addr (0I32, x);
+rule mov (x: I64): x when mach.lit x => x86.mov x;
+rule fmov (pe: «2; Nat») (x: math.F pe): x when mach.lit x => x86.fmov x;
 rule lea (i: Bool) (a: x86.Addr i): a => x86.lea a;
 rule scale1 (i: I64): i => (i, x86.scale_1);
 rule unscale (s: [I64, I2]): s => x86.lea (x86.index (x86.addr (0I32, 0I64)) s);
 ///
 /// ## Instances
 ///
-/// The values of a family's `{pe: «2; Nat»}`; the `x86.fpe`s in its rule's type keep those x86 supports.
+/// The values of a family's `{pe: «2; Nat»}`; the `mach.fpe`s in its rule's type keep those x86 supports.
 ///
 anx let formats = (math.f16, math.f32, math.f64, math.bf16, math.nvtf32, math.amdfp24, math.pxr24);
 ///
-/// The values of a family's `{s: Nat}`: the register sizes that `mem.legalize_ptr` and `x86.legalize` leave.
+/// The values of a family's `{s: Nat}`: the register sizes that `mem.legalize_ptr` and `mem.legalize_native` leave.
 ///
 anx let sizes = (i1, i8, i16, i32, i64);
 let icmps = (

@@ -9,11 +9,11 @@ cmake_dependent_option(
 )
 # A cross build cannot run the mim it just built.
 set(MIM_NATIVE_MIM "" CACHE FILEPATH "Native mim executable that bootstraps the plugins.")
-# x86 compiles in the rule table that the mim it builds generates with x86_isel loaded as a module.
+# A native backend compiles in the rule table that the mim it builds generates with its isel plugin loaded as a module.
 if(MIM_STATIC_PLUGINS OR MIM_NATIVE_MIM)
-    set(MIM_X86 OFF)
+    set(MIM_NATIVE_BACKENDS OFF)
 else()
-    set(MIM_X86 ON)
+    set(MIM_NATIVE_BACKENDS ON)
 endif()
 # Where a plugin's `.mim` half is staged, so an uninstalled tree can load it.
 set(MIM_PLUGIN_DIR "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/mim")

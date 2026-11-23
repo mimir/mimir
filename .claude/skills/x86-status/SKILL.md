@@ -11,7 +11,7 @@ description: Bring src/mim/plug/x86/AGENTS.md (the native backend's design and l
 
 1. Read the whole file and the backend diff: `git diff HEAD -- src/mim/plug/x86 include/mim/plug/x86 lit/x86 src/pbqp` plus untracked files there, and any lit file whose x86 RUN lines changed.
 2. For each change, update the section that owns it; don't append a changelog:
-   - *Status*: one bullet per phase or component (`x86.isel`, `x86.schedule`, `Liveness`, `x86.spilling`, `x86.constrain`, `x86.color`, `x86.emit`); describe what it does now, in present tense.
+   - *Status*: one bullet per phase or component (`x86.isel`, `mem.schedule`, `Liveness`, `x86.spilling`, `x86.constrain`, `x86.color`, `x86.emit`); describe what it does now, in present tense.
    - Rules and covered operations: the `Rules:` bullet and the `x86.isel` coverage list.
    - `x86.mim` axioms: the list of instructions and types.
    - *Tests*: the `lit/x86/*.mim` list with a parenthetical when the name does not say what it pins; check with `ls lit/x86`.

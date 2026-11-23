@@ -5,8 +5,8 @@
 /// [TOC]
 ///
 /// The native x86-64 backend.
-/// Loading this plugin (`mim foo.mim -p x86`) appends instruction selection and emission to the compilation pipeline.
-/// Instruction selection rewrites `core`, `math`, and `mem` into the axioms below.
+/// Loading this plugin (`mim foo.mim -p x86`) appends instruction selection, register allocation, and emission to the compilation pipeline.
+/// Instruction selection rewrites `core`, `math`, and `mem` into the axioms below and `mach.slot`; register allocation is the phases of `mach`.
 /// A literal operand of an instruction is an immediate and has to fit its encoding; `mov` puts any other constant into a register.
 /// Registers are no concern of these types; register allocation introduces them later.
 /// The schedule is the `mem.M 0` chain: memory instructions sit on it, and scheduling threads all other instructions onto it via `sched`.
@@ -16,17 +16,12 @@
 plugin core;
 plugin mem;
 plugin math;
+plugin mach;
 plugin opt;
 plugin refly;
 import compile;
 ///
 /// ## Types
-///
-/// ### Flags
-///
-/// The flags register.
-///
-axm Flags: *;
 ///
 /// ### Addr
 ///
@@ -69,19 +64,6 @@ anx let scale_2 = 1I2;
 anx let scale_4 = 2I2;
 anx let scale_8 = 3I2;
 ///
-/// ### Spill
-///
-/// A spill slot holding a value of type `Idx s`.
-/// It is no register value; slot assignment gives it a place in the stack frame.
-///
-axm Spill: Nat → *;
-///
-/// ### FSpill
-///
-/// A spill slot holding a floating-point value of type `math.F pe`.
-///
-axm FSpill: «2; Nat» → *;
-///
 /// ## Operand Sizes
 ///
 /// Instructions are polymorphic in the operand size `s` and state which sizes they support via `refly.check` in their codomain.
@@ -112,25 +94,6 @@ anx lam logic (s: Nat): Nat =
     let ok = core.bit2.or 0 (is (s, 2), core.bit2.or 0 (core.bit2.or 0 (is (s, i8), is (s, i16)), core.bit2.or 0 (is (s, i32), is (s, i64))));
     refly.check (ok, s, "x86: operand size must be Bool, i8, i16, i32, or i64");
 ///
-/// ### fpe
-///
-/// `math.f32` or `math.f64`.
-///
-lam is_fpe (pe: «2; Nat»): Bool =
-    let (p, e) = pe;
-    let (p32, e32) = math.f32;
-    let (p64, e64) = math.f64;
-    let eq32 = core.bit2.and 0 (core.ncmp.e (p, p32), core.ncmp.e (e, e32));
-    let eq64 = core.bit2.and 0 (core.ncmp.e (p, p64), core.ncmp.e (e, e64));
-    core.bit2.or 0 (eq32, eq64);
-anx lam fpe (pe: «2; Nat»): «2; Nat» = refly.check (is_fpe pe, pe, "x86: float type must be f32 or f64");
-///
-/// ### fok
-///
-/// `x`, if `pe` is `math.f32` or `math.f64`: the check of `fpe` for a codomain that does not name the format, e.g. `Idx (fok pe 2)` for `Bool`.
-///
-anx lam fok {T: *} (pe: «2; Nat») (x: T): T = refly.check (is_fpe pe, x, "x86: float type must be f32 or f64");
-///
 /// ## Instruction Forms
 ///
 /// The plugin pretends that x86 uses three-address code and copes with x86's two-address code later on.
@@ -155,32 +118,11 @@ axm rm1: {T C: *, i: Bool} → (T → C) → [mem.M 0, Addr i] → [mem.M 0, C];
 ///
 axm mr: {s: Nat, C: *, i: Bool} → («2; Idx s» → C) → [mem.M 0, Addr i, Idx s] → mem.M 0;
 ///
-/// ### sched
-///
-/// Places the pure instruction `f x` on the `mem.M 0` chain right after `m`: `let (m, y) = x86.sched x86.add m (a, b)`.
-/// The chain token makes each placement a distinct Def, so copies, spills, and reloads at different points never merge.
-///
-axm sched: {D C: *} → (D → C) → mem.M 0 → D → [mem.M 0, C];
-///
 /// ## Registers
-///
-/// ### in
-///
-/// `in r v` is `v`, which lives in register `r`; the operand size `s` selects the subregister.
-/// Register allocation wraps every use of a value, so all uses of `v` share one `in r v`.
-/// It is no instruction: it is neither scheduled nor on the chain.
-///
-axm in: [r: I4] → {s: Nat} → Idx s → Idx s;
-///
-/// ### fin
-///
-/// `fin r v` is the floating-point value `v`, which lives in XMM register `r`.
-///
-axm fin: [r: I4] → {pe: «2; Nat»} → math.F pe → math.F pe;
 ///
 /// ### reg
 ///
-/// The general-purpose registers in hardware encoding order.
+/// The general-purpose registers in hardware encoding order, as the register `r` of `mach.in r v`; the operand size selects the subregister.
 /// A register's subtag is its hardware encoding, so they have to stay in this order.
 ///
 pub mod reg
@@ -204,7 +146,7 @@ end
 ///
 /// ### xmm
 ///
-/// The floating-point registers in hardware encoding order.
+/// The floating-point registers in hardware encoding order, as the register `r` of `mach.in r v` for a `math.F pe` value `v`.
 /// A register's subtag is its hardware encoding, so they have to stay in this order.
 ///
 pub mod xmm
@@ -253,24 +195,6 @@ axm load: [s: Nat] → {i: Bool} → [mem.M 0, Addr i] → [mem.M 0, Idx (gpr s)
 ///
 axm store: {s: Nat, i: Bool} → [mem.M 0, Addr i, Idx s] → mem.M 0;
 ///
-/// ### slot
-///
-/// Reserves `n` bytes in the stack frame and yields their address via `lea`.
-///
-axm slot: [n: Nat] → mem.M 0 → [mem.M 0, I64];
-///
-/// ### spill
-///
-/// `spill x` stores `x` into a spill slot; it is placed on the chain via `sched` like any other pure instruction.
-///
-axm spill: {s: Nat} → Idx s → Spill s;
-///
-/// ### reload
-///
-/// `reload x` loads `x` from its spill slot.
-///
-axm reload: {s: Nat} → Spill s → Idx s;
-///
 /// ### Arithmetic
 ///
 /// Two-address arithmetic `op r, r/imm`.
@@ -303,7 +227,7 @@ axm trunc: {s: Nat} → [d: Nat] → Idx s → Idx d, normalize_trunc;
 ///
 /// `cmp r, r/imm` and `test r, r/imm`.
 ///
-axm (cmp, test): {s: Nat} → «2; Idx s» → Flags;
+axm (cmp, test): {s: Nat} → «2; Idx s» → mach.Flags;
 ///
 /// ### Condition Codes
 ///
@@ -332,7 +256,7 @@ axm (cmp, test): {s: Nat} → «2; Idx s» → Flags;
 ///
 /// Tests a condition code on the flags: `jcc` as a branch condition, `setcc` otherwise.
 ///
-axm cc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): Flags → Bool;
+axm cc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): mach.Flags → Bool;
 ///
 /// #### cmovcc
 ///
@@ -340,7 +264,7 @@ axm cc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): Flags → Bool;
 ///
 /// `cmovcc.ne (test (cc.l f, cc.l f), x, y)` normalizes to `cmovcc.l (f, x, y)`.
 ///
-axm cmovcc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): {s: Nat} → [Flags, Idx s, Idx s] → Idx (gpr16 s), normalize_cmovcc;
+axm cmovcc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): {s: Nat} → [mach.Flags, Idx s, Idx s] → Idx (gpr16 s), normalize_cmovcc;
 ///
 /// ## Floating-Point Instructions
 ///
@@ -351,43 +275,31 @@ axm cmovcc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): {s: Nat} �
 ///
 /// `mov r, imm` materializes a floating-point constant from the constant pool.
 ///
-axm fmov: {pe: «2; Nat»} → math.F pe → math.F (fpe pe);
+axm fmov: {pe: «2; Nat»} → math.F pe → math.F (mach.fpe pe);
 ///
 /// ### fload
 ///
 /// `movss`/`movsd r, addr`.
 ///
-axm fload: [pe: «2; Nat»] → {i: Bool} → [mem.M 0, Addr i] → [mem.M 0, math.F (fpe pe)];
+axm fload: [pe: «2; Nat»] → {i: Bool} → [mem.M 0, Addr i] → [mem.M 0, math.F (mach.fpe pe)];
 ///
 /// ### fstore
 ///
 /// `movss`/`movsd addr, r`.
 ///
-axm fstore: {pe: «2; Nat», i: Bool} → [mem.M 0, Addr i, math.F pe] → mem.M (fok pe 0);
-///
-/// ### fspill
-///
-/// `fspill x` stores the floating-point value `x` into a spill slot; it is placed on the chain via `sched` like any other pure instruction.
-///
-axm fspill: {pe: «2; Nat»} → math.F pe → FSpill pe;
-///
-/// ### freload
-///
-/// `freload x` loads `x` from its floating-point spill slot.
-///
-axm freload: {pe: «2; Nat»} → FSpill pe → math.F (fpe pe);
+axm fstore: {pe: «2; Nat», i: Bool} → [mem.M 0, Addr i, math.F pe] → mem.M (mach.fok pe 0);
 ///
 /// ### Floating-Point Arithmetic
 ///
 /// Two-address arithmetic `op r, r`.
 ///
-axm (fadd, fsub, fmul, fdiv): {pe: «2; Nat»} → «2; math.F pe» → math.F (fpe pe);
+axm (fadd, fsub, fmul, fdiv): {pe: «2; Nat»} → «2; math.F pe» → math.F (mach.fpe pe);
 ///
 /// ### Floating-Point Unary
 ///
 /// `sqrtss`/`sqrtsd` and `andps`/`andpd` with a mask clearing the sign bit.
 ///
-axm (fsqrt, fabs): {pe: «2; Nat»} → math.F pe → math.F (fpe pe);
+axm (fsqrt, fabs): {pe: «2; Nat»} → math.F pe → math.F (mach.fpe pe);
 ///
 /// ### fcmp
 ///
@@ -412,32 +324,26 @@ axm (fsqrt, fabs): {pe: «2; Nat»} → math.F pe → math.F (fpe pe);
 /// | `une`  | unordered or not equal        |
 /// | `t`    | always true                   |
 ///
-axm fcmp.(f, e, l, le, g, ge, ne, o, u, ue, ul, ule, ug, uge, une, t): {pe: «2; Nat»} → «2; math.F pe» → Idx (fok pe 2);
+axm fcmp.(f, e, l, le, g, ge, ne, o, u, ue, ul, ule, ug, uge, une, t): {pe: «2; Nat»} → «2; math.F pe» → Idx (mach.fok pe 2);
 ///
 /// ### fsel
 ///
 /// `fsel (c, x, y)` yields `y` if `c` holds, else `x`, like `(x, y)#c`.
 ///
-axm fsel: {pe: «2; Nat»} → [Bool, math.F pe, math.F pe] → math.F (fpe pe);
+axm fsel: {pe: «2; Nat»} → [Bool, math.F pe, math.F pe] → math.F (mach.fpe pe);
 ///
 /// ### Floating-Point Conversions
 ///
 /// Both formats and sizes are explicit, since a folded load (`x86.rm1`) leaves no operand to infer them from.
 /// The instances of `x86_isel` name the sizes; only `i32` and `i64` are supported.
 ///
-axm i2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (fpe pe);
-axm u2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (fpe pe);
-axm f2i: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx (fok pe s);
-axm f2u: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx (fok pe s);
-axm f2f: [spe: «2; Nat»] → [dpe: «2; Nat»] → math.F spe → math.F (fpe dpe);
+axm i2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (mach.fpe pe);
+axm u2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (mach.fpe pe);
+axm f2i: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx (mach.fok pe s);
+axm f2u: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx (mach.fok pe s);
+axm f2f: [spe: «2; Nat»] → [dpe: «2; Nat»] → math.F spe → math.F (mach.fpe dpe);
 ///
 /// ## Phases
-///
-/// ### legalize
-///
-/// Turns every `Nat` value and every pointer into an `I64`, so that `isel` only sees register types.
-///
-axm legalize: compile.Phase;
 ///
 /// ### isel
 ///
@@ -446,46 +352,8 @@ axm legalize: compile.Phase;
 ///
 axm isel: compile.Phase;
 ///
-/// ### schedule
-///
-/// Threads every instruction of a block onto the block's `mem.M 0` chain.
-/// Expects every continuation to take a `mem.M 0`.
-///
-axm schedule: compile.Phase;
-///
-/// ### spilling
-///
-/// Spills and reloads until at most `k` general-purpose values are live at every point (Braun & Hack, CC 2009).
-/// `k` is 14 by default and `-X x86:k=<n>` overrides it.
-///
-axm spilling: compile.Phase;
-///
-/// ### constrain
-///
-/// Moves the operands that an instruction needs in a fixed register, and a two-address operand that stays live, into a fresh continuation right before it.
-/// The jump is the copy, so the copies' live ranges end at the instruction and the interference graph stays chordal.
-/// The fixed operands are wrapped in `in`.
-/// Likewise, a fixed result that stays live is passed on to a fresh continuation right after its instruction.
-///
-axm constrain: compile.Phase;
-///
-/// ### color
-///
-/// Assigns a register to every general-purpose value by one PBQP per function (Buchwald, Zwinkau, Bersch, CC 2011) and wraps each use of a value in `in`.
-/// Jumps, calls, and returns are parallel copies: their arguments only prefer the registers of the parameters they bind.
-/// Removes chain instructions whose results are all dead.
-/// `-X x86:color-dot=<file>` writes the PBQP graph of each function in Graphviz DOT format, with the chosen options highlighted.
-///
-axm color: compile.Phase;
-///
 /// ### emit
 ///
 /// Emits GNU assembler code (AT&T syntax) to `<world>.s`.
 ///
 axm emit: compile.Phase;
-///
-/// ### live
-///
-/// Prints the liveness of every scheduled function to stdout, or to `-X x86:live=<file>`: per block the live-in and live-out values and the maximum number of live values (general-purpose registers, flags).
-///
-axm live: compile.Phase;
