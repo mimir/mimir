@@ -2,6 +2,8 @@
 
 #include <deque>
 
+#include <fe/vector.h>
+
 #include <mim/phase.h>
 
 #include "mim/plug/gpu/gpu.h"
@@ -41,7 +43,7 @@ private:
     Call* plan_pad(const App* app, std::deque<Call>&);
     void plan_inputs(Call&, bool post, const Def* group, std::deque<Call>&);
     /// Marks every producer chained into @p call as absorbed and rewrites the remaining host inputs into @p hosts.
-    void commit(Call& call, DefVec& hosts);
+    void commit(Call& call, DefVec& hosts, DefMap<size_t>& host_index, fe::Vector<nat_t>& host_readers);
     /// Launches @p call's producers and then its own kernel; @returns the device pointer to its result.
     const Def* emit(const Call& call, Session&);
 

@@ -39,9 +39,10 @@ struct LowerMapReduce::Call {
     Vector<In> ins, posts;
     /// For `Concat` and `Pad`, `mr` only holds the shapes and types.
     enum class Kind { MapRed, Concat, Pad } kind = Kind::MapRed;
-    nat_t ax = 0;     ///< `Concat`: the axis.
-    Vector<u64> exts; ///< `Concat`: the inputs' extents along `ax`.
-    const Def *lo = nullptr, *fill = nullptr; ///< `Pad`: the low padding and the literal fill value.
+    nat_t ax                                     = 0; ///< `Concat`: the axis.
+    Vector<u64> exts;                                 ///< `Concat`: the inputs' extents along `ax`.
+    const Def *lo = nullptr, *fill = nullptr;         ///< `Pad`: the low padding and the literal fill value.
+    nat_t readers = 0;                                ///< Slots reading the result
 };
 
 struct LowerMapReduce::Session {
@@ -49,6 +50,9 @@ struct LowerMapReduce::Session {
     const Def *mem, *global, *const_tok;
     const Def* hosts;
     size_t n_hosts;
+    Vector<nat_t> host_readers;
+    DefVec uploaded;
+    DefMap<nat_t> pending; ///< Readers left per device buffer.
 };
 
 namespace {
@@ -334,7 +338,7 @@ Kernel build_kernel_pointwise(const Op& op, std::string name, auto compute) {
     k.lam->branch(true, in_range, body, early_return);
 
     auto [cur, coords] = unflatten_index(w, flat, op.out_dims, k.global);
-    auto iters         = DefVec(coords.size(), [&](size_t d) { return w.call(core::conv::u, w.lit_nat_0(), coords[d]); });
+    auto iters = DefVec(coords.size(), [&](size_t d) { return w.call(core::conv::u, w.lit_nat_0(), coords[d]); });
 
     auto elem      = compute(k, iters, cur);
     auto final_mem = w.call<mem::store>(Defs{cur, mem::op_lea_tuple(k.out, btensor::folded_idx(mr.So, iters)), elem});
@@ -347,9 +351,9 @@ Kernel build_kernel_concat(const Op& op, nat_t ax, const Vector<u64>& exts) {
     auto& w = op.w;
     return build_kernel_pointwise(op, "concatKernel", [&](const Kernel& k, const DefVec& iters, const Def*& mem) {
         auto read = [&](u64 i, const Def* ax_idx) {
-            auto in_iters = iters;
-            in_iters[ax]  = ax_idx;
-            auto ptr      = mem::op_lea_tuple(k.ins[i], btensor::folded_idx(op.ins[i].s, in_iters));
+            auto in_iters  = iters;
+            in_iters[ax]   = ax_idx;
+            auto ptr       = mem::op_lea_tuple(k.ins[i], btensor::folded_idx(op.ins[i].s, in_iters));
             auto [m, elem] = w.call<mem::load>(Defs{mem, ptr})->projs<2>();
             mem            = m;
             return elem;
@@ -808,15 +812,21 @@ LowerMapReduce::Call* LowerMapReduce::plan_map_reduce(const App* app, std::deque
     return &calls.emplace_back(std::move(call));
 }
 
-void LowerMapReduce::commit(Call& call, DefVec& hosts) {
+void LowerMapReduce::commit(Call& call, DefVec& hosts, DefMap<size_t>& host_index, Vector<nat_t>& host_readers) {
     for (auto group : {&call.ins, &call.posts})
         for (auto& in : *group)
             if (in.producer) {
+                ++in.producer->readers;
                 absorbed_.emplace(in.producer->app);
-                commit(*in.producer, hosts);
+                commit(*in.producer, hosts, host_index, host_readers);
             } else {
-                in.host_idx = hosts.size();
-                hosts.emplace_back(in.host);
+                auto [i, fresh] = host_index.emplace(in.host, hosts.size());
+                if (fresh) {
+                    hosts.emplace_back(in.host);
+                    host_readers.emplace_back(0);
+                }
+                in.host_idx = i->second;
+                ++host_readers[in.host_idx];
             }
 }
 
@@ -832,21 +842,26 @@ const Def* LowerMapReduce::emit(const Call& call, Session& s) {
             auto& slot = slots[i] = Slot{Rs->proj(n, i), Ss->proj(n, i), Ts->proj(n, i), map, nullptr};
             if (auto producer = ins[i].producer) {
                 slot.dptr = emit(*producer, s);
+            } else if (auto& dptr = s.uploaded[ins[i].host_idx]) {
+                slot.dptr = dptr;
             } else {
                 auto copy = w.app(w.app(w.annex<gpu::buf_alloc_copy>(), {slot.r, slot.s, slot.t}),
                                   {s.mem, s.global, s.hosts->proj(s.n_hosts, ins[i].host_idx)});
                 std::tie(s.mem, s.global, slot.dptr) = copy->projs<3>();
+                s.pending[slot.dptr]                 = s.host_readers[ins[i].host_idx];
+                dptr                                 = slot.dptr;
             }
         }
         return slots;
     };
 
-    auto ins   = resolve(call.ins, mr.Ris, mr.Sis, mr.Tis, mr.maps);
+    auto ins     = resolve(call.ins, mr.Ris, mr.Sis, mr.Tis, mr.maps);
     auto map_red = call.kind == Call::Kind::MapRed;
     auto posts   = map_red ? resolve(call.posts, mr.Rps, mr.Sps, mr.Tps, mr.post_maps) : Slots();
 
     auto [out_global, out_dptr]
         = w.app(w.app(w.annex<gpu::alloc>(gpu::alloc::block), w.arr(mr.So, mr.Tp)), s.global)->projs<2>();
+    s.pending[out_dptr] = call.readers;
 
     Op op{w,
           mr,
@@ -870,8 +885,8 @@ const Def* LowerMapReduce::emit(const Call& call, Session& s) {
     args.emplace_back(out_dptr);
     DefVec arg_tys(args.size(), [&](size_t i) { return args[i]->type(); });
 
-    auto launch = w.app(w.annex<gpu::launch>(), Defs{w.lit_nat(k.shared_ty ? 1 : 0),
-                                                       k.shared_ty ? k.shared_ty : w.tuple(), w.sigma(arg_tys)});
+    auto launch = w.app(w.annex<gpu::launch>(),
+                        Defs{w.lit_nat(k.shared_ty ? 1 : 0), k.shared_ty ? k.shared_ty : w.tuple(), w.sigma(arg_tys)});
     launch      = w.app(launch, Defs{w.lit_nat(k.n_groups), w.lit_nat(k.n_items), w.annex<gpu::default_stream>()});
     launch      = w.app(launch, k.lam);
     launch      = w.app(launch, args);
@@ -881,9 +896,9 @@ const Def* LowerMapReduce::emit(const Call& call, Session& s) {
     s.cur->set(true, w.app(launch, Defs{w.tuple({s.mem, out_global, s.const_tok}), after_launch}));
     s.cur                                  = after_launch;
     std::tie(s.mem, s.global, s.const_tok) = after_launch->vars<3>();
-    // This kernel is the only reader of its input buffers, so free them now rather than at the end of the chain.
+    // Free each input after its last reader.
     for (size_t i = 0, e = args.size() - 1; i != e; ++i)
-        s.global = w.call(gpu::free::block, Defs{s.global, args[i]});
+        if (--s.pending[args[i]] == 0) s.global = w.call(gpu::free::block, Defs{s.global, args[i]});
     return out_dptr;
 }
 
@@ -900,8 +915,11 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     if (!call) return Super::rewrite_imm_App(app);
 
     // Decide what is absorbed before rewriting any operand: the mem chain leads through the producers.
+    // Not members: rewriting the operands lowers earlier chains recursively.
     DefVec old_hosts;
-    commit(*call, old_hosts);
+    DefMap<size_t> host_index;
+    Vector<nat_t> host_readers;
+    commit(*call, old_hosts, host_index, host_readers);
     auto new_mem   = rewrite(old_mem);
     auto new_dst   = rewrite(old_dst);
     auto new_hosts = DefVec(old_hosts.size(), [&](size_t i) { return rewrite(old_hosts[i]); });
@@ -912,14 +930,22 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
     auto cont                           = fun->var(2, 1);
 
     auto [h_mem, h_global, h_const] = w.app(w.annex<gpu::auto_init>(), fun_mem)->projs<3>();
-    Session s{fun, h_mem, h_global, h_const, fun_hosts, new_hosts.size()};
+    Session s{fun,
+              h_mem,
+              h_global,
+              h_const,
+              fun_hosts,
+              new_hosts.size(),
+              std::move(host_readers),
+              DefVec(new_hosts.size(), nullptr),
+              {}};
     auto out_dptr = emit(*call, s);
 
     auto& mr = call->mr;
     auto copy
         = w.app(w.app(w.annex<gpu::buf_copy_to_host>(), {mr.Ro, mr.So, mr.Tp}), {s.mem, s.global, out_dptr, host_buf});
     auto [cb_mem, cb_global] = copy->projs<2>();
-    cb_global = w.call(gpu::free::block, Defs{cb_global, out_dptr});
+    cb_global                = w.call(gpu::free::block, Defs{cb_global, out_dptr});
 
     auto final_mem = w.app(w.annex<gpu::auto_deinit>(), Defs{cb_mem, cb_global, s.const_tok});
     s.cur->app(true, cont, Defs{final_mem, host_buf});
