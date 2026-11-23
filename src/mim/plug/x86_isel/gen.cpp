@@ -158,16 +158,18 @@ public:
             commutes_.emplace(op->as<Axm>()->flags());
     }
 
-    /// The values of an implicit family parameter of type `«2; Nat»` that a `refly.check` in its rule's type mentions.
-    void formats(const Def* def) {
-        for (auto op : def->projs())
+    /// The values of an implicit family parameter of type `«2; Nat»` or `Nat` that gen instantiates.
+    void universes(const Def* formats, const Def* sizes) {
+        for (auto op : formats->projs())
             formats_.emplace_back(op);
+        for (auto op : sizes->projs())
+            sizes_.emplace_back(op);
     }
 
     void collect(const Def* def) {
         if (auto rule = def->isa<Rule>())
             add(rule);
-        else if (auto lam = def->isa_mut<Lam>(); lam && lam->type()->is_implicit())
+        else if (auto lam = def->isa_mut<Lam>(); lam && lam->type()->as<Pi>()->is_implicit())
             family(lam);
         else if (auto tuple = def->isa<Tuple>())
             for (auto op : tuple->ops())
@@ -262,6 +264,7 @@ private:
 
     DefSet seen_;
     DefVec formats_;
+    DefVec sizes_;
     ankerl::unordered_dense::map<u64, Want> marks_; ///< The marker of each meta variable of the current rule.
     const Var* var_ = nullptr;                      ///< The Var of the current rule.
     DefVec metas_; ///< The meta variables of the current rule: a family parameter, then the Var's projections.
@@ -277,46 +280,46 @@ private:
     friend std::string sig(const Table&, u32, const std::vector<Meta>&, bool);
 };
 
-/// Adds the Rule in the body of the implicit family @p lam.
-/// It is instantiated at each of `formats` that the `refly.check`s in its type admit if they mention the family
-/// parameter, and the parameter is a meta variable of it otherwise.
+/// Adds the Rule in the body of the implicit family @p lam, possibly under further implicit families.
+/// If a `refly.check` in that Rule or its guard mentions the family parameter, it is instantiated at each value of its
+/// universe that the checks admit, and the guard decides once all are instantiated. Otherwise, the parameter is a meta
+/// variable of the Rule.
 void Table::family(Lam* lam) {
     if (!seen_.emplace(lam).second) return;
-    auto rule = lam->body()->isa<Rule>();
+    auto body = lam->body();
+    while (body->isa_mut<Lam>() && body->type()->as<Pi>()->is_implicit())
+        body = body->as_mut<Lam>()->body();
+    auto rule = body->isa<Rule>();
     if (!rule) lam->blame("x86_isel: the body of the family `{}` is no rule", lam).bail();
     auto param = lam->has_var();
-    if (!param) return add(rule);
+    if (!param) return collect(lam->body());
 
+    // A condition that also mentions an inner family parameter is decided once that one is instantiated.
     auto conds = DefVec();
     auto done  = DefSet();
-    checks(rule->type()->dom(), conds, done);
-    checks(rule->type()->codom(), conds, done);
-    if (std::ranges::none_of(conds, [&](const Def* c) { return c->has_free_var(param); })) return add(rule, param);
+    for (auto def : {rule->type()->dom(), rule->type()->codom(), rule->rhs()})
+        checks(def, conds, done);
+    std::erase_if(conds, [&](const Def* c) {
+        auto fvs = c->free_vars();
+        return fvs.size() != 1 || !fvs.contains(param);
+    });
+    if (conds.empty() && !rule->guard()->has_free_var(param)) {
+        if (lam->body() != rule) lam->blame("x86_isel: `{}` of `{}` must be instantiated", lam->dom(), lam).bail();
+        return add(rule, param);
+    }
 
-    auto& w = rule->world();
-    auto pe = w.arr(2, w.type_nat());
-    auto ty = lam->dom();
-    auto k  = ty == pe ? 1 : ty->isa<Sigma>() ? ty->num_ops() : 0;
-    for (size_t j = 0; j != k; ++j)
-        if (k != 1 && ty->op(j) != pe) k = 0;
-    if (k == 0) lam->blame("x86_isel: no values to instantiate `{}` of `{}` with", ty, lam).bail();
-
-    auto ix = std::vector<size_t>(k);
-    for (;;) {
-        auto vals = DefVec(k, [&](size_t j) { return formats_[ix[j]]; });
-        auto arg  = k == 1 ? vals.front() : w.tuple(vals);
-        auto ok   = true;
+    auto& w       = lam->world();
+    auto dom      = lam->dom();
+    auto universe = dom == w.type_nat() ? &sizes_ : dom == w.arr(2, w.type_nat()) ? &formats_ : nullptr;
+    if (!universe) lam->blame("x86_isel: no values to instantiate `{}` of `{}` with", dom, lam).bail();
+    for (auto val : *universe) {
+        auto ok = true;
         for (auto cond : conds) {
-            auto c = Lit::isa<bool>(VarRewriter(param, arg).rewrite(cond));
-            if (!c) lam->blame("x86_isel: cannot decide `{}` of `{}` at `{}`", cond, lam, arg).bail();
+            auto c = Lit::isa<bool>(VarRewriter(param, val).rewrite(cond));
+            if (!c) lam->blame("x86_isel: cannot decide `{}` of `{}` at `{}`", cond, lam, val).bail();
             ok &= *c;
         }
-        if (ok) add(lam->reduce_body(arg)->as<Rule>());
-
-        size_t j = k;
-        while (j-- != 0 && ++ix[j] == formats_.size())
-            ix[j] = 0;
-        if (j == size_t(-1)) break;
+        if (ok) collect(lam->reduce_body(val));
     }
 }
 
@@ -996,7 +999,7 @@ void Gen::start() {
 
     auto table = Table();
     table.commutes(world().annex<commutes>());
-    table.formats(world().annex<formats>());
+    table.universes(world().annex<formats>(), world().annex<sizes>());
     for (auto f : flags)
         table.collect(world().annex(f));
     table.sort();

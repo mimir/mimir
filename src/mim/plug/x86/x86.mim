@@ -93,9 +93,8 @@ lam is (s n: Nat): Bool = core.ncmp.e (s, n);
 ///
 /// `i8`, `i16`, `i32`, or `i64`.
 ///
-anx lam gpr (s: Nat): Nat =
-    let ok = core.bit2.or 0 (core.bit2.or 0 (is (s, i8), is (s, i16)), core.bit2.or 0 (is (s, i32), is (s, i64)));
-    refly.check (ok, s, "x86: operand size must be i8, i16, i32, or i64");
+anx lam is_gpr (s: Nat): Bool = core.bit2.or 0 (core.bit2.or 0 (is (s, i8), is (s, i16)), core.bit2.or 0 (is (s, i32), is (s, i64)));
+anx lam gpr (s: Nat): Nat = refly.check (is_gpr s, s, "x86: operand size must be i8, i16, i32, or i64");
 ///
 /// ### gpr16
 ///

@@ -144,7 +144,7 @@ Done (on `feature/x86`):
   Every rule is a rule of `x86_isel`.
   An Extract at a dynamic index has root `0`, which is how the rules for a select `(x, y)#c` apply.
   A cast between pointer types is a no-op to isel: a generated matcher binds a pointer hole to what is under it (`x86::strip_ptr_cast`), and the rewrite drops it.
-  Which operand sizes an x86 instruction takes is stated by the `refly.check` in its codomain; the instance lists of `x86_isel` only name sizes it accepts.
+  Which operand sizes an x86 instruction takes is stated by the `refly.check` in its codomain; `x86_isel.gen` instantiates a family only at sizes it accepts.
   `match` tries every rule with the Def's root; an operand of a node is a projection of its argument; an inner node must be `sole` (its value and its parent's operand tuple have no other user).
   A match is an `Alt` with typed `Demand`s on the operands and the inner nodes it covers (`Cover`).
   `ISel::analyze()` builds the PBQP generically from that: every operation with a match is a node, inner alternatives are the classes of covers with equal demands (resolved bottom-up), edges price `conv` between rule type and hole type, and all-zero edges are left out.
@@ -329,7 +329,7 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 
 - *sole*: an inner node's value has no user outside the match, so the match does not duplicate it; required for loads.
 - *range*: a literal fits its encoding.
-- *size*: the operand size is one the instruction supports; this is the `refly.check` in the instruction's codomain, and the instance lists of `x86_isel` only name such sizes.
+- *size*: the operand size is one the instruction supports; this is the `refly.check` in the instruction's codomain, at which alone `x86_isel.gen` instantiates a family.
 - *memory order*: nothing may lie between the memory operations a match covers; the matcher rejects such a match before the PBQP is built.
 - *availability*: if the replacement sits at an inner node's place in the memory order (`x86.rm` sits at its load), the other holes must be available there.
 
@@ -373,10 +373,11 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
   `Rewrite::tied` marks the meta variables a two-address instruction of the rhs overwrites (`insn::tied`, which `constraint()` shares); an alternative adds `insn::Copy` for each that something else uses (`ISel::overwritten`), and a swap of a commuting node that saves such a copy is kept.
   An address form converted by `lea` adds 64-bit values without overwriting either, at the cost of an `add`, so it wins exactly where the `add` needs such a copy.
   Without liveness, a parameter or loop φ never counts as overwritten, since its other uses are mostly in other continuations (`lit/mem/seo/dont_prop_old.mim` regresses otherwise).
-  The frontend rejects a rule whose type mentions one of its meta variables, so a size the type names is a family parameter: a conversion of `core.conv` takes both sizes, one instance per pair of register sizes.
-  An implicit family `rule I … {pe: «2; Nat»} (…)` whose rule's type has a `refly.check` that mentions `pe` (`math.F pe ↝ math.F (x86.fpe pe)`) is instantiated by `Table::family` at each of `x86_isel.formats` that the checks admit, so its rows equal those of the old explicit instances.
-  An implicit family parameter that no check mentions becomes the first meta variable of the rule instead (`Table::add`'s `param`), which normalizer rules generic in their sizes will need.
-  Every float instruction checks its format in its codomain, with `x86.fpe pe` where the codomain names it and `x86.fok pe n` on a `Nat` inside it otherwise (`Idx (fok pe 2)` for `fcmp`, `mem.M (fok pe 0)` for `fstore`); so every float family takes `{pe}` but `f2f`, whose two explicit pairs leave out the same-format ones, and integer sizes keep their instance lists (no universe of sizes yet).
+  The frontend rejects a rule whose type mentions one of its meta variables, so a size or format the type names is an implicit family parameter, `{s: Nat}` or `{pe: «2; Nat»}`.
+  `Table::family` instantiates it at each of `x86_isel.sizes` or `x86_isel.formats` that the `refly.check`s in the rule's type and rhs admit, if those or the guard mention it, and lets the guard decide once every parameter of nested families (`{s: Nat} {d: Nat}`; one `{s d: Nat}` would be a `«2; Nat»`) is instantiated.
+  The guards say what no instruction type can: a conversion narrows or widens (`narrows`, `widens`), `select8` takes `Bool` and `i8`, and `rm`/`mr` take what `x86.load` takes (`x86.is_gpr`), since their folded load is not in their rhs.
+  An implicit family parameter that neither a check nor the guard mentions becomes the first meta variable of the rule instead (`Table::add`'s `param`), which normalizer rules generic in their sizes will need.
+  Every float instruction checks its format in its codomain, with `x86.fpe pe` where the codomain names it and `x86.fok pe n` on a `Nat` inside it otherwise (`Idx (fok pe 2)` for `fcmp`, `mem.M (fok pe 0)` for `fstore`); so every float family takes `{pe}` but `f2f`, whose two explicit pairs leave out the same-format ones.
 - The build runs `mim` with `x86_isel` loaded as a module, so `x86` and `x86_isel` exist only if `MIM_X86` (neither `MIM_STATIC_PLUGINS` nor `MIM_NATIVE_MIM`); lit then excludes `lit/x86/` and drops the `x86_64-linux` feature.
   Generating needs `x86.mim` but not `libmim_x86`.
 
