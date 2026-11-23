@@ -38,11 +38,10 @@ class Target : public mim::Target {
 public:
     /// The register classes; `Stack` values live in a spill slot and are unbounded.
     enum Class : size_t { Gpr, Fpr, Flags, Stack, Num_Classes };
-    /// @p plugin is the backend's plugin id and @p cc the base flags of its condition-code family.
-    Target(std::string_view name, plugin_t plugin, flags_t cc)
+    /// @p plugin is the backend's plugin id.
+    Target(std::string_view name, plugin_t plugin)
         : mim::Target(name)
-        , plugin_(plugin)
-        , cc_(cc) {}
+        , plugin_(plugin) {}
 
     /// The Target of the one loaded backend; every backend's Target is a mach::Target.
     static const Target& of(Driver& driver) { return static_cast<const Target&>(driver.target()); }
@@ -180,11 +179,6 @@ public:
 
     /// @name Chain
     ///@{
-    /// Is @p def an application of the axiom with base flags @p base, with @p curry arguments to go?
-    static bool is_axm(flags_t base, const Def* def, u8 curry = 0) {
-        auto [axm, c, _] = Axm::get(def);
-        return axm && c == curry && axm->base() == base;
-    }
     /// The `f` of `sched f m x`.
     static const Def* sched_insn(const App* app) { return app->callee()->as<App>()->callee()->as<App>()->arg(); }
     static bool is_mem(const Def* def) {
@@ -201,8 +195,9 @@ public:
     /// @name Flags
     ///@{
     /// Is @p def a `Flags` value or a condition tested on one, neither of which is a register value?
-    bool is_flags(const Def* def) const { return Axm::isa<mach::Flags>(def->type()) || is_axm(cc_, def); }
-    bool is_sched_cc(const App* app) const { return Axm::isa<sched>(app) && is_axm(cc_, sched_insn(app), 1); }
+    virtual bool is_flags(const Def* def) const = 0;
+    /// Is @p app the `sched` of the backend's `cc`?
+    virtual bool is_sched_cc(const App* app) const = 0;
     /// The `sched` of a `cc` that yields @p cond, if any.
     const App* isa_sched_cc(const Def* cond) const {
         if (auto ex = cond->isa<Extract>())
@@ -213,7 +208,6 @@ public:
 
 private:
     plugin_t plugin_;
-    flags_t cc_;
 };
 
 } // namespace mim::plug::mach

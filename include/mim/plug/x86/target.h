@@ -11,7 +11,12 @@ namespace mim::plug::x86 {
 class Target : public mach::Target {
 public:
     Target()
-        : mach::Target("x86", Plugin_Id, Annex::Base<cc>) {}
+        : mach::Target("x86", Plugin_Id) {}
+
+    bool is_flags(const Def* def) const final { return Axm::isa<mach::Flags>(def->type()) || Axm::isa<cc>(def); }
+    bool is_sched_cc(const App* app) const final {
+        return Axm::isa<mach::sched>(app) && Axm::isa<cc, 1>(sched_insn(app));
+    }
 
     /// An address is no instruction.
     bool is_machine_insn(const App* app) const final {
