@@ -540,6 +540,11 @@ const Def* normalize_nat(const Def* type, const Def* callee, const Def* arg) {
         }
     }
 
+    // (x * b) % b = 0 (even for b = 0, since 0 % 0 = 0)
+    if (id == nat::rem)
+        if (auto m = Axm::isa(nat::mul, a))
+            if (auto [x, y] = m->args<2>(); x == b || y == b) return world.lit_nat_0();
+
     if (a == b) {
         switch (id) {
             case nat::add: return world.call(nat::mul, Defs{world.lit_nat(2), a}); // a + a = 2 * a

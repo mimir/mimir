@@ -1,0 +1,16 @@
+// RUN: %mim %s
+
+plugin core;
+plugin refly;
+
+use core.ops.n;
+
+lam lit_div (n: Nat): Nat = refly.struc.e ((4 * n) / 4, n);
+lam lit_rem (n: Nat): Nat = refly.struc.e ((4 * n) % 4, 0);
+lam lit_div_multiple (n: Nat): Nat = refly.struc.e ((12 * n) / 4, 3 * n);
+
+lam sym_rem_l (m n: Nat): Nat = refly.struc.e ((m * n) % m, 0);
+lam sym_rem_r (m n: Nat): Nat = refly.struc.e ((m * n) % n, 0);
+
+// For n = 0 the quotient is 0, not m.
+lam sym_div (m n: Nat): Nat = refly.struc.ne ((m * n) / n, m);
