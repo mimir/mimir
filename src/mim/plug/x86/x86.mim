@@ -117,13 +117,20 @@ anx lam logic (s: Nat): Nat =
 ///
 /// `math.f32` or `math.f64`.
 ///
-anx lam fpe (pe: «2; Nat»): «2; Nat» =
+lam is_fpe (pe: «2; Nat»): Bool =
     let (p, e) = pe;
     let (p32, e32) = math.f32;
     let (p64, e64) = math.f64;
     let eq32 = core.bit2.and 0 (core.ncmp.e (p, p32), core.ncmp.e (e, e32));
     let eq64 = core.bit2.and 0 (core.ncmp.e (p, p64), core.ncmp.e (e, e64));
-    refly.check (core.bit2.or 0 (eq32, eq64), pe, "x86: float type must be f32 or f64");
+    core.bit2.or 0 (eq32, eq64);
+anx lam fpe (pe: «2; Nat»): «2; Nat» = refly.check (is_fpe pe, pe, "x86: float type must be f32 or f64");
+///
+/// ### fok
+///
+/// `x`, if `pe` is `math.f32` or `math.f64`: the check of `fpe` for a codomain that does not name the format, e.g. `Idx (fok pe 2)` for `Bool`.
+///
+anx lam fok {T: *} (pe: «2; Nat») (x: T): T = refly.check (is_fpe pe, x, "x86: float type must be f32 or f64");
 ///
 /// ## Instruction Forms
 ///
@@ -357,7 +364,7 @@ axm fload: [pe: «2; Nat»] → {i: Bool} → [mem.M 0, Addr i] → [mem.M 0, ma
 ///
 /// `movss`/`movsd addr, r`.
 ///
-axm fstore: {pe: «2; Nat», i: Bool} → [mem.M 0, Addr i, math.F pe] → mem.M 0;
+axm fstore: {pe: «2; Nat», i: Bool} → [mem.M 0, Addr i, math.F pe] → mem.M (fok pe 0);
 ///
 /// ### fspill
 ///
@@ -406,7 +413,7 @@ axm (fsqrt, fabs): {pe: «2; Nat»} → math.F pe → math.F (fpe pe);
 /// | `une`  | unordered or not equal        |
 /// | `t`    | always true                   |
 ///
-axm fcmp.(f, e, l, le, g, ge, ne, o, u, ue, ul, ule, ug, uge, une, t): {pe: «2; Nat»} → «2; math.F pe» → Bool;
+axm fcmp.(f, e, l, le, g, ge, ne, o, u, ue, ul, ule, ug, uge, une, t): {pe: «2; Nat»} → «2; math.F pe» → Idx (fok pe 2);
 ///
 /// ### fsel
 ///
@@ -421,8 +428,8 @@ axm fsel: {pe: «2; Nat»} → [Bool, math.F pe, math.F pe] → math.F (fpe pe);
 ///
 axm i2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (fpe pe);
 axm u2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (fpe pe);
-axm f2i: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx s;
-axm f2u: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx s;
+axm f2i: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx (fok pe s);
+axm f2u: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx (fok pe s);
 axm f2f: [spe: «2; Nat»] → [dpe: «2; Nat»] → math.F spe → math.F (fpe dpe);
 ///
 /// ## Phases

@@ -376,7 +376,7 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
   The frontend rejects a rule whose type mentions one of its meta variables, so a size the type names is a family parameter: a conversion of `core.conv` takes both sizes, one instance per pair of register sizes.
   An implicit family `rule I … {pe: «2; Nat»} (…)` whose rule's type has a `refly.check` that mentions `pe` (`math.F pe ↝ math.F (x86.fpe pe)`) is instantiated by `Table::family` at each of `x86_isel.formats` that the checks admit, so its rows equal those of the old explicit instances.
   An implicit family parameter that no check mentions becomes the first meta variable of the rule instead (`Table::add`'s `param`), which normalizer rules generic in their sizes will need.
-  Only the float rules whose instruction puts `x86.fpe` into its codomain do so (`arith`, `unary`, `rm`, `sqrt_rm`, `select`, `load`, the `pe` of `s2f`/`u2f`); `fcmp`, `fstore`, `f2i`/`f2u`, and the source of `f2f` check no format, so their families keep instance lists, as do all integer sizes (no universe of sizes yet).
+  Every float instruction checks its format in its codomain, with `x86.fpe pe` where the codomain names it and `x86.fok pe n` on a `Nat` inside it otherwise (`Idx (fok pe 2)` for `fcmp`, `mem.M (fok pe 0)` for `fstore`); so every float family takes `{pe}` but `f2f`, whose two explicit pairs leave out the same-format ones, and integer sizes keep their instance lists (no universe of sizes yet).
 - The build runs `mim` with `x86_isel` loaded as a module, so `x86` and `x86_isel` exist only if `MIM_X86` (neither `MIM_STATIC_PLUGINS` nor `MIM_NATIVE_MIM`); lit then excludes `lit/x86/` and drops the `x86_64-linux` feature.
   Generating needs `x86.mim` but not `libmim_x86`.
 
