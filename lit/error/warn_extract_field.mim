@@ -1,15 +1,15 @@
 // RUN: %mim -p opt %s 2>&1 | %FileCheck %s
 
-// Field names attach to the hash-consed Sigma, so `P` also names the components of every `«2; Nat»`.
+// A field name of `s`'s type wins over a declaration of the same name.
 plugin refly;
 
 let P = [x: Nat, d: Nat];
 
-lam f (s: «2; Nat»): Nat =
+lam f (s: P): Nat =
     let d = 0₂;
     s#d;
 
-lam g (s: «2; Nat»): Nat =
+lam g (s: P): Nat =
     let d = 0₂;
     s#(d);
 

@@ -1,0 +1,53 @@
+// RUN: %mim %s
+// Field and constructor names follow the declared types, although same-shaped types are one Def.
+plugin refly;
+
+let P = [a: Nat, b: Nat];
+let Q = [b: Nat, a: Nat];
+
+lam same_shape (p: P, q: Q): [Nat, Nat] = (p#a, q#a);
+let _ = refly.struc.e (same_shape ((1, 2), (1, 2)), (1, 2));
+
+lam renamed (p: P): Nat =
+    let q: [l: Nat, r: Nat] = p;
+    q#r;
+let _ = refly.struc.e (renamed (1, 2), 2);
+
+lam destructured (p: [x: P, y: Nat]): Nat =
+    let (u, _) = p;
+    u#b;
+let _ = refly.struc.e (destructured ((1, 2), 3), 2);
+
+// A 1-Sigma collapses to its field's type.
+lam single (p: [x: P]): Nat = p#x#b;
+let _ = refly.struc.e (single (1, 2), 2);
+
+lam generic {T: *} (x: T): [val: T, n: Nat] = (x, 0);
+let _ = refly.struc.e ((generic 3)#val, 3);
+let _ = refly.struc.e ((generic @Nat 3)#n, 0);
+
+let L = | A | B;
+let M = | B | A;
+lam variants (x: L) (y: M): [Nat, Nat] = (match x with | A => 0 | B => 1, match y with | A => 0 | B => 1);
+let _ = refly.struc.e (variants L#A M#A, (0, 0));
+
+lam joined (x: L, p q: P): Nat = (match x with | A => p | B => q)#b;
+let _ = refly.struc.e (joined (L#A, (1, 2), (3, 4)), 2);
+
+// `early` asks for the names of `late`'s result before `let p = q` is emitted.
+mutual
+    lam early (x: Nat): Nat = let _ = late (x, x); x;
+    lam late (q: P) = let p = q; p;
+end
+lam after (x y: Nat): Nat = (late (x, y))#b;
+let _ = refly.struc.e (after (1, 2), 2);
+
+rec List (T: *) = | Nil | Cons: [head: T, tail: List T];
+let Nats = List Nat;
+lam second (l: List Nat): Nat =
+    match l with
+        | Nil       => 0
+        | Cons cell => match cell#tail with
+            | Nil         => 0
+            | Cons (x, _) => x;
+let _ = refly.struc.e (second (Nats#Cons (1, Nats#Cons (2, Nats#Nil))), 2);

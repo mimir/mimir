@@ -1,0 +1,15 @@
+// RUN: %mim %s
+// Names declared in an imported file reach its users through generic declarations, too.
+plugin refly;
+import "namelib.mim";
+
+lam axm_n (): Nat = (namelib.f 3)#n;
+let _ = refly.struc.e ((namelib.g 3)#n, 0);
+let _ = refly.struc.e ((namelib.g 3)#val, 3);
+
+let L = namelib.List Nat;
+lam head (l: namelib.List Nat): Nat =
+    match l with
+        | Nil         => 0
+        | Cons (x, _) => x;
+let _ = refly.struc.e (head (L#Cons (7, L#Nil)), 7);
