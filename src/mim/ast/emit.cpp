@@ -29,8 +29,9 @@ public:
     /// end`).
     void attach(AnnexInfo* annex, sub_t sub, Sym name, const Def* def) {
         if (annex) {
-            world().annexes().attach(annex->plugin_id(), annex->id.tag, sub, annex->qualified(driver(), name), def);
-            ast().add_annex_def(Annex::flags(annex->plugin_id(), annex->id.tag, sub), def);
+            auto sym = annex->qualified(driver(), name);
+            world().annexes().attach(annex->plugin_id(), annex->id.tag, sub, sym, def);
+            ast().add_annex(Annex::flags(annex->plugin_id(), annex->id.tag, sub), sym, def);
         }
     }
 
@@ -919,6 +920,7 @@ void AxmDecl::emit(Emitter& e) const {
         auto axm    = e.world().axm(norm, n_curry, n_trip, type, plugin, tag, sub)->set(sym);
         name->def_  = axm;
         e.world().annexes().attach(plugin, tag, sub, sym, axm);
+        e.ast().add_annex(Annex::flags(plugin, tag, sub), sym, axm);
         for (auto alias : name->aliases())
             e.attach_alias(annex, sub, alias.sym());
     }

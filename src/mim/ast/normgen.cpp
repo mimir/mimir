@@ -334,7 +334,8 @@ private:
 
     /// A Nom's key is a fresh gid per World, so the generated code takes it from the annex that introduces the Nom.
     std::string nom_key(const Nom* nom) {
-        for (auto [flags, def] : ast_.flags2annex_def()) {
+        for (auto [flags, entry] : ast_.flags2annex()) {
+            auto def  = entry.def;
             auto path = std::string();
             for (; def->isa_mut<Lam>(); path += "->as<Lam>()->body()")
                 def = def->as<Lam>()->body();
