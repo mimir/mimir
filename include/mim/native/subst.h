@@ -1,30 +1,22 @@
 #pragma once
 
 #include <mim/rewrite.h>
+#include <mim/target.h>
+#include <mim/world.h>
 
-#include "mim/plug/x86/x86.h"
-
-namespace mim::plug::x86 {
+namespace mim::native {
 
 /// Rewrites a value of a block under reconstruction: memory becomes @p m; @p map and @p lams replace values and blocks.
 class Subst : public Rewriter {
 public:
-    Subst(World& world, const Def2Def& map, const Def* m, const LamMap<Lam*>* lams = nullptr)
+    Subst(const Target& target, World& world, const Def2Def& map, const Def* m, const LamMap<Lam*>* lams = nullptr)
         : Rewriter(world)
+        , target_(target)
         , map_(map)
         , lams_(lams)
         , m_(m) {}
 
-    const Def* rewrite(const Def* def) final {
-        if (is_mem(def)) return m_;
-        if (auto new_def = fe::lookup(map_, def)) return new_def;
-        if (auto lam = def->isa_mut<Lam>(); lam && lams_)
-            if (auto new_lam = fe::lookup(*lams_, lam)) return new_lam;
-        if (def->isa_mut() || def->is_closed()) return def;
-        if (auto app = def->isa<App>(); app && prev_mem(app))
-            def->blame(MIM_X86_BE "instruction `{}` is not available here", def).bail();
-        return Rewriter::rewrite(def);
-    }
+    const Def* rewrite(const Def* def) final;
 
     /// Rewrites @p term per argument, so an instruction passed as the whole argument gets the new memory.
     const Def* rewrite_jump(const App* term) {
@@ -34,9 +26,10 @@ public:
     }
 
 private:
+    const Target& target_;
     const Def2Def& map_;
     const LamMap<Lam*>* lams_;
     const Def* m_;
 };
 
-} // namespace mim::plug::x86
+} // namespace mim::native

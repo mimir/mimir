@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <span>
 #include <string_view>
 #include <utility>
 
@@ -11,31 +12,31 @@ class Def;
 class World;
 } // namespace mim
 
-/// The closed rewrite rules of the `x86_isel` plugin as C++; `x86_isel.gen` writes them to `isel_rules.h`.
-namespace mim::plug::x86::rules {
+/// The closed rewrite rules of a backend's isel plugin as C++; its `gen` writes them to the backend's `isel_rules.h`.
+namespace mim::native::rules {
 
-#define MIM_X86_RULE_WANTS(X) \
+#define MIM_NATIVE_RULE_WANTS(X) \
     X(Param) X(Lit) X(Reg) X(FReg) X(Imm) X(Sh) X(RegImm) X(RegSh) X(Base) X(Index) X(Addr) X(Scaled)
 
 /// What a rule wants of the term a meta variable matches; a Param is bound but no operand.
 /// A Lit is a Param that must be a literal.
-/// Reg is a general-purpose register, FReg a floating-point one, and Base/Index an `x86.Base`/`x86.Index`.
-/// Addr is an `x86.Addr i` for any `i`, and Scaled an index with its scale.
-/// Imm is a literal that fits a sign-extended `i32` immediate, Sh a literal shift count, which x86 masks.
+/// Reg is a general-purpose register, FReg a floating-point one, and Base/Index an address without/with an index.
+/// Addr is either address form, and Scaled an index with its scale.
+/// Imm is a literal that fits the backend's immediates, Sh a literal shift count, which the machine masks.
 /// RegImm and RegSh are a Reg, or an Imm and a Sh for a literal that is one.
 enum class Want : u8 {
 #define X(w) w,
-    MIM_X86_RULE_WANTS(X)
+    MIM_NATIVE_RULE_WANTS(X)
 #undef X
 };
 
-#define MIM_X86_RULE_TYS(X) X(Reg) X(FReg) X(Base) X(Index) X(Scaled) X(Lit)
+#define MIM_NATIVE_RULE_TYS(X) X(Reg) X(FReg) X(Base) X(Index) X(Scaled) X(Lit)
 
-/// The non-terminal a rule yields by the type of its rhs: a register of either class, `x86.Base`, `x86.Index`, or
-/// `[I64, I2]`. Lit is no rule's type but that of a literal operand.
+/// The non-terminal a rule yields by the type of its rhs: a register of either class, an address without/with an index,
+/// or `[I64, I2]`. Lit is no rule's type but that of a literal operand.
 enum class Ty : u8 {
 #define X(t) t,
-    MIM_X86_RULE_TYS(X)
+    MIM_NATIVE_RULE_TYS(X)
 #undef X
 };
 
@@ -76,7 +77,7 @@ struct Matcher {
 /// A closed rule `lhs ↦ rhs`, whose metas want `num_metas` consecutive entries of `wants`.
 struct Rewrite {
     std::string_view name;
-    u32 cost;     ///< The summed x86::insn::cost of its rhs.
+    u32 cost;     ///< The summed instruction costs of its rhs.
     flags_t root; ///< The axiom at the head of its lhs, or 0 for an Extract.
     Ty type;      ///< The non-terminal its rhs yields.
     const Matcher* match;
@@ -107,13 +108,16 @@ struct Conversion {
 };
 
 /// @name Costs
-/// Shared by `x86_isel.gen`, which checks the rule set with them, and isel.
+/// Shared by an isel plugin's `gen`, which checks the rule set with them, and isel.
 ///@{
 inline constexpr u32 Inf = u32(-1);
 
 #define X(_) +1
-inline constexpr size_t Num_Tys = 0 MIM_X86_RULE_TYS(X);
+inline constexpr size_t Num_Tys = 0 MIM_NATIVE_RULE_TYS(X);
 #undef X
+
+/// A register-to-register copy, which move elimination makes free of latency.
+inline constexpr u32 Copy = 1;
 
 constexpr u32 add(u32 a, u32 b) { return a == Inf || b == Inf ? Inf : a + b; }
 
@@ -157,14 +161,18 @@ constexpr bool same_class(Ty ty, Want want) {
 struct Chains {
     std::array<std::array<u32, Num_Tys>, Num_Tys> cost{};
     std::array<std::array<u32, Num_Tys>, Num_Tys> first{};
+    /// The non-terminals of the backend: Reg, Lit, and those its conversions mention.
+    std::array<bool, Num_Tys> used{};
 
     /// The closure of @p conversions, a range of Conversion-like rules with `from`, `to`, and `cost`.
     constexpr Chains(const auto& conversions) {
         for (size_t i = 0; i != Num_Tys; ++i)
             for (size_t j = 0; j != Num_Tys; ++j)
                 cost[i][j] = i == j ? 0 : Inf, first[i][j] = Inf;
-        u32 n = 0;
+        used[size_t(Ty::Reg)] = used[size_t(Ty::Lit)] = true;
+        u32 n                                         = 0;
         for (const auto& c : conversions) {
+            used[size_t(c.from)] = used[size_t(c.to)] = true;
             if (auto& d = cost[size_t(c.from)][size_t(c.to)]; u32(c.cost) < d)
                 d = u32(c.cost), first[size_t(c.from)][size_t(c.to)] = n;
             ++n;
@@ -193,7 +201,7 @@ struct Chains {
     /// must?
     constexpr bool total(Want w) const {
         for (size_t t = 0; t != Num_Tys; ++t)
-            if (same_class(Ty(t), w) && conv(Ty(t), w) == Inf) return false;
+            if (used[t] && same_class(Ty(t), w) && conv(Ty(t), w) == Inf) return false;
         return true;
     }
 
@@ -206,4 +214,17 @@ struct Chains {
 };
 ///@}
 
-} // namespace mim::plug::x86::rules
+/// The generated tables of one backend, as its `isel_rules.h` defines them.
+struct Table {
+    std::span<const Want> wants;
+    std::span<const Use> uses;
+    std::span<const RefInfo> refs;
+    std::span<const Matcher> matchers;
+    std::span<const Rewrite> rewrites;
+    std::span<const Root> roots;
+    std::span<const Conversion> conversions;
+    const Chains& chains;
+    size_t max_refs, max_covers, max_metas;
+};
+
+} // namespace mim::native::rules

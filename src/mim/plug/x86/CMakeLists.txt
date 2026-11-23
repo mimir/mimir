@@ -1,15 +1,10 @@
 add_mim_plugin(x86
     SOURCES
         x86.cpp
-        constraint.cpp
         emit.cpp
         normalizers.cpp
-        phase/color.cpp
-        phase/constrain.cpp
         phase/isel.cpp
-        phase/live.cpp
-        phase/spilling.cpp
         target.cpp
     PRIVATE
-        pbqp
+        mim_native
 )

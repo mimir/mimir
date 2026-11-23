@@ -2,7 +2,16 @@
 
 #include <mim/plug/math/math.h>
 
+#include "mim/plug/x86/insn.h"
+
 namespace mim::plug::x86 {
+
+namespace {
+
+/// The `pe` of a `math.F pe`.
+const Def* format_of(const Def* type) { return Axm::isa<math::F>(type)->arg(); }
+
+} // namespace
 
 Target::Target()
     : mim::Target("x86",
@@ -35,14 +44,54 @@ const Def* Target::in(Class cls, size_t r, const Def* v) const {
     return cls == Gpr ? w.call<x86::in>(w.lit_idx(Num_Regs, r), v) : w.call<fin>(w.lit_idx(Num_Xmm, r), v);
 }
 
+Constraint Target::constraint(const App* insn) const {
+    auto res = mim::Target::constraint(insn);
+    if (Axm::isa<rm>(insn)) {
+        res.tied = insn::tied(insn);
+        return res;
+    }
+    if (!Axm::isa<mem::sched>(insn)) return res;
+
+    auto axm = std::get<0>(Axm::get(Target::sched_insn(insn)));
+    if (!axm) return res;
+    auto id = axm->base();
+    if (id == Annex::Base<div> || id == Annex::Base<idiv>) {
+        res.fixed.emplace_back(0, encoding(reg::rax));
+        res.results.emplace_back(0, encoding(reg::rax));
+        res.results.emplace_back(1, encoding(reg::rdx));
+        res.clobbers.emplace_back(encoding(reg::rdx));
+    } else if (id == Annex::Base<shl> || id == Annex::Base<shr> || id == Annex::Base<sar>) {
+        res.fixed.emplace_back(1, encoding(reg::rcx));
+    }
+    res.tied = insn::tied(id);
+    std::erase_if(res.fixed, [&](auto fixed) { return Lit::isa(res.ops[fixed.first]); });
+    if (res.tied && Lit::isa(res.ops[*res.tied])) res.tied.reset();
+    return res;
+}
+
+bool Target::is_removable(const App* insn) const {
+    return mim::Target::is_removable(insn) || Axm::isa<load>(insn) || Axm::isa<fload>(insn) || Axm::isa<rm>(insn)
+        || Axm::isa<rm1>(insn) || Axm::isa<x86::slot>(insn);
+}
+
+const Def* Target::spill(Class cls, const Def* type) const {
+    auto& w = type->world();
+    return cls == Fpr ? w.app(w.annex<fspill>(), format_of(type)) : w.app(w.annex<x86::spill>(), Idx::as(type));
+}
+
+const Def* Target::reload(Class cls, const Def* type) const {
+    auto& w = type->world();
+    return cls == Fpr ? w.app(w.annex<freload>(), format_of(type)) : w.app(w.annex<x86::reload>(), Idx::as(type));
+}
+
+const Def* Target::spill_type(Class cls, const Def* type) const {
+    auto& w = type->world();
+    return cls == Fpr ? w.app(w.annex<FSpill>(), format_of(type)) : w.app(w.annex<Spill>(), Idx::as(type));
+}
+
 const Target& target() {
     static auto res = Target();
     return res;
 }
-
-const Def* strip(const Def* def) { return target().strip(def); }
-bool is_sched_cc(const App* app) { return target().is_sched_cc(app); }
-const App* isa_sched_cc(const Def* cond) { return target().isa_sched_cc(cond); }
-const Def* prev_mem(const App* app) { return target().prev_mem(app); }
 
 } // namespace mim::plug::x86

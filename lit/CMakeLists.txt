@@ -98,7 +98,7 @@ if(NVIDIA_SMI)
 endif()
 
 set(MIM_X86_PY False)
-if(MIM_X86)
+if(MIM_NATIVE_BACKENDS)
     set(MIM_X86_PY True)
 endif()
 

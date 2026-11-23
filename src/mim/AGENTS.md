@@ -55,6 +55,9 @@ Plugin-specific notes live in `plug/AGENTS.md` and below; phase-specific ones in
 - `Target`, `Liveness`, and `AsmEmit` are the target-independent parts of `x86` and `arm`; they know `core.M` and `mem.sched` only as flags the backend's `Target` passes in.
 - A backend registers its `Target` via `Plugin::target`; `Driver::target` fails unless exactly one is loaded, since the docs build loads every plugin at once.
 - `Liveness` is slated for replacement; don't build further analyses on it.
+- Everything a native backend's phases need beyond that sits in the static library `mim_native` (`src/mim/native/`, namespace `mim::native`), not in libmim: it uses `core`/`mem`/`math` headers and `pbqp`, which libmim must not.
+  A backend links it and hooks its phases with `native::hook`; ABI, constraints, and spill instructions are `Target` virtuals, so the library never names a backend axiom.
+- Inside a class derived from `native::Emitter` or `native::FunPhase`, a bare `target()` is the base's accessor; pass the backend's `x86::target()`/`arm::target()` to the base constructor explicitly.
 
 ## Frontend (`ast/`)
 

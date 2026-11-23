@@ -18,6 +18,7 @@ target_sources(libmim
         rewrite.cpp
         rule.cpp
         schedule.cpp
+        target.cpp
         tuple.cpp
         world.cpp
         ast/ast.cpp
@@ -96,6 +97,8 @@ install(
     # They need automaton, which is linked into the regex plugin only.
     PATTERN "dfa2matcher.h" EXCLUDE
     PATTERN "regex2nfa.h" EXCLUDE
+    # It needs mim_native, which is linked into the native backends only.
+    PATTERN "native" EXCLUDE
 )
 
 add_subdirectory(cli)
@@ -105,6 +108,7 @@ configure_file(
     @ONLY
 )
 set(mim_DIR "${CMAKE_BINARY_DIR}")
+add_subdirectory(native)
 add_subdirectory(plug)
 
 add_dependencies(mim_all libmim)

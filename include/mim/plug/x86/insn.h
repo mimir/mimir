@@ -12,8 +12,6 @@
 /// Machine facts about the instructions of the `x86` plugin, shared by `x86_isel.gen` and the backend.
 namespace mim::plug::x86::insn {
 
-/// A register-to-register copy, which move elimination makes free of latency.
-inline constexpr u32 Copy = 1;
 inline constexpr u32 Load = 4;
 
 /// The operand whose register the result of a two-address instruction @p base takes.

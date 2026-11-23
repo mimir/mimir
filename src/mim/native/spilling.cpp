@@ -1,18 +1,15 @@
-#include "mim/plug/x86/phase/spilling.h"
-
 #include <limits>
 #include <ranges>
 
 #include <mim/driver.h>
+#include <mim/liveness.h>
 
-#include <mim/plug/math/math.h>
+#include <mim/plug/mem/mem.h>
 
-#include "mim/plug/x86/constraint.h"
-#include "mim/plug/x86/liveness.h"
-#include "mim/plug/x86/subst.h"
-#include "mim/plug/x86/x86.h"
+#include "mim/native/regalloc.h"
+#include "mim/native/subst.h"
 
-namespace mim::plug::x86::phase {
+namespace mim::native {
 
 namespace {
 
@@ -21,9 +18,6 @@ constexpr size_t Inf = std::numeric_limits<size_t>::max();
 constexpr size_t Loop_Exit = 1 << 20;
 
 size_t add(size_t a, size_t b) { return a > Inf - b ? Inf : a + b; }
-
-/// The `pe` of a `math.F pe`.
-const Def* fpe(const Def* type) { return Axm::isa<math::F>(type)->arg(); }
 
 const App* root(const Def* value) {
     while (auto ex = value->isa<Extract>())
@@ -39,18 +33,19 @@ const Def* reroot(const Def* value, const Def* old_app, const Def* new_app) {
 }
 
 /// A closed instruction is recomputed instead of reloaded.
-bool is_remat(const Def* value) {
-    if (auto app = root(value); app && Axm::isa<sched>(app))
-        return sched_insn(app)->is_closed() && app->arg()->is_closed();
+bool is_remat(const Target& target, const Def* value) {
+    if (auto app = root(value); app && Target::is_axm(target.sched(), app))
+        return Target::sched_insn(app)->is_closed() && app->arg()->is_closed();
     return false;
 }
 
 class Spiller {
 public:
-    Spiller(Lam* fun, Liveness::Class cls, size_t k)
-        : world_(fun->world())
+    Spiller(const Target& target, Lam* fun, Liveness::Class cls, size_t k)
+        : target_(target)
+        , world_(fun->world())
         , fun_(fun)
-        , live_(fun)
+        , live_(target, fun)
         , cls_(cls)
         , k_(k)
         , n_(live_.blocks().size()) {}
@@ -80,19 +75,13 @@ private:
 
     const Liveness::Block& block(size_t b) const { return live_.blocks()[b]; }
     size_t size(size_t b) const { return block(b).insns.size(); }
-    bool member(const Def* v) const { return is_value(v, cls_); }
+    bool member(const Def* v) const { return is_value(v, cls_, target_); }
     DefVec members(DefVec values) const {
         std::erase_if(values, [&](const Def* v) { return !member(v); });
         return values;
     }
     /// The registers of this class that a call may clobber.
-    size_t caller_saved() const { return cls_ == Liveness::Fpr ? Num_Xmm : Num_Caller_Saved; }
-    /// @p G applied to the size of a general-purpose @p type, or @p F to the format of a floating-point one.
-    template<class G, class F>
-    const Def* by_class(const Def* type) const {
-        return cls_ == Liveness::Fpr ? world_.app(world_.annex<F>(), fpe(type))
-                                     : world_.app(world_.annex<G>(), Idx::as(type));
-    }
+    size_t caller_saved() const { return target_.num_caller_saved(cls_); }
     const App* term(size_t b) const { return block(b).lam->body()->as<App>(); }
     size_t index(Lam* lam) const { return size_t(live_.block(lam) - live_.blocks().data()); }
     Term kind(size_t b) const;
@@ -120,9 +109,10 @@ private:
     const Def* spill(const Def* x);
     const Def* slot(const Def* v) const {
         if (auto slot = fe::lookup(stack_, v)) return slot;
-        v->blame(MIM_X86_BE "`{}` has no spill slot", v).bail();
+        v->blame("{} backend: `{}` has no spill slot", target_.name(), v).bail();
     }
 
+    const Target& target_;
     World& world_;
     Lam* fun_;
     Liveness live_;
@@ -307,7 +297,7 @@ void Spiller::reload(size_t b, size_t pos, const Def* v) {
     auto& rs = reloads_[b][pos];
     if (std::ranges::contains(rs, v, &Reload::value)) return;
     rs.emplace_back(Reload{v, Inf});
-    if (!mphi_.contains(v) && !is_remat(v)) spill_.emplace(v);
+    if (!mphi_.contains(v) && !is_remat(target_, v)) spill_.emplace(v);
 }
 
 void Spiller::entry(size_t b) {
@@ -336,7 +326,8 @@ void Spiller::entry(size_t b) {
     auto fixed = b == 0 || ret_cont_[b] || branch_target_[b];
     for (auto x : params)
         if (fixed || next_use(b, x, 0) == Inf) take.emplace_back(x);
-    if (take.size() > k_) lam->blame(MIM_X86_BE "`{}` takes more than {} register arguments", lam, k_).bail();
+    if (take.size() > k_)
+        lam->blame("{} backend: `{}` takes more than {} register arguments", target_.name(), lam, k_).bail();
     std::erase_if(params, [&](const Def* x) { return std::ranges::contains(take, x); });
     std::ranges::copy(params, std::back_inserter(cands));
 
@@ -378,7 +369,8 @@ void Spiller::walk(size_t b) {
     auto n = size(b);
 
     auto use = [&](const DefVec& us, size_t pos, size_t more, const Def* at) {
-        if (us.size() + more > k_) at->blame(MIM_X86_BE "`{}` needs more than {} registers", at, k_).bail();
+        if (us.size() + more > k_)
+            at->blame("{} backend: `{}` needs more than {} registers", target_.name(), at, k_).bail();
         for (auto v : us)
             if (w.emplace(v).second) reload(b, pos, v);
         limit(b, w, k_ - more, pos);
@@ -387,7 +379,7 @@ void Spiller::walk(size_t b) {
     for (size_t i = 0; i != n; ++i) {
         auto insn = block(b).insns[i];
         auto us   = members(live_.uses(insn));
-        auto c    = constraint(insn);
+        auto c    = target_.constraint(insn);
         // Fixed operands, results, and clobbers of an instruction are general-purpose registers.
         if (cls_ != Liveness::Gpr) c.fixed.clear(), c.clobbers.clear();
         if (c.tied && !member(c.ops[*c.tied])) c.tied.reset();
@@ -402,8 +394,9 @@ void Spiller::walk(size_t b) {
             for (auto v : cp)
                 w.erase(v);
         auto ds = members(live_.defs(insn));
-        if (is_sched_cc(insn)) std::erase_if(ds, [&](const Def* d) { return !live(d); });
-        if (ds.size() > k_) insn->blame(MIM_X86_BE "`{}` defines more than {} registers", insn, k_).bail();
+        if (target_.is_sched_cc(insn)) std::erase_if(ds, [&](const Def* d) { return !live(d); });
+        if (ds.size() > k_)
+            insn->blame("{} backend: `{}` defines more than {} registers", target_.name(), insn, k_).bail();
         limit(b, w, k_ - ds.size(), i + 1);
         w.insert(ds.begin(), ds.end());
     }
@@ -424,7 +417,7 @@ void Spiller::couple() {
             auto need = [&](const Def* v) {
                 if (w_exit_[p].contains(v)) return;
                 if (block(p).succs.size() != 1)
-                    lam->blame(MIM_X86_BE "critical edge from `{}` to `{}`", block(p).lam, lam).bail();
+                    lam->blame("{} backend: critical edge from `{}` to `{}`", target_.name(), block(p).lam, lam).bail();
                 reload(p, end, v);
             };
 
@@ -478,7 +471,7 @@ size_t Spiller::read_entry(const Def* v, size_t b) {
     if (auto ver = fe::lookup(def_ver_, v); ver && &live_.def_block(v) == &block(b)) return *ver;
 
     const auto& preds = block(b).preds;
-    if (preds.empty()) v->blame(MIM_X86_BE "`{}` is not in a register at the entry", v).bail();
+    if (preds.empty()) v->blame("{} backend: `{}` is not in a register at the entry", target_.name(), v).bail();
     if (preds.size() == 1) return entry_[b][v] = read_exit(v, preds.front());
 
     // Braun et al., Simple and Efficient Construction of Static Single Assignment Form, CC 2013.
@@ -523,12 +516,12 @@ void Spiller::phis() {
 }
 
 const Def* Spiller::sched(const Def* f, const Def* x) {
-    auto res = world_.call<x86::sched>(f, m_, x);
+    auto res = world_.call<plug::mem::sched>(f, m_, x);
     m_       = res->proj(2, 0);
     return res->proj(2, 1);
 }
 
-const Def* Spiller::spill(const Def* x) { return sched(by_class<x86::spill, fspill>(x->type()), x); }
+const Def* Spiller::spill(const Def* x) { return sched(target_.spill(cls_, x->type()), x); }
 
 void Spiller::build() {
     vers_.resize(parent_.size());
@@ -537,12 +530,13 @@ void Spiller::build() {
         auto n    = lam->num_vars();
         auto mems = std::ranges::count_if(lam->vars(), [&](const Def* x) { return mphi_.contains(x); });
         if (mems == 0 && phis_[b].empty()) continue;
-        if (ret_cont_[b]) lam->blame(MIM_X86_BE "return continuation `{}` would need new parameters", lam).bail();
+        if (ret_cont_[b])
+            lam->blame("{} backend: return continuation `{}` would need new parameters", target_.name(), lam).bail();
 
         auto dom = DefVec();
         for (size_t i = 0; i != n; ++i) {
             auto x = lam->var(n, i);
-            dom.emplace_back(mphi_.contains(x) ? by_class<Spill, FSpill>(x->type()) : x->type());
+            dom.emplace_back(mphi_.contains(x) ? target_.spill_type(cls_, x->type()) : x->type());
         }
         for (auto phi : phis_[b])
             dom.emplace_back(phi_[phi].value->type());
@@ -572,7 +566,7 @@ void Spiller::build(size_t b) {
     for (size_t i = 0; i != n; ++i) {
         auto x = old->var(n, i);
         auto y = new_lam->var(m, i);
-        if (is_mem(x) && !m_) m_ = y;
+        if (target_.is_mem(x) && !m_) m_ = y;
         if (mphi_.contains(x))
             stack_[x] = y;
         else
@@ -585,25 +579,26 @@ void Spiller::build(size_t b) {
         cur[v] = vers_[find(ver)];
     // Another class' live-in was already rebuilt together with its own block.
     for (auto v : block(b).live_in)
-        if (Liveness::cls(v) != cls_)
+        if (target_.cls(v) != cls_)
             if (auto nv = fe::lookup(new_defs_, v)) cur[v] = nv;
     for (auto x : old->vars())
         if (spill_.contains(x)) stack_[x] = spill(cur[x]);
 
-    auto subst   = [&](const Def* def) { return Subst(world_, cur, m_, &new_lams_).rewrite(def); };
+    auto subst   = [&](const Def* def) { return Subst(target_, world_, cur, m_, &new_lams_).rewrite(def); };
     auto reloads = [&](size_t pos) {
         for (auto [v, ver] : reloads_[b][pos]) {
             auto app = root(v);
-            cur[v] = vers_[ver] = is_remat(v) ? reroot(v, app->proj(2, 1), sched(sched_insn(app), app->arg()))
-                                              : sched(by_class<x86::reload, freload>(v->type()), slot(v));
+            cur[v] = vers_[ver] = is_remat(target_, v)
+                                    ? reroot(v, app->proj(2, 1), sched(Target::sched_insn(app), app->arg()))
+                                    : sched(target_.reload(cls_, v->type()), slot(v));
         }
     };
 
     for (size_t i = 0, e = size(b); i != e; ++i) {
         reloads(i);
         auto insn       = block(b).insns[i];
-        auto new_app    = Subst(world_, cur, m_, &new_lams_).Rewriter::rewrite(insn);
-        m_              = is_mem(new_app) ? new_app : new_app->proj(2, 0);
+        auto new_app    = Subst(target_, world_, cur, m_, &new_lams_).Rewriter::rewrite(insn);
+        m_              = target_.is_mem(new_app) ? new_app : new_app->proj(2, 0);
         cur[insn]       = new_app;
         new_defs_[insn] = new_app;
         for (auto d : live_.defs(insn)) {
@@ -641,14 +636,14 @@ void Spiller::build(size_t b) {
             args.emplace_back(vers_[find(phi_[phi].ops[p])]);
         // m_ may have moved on through the spills of literals.
         for (auto& a : args)
-            if (is_mem(a)) a = m_;
+            if (target_.is_mem(a)) a = m_;
         body = world_.app(subst(target), world_.tuple(args));
     } else {
         if (kd == Term::Branch)
             for (auto target : t->callee()->as<Extract>()->tuple()->projs())
                 if (auto lam = target->isa_mut<Lam>(); lam && new_lams_.contains(lam))
-                    lam->blame(MIM_X86_BE "branch target `{}` would need new parameters", lam).bail();
-        body = Subst(world_, cur, m_, &new_lams_).rewrite_jump(t);
+                    lam->blame("{} backend: branch target `{}` would need new parameters", target_.name(), lam).bail();
+        body = Subst(target_, world_, cur, m_, &new_lams_).rewrite_jump(t);
     }
 
     auto filter = old->filter();
@@ -695,21 +690,22 @@ void split_critical_edges(Lam* fun) {
 
 } // namespace
 
-Spilling::Spilling(World& world, flags_t annex)
-    : ClosedMutPhase(world, annex, true)
-    , k_(driver().arg_nat("x86", "k")) {
+Spilling::Spilling(World& world, flags_t annex, const Target& target)
+    : FunPhase(world, annex, target)
+    , k_(driver().arg_nat(target.name(), "k")) {
     if (k_ == 0) {
-        log().w("ignoring `-X x86:k=0`");
+        log().w("ignoring `-X {}:k=0`", target.name());
         k_.reset();
     }
 }
 
 void Spilling::visit(Lam* fun) {
-    if (Lam::isa_mut_returning(fun)) {
-        split_critical_edges(fun);
-        Spiller(fun, Liveness::Gpr, k_.value_or(Num_Allocatable)).run();
-        Spiller(fun, Liveness::Fpr, k_.value_or(Num_Xmm)).run();
-    }
+    if (!Lam::isa_mut_returning(fun)) return;
+    const auto& t = target();
+    split_critical_edges(fun);
+    Spiller(t, fun, Liveness::Gpr, k_.value_or(t.num_allocatable(Liveness::Gpr))).run();
+    if (t.num_regs(Liveness::Fpr) != 0)
+        Spiller(t, fun, Liveness::Fpr, k_.value_or(t.num_allocatable(Liveness::Fpr))).run();
 }
 
-} // namespace mim::plug::x86::phase
+} // namespace mim::native

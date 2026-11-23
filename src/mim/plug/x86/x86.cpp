@@ -2,22 +2,21 @@
 
 #include <mim/plugin.h>
 
+#include <mim/native/regalloc.h>
+
 #include "mim/plug/x86/emit.h"
-#include "mim/plug/x86/phase/color.h"
-#include "mim/plug/x86/phase/constrain.h"
 #include "mim/plug/x86/phase/isel.h"
-#include "mim/plug/x86/phase/live.h"
-#include "mim/plug/x86/phase/spilling.h"
 #include "mim/plug/x86/target.h"
 
 using namespace mim;
 
 static void reg_phases(Flags2Phases& phases) {
     Phase::hook<plug::x86::isel, plug::x86::phase::ISel>(phases);
-    Phase::hook<plug::x86::spilling, plug::x86::phase::Spilling>(phases);
-    Phase::hook<plug::x86::constrain, plug::x86::phase::Constrain>(phases);
-    Phase::hook<plug::x86::color, plug::x86::phase::Color>(phases);
-    Phase::hook<plug::x86::live, plug::x86::phase::Live>(phases);
+    const auto& target = plug::x86::target();
+    native::hook<plug::x86::spilling, native::Spilling>(phases, target);
+    native::hook<plug::x86::constrain, native::Constrain>(phases, target);
+    native::hook<plug::x86::color, native::Color>(phases, target);
+    native::hook<plug::x86::live, native::Live>(phases, target);
     Phase::hook<plug::x86::emit, plug::x86::Emit>(phases);
 }
 

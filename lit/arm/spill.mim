@@ -1,0 +1,29 @@
+// RUN: %mim -p opt %s -p arm -X arm:k=2 -X arm:o=- | %FileCheck %s
+
+plugin core;
+plugin mem;
+
+use core.ops.u.w;
+
+/// Seven values live around the loop, so at `k = 2` most of them become memory φs.
+extern con sum (m: mem.M 0, n: I32, return: Cn [mem.M 0, I32]) =
+    loop (m, 0I32, 1I32, 2I32, 3I32, 4I32, 5I32, 6I32)
+    where
+        con loop (m: mem.M 0, i a b c d e f: I32) =
+            (exit, body)#(i < n) m
+            where
+                con body (m: mem.M 0) = loop (m, i + 1I32, b + i, c * 3I32, d + a, e - b, f + c, a + f);
+                con exit (m: mem.M 0) = return (m, core.bit2.xor 0 (a + b + c + d, e + f));
+            end
+    end;
+
+// CHECK: .globl sum
+// CHECK: sub sp, sp, #{{[0-9]+}}
+// A spill stores a whole register into its slot.
+// CHECK: str x{{[0-9]+}}, [sp, #{{[0-9]+}}]
+// A memory φ is a parallel copy between slots through the stack.
+// CHECK: str x16, [sp, #-16]!
+// CHECK: ldr x16, [sp], #16
+// CHECK: ldr x{{[0-9]+}}, [sp, #{{[0-9]+}}]
+// CHECK: ldp x29, x30, [sp], #16
+// CHECK-NEXT: ret

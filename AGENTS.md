@@ -61,7 +61,7 @@ cmake --build build -j$(nproc)   # binaries land in build/bin (mim, mim-test, mi
 ## Nested instructions
 
 Subtrees carry their own `AGENTS.md` (each with a `CLAUDE.md` bridge); read the one nearest to the file you edit:
-`src/mim/` (core IR, Analysis/RWPhase, dumper, frontend), `src/mim/phase/`, `src/mim/plug/` (axiom design, plugin conventions), `src/mim/plug/{core,mem,clos,tensor,ll}/`, `src/mim/plug/x86/` (backend design and status), `src/pbqp/`, `lit/`, `web/`.
+`src/mim/` (core IR, Analysis/RWPhase, dumper, frontend), `src/mim/phase/`, `src/mim/plug/` (axiom design, plugin conventions), `src/mim/plug/{core,mem,clos,tensor,ll}/`, `src/mim/plug/x86/` and `src/mim/plug/arm/` (backend design and status), `src/pbqp/`, `lit/`, `web/`.
 
 ## Verification
 

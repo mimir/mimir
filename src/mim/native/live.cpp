@@ -1,12 +1,10 @@
-#include "mim/plug/x86/phase/live.h"
-
 #include <print>
 
-#include <mim/plugin.h>
+#include <mim/liveness.h>
 
-#include "mim/plug/x86/liveness.h"
+#include "mim/native/regalloc.h"
 
-namespace mim::plug::x86::phase {
+namespace mim::native {
 
 namespace {
 
@@ -24,7 +22,7 @@ void Live::visit(Lam* fun) {
 
     auto out  = Out(std::string(arg_value(args(), "live").value_or("-")));
     auto& os  = *out.os();
-    auto live = Liveness(fun);
+    auto live = Liveness(target(), fun);
     std::println(os, "fun {}", fun);
     for (const auto& block : live.blocks())
         std::println(os, "  {}: in {{{}}} out {{{}}} max {} fpr {} flags {}", block.lam, str(block.live_in),
@@ -32,4 +30,4 @@ void Live::visit(Lam* fun) {
                      block.max_live[Liveness::Flags]);
 }
 
-} // namespace mim::plug::x86::phase
+} // namespace mim::native

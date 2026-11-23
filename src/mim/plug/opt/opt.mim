@@ -129,6 +129,7 @@ extern lam _default_compile (): compile.Phase =
         compile.cond "arm" mem.legalize_native,
         compile.named "arm.isel",
         compile.cond "arm" mem.schedule,
+        compile.named "arm.spilling",
         compile.named "arm.color",
         compile.named "arm.emit",
     );

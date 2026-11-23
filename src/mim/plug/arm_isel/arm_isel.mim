@@ -1,0 +1,131 @@
+/// # The arm_isel Plugin {#arm_isel}
+///
+/// @see mim::plug::arm_isel
+///
+/// [TOC]
+///
+/// The instruction-selection rules of the `arm` backend.
+/// `gen` writes them as C++ that the `arm` plugin compiles in, so the compiler itself never loads this plugin.
+/// AArch64 is three-address, and the emitter materializes a literal operand where the encoding has no immediate, so every hole is a register.
+///
+/// ## Dependencies
+///
+plugin core;
+import compile;
+import mem;
+import arm;
+///
+/// ## Guards
+///
+/// ### lit
+///
+/// A literal.
+///
+axm lit: {T: *} → T → Bool, normalize_lit;
+///
+/// ## Operands
+///
+/// ### reg
+///
+/// The pointer `p`, an `I64` under the cast of `mem.legalize_native`, in a register.
+///
+axm reg: {T: *, a: Nat} → mem.Ptr (T, a) → I64;
+///
+/// ## Commutativity
+///
+/// The operations whose two operands a rule also matches swapped.
+///
+anx let commutes = (core.wrap.add, core.wrap.mul, core.bit2.and, core.bit2.or, core.bit2.xor, core.bit2.nand, core.bit2.nor, core.bit2.nxor);
+///
+/// ## Rules
+///
+/// Each family takes the operand size as `{s: Nat}`, which becomes a meta variable of its rules, since no instruction checks it.
+///
+/// ### ALU
+///
+rule alu   (op: Nat → {s: Nat} → «2; Idx s» → Idx s, insn: {s: Nat} → «2; Idx s» → Idx s) {s: Nat} (m: Nat, a b: Idx s): op m (a, b) => insn (a, b);
+rule shift (op: {s: Nat} → «2; Idx s» → Idx s,       insn: {s: Nat} → «2; Idx s» → Idx s) {s: Nat} (a b: Idx s):         op (a, b)   => insn (a, b);
+rule neg   (op: Nat → {s: Nat} → «2; Idx s» → Idx s, insn: {s: Nat} → «2; Idx s» → Idx s) {s: Nat} (m: Nat, a b: Idx s): op m (a, b) => let x = insn (a, b); arm.xor (x, core.bit1.t 0 x);
+///
+/// `nand`, `nor`, and `nxor` complement with an `eor`.
+///
+anx let arithmetic = (
+    alu (core.wrap.add, arm.add), alu (core.wrap.sub, arm.sub), alu (core.wrap.mul, arm.mul), alu (core.wrap.shl, arm.shl),
+    alu (core.bit2.and, arm.and), alu (core.bit2.or,  arm.or),  alu (core.bit2.xor, arm.xor),
+    neg (core.bit2.nand, arm.and), neg (core.bit2.nor, arm.or), neg (core.bit2.nxor, arm.xor),
+    shift (core.shr.l, arm.shr), shift (core.shr.a, arm.sar));
+///
+/// A sum with a product that nothing else uses is one `madd`.
+///
+rule madd {s: Nat} (m n: Nat, a b c: Idx s): core.wrap.add m (core.wrap.mul n (a, b), c) => arm.madd (a, b, c);
+///
+/// ### Division
+///
+/// `udiv`/`sdiv` yield the quotient only; a remainder is a `mul` and a `sub` around them.
+/// `core.rem` has a literal divisor.
+///
+let Div  = {s a: Nat} → [mem.M a, «2; Idx s»] → [mem.M a, Idx s];
+let Insn = {s: Nat} → «2; Idx s» → Idx s;
+rule quot      (op: Div, insn: Insn) {s: Nat} (m: mem.M 0, a b: Idx s): op (m, (a, b)) => (m, insn (a, b));
+rule remainder (op: Div, insn: Insn) {s: Nat} (m: mem.M 0, a b: Idx s): op (m, (a, b)) => (m, arm.sub (a, arm.mul (insn (a, b), b)));
+rule modulo {s: Nat} (d: Nat, x: Idx s): core.rem d x => arm.sub (x, arm.mul (arm.udiv (x, core.idx 0 s d), core.idx 0 s d));
+anx let division = (
+    quot (core.div.udiv, arm.udiv), quot (core.div.sdiv, arm.sdiv),
+    remainder (core.div.urem, arm.udiv), remainder (core.div.srem, arm.sdiv));
+///
+/// ### Conversions
+///
+/// Each family takes the source and the destination size; `rank` orders the sizes by bit width.
+///
+lam rank (s: Nat): Nat = ((((0, 1)#(core.ncmp.e (s, i8)), 2)#(core.ncmp.e (s, i16)), 3)#(core.ncmp.e (s, i32)), 4)#(core.ncmp.e (s, i64));
+lam narrows (s d: Nat): Bool = core.ncmp.l (rank d, rank s);
+lam widens (s d: Nat): Bool = core.ncmp.l (rank s, rank d);
+rule trunc      {s: Nat} {d: Nat} (x: Idx s): core.conv.u d x        when narrows (s, d) => arm.trunc d x;
+rule strunc     {s: Nat} {d: Nat} (x: Idx s): core.conv.s d x        when narrows (s, d) => arm.trunc d x;
+rule zext       {s: Nat} {d: Nat} (x: Idx s): core.conv.u d x        when widens (s, d)  => arm.zext d x;
+rule sext       {s: Nat} {d: Nat} (x: Idx s): core.conv.s d x        when widens (s, d)  => arm.sext d x;
+rule cast_trunc {s: Nat} {d: Nat} (x: Idx s): core.bitcast (Idx d) x when narrows (s, d) => arm.trunc d x;
+rule cast_zext  {s: Nat} {d: Nat} (x: Idx s): core.bitcast (Idx d) x when widens (s, d)  => arm.zext d x;
+///
+/// ### Comparisons and Selects
+///
+/// Each `icmp` takes the predicate and its condition code.
+/// `arm.csel`'s normalizer fuses a condition code into it, so a select on a comparison is one `cmp` and one `csel`.
+///
+rule icmp (p: {s: Nat} → «2; Idx s» → Bool, c: arm.Flags → Bool) (s: Nat, a b: Idx s): p (a, b) => c (arm.cmp (a, b));
+anx let compares = (
+    icmp (core.icmp.e,  arm.cc.eq), icmp (core.icmp.ne,  arm.cc.ne), icmp (core.icmp.ul, arm.cc.cc), icmp (core.icmp.ule, arm.cc.ls),
+    icmp (core.icmp.ug, arm.cc.hi), icmp (core.icmp.uge, arm.cc.cs), icmp (core.icmp.sl, arm.cc.lt), icmp (core.icmp.sle, arm.cc.le),
+    icmp (core.icmp.sg, arm.cc.gt), icmp (core.icmp.sge, arm.cc.ge));
+rule select {s: Nat} (x y: Idx s, c: Bool): (x, y)#c => arm.csel.ne (arm.cmp (c, 0_2), x, y);
+///
+/// ### Loads and Stores
+///
+/// A pointer is an `I64` by now, which `mem.legalize_native` casts to the pointer type of each memory operation.
+///
+rule load  {s: Nat} (m: mem.M 0, p: mem.Ptr0 (Idx s)):         mem.load (m, p)     => arm.load s (m, reg p);
+rule store (s: Nat, m: mem.M 0, p: mem.Ptr0 (Idx s), x: Idx s): mem.store (m, p, x) => arm.store s (m, reg p, x);
+///
+/// ### Non-Terminals
+///
+/// A literal stays a literal operand; the emitter puts it into a register where the encoding has no immediate.
+///
+rule mov (x: I64): x when lit x => x;
+///
+/// ## Instances
+///
+/// The values of a family's `{s: Nat}`: the register sizes that `mem.legalize_ptr` and `mem.legalize_native` leave.
+///
+anx let sizes = (i1, i8, i16, i32, i64);
+///
+/// The values of a family's `{pe: «2; Nat»}`; the backend has no floating point yet.
+///
+anx let formats = ();
+///
+/// ## Phases
+///
+/// ### gen
+///
+/// Writes the closed rules of this plugin as C++ matchers and builders (mim::plug::arm::rules) to `-X arm_isel:o=<file>`, or to stdout.
+///
+axm gen: compile.Phase;

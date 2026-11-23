@@ -26,6 +26,12 @@ import compile;
 ///
 axm Flags: *;
 ///
+/// ### Spill
+///
+/// A spill slot holding a value of type `Idx s`.
+///
+axm Spill: Nat → *;
+///
 /// ## Registers
 ///
 /// ### in
@@ -101,6 +107,12 @@ axm slot: [n: Nat] → mem.M 0 → [mem.M 0, I64];
 ///
 axm (add, sub, and, or, xor, mul): {s: Nat} → «2; Idx s» → Idx s;
 ///
+/// ### madd
+///
+/// `madd (a, b, c)` is `a * b + c`.
+///
+axm madd: {s: Nat} → «3; Idx s» → Idx s;
+///
 /// ### Shifts
 ///
 /// `lsl`, `lsr`, and `asr` by a register or an immediate.
@@ -126,6 +138,18 @@ axm trunc: {s: Nat} → [d: Nat] → Idx s → Idx d;
 /// `cmp a, b` sets the flags from `a - b`.
 ///
 axm cmp: {s: Nat} → «2; Idx s» → Flags;
+///
+/// ### spill
+///
+/// `spill x` stores `x` into a spill slot; it is placed on the chain via `mem.sched` like any other pure instruction.
+///
+axm spill: {s: Nat} → Idx s → Spill s;
+///
+/// ### reload
+///
+/// `reload x` loads the value of the spill slot `x` into a register.
+///
+axm reload: {s: Nat} → Spill s → Idx s;
 ///
 /// ## Condition Codes
 ///
@@ -153,8 +177,9 @@ axm cmp: {s: Nat} → «2; Idx s» → Flags;
 /// ### csel
 ///
 /// `csel.<c> (f, x, y)` yields `y` if `<c>` holds on `f`, else `x`, like `(x, y)#cond`.
+/// `csel.ne (cmp (cc.<c> f, 0), x, y)` normalizes to `csel.<c> (f, x, y)`.
 ///
-axm csel.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): {s: Nat} → [Flags, Idx s, Idx s] → Idx s;
+axm csel.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): {s: Nat} → [Flags, Idx s, Idx s] → Idx s, normalize_csel;
 ///
 /// ### cc
 ///
@@ -166,16 +191,28 @@ axm cc.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): Flags �
 ///
 /// ### isel
 ///
-/// Instruction selection for a small integer subset of `core` and `mem`.
+/// Instruction selection for an integer subset of `core` and `mem` by the rules of `arm_isel`.
 ///
 axm isel: compile.Phase;
 ///
+/// ### spilling
+///
+/// Spills and reloads values until at most `k` of them are live in registers at any point (`-X arm:k=<n>`).
+///
+axm spilling: compile.Phase;
+///
 /// ### color
 ///
-/// Assigns a register to every value by greedy graph coloring and wraps each use of a value in `arm.in`.
+/// Assigns a register to every value by one PBQP per function and wraps each use of a value in `arm.in`.
 /// Jumps, calls, and returns are parallel copies: their arguments only prefer the registers of the parameters they bind.
 ///
 axm color: compile.Phase;
+///
+/// ### live
+///
+/// Prints the liveness of each function (`-X arm:live=<file>`); not part of the default pipeline.
+///
+axm live: compile.Phase;
 ///
 /// ### emit
 ///

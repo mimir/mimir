@@ -2,8 +2,6 @@
 
 #include <array>
 
-#include <mim/target.h>
-
 #include <mim/plug/core/core.h>
 #include <mim/plug/mem/mem.h>
 
@@ -42,17 +40,6 @@ constexpr bool reserved(size_t r) {
 
 using mem::sched;
 using mem::strip_ptr_cast;
-
-inline bool is_mem(const Def* def) {
-    auto type = def->type(); // Level has no type
-    return type && Axm::isa<core::M>(type);
-}
-
-/// The register `r` of `arm.in r v` in hardware encoding order.
-inline size_t in_reg(const Def* in) { return mim::Target::in_reg(in); }
-
-/// The `f` of `mem.sched f m x`.
-inline const Def* sched_insn(const App* app) { return mim::Target::sched_insn(app); }
 
 /// The `arm::csel` instance that selects on @p c.
 constexpr flags_t cc_to_csel(cc c) { return Annex::Base<csel> | Annex::flags2sub(std::to_underlying(c)); }

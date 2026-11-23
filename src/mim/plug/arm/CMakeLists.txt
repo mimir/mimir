@@ -2,7 +2,9 @@ add_mim_plugin(arm
     SOURCES
         arm.cpp
         emit.cpp
-        phase/color.cpp
+        normalizers.cpp
         phase/isel.cpp
         target.cpp
+    PRIVATE
+        mim_native
 )

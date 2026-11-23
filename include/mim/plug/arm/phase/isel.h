@@ -1,22 +1,17 @@
 #pragma once
 
-#include <mim/phase.h>
-
-#include "mim/plug/arm/arm.h"
+#include <mim/native/isel.h>
 
 namespace mim::plug::arm::phase {
 
-/// Rewrites the `core` and `mem` operations that `mem.legalize_native` left into ARM instructions.
-/// Everything this phase does not know is an error.
-class ISel : public RWPhase {
+/// Selects AArch64 instructions by the rules of `arm_isel`; see native::ISel.
+class ISel : public native::ISel {
 public:
-    using RWPhase::RWPhase;
+    ISel(World& world, flags_t annex);
 
 private:
-    const Def* rewrite_imm_App(const App*) final;
-    const Def* rewrite_imm_Extract(const Extract*) final;
-    /// The `Flags` that hold the condition of the `Bool` @p cond, and the condition code that tests them.
-    std::pair<const Def*, arm::cc> cond(const Def* cond);
+    /// The emitter materializes any literal operand that its encoding has no immediate for.
+    bool fits_imm(const Def*) const final { return true; }
 };
 
 } // namespace mim::plug::arm::phase

@@ -63,6 +63,9 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 
 ## Status
 
+The target-independent phases live in the static library `mim_native` (`src/mim/native/`), shared with `../arm/`: isel and its rule generator, spilling, constrain, color, live, and the emitter's control flow (`native::Emitter`); this plugin supplies `x86::Target` (classes, ABI, constraints, spill instructions) and its instruction printing.
+Their diagnostics still read `x86 backend: …`.
+
 Done (on `feature/x86`):
 
 - `x86` plugin (`src/mim/plug/x86/`), with `mem.add_mem`, `core.legalize_dyn_idx`, and `mem.legalize_ptr` (each if `x86` is loaded), `mem.legalize_native`, `x86.isel`, `mem.schedule`, `x86.spilling`, `x86.constrain`, `x86.color`, and `x86.emit` at the end of the default pipeline in `opt.mim`; by then no axiom pins a continuation's type, so every continuation has its `mem.M`.
@@ -77,7 +80,7 @@ Done (on `feature/x86`):
   An operation that needs a typed pointer (`mem.load`, `mem.store`) gets a `core.bitcast` of the `I64` (`coerce_leaf`), which a generated matcher looks through (`x86::strip_ptr_cast`).
   `mem.ptradd` becomes `core.wrap.add`; `core.nat.add`/`mul` become `core.wrap`, `core.nat.sub` a select of `core.wrap.sub` and `0` on `core.icmp.ul`, `core.nat.div`/`rem` `core.div.udiv`/`urem` on a `⊥` memory, `core.ncmp` the unsigned `core.icmp`, `core.idx` and `core.idx2nat` a `core.conv.u`, and a `core.bitcast` between types that became equal its operand.
   `mem.mslot` of a literal size becomes `x86.slot`; a dynamic size is an error.
-- `x86.isel` (`src/mim/plug/x86/phase/isel.cpp`) covers `core.wrap`, `core.bit2` (and/or/xor), `core.shr`, `core.icmp`, `core.conv`, `mem.load`/`mem.store` of integers, `core.rem`, `core.div`, integer `core.bitcast`, and a select `(x, y)#c` (as `cmovcc`).
+- `x86.isel` (`native::ISel` in `src/mim/native/isel.cpp` over the rules of `x86_isel`) covers `core.wrap`, `core.bit2` (and/or/xor), `core.shr`, `core.icmp`, `core.conv`, `mem.load`/`mem.store` of integers, `core.rem`, `core.div`, integer `core.bitcast`, and a select `(x, y)#c` (as `cmovcc`).
   Of `math` it covers `arith.add`/`sub`/`mul`/`div` in `f32` and `f64`, `abs`, `rt.sq`, `cmp` for the fourteen ordered and unordered predicates (not `f` and `t`, which normalize to constant booleans), a float select, `mem.load`/`mem.store` of a float, and `conv.s2f`/`f2s`/`f2f` plus `conv.u2f`/`f2u` with an `i32` integer; a float literal becomes `fmov`.
   `ll.drop_hints` removes the loop hints `ll.vec`/`ll.novec` before (`opt.mim`).
   Any other `core`/`mem`/`math` operation left in the selected world is an error naming the axiom.
@@ -92,7 +95,7 @@ Done (on `feature/x86`):
   A value is a non-memory result of a chain instruction or a non-memory parameter; a parameter is defined at block entry and a jump uses its arguments, so a parameter is never live-in.
   A branch on an `x86.cc` uses its flags; the `Bool` is a value only if something else uses it.
   `x86.live` prints it (`-X x86:live=<file>`) and is not part of the default pipeline.
-- `x86.spilling` (`src/mim/plug/x86/phase/spilling.cpp`) brings MaxLive of the general-purpose class down to `k` (14 by default, `-X x86:k=<n>`) and then the floating-point class down to `k` (16 by default) in a second, independent pass over the function, per function and in place (Braun & Hack, CC 2009):
+- `x86.spilling` (`native::Spilling`, `src/mim/native/spilling.cpp`) brings MaxLive of the general-purpose class down to `k` (14 by default, `-X x86:k=<n>`) and then the floating-point class down to `k` (16 by default) in a second, independent pass over the function, per function and in place (Braun & Hack, CC 2009):
   - Global next-use distances by a fixpoint over the CFG, plus `2^20` across an edge into a smaller loop depth; loops are natural loops over the dominator tree (Cooper, Harvey, Kennedy) of the block graph, since `Nest` misses closed blocks.
   - `W_entry`: at a block whose predecessors are all processed, the candidates in a register at the end of all predecessors first, then those of some, by next use; otherwise (loop header) the candidates used in the loop first, then live-through ones only as far as the loop's MaxLive leaves room.
   - Per instruction: reload missing operands, `limit(W, k − extra)` (`div`/`idiv` need `rdx`), `limit(W, k − #defs)` after it; a call keeps at most `k − 9` general-purpose values across it (five callee-saved registers at `k = 14`) and no floating-point one, since every XMM register is caller-saved.
@@ -103,11 +106,11 @@ Done (on `feature/x86`):
     EtaConv does not quite rule out critical edges: a hash-consed branch tuple can share one wrapper among several branches, so `x86.spilling` first gives each branch to such a target a fresh wrapper.
   - Reloads give a value several definitions; SSA reconstruction (Braun et al., CC 2013, every block sealed, union-find for trivial φ removal) runs symbolically first, so each block whose signature changes is rebuilt as a new Lam exactly once with its memory φs and new φ parameters appended.
   - `spill`/`reload` and `fspill`/`freload` are pure instructions on the chain via `sched`; `x86.emit` gives every `Spill`/`FSpill` value a stack slot of its own and turns them into stores and loads.
-- `x86.constrain` (`src/mim/plug/x86/phase/constrain.cpp`) runs after `x86.spilling`: right before an instruction with a fixed operand (`div`'s dividend in `rax`, a shift count in `rcx`) or a two-address operand that stays live, the block jumps to a fresh continuation that takes these operands; the fixed copies are wrapped in `x86.in`.
+- `x86.constrain` (`native::Constrain`, `src/mim/native/constrain.cpp`) runs after `x86.spilling`: right before an instruction with a fixed operand (`div`'s dividend in `rax`, a shift count in `rcx`) or a two-address operand that stays live, the block jumps to a fresh continuation that takes these operands; the fixed copies are wrapped in `x86.in`.
   Likewise, right after an instruction with fixed results (`div`'s quotient in `rax` and remainder in `rdx`), the live ones go to a fresh continuation as `x86.in rax q`, `x86.in rdx r`, so a precolored live range ends at once; this costs no extra register, as the arguments die where the parameters are defined.
-  The table of fixed operands, tied operands, and fixed results is `constraint()` (`src/mim/plug/x86/constraint.cpp`), shared with the spiller and the colorer.
+  The table of fixed operands, tied operands, and fixed results is `x86::Target::constraint` (`src/mim/plug/x86/target.cpp`), shared with the spiller, the colorer, and `emit`.
   `x86.spilling` counts these copies as `extra` registers; if an instruction would then need more than `k`, the operands to copy leave their registers at it instead and are reloaded at their next use.
-- `x86.color` (`src/mim/plug/x86/phase/color.cpp`) runs after `x86.constrain`, per function and in place:
+- `x86.color` (`native::Color`, `src/mim/native/color.cpp`) runs after `x86.constrain`, per function and in place:
   - It first drops chain instructions none of whose results is used (to a fixpoint), so a result without a use is one whose register its instruction implies (`div`'s remainder); and it sets every block's filter to `ff`, since rebuilding a jump must not inline its target (pruning can make both targets of a branch α-equal, and the World then folds the branch).
   - One PBQP per register class with 16 options: `rsp` and `rbp` are ∞ and callee-saved registers cost 1 in the general-purpose one, all XMM registers are caller-saved and reserved ones do not exist in the floating-point one.
     A dead parameter is no node.
@@ -178,7 +181,7 @@ Open bugs and risks (wrong code or a crash is possible, or only a later check ca
 
 - `x86.reg`, `x86.cc`, and `x86.cmovcc` have to stay in hardware encoding order, and nothing checks it: C++ reads registers and condition codes off the subtag (`encoding`, `emit`'s mnemonic table, `normalize_cmovcc`'s `cc` ↦ `cmovcc`), so a reordering silently emits wrong registers or conditions while a register's Mim value stays as written.
 - A use of a fixed-result tuple as a whole (`div`'s `insn#1` instead of its projections) bypasses `x86.constrain`'s post-split: `Subst` maps the projections to the new continuation's parameters, but `insn#1` itself to the new instruction's, so that use would see `rax`/`rdx` past the split; untested, `x86.color`'s checker would report it.
-- A two-address instruction whose tied operand is a literal (`sub (5, x)`) has no tie (`constraint()` drops it), so nothing keeps the result out of the other operand's register; `emit` rejects the literal ("needs an `x86.mov`"), and isel must never produce it.
+- A two-address instruction whose tied operand is a literal (`sub (5, x)`) has no tie (`Target::constraint` drops it), so nothing keeps the result out of the other operand's register; `emit` rejects the literal ("needs an `x86.mov`"), and isel must never produce it.
 - `emit` checks two-address results only with `assert`s, so a release build relies on `x86.color`'s checker.
 - PBQP coloring has no fallback: an infeasible solution is an error naming the conflicting values.
   Chordality plus the PEO priority rules this out for unconstrained values, but precolored values and the ∞ entries for clobbers and calls void that guarantee in theory.
@@ -354,7 +357,7 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 
 - `isel.cpp` has no rules of its own; `ISel::build` is the only builder.
   The PBQP construction, the rewrite, and the solvability checks are generic over the tables.
-- The rules move to Mim: the plugin `x86_isel` (`src/mim/plug/x86_isel/x86_isel.mim`) holds rule families, their instance tuples, and the phase `x86_isel.gen`, which writes every closed rule reachable from its annexes to `build/include/mim/plug/x86/isel_rules.h` (types in `rule_table.h`): one C++ matcher per distinct lhs, one builder per distinct rhs, and a `Rewrite` row per rule with its cost, root axiom, non-terminal, and the `Want` of each meta.
+- The rules move to Mim: the plugin `x86_isel` (`src/mim/plug/x86_isel/x86_isel.mim`) holds rule families, their instance tuples, and the phase `x86_isel.gen`, which writes every closed rule reachable from its annexes to `build/include/mim/plug/x86/isel_rules.h` (types in `include/mim/native/rule_table.h`; the generator is `native::Gen` in `src/mim/native/gen.cpp`, which `x86_isel::Gen` gives the cost, tied operands, and address classification of `x86`): one C++ matcher per distinct lhs, one builder per distinct rhs, and a `Rewrite` row per rule with its cost, root axiom, non-terminal, and the `Want` of each meta.
   The non-terminal of a rule and the want of a meta come from one classification of their types: `x86.Addr ff`/`tt` is `Base`/`Index` (`Addr` for a meta of a dynamic `i`), `[I64, I2]` is `Scaled`, anything else a register; a memory operation's rhs counts by its value, and an rhs of a dynamic address form is an error.
   A meta of type `Idx s` takes its want from a marker (`x86_isel.scaled`), else it is a register.
   An atomic rule has only holes that every non-terminal converts into, which `conv` decides.
@@ -370,7 +373,7 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
   The ALU forms (reg, imm, widened `mul8`, `Bool` logic, `nand`/`nor`/`nxor`), the comparisons, the selects, the conversions, `core.nat`, `core.div`, `core.rem`, loads and stores, the memory forms (`rm`, `mr`), the address forms, and the float arithmetic, comparisons, select, conversions, and memory forms are generated now, with selection byte-identical up to gids; `x86.movzx`/`movsx`/`trunc` fold a literal, so a widened immediate stays one.
   The generator derives what a rule wants of each meta variable: a meta the rhs does not use, another meta's type mentions, or of type `mem.M` or a continuation is a `Param`, otherwise its type gives `Reg` (`Idx s`) or `FReg` (`math.F pe`), its marker `Addr` (`mem.Ptr` under `x86_isel.addr`; a `Nat` is a `Param`, like the divisor of `core.rem`) or `Base`/`Index`/`Addr` (`x86.Addr`), and the guard atoms `x86_isel.imm`/`sh` give `Imm`/`Sh` and `x86_isel.lit` makes a `Param` a `Lit`, which must match a literal (and a conversion one from a literal); any other guard is an error, and a guard of `ff` drops the instance.
   A rule costs the summed `x86::insn::cost` of its rhs (`include/mim/plug/x86/insn.h`): each instruction's latency on recent cores (uops.info) plus one, so of two equally fast covers the shorter wins; an address costs nothing, `rm`/`mr` a load plus their operation, and a `trunc` to a register size nothing.
-  `Rewrite::tied` marks the meta variables a two-address instruction of the rhs overwrites (`insn::tied`, which `constraint()` shares); an alternative adds `insn::Copy` for each that something else uses (`ISel::overwritten`), and a swap of a commuting node that saves such a copy is kept.
+  `Rewrite::tied` marks the meta variables a two-address instruction of the rhs overwrites (`insn::tied`, which `Target::constraint` shares); an alternative adds `rules::Copy` for each that something else uses (`ISel::overwritten`), and a swap of a commuting node that saves such a copy is kept.
   An address form converted by `lea` adds 64-bit values without overwriting either, at the cost of an `add`, so it wins exactly where the `add` needs such a copy.
   Without liveness, a parameter or loop φ never counts as overwritten, since its other uses are mostly in other continuations (`lit/mem/seo/dont_prop_old.mim` regresses otherwise).
   The frontend rejects a rule whose type mentions one of its meta variables, so a size or format the type names is an implicit family parameter, `{s: Nat}` or `{pe: «2; Nat»}`.
@@ -378,7 +381,7 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
   The guards say what no instruction type can: a conversion narrows or widens (`narrows`, `widens`), `select8` takes `Bool` and `i8`, and `rm`/`mr` take what `x86.load` takes (`x86.is_gpr`), since their folded load is not in their rhs.
   An implicit family parameter that neither a check nor the guard mentions becomes the first meta variable of the rule instead (`Table::add`'s `param`), which normalizer rules generic in their sizes will need.
   Every float instruction checks its format in its codomain, with `x86.fpe pe` where the codomain names it and `x86.fok pe n` on a `Nat` inside it otherwise (`Idx (fok pe 2)` for `fcmp`, `mem.M (fok pe 0)` for `fstore`); so every float family takes `{pe}` but `f2f`, whose two explicit pairs leave out the same-format ones.
-- The build runs `mim` with `x86_isel` loaded as a module, so `x86` and `x86_isel` exist only if `MIM_X86` (neither `MIM_STATIC_PLUGINS` nor `MIM_NATIVE_MIM`); lit then excludes `lit/x86/` and drops the `x86_64-linux` feature.
+- The build runs `mim` with `x86_isel` loaded as a module, so `x86` and `x86_isel` exist only if `MIM_NATIVE_BACKENDS` (neither `MIM_STATIC_PLUGINS` nor `MIM_NATIVE_MIM`); lit then excludes `lit/x86/` and drops the `x86_64-linux` feature.
   Generating needs `x86.mim` but not `libmim_x86`.
 
 ### Open points

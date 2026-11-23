@@ -5,8 +5,6 @@
 #include <ranges>
 #include <utility>
 
-#include <mim/target.h>
-
 #include <mim/plug/core/core.h>
 #include <mim/plug/mem/mem.h>
 
@@ -37,27 +35,5 @@ constexpr size_t Num_Allocatable = Num_Regs - size_t(std::ranges::count_if(std::
 
 using mem::sched;
 using mem::strip_ptr_cast;
-
-inline bool is_mem(const Def* def) {
-    auto type = def->type(); // Level has no type
-    return type && Axm::isa<core::M>(type);
-}
-
-/// The register `r` of `x86.in r v` in hardware encoding order.
-inline size_t in_reg(const Def* in) { return mim::Target::in_reg(in); }
-
-/// The `f` of `mem.sched f m x`.
-inline const Def* sched_insn(const App* app) { return mim::Target::sched_insn(app); }
-
-/// The `v` of `x86.in r v` or `x86.fin r v`, otherwise @p def.
-const Def* strip(const Def* def);
-
-bool is_sched_cc(const App* app);
-
-/// The `mem.sched` of an `x86.cc` that yields @p cond, if any.
-const App* isa_sched_cc(const Def* cond);
-
-/// The memory @p app continues, if @p app is an instruction on a `mem.M 0` chain.
-const Def* prev_mem(const App* app);
 
 } // namespace mim::plug::x86

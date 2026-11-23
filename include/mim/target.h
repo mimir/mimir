@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string_view>
 
 #include "mim/axm.h"
@@ -8,6 +9,24 @@
 #include "mim/tuple.h"
 
 namespace mim {
+
+/// What an instruction on the chain prescribes about the registers of its operands; registers are hardware encodings.
+struct Constraint {
+    DefVec ops;                                    ///< See Target::operands.
+    fe::Vector<std::pair<size_t, size_t>> fixed;   ///< Non-literal operands that have to be in a given register.
+    fe::Vector<std::pair<size_t, size_t>> results; ///< Results, see Target::result, that land in a given register.
+    std::optional<size_t> tied;                    ///< The operand whose register the (only) result takes.
+    fe::Vector<size_t> clobbers;                   ///< Registers written while the operands still occupy theirs.
+};
+
+/// The fixed operands with their registers, and the tied one with no register if it is @p live_after.
+inline fe::Vector<std::pair<size_t, std::optional<size_t>>> copies(const Constraint& c, auto live_after) {
+    auto res = fe::Vector<std::pair<size_t, std::optional<size_t>>>();
+    for (auto [j, r] : c.fixed)
+        res.emplace_back(j, r);
+    if (c.tied && live_after(c.ops[*c.tied])) res.emplace_back(*c.tied, std::nullopt);
+    return res;
+}
 
 /// The machine facts that the target-independent parts of a native backend need, such as Liveness and `mem.schedule`.
 /// A backend plugin registers its Target via Plugin::target; see Driver::target.
@@ -43,6 +62,47 @@ public:
     virtual const Def* in(Class cls, size_t r, const Def* v) const = 0;
     /// The size and alignment of a pointer in bytes; see `core.trait`.
     virtual nat_t ptr_size() const = 0;
+
+    /// @name Register File and ABI
+    /// Registers are hardware encodings within their Class.
+    ///@{
+    virtual size_t num_regs(Class cls) const = 0;
+    /// Is @p r never available to register allocation?
+    virtual bool reserved(Class cls, size_t r) const     = 0;
+    virtual bool caller_saved(Class cls, size_t r) const = 0;
+    virtual size_t num_arg_regs(Class cls) const         = 0;
+    /// The register of the @p i-th argument of class @p cls.
+    virtual size_t arg_reg(Class cls, size_t i) const = 0;
+    virtual size_t ret_reg(Class cls) const           = 0;
+    /// The number of registers of @p cls that register allocation may assign.
+    size_t num_allocatable(Class cls) const;
+    /// The number of those that a call may clobber.
+    size_t num_caller_saved(Class cls) const;
+    ///@}
+
+    /// @name Instructions
+    ///@{
+    /// The register constraint of @p insn; by default, it has none.
+    virtual Constraint constraint(const App* insn) const {
+        auto res = Constraint();
+        res.ops  = operands(insn);
+        return res;
+    }
+    /// May @p insn go if nothing uses its results, e.g. a load?
+    virtual bool is_removable(const App* insn) const { return is_axm(sched_, insn); }
+    /// The instruction `f` of `mem.sched f m x` that spills a value of class @p cls and @p type, or `nullptr`.
+    virtual const Def* spill(Class, const Def*) const { return nullptr; }
+    /// The instruction that reloads a value of class @p cls and @p type from its spill slot.
+    virtual const Def* reload(Class, const Def*) const { return nullptr; }
+    /// The type of the spill slot of a value of class @p cls and @p type.
+    virtual const Def* spill_type(Class, const Def*) const { return nullptr; }
+    /// The operands of @p insn: the argument of a `sched`'s instruction, otherwise the arguments including the memory.
+    DefVec operands(const App* insn) const;
+    /// The @p j-th projection of the non-memory result of @p insn.
+    static const Def* result(const App* insn, size_t j);
+    /// @p insn continuing @p m with @p ops instead of its operands.
+    const App* rebuild(const App* insn, const Def* m, const DefVec& ops) const;
+    ///@}
 
     /// Is @p def an application of the axiom with base flags @p base, with @p curry arguments to go?
     static bool is_axm(flags_t base, const Def* def, u8 curry = 0) {

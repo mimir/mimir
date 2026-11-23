@@ -4,20 +4,22 @@
 #include <map>
 #include <print>
 #include <ranges>
-#include <sstream>
 
 #include <mim/plugin.h>
 
+#include <mim/native/emit.h>
+
 #include <mim/plug/math/math.h>
 
-#include "mim/plug/x86/constraint.h"
 #include "mim/plug/x86/insn.h"
-#include "mim/plug/x86/liveness.h"
+#include "mim/plug/x86/target.h"
 #include "mim/plug/x86/x86.h"
 
 namespace mim::plug::x86 {
 
 using namespace std::string_literals;
+using native::Reg;
+using native::Src;
 
 namespace {
 
@@ -84,62 +86,19 @@ nat_t width(const Def* type) {
     return std::bit_ceil(std::max<nat_t>(Idx::expect_bitwidth(type, "an integer"), 8));
 }
 
-nat_t nat(const Def* def) {
-    if (auto l = Lit::isa(def)) return *l;
-    def->blame(MIM_X86_BE "expected a literal, got `{}`", def).bail();
-}
-
-/// A physical register of one of the two register classes.
-struct Reg {
-    size_t num;
-    Liveness::Class cls;
-    bool operator==(const Reg&) const = default;
-};
-
-/// The source of a copy: a register or a literal.
-struct Src {
-    Reg reg        = {};
-    const Def* imm = nullptr;
-};
-
-using Moves = fe::Vector<std::pair<Reg, Src>>;
-
-class Emitter {
+/// Writes one function in AT&T syntax.
+class Emitter : public native::Emitter {
 public:
     Emitter(std::ostream& os, Emit& emit, Lam* fun)
-        : os_(os)
-        , emit_(emit)
-        , fun_(fun)
-        , ret_(fun->ret_var())
-        , live_(fun) {}
-
-    void emit(bool global);
+        : native::Emitter(x86::target(), os, emit, fun)
+        , emit_(emit) {}
 
 private:
-    template<class... Args>
-    void line(std::format_string<Args...> fmt, Args&&... args) {
-        std::print(body_, "\t");
-        std::println(body_, fmt, std::forward<Args>(args)...);
-    }
-
     std::string slot(size_t i, size_t off = 0) const {
-        return std::format("{}(%rbp)", int64_t(off) - int64_t(8 * (saved_.size() + i + 1)));
+        return std::format("{}(%rbp)", int64_t(off) - int64_t(8 * (saved().size() + i + 1)));
     }
-    static std::string label(Lam* lam) { return std::format(".L{}", lam->unique_name()); }
-    std::string symbol(Lam*);
-    void collect(const Def*, DefSet&);
-    void epilogue();
-
-    size_t slot_of(const Def*);
-    /// The register of the result @p def.
-    size_t def_reg(const Def* def) const;
-    /// The register of the operand @p def, an `x86.in r v` or `x86.fin r v`.
-    size_t use_reg(const Def* def) const;
     /// An operand that is a register or an immediate.
     std::string src(const Def* def, nat_t w) const;
-    Src source(const Def* def) const {
-        return Lit::isa(def) ? Src{.imm = def} : Src{.reg = {use_reg(def), Liveness::cls(strip(def))}};
-    }
     std::string imm(const Def* lit, nat_t w) const;
     std::string addr(const Def*) const;
     /// A 16-byte constant in the `.rodata` pool, by its two halves.
@@ -152,67 +111,38 @@ private:
     /// The `f64` 2^32, which turns a signed `i32` into an unsigned one.
     std::string two32() { return pool(std::bit_cast<u64>(4294967296.0), 0); }
     /// A fresh label for an instruction's own fixup.
-    std::string local(std::string_view what) { return std::format(".L{}.{}{}", fun_->unique_name(), what, sel_++); }
-    void move(Reg dst, Reg src);
-    void swap(Reg a, Reg b);
-    void mov_imm(Reg dst, const Def* lit);
+    std::string local(std::string_view what) { return std::format(".L{}.{}{}", fun()->unique_name(), what, sel_++); }
     /// `ucomiss src, a` and the `setcc` of the `x86.fcmp` subtag @p sub into @p dst.
     void ucomi(size_t sub, nat_t w, std::string_view src, size_t a, size_t dst);
     /// The `x86.fsqrt` or conversion @p id of the operand @p src, @p ws bits wide, into the result @p res.
     void unary(flags_t id, std::string_view src, nat_t ws, const Def* res);
-    void use_flags(const Def* fl) const;
-
     void insn(const Def* res, const Def* f, const Def* x);
-    void step(const App*);
-    void block(const Liveness::Block&);
-    void parallel(Moves moves, fe::Vector<std::pair<size_t, size_t>> slot_moves);
-    void copy(Lam* target, const Def* arg);
-    void jump(Lam* target);
-    void call(Lam* callee, const Def* arg);
 
-    std::ostream& os_;
-    Emit& emit_;
-    Lam* fun_;
-    const Def* ret_;
-    Liveness live_;
-    std::ostringstream body_;
-    DefMap<size_t> regs_;
-    DefMap<size_t> slots_;
-    size_t num_slots_ = 0;
-    fe::Vector<size_t> saved_;
-    Lam* next_        = nullptr;
-    const Def* flags_ = nullptr; ///< The result of the `cmp` or `test` that the flags hold.
-    size_t sel_       = 0;
-};
-
-std::string Emitter::symbol(Lam* lam) { return emit_.symbol(lam); }
-
-void Emitter::collect(const Def* def, DefSet& done) {
-    if (def->isa_mut() || def->is_closed() || is_mem(def) || !done.emplace(def).second) return;
-    if (Axm::isa<x86::in>(def) || Axm::isa<x86::fin>(def)) {
-        regs_.emplace(strip(def), in_reg(def));
-        return;
+    void step(const App*) final;
+    void move(Reg dst, Reg src) final;
+    /// Swaps the contents of @p a and @p b; the XMM registers have no `xchg`.
+    void swap(Reg a, Reg b) final;
+    void mov_imm(Reg dst, const Def* lit) final;
+    void push_slot(size_t i) final { line("pushq {}", slot(i)); }
+    void pop_slot(size_t i) final { line("popq {}", slot(i)); }
+    void jmp(std::string_view label) final { line("jmp {}", label); }
+    void branch_cc(size_t cc, std::string_view label) final { line("j{} {}", ccs[cc], label); }
+    void branch_if(size_t r, std::string_view label) final {
+        auto n = name(r, 8);
+        line("testb {}, {}", n, n);
+        line("jne {}", label);
     }
-    for (auto op : def->ops())
-        collect(op, done);
-}
+    void call_insn(std::string_view sym, const std::array<size_t, Target::Num_Classes>& num_args) final {
+        // A variadic callee reads the number of vector registers used from `al`.
+        line("movl ${}, %eax", num_args[Target::Fpr]);
+        line("call {}", sym);
+    }
+    void prologue(std::ostream& os) final;
+    void epilogue() final;
 
-size_t Emitter::slot_of(const Def* def) {
-    auto [i, ins] = slots_.emplace(def, num_slots_);
-    if (ins) ++num_slots_;
-    return i->second;
-}
-
-size_t Emitter::def_reg(const Def* def) const {
-    if (auto r = fe::lookup(regs_, def)) return *r;
-    def->blame(MIM_X86_BE "`{}` has no register", def).bail();
-}
-
-size_t Emitter::use_reg(const Def* def) const {
-    if (Axm::isa<x86::in>(def) || Axm::isa<x86::fin>(def)) return in_reg(def);
-    if (Lit::isa(def)) def->blame(MIM_X86_BE "literal `{}` needs an `x86.mov` here", def).bail();
-    def->blame(MIM_X86_BE "`{}` is not in a register", def).bail();
-}
+    Emit& emit_;
+    size_t sel_ = 0;
+};
 
 std::string Emitter::imm(const Def* lit, nat_t w) const {
     auto l = *Lit::isa(lit);
@@ -244,8 +174,10 @@ std::string Emitter::addr(const Def* a) const {
     return res + ")";
 }
 
+std::string Emitter::pool(u64 lo, u64 hi) { return std::format(".Lpool{}(%rip)", emit_.pool(lo, hi)); }
+
 void Emitter::move(Reg dst, Reg src) {
-    if (dst.cls == Liveness::Fpr)
+    if (dst.cls == Target::Fpr)
         line("movaps {}, {}", xmm(src.num), xmm(dst.num));
     else
         line("movq {}, {}", name(src.num, 64), name(dst.num, 64));
@@ -253,7 +185,7 @@ void Emitter::move(Reg dst, Reg src) {
 
 /// Swaps the contents of @p a and @p b; the XMM registers have no `xchg`.
 void Emitter::swap(Reg a, Reg b) {
-    if (a.cls == Liveness::Gpr) return line("xchgq {}, {}", name(a.num, 64), name(b.num, 64));
+    if (a.cls == Target::Gpr) return line("xchgq {}, {}", name(a.num, 64), name(b.num, 64));
     line("xorps {}, {}", xmm(a.num), xmm(b.num));
     line("xorps {}, {}", xmm(b.num), xmm(a.num));
     line("xorps {}, {}", xmm(a.num), xmm(b.num));
@@ -262,24 +194,18 @@ void Emitter::swap(Reg a, Reg b) {
 void Emitter::mov_imm(Reg dst, const Def* lit) {
     auto w = width(lit->type());
     auto l = *Lit::isa(lit);
-    if (dst.cls == Liveness::Fpr) {
+    if (dst.cls == Target::Fpr) {
         if (w != 32 && w != 64) lit->blame(MIM_X86_BE "`math.F` of {} bits is not supported", w).bail();
         return line("mov{} {}, {}", fsz(w), pool(l, w == 64 ? 0 : l), xmm(dst.num));
     }
     // `xorl` clobbers the flags, so only use it while none are pending.
-    if (l == 0 && flags_ == nullptr) return line("xorl {}, {}", name(dst.num, 32), name(dst.num, 32));
+    if (l == 0 && flags_clobbered()) return line("xorl {}, {}", name(dst.num, 32), name(dst.num, 32));
     if (w < 64) return line("movl ${}, {}", l, name(dst.num, 32));
     auto s = std::bit_cast<int64_t>(l);
     if (s < INT32_MIN || s > INT32_MAX)
         line("movabsq ${}, {}", s, name(dst.num, 64));
     else
         line("movq ${}, {}", s, name(dst.num, 64));
-}
-
-std::string Emitter::pool(u64 lo, u64 hi) { return std::format(".Lpool{}(%rip)", emit_.pool(lo, hi)); }
-
-void Emitter::use_flags(const Def* fl) const {
-    if (fl != flags_) fl->blame(MIM_X86_BE "flags `{}` are clobbered before their use", fl).bail();
 }
 
 void Emitter::insn(const Def* res, const Def* f, const Def* x) {
@@ -292,7 +218,7 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
              || id == Annex::Base<fmul> || id == Annex::Base<fdiv> || id == Annex::Base<fsqrt>
              || id == Annex::Base<fabs> || id == Annex::Base<i2f> || id == Annex::Base<f2i> || id == Annex::Base<f2u>
              || id == Annex::Base<f2f>;
-    if (!keep) flags_ = nullptr;
+    if (!keep) clobber_flags();
 
     auto binary = [&](std::string_view mnemonic) {
         auto [a, b] = x->projs<2>();
@@ -346,14 +272,14 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
     // clang-format on
     else if (id == Annex::Base<mov>) {
         if (!Lit::isa(x)) x->blame(MIM_X86_BE "`x86.mov` of `{}`, which is no literal", x).bail();
-        mov_imm(Reg{def_reg(res), Liveness::Gpr}, x);
+        mov_imm(Reg{def_reg(res), Target::Gpr}, x);
     } else if (id == Annex::Base<x86::spill>) {
         if (Lit::isa(x))
-            line("movq {}, {}", imm(x, 64), slot(slot_of(res)));
+            line("movq {}, {}", imm(x, 64), slot(spill_slot(res)));
         else
-            line("movq {}, {}", name(use_reg(x), 64), slot(slot_of(res)));
+            line("movq {}, {}", name(use_reg(x), 64), slot(spill_slot(res)));
     } else if (id == Annex::Base<reload>) {
-        line("movq {}, {}", slot(slot_of(x)), name(def_reg(res), 64));
+        line("movq {}, {}", slot(spill_slot(x)), name(def_reg(res), 64));
     } else if (id == Annex::Base<lea>) {
         line("leaq {}, {}", addr(x), name(def_reg(res), 64));
     } else if (id == Annex::Base<trunc>) {
@@ -389,11 +315,11 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         auto [a, b] = x->projs<2>();
         auto w      = width(a->type());
         line("{}{} {}, {}", id == Annex::Base<cmp> ? "cmp" : "test", suffix(w), src(b, w), name(use_reg(a), w));
-        flags_ = res;
+        set_flags(res);
     } else if (id == Annex::Base<cc>) {
         use_flags(x);
         // A condition that only a branch consumes has no register.
-        if (auto r = fe::lookup(regs_, res)) line("set{} {}", ccs[axm->sub()], name(*r, 8));
+        if (auto r = isa_reg(res)) line("set{} {}", ccs[axm->sub()], name(*r, 8));
     } else if (id == Annex::Base<cmovcc>) {
         auto [fl, a, b] = x->projs<3>();
         auto w          = width(res->type());
@@ -420,10 +346,10 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         line("and{} {}, {}", w == 64 ? "pd" : "ps", abs_mask(w), xmm(dst));
     } else if (id == Annex::Base<fmov>) {
         if (!Lit::isa(x)) x->blame(MIM_X86_BE "`x86.fmov` of `{}`, which is no literal", x).bail();
-        mov_imm(Reg{def_reg(res), Liveness::Fpr}, x);
+        mov_imm(Reg{def_reg(res), Target::Fpr}, x);
     } else if (id == Annex::Base<fspill>) {
         auto w = width(x->type());
-        auto s = slot_of(res);
+        auto s = spill_slot(res);
         if (auto l = Lit::isa(x)) {
             line("movl ${}, {}", u32(*l), slot(s));
             if (w == 64) line("movl ${}, {}", u32(*l >> 32), slot(s, 4));
@@ -432,7 +358,7 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         }
     } else if (id == Annex::Base<freload>) {
         auto w = width(res->type());
-        line("mov{} {}, {}", fsz(w), slot(slot_of(x)), xmm(def_reg(res)));
+        line("mov{} {}, {}", fsz(w), slot(spill_slot(x)), xmm(def_reg(res)));
     } else if (id == Annex::Base<fcmp>) {
         auto [a, b] = x->projs<2>();
         ucomi(axm->sub(), width(a->type()), xmm(use_reg(b)), use_reg(a), def_reg(res));
@@ -444,7 +370,7 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         line("testb {}, {}", name(use_reg(c), 8), name(use_reg(c), 8));
         line("je {}", l);
         line("movaps {}, {}", xmm(use_reg(b)), xmm(dst));
-        std::println(body_, "{}:", l);
+        label_here(l);
     } else if (id == Annex::Base<u2f>) {
         auto ws = width(x->type());
         auto wr = width(res->type());
@@ -457,7 +383,7 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         line("testl {}, {}", src, src);
         line("jns {}", l);
         line("addsd {}, {}", two32(), dst);
-        std::println(body_, "{}:", l);
+        label_here(l);
         if (wr == 32) line("cvtsd2ss {}, {}", dst, dst);
     } else {
         f->blame(MIM_X86_BE "cannot emit `{}`", axm).bail();
@@ -473,7 +399,7 @@ void Emitter::ucomi(size_t sub, nat_t w, std::string_view src, size_t a, size_t 
     auto l = local("fcmp");
     line("jnp {}", l);
     line("movl ${}, {}", *unordered ? 1 : 0, name(dst, 32));
-    std::println(body_, "{}:", l);
+    label_here(l);
 }
 
 void Emitter::unary(flags_t id, std::string_view src, nat_t ws, const Def* res) {
@@ -489,16 +415,16 @@ void Emitter::unary(flags_t id, std::string_view src, nat_t ws, const Def* res) 
 }
 
 void Emitter::step(const App* app) {
-    if (Axm::isa<sched>(app)) return insn(app->proj(2, 1), sched_insn(app), app->arg());
+    if (Axm::isa<sched>(app)) return insn(app->proj(2, 1), Target::sched_insn(app), app->arg());
 
     if (Axm::isa<x86::slot>(app)) {
-        num_slots_ += (nat(app->callee()->as<App>()->arg()) + 7) / 8;
-        line("leaq {}, {}", slot(num_slots_ - 1), name(def_reg(app->proj(2, 1)), 64));
+        alloc_slots(nat(app->callee()->as<App>()->arg()));
+        line("leaq {}, {}", slot(num_slots() - 1), name(def_reg(app->proj(2, 1)), 64));
         return;
     }
 
     if (!Axm::isa<load>(app) && !Axm::isa<store>(app) && !Axm::isa<fload>(app) && !Axm::isa<fstore>(app))
-        flags_ = nullptr;
+        clobber_flags();
 
     if (auto op = Axm::isa<rm>(app)) {
         auto [_, a, p] = app->args<3>();
@@ -555,215 +481,26 @@ void Emitter::step(const App* app) {
     line("mov{} {}, {}", suffix(w), src(v, w), addr(p));
 }
 
-/// Sequentializes the parallel copies @p moves between registers and @p slot_moves between spill slots.
-void Emitter::parallel(Moves moves, fe::Vector<std::pair<size_t, size_t>> slot_moves) {
-    std::erase_if(slot_moves, [](auto m) { return m.first == m.second; });
-    for (auto [_, from] : slot_moves)
-        line("pushq {}", slot(from));
-    for (auto [to, _] : slot_moves | std::views::reverse)
-        line("popq {}", slot(to));
-
-    auto imms = Moves();
-    for (auto& m : moves)
-        if (m.second.imm) imms.emplace_back(m);
-    std::erase_if(moves, [](const auto& m) { return m.second.imm || m.first == m.second.reg; });
-
-    while (!moves.empty()) {
-        auto free = std::ranges::find_if(moves, [&](const auto& m) {
-            return std::ranges::none_of(moves, [&](const auto& n) { return n.second.reg == m.first; });
-        });
-        if (free != moves.end()) {
-            move(free->first, free->second.reg);
-            moves.erase(free);
-            continue;
-        }
-        // Only cycles are left.
-        auto [d, s] = moves.back();
-        moves.pop_back();
-        swap(s.reg, d);
-        for (auto& [dst, from] : moves)
-            if (from.reg == d)
-                from.reg = s.reg;
-            else if (from.reg == s.reg)
-                from.reg = d;
-        std::erase_if(moves, [](const auto& m) { return m.first == m.second.reg; });
-    }
-
-    for (auto [dst, s] : imms)
-        mov_imm(dst, s.imm);
-}
-
-void Emitter::copy(Lam* target, const Def* arg) {
-    auto moves      = Moves();
-    auto slot_moves = fe::Vector<std::pair<size_t, size_t>>();
-    auto n          = target->num_vars();
-    for (size_t i = 0; i != n; ++i) {
-        auto x = target->var(n, i);
-        auto a = arg->proj(n, i);
-        if (is_mem(x)) continue;
-        if (Axm::isa<Spill>(x->type()) || Axm::isa<FSpill>(x->type()))
-            slot_moves.emplace_back(slot_of(x), slot_of(a));
-        else if (auto r = fe::lookup(regs_, x))
-            moves.emplace_back(Reg{*r, Liveness::cls(x)}, source(a));
-    }
-    parallel(std::move(moves), std::move(slot_moves));
-}
-
-void Emitter::jump(Lam* target) {
-    if (target != next_) line("jmp {}", label(target));
-}
-
 void Emitter::epilogue() {
-    if (saved_.empty()) {
+    if (saved().empty()) {
         line("leave");
     } else {
-        line("leaq -{}(%rbp), %rsp", 8 * saved_.size());
-        for (auto r : saved_ | std::views::reverse)
+        line("leaq -{}(%rbp), %rsp", 8 * saved().size());
+        for (auto r : saved() | std::views::reverse)
             line("popq {}", name(r, 64));
         line("popq %rbp");
     }
     line("ret");
 }
 
-void Emitter::call(Lam* callee, const Def* arg) {
-    auto n     = arg->num_projs();
-    auto moves = Moves();
-    auto a = size_t(0), f = size_t(0);
-    for (size_t i = 0; i + 1 < n; ++i) {
-        if (auto x = arg->proj(n, i); !is_mem(x)) {
-            auto cls = Liveness::cls(strip(x));
-            auto& c  = cls == Liveness::Gpr ? a : f;
-            if (c == num_arg_regs(cls)) arg->blame(MIM_X86_BE "too many arguments are not supported yet").bail();
-            moves.emplace_back(Reg{arg_reg(cls, c++), cls}, source(x));
-        }
-    }
-    parallel(std::move(moves), {});
-    // A variadic callee reads the number of vector registers used from `al`.
-    line("movl ${}, %eax", f);
-    line("call {}", symbol(callee));
-
-    auto ret = arg->proj(n, n - 1);
-    if (ret == ret_) return epilogue();
-
-    auto k    = Lam::isa_mut_basicblock(ret);
-    auto m    = k->num_vars();
-    auto back = Moves();
-    for (size_t i = 0; i != m; ++i)
-        if (auto x = k->var(m, i); !is_mem(x)) {
-            auto cls = Liveness::cls(x);
-            if (auto r = fe::lookup(regs_, x)) back.emplace_back(Reg{*r, cls}, Src{.reg = {ret_reg(cls), cls}});
-        }
-    parallel(std::move(back), {});
-    jump(k);
-}
-
-void Emitter::block(const Liveness::Block& b) {
-    for (auto insn : b.insns)
-        step(insn);
-
-    auto term   = b.lam->body()->as<App>();
-    auto arg    = term->arg();
-    auto callee = term->callee();
-    if (callee == ret_) {
-        auto moves = Moves();
-        for (auto a : term->args()) {
-            if (is_mem(a)) continue;
-            auto cls = Liveness::cls(strip(a));
-            moves.emplace_back(Reg{ret_reg(cls), cls}, source(a));
-        }
-        if (moves.size() > 1) b.lam->blame(MIM_X86_BE "`{}` returns more than one value", b.lam).bail();
-        parallel(std::move(moves), {});
-        epilogue();
-    } else if (auto f = Lam::isa_mut_returning(callee)) {
-        call(f, arg);
-    } else if (auto ex = callee->isa<Extract>()) {
-        auto targets = ex->tuple();
-        if (targets->num_projs() != 2) b.lam->blame(MIM_X86_BE "only two-way branches are supported yet").bail();
-        auto [e, t] = targets->projs<2>([](const Def* d) { return Lam::isa_mut_basicblock(d); });
-        if (!e || !t) b.lam->blame(MIM_X86_BE "`{}` branches to something other than blocks", b.lam).bail();
-        auto c          = ex->index();
-        auto trampoline = takes_values(target(), t);
-        auto t_lbl      = trampoline ? label(b.lam) + ".t" : label(t);
-        if (auto app = isa_sched_cc(c)) {
-            use_flags(app->arg());
-            line("j{} {}", ccs[Axm::as<cc, 1>(sched_insn(app)).sub()], t_lbl);
-        } else {
-            auto r = name(use_reg(c), 8);
-            line("testb {}, {}", r, r);
-            line("jne {}", t_lbl);
-        }
-        copy(e, arg);
-        if (trampoline) {
-            line("jmp {}", label(e));
-            std::println(body_, "{}:", t_lbl);
-            copy(t, arg);
-            jump(t);
-        } else {
-            jump(e);
-        }
-    } else if (auto bb = Lam::isa_mut_basicblock(callee)) {
-        copy(bb, arg);
-        jump(bb);
-    } else {
-        b.lam->blame(MIM_X86_BE "cannot emit the jump to `{}`", callee).bail();
-    }
-}
-
-void Emitter::emit(bool global) {
-    if (!ret_) fun_->blame(MIM_X86_BE "`{}` does not end in a return continuation", fun_).bail();
-
-    auto done = DefSet();
-    for (const auto& b : live_.blocks()) {
-        for (auto insn : b.insns) {
-            collect(insn->callee(), done);
-            collect(insn->arg(), done);
-            for (auto [j, r] : constraint(insn).results)
-                regs_.emplace(result(insn, j), *Lit::isa(r));
-        }
-        collect(b.lam->body(), done);
-    }
-    auto used = std::array<bool, Num_Regs>{};
-    for (auto [def, r] : regs_)
-        if (Liveness::cls(def) == Liveness::Gpr) used[r] = true;
-    for (size_t r = 0; r != Num_Regs; ++r)
-        if (!Caller_Saved[r] && !reserved(r) && used[r]) saved_.emplace_back(r);
-
-    auto order = layout(live_);
-
-    auto n     = fun_->num_vars();
-    auto moves = Moves();
-    for (size_t i = 0, a = 0, f = 0; i + 1 < n; ++i) {
-        if (auto x = fun_->var(n, i); !is_mem(x)) {
-            auto cls = Liveness::cls(x);
-            auto& c  = cls == Liveness::Gpr ? a : f;
-            if (c == num_arg_regs(cls)) fun_->blame(MIM_X86_BE "too many arguments are not supported yet").bail();
-            if (auto r = fe::lookup(regs_, x)) moves.emplace_back(Reg{*r, cls}, Src{.reg = {arg_reg(cls, c), cls}});
-            ++c;
-        }
-    }
-    parallel(std::move(moves), {});
-
-    for (size_t i = 0; i != order.size(); ++i) {
-        auto b = order[i];
-        next_  = i + 1 != order.size() ? order[i + 1]->lam : nullptr;
-        if (i != 0) std::println(body_, "{}:", label(b->lam));
-        flags_ = nullptr;
-        block(*b);
-    }
-
-    auto sym    = symbol(fun_);
-    auto pushed = 8 * saved_.size();
-    auto frame  = fe::pad(8 * num_slots_ + pushed, 16) - pushed;
-    if (global) std::println(os_, "\t.globl {}", sym);
-    std::println(os_, "\t.type {}, @function", sym);
-    std::println(os_, "{}:", sym);
-    std::println(os_, "\tpushq %rbp");
-    std::println(os_, "\tmovq %rsp, %rbp");
-    for (auto r : saved_)
-        std::println(os_, "\tpushq {}", name(r, 64));
-    if (frame != 0) std::println(os_, "\tsubq ${}, %rsp", frame);
-    os_ << body_.view();
-    std::println(os_, "\t.size {}, .-{}", sym, sym);
+void Emitter::prologue(std::ostream& os) {
+    auto pushed = 8 * saved().size();
+    auto frame  = fe::pad(8 * num_slots() + pushed, 16) - pushed;
+    std::println(os, "\tpushq %rbp");
+    std::println(os, "\tmovq %rsp, %rbp");
+    for (auto r : saved())
+        std::println(os, "\tpushq {}", name(r, 64));
+    if (frame != 0) std::println(os, "\tsubq ${}, %rsp", frame);
 }
 
 } // namespace
