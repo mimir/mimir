@@ -34,6 +34,8 @@ class Target {
 public:
     /// The register classes; `Stack` values live in a spill slot and are unbounded.
     enum Class : size_t { Gpr, Fpr, Flags, Stack, Num_Classes };
+    /// The object format of the assembler output.
+    enum class Format { Elf, MachO };
 
     /// The base flags of the annexes that libmim knows only through the Target.
     struct Annexes {
@@ -54,6 +56,19 @@ public:
     /// The plugin name, used as the prefix of diagnostics.
     std::string_view name() const { return name_; }
     const Annexes& annexes() const { return annexes_; }
+    /// The object format of the host that the emitted assembly is assembled and linked on.
+    virtual Format format() const {
+#ifdef __APPLE__
+        return Format::MachO;
+#else
+        return Format::Elf;
+#endif
+    }
+    bool is_elf() const { return format() == Format::Elf; }
+    /// The prefix that the object format adds to a C symbol.
+    std::string_view global_prefix() const { return is_elf() ? "" : "_"; }
+    /// The prefix of an assembler-local label.
+    std::string_view local_prefix() const { return is_elf() ? ".L" : "L"; }
 
     /// The register class of the value @p def, from its type.
     virtual Class cls(const Def* def) const = 0;

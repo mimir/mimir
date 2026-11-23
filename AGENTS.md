@@ -31,7 +31,7 @@ cmake --build build -j$(nproc)   # binaries land in build/bin (mim, mim-test, mi
 | lit, memory-capped | `scripts/lit.sh [FILTER...]` — re-stages, `ulimit -v`, quiet summary, full log in `build/lit.log` |
 | Output oracle | `scripts/oracle.sh snap NAME` / `diff NAME` / `rev REV` (`-m opt\|noopt\|ast\|ll\|nest\|dump5\|…`) — byte-exact A/B over all lit/extra `.mim` |
 | Perf A/B | `scripts/perf_ab.sh snap NAME`, then `scripts/perf_ab.sh cmp NAME live` (instructions:u on a Release tree) |
-| x86 at small `k` | `scripts/x86_ksweep.sh [-k "2 3 4 6"]` (= `scripts/lit.sh --param x86_k=<k>` over the x86 allowlist) |
+| Native backend at small `k` | `scripts/native_ksweep.sh [-k "2 3 4 6"]` (= `scripts/lit.sh --param <x86\|arm>_k=<k>` over the native allowlist, host's backend) |
 | Reproducer from a failure | `./scripts/make_lit_error.sh foo.mim` / `./scripts/make_test_error.sh '<test case>'` |
 
 ## Gotchas

@@ -1,4 +1,4 @@
-// RUN: %mim -p opt %s -p arm -X arm:o=- | %FileCheck %s
+// RUN: %mim -p opt %s -p arm -X arm:o=- | %FileCheck %s %asmdefs
 
 plugin core;
 plugin mem;
@@ -25,20 +25,20 @@ extern con across (m: mem.M 0, x: math.F64, return: Cn [mem.M 0, math.F64]) =
         con after (m: mem.M 0, y: math.F64) = return (m, x * y);
     end;
 
-// CHECK: .globl across
+// CHECK: .globl [[SYM]]across
 // CHECK: str d[[S:(8|9|1[0-5])]], [sp, #0]
 // CHECK: fmov d[[S]], d0
-// CHECK: bl minus
+// CHECK: bl [[SYM]]minus
 // CHECK: fmul d0, {{.*}}d[[S]]
 // CHECK: ldr d[[S]], [sp, #0]
 // CHECK: ret
-// CHECK: .globl minus
+// CHECK: .globl [[SYM]]minus
 // CHECK: fsub d0, d0, d1
-// CHECK: .globl mixed
+// CHECK: .globl [[SYM]]mixed
 // CHECK: scvtf d{{[0-9]+}}, w0
-// CHECK: bl minus
-// CHECK: .globl swap
+// CHECK: bl [[SYM]]minus
+// CHECK: .globl [[SYM]]swap
 // CHECK: fmov d31, d1
 // CHECK: fmov d1, d0
 // CHECK: fmov d0, d31
-// CHECK: bl minus
+// CHECK: bl [[SYM]]minus

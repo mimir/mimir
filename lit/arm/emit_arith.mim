@@ -1,4 +1,4 @@
-// RUN: %mim -p opt %s -p arm -X arm:o=- | %FileCheck %s
+// RUN: %mim -p opt %s -p arm -X arm:o=- | %FileCheck %s %asmdefs
 
 plugin core;
 plugin mem;
@@ -17,7 +17,7 @@ extern con rem (m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) =
 extern con widen (m: mem.M 0, x: I8, return: Cn [mem.M 0, I32]) =
     return (m, core.bitcast I32 x);
 
-// CHECK: .globl main
+// CHECK: .globl [[SYM]]main
 // CHECK: stp x29, x30, [sp, #-16]!
 // CHECK-NEXT: mov x29, sp
 // CHECK: mul {{w[0-9]+}}, {{w[0-9]+}}, {{w[0-9]+}}
@@ -29,9 +29,9 @@ extern con widen (m: mem.M 0, x: I8, return: Cn [mem.M 0, I32]) =
 // CHECK: orr {{w[0-9]+}}, {{w[0-9]+}}, {{w[0-9]+}}
 // CHECK: ldp x29, x30, [sp], #16
 // CHECK-NEXT: ret
-// CHECK: .globl rem
+// CHECK: .globl [[SYM]]rem
 // CHECK: udiv [[Q:w[0-9]+]], {{w[0-9]+}}, {{w[0-9]+}}
 // CHECK: mul {{w[0-9]+}}, [[Q]], {{w[0-9]+}}
 // CHECK: sub {{w[0-9]+}}, {{w[0-9]+}}, {{w[0-9]+}}
-// CHECK: .globl widen
+// CHECK: .globl [[SYM]]widen
 // CHECK: ubfx {{w[0-9]+}}, {{w[0-9]+}}, #0, #8

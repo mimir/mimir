@@ -2,6 +2,8 @@
 
 #include <mim/asm.h>
 
+#include "mim/plug/arm/target.h"
+
 namespace mim::plug::arm {
 
 /// Writes GNU assembler code (AArch64 syntax) for the scheduled world; see AsmEmit for the output file.
@@ -9,7 +11,7 @@ namespace mim::plug::arm {
 class Emit : public AsmEmit {
 public:
     Emit(World& world, flags_t annex)
-        : AsmEmit(world, annex, "arm") {}
+        : AsmEmit(world, annex, target()) {}
 
 private:
     void emit(std::ostream& os, Lam* fun, bool global) final;

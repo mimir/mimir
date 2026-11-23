@@ -89,7 +89,7 @@ protected:
     const Target& target() const { return target_; }
     std::string_view backend() const { return target_.name(); }
     Lam* fun() const { return fun_; }
-    static std::string label(Lam* lam) { return std::format(".L{}", lam->unique_name()); }
+    std::string label(Lam* lam) const { return std::format("{}{}", target_.local_prefix(), lam->unique_name()); }
     std::string symbol(Lam* lam) { return emit_.symbol(lam); }
     nat_t nat(const Def* def) const;
 

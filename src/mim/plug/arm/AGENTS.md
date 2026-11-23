@@ -81,8 +81,10 @@ Done:
 - `mach.spilling` brings each function down to `k` registers of each class (26 integer and 31 float by default, `-X arm:k=<n>`), `mach.color` assigns them by PBQP and checks the result; see `../x86/AGENTS.md` for both.
 - `arm.emit` (`emit.cpp`) writes GAS AArch64 syntax to `<world>.s` (`-X arm:o=<file>`) on top of `native::Emitter`, and tracks which result the flags hold so a clobbered condition is an error.
   Literal materialization is `ldr wD, =imm`/`ldr xD, =imm` (a GAS pseudo-instruction that clang's integrated assembler resolves through a literal pool), and a float literal is an `fmov` immediate or goes through a general-purpose register.
+- On an Apple host the output is Mach-O (`Target::format`): external symbols take the `_` prefix, local labels the `L` prefix, and `native::Emitter`/`AsmEmit` omit the ELF `.type`, `.size`, and `.note.GNU-stack` directives.
 - Tests: `lit/arm/emit_arith.mim` (arithmetic, literals, shifts, remainder, bitcast), `lit/arm/emit_cf.mim` (a loop with a parameter swap, a branch condition, a select, a call), `lit/arm/emit_mem.mim` (slot, store, load, a pointer argument), `lit/arm/emit_float.mim` (float arithmetic on both formats, the three literal forms, conversions including `i8`/`i16`, a load/store, `fcsel` on a `Bool` and fused with an integer or float comparison), `lit/arm/emit_float_cmp.mim` (the condition code of each `math.cmp` predicate, including NaN), `lit/arm/emit_float_call.mim` (float and mixed arguments across a call, the swap through `d31`, a float in a saved `d8`–`d15` across a call), `lit/arm/isel_fold.mim` (`madd`, a shared product, `nand`), `lit/arm/spill.mim` (spills and memory φs at `k = 2`).
   They check the emitted assembly with FileCheck only.
+  The shared `%if native` RUN lines in `lit/` compile, assemble, and run the same backend on an AArch64 host.
   By hand, all 48 programs of the `x86` allowlist that link without libc (plus `atoi`) give the same exit code under `qemu-aarch64` as natively on `x86`, also at `k = 3` and `k = 2`; the float tests were run the same way under `qemu-aarch64` with a hand-written `_start`, but not yet since `fcsel`, the flag-based `fcmp`, the `fmov` immediates, the `i8`/`i16` conversions, and the callee-saved `d` registers.
 
 Known gaps and bugs, as of 2026-11-23:
@@ -95,13 +97,16 @@ Known gaps and bugs, as of 2026-11-23:
 - `i1` has no conversion to or from a float.
 - `mach.slot`/`arm.load`/`arm.store` use a literal `[sp, #off]`/`[xR]` addressing mode only; there are no address-mode rules, and offsets beyond the immediate range in `load`/`store` are not handled.
 - A frame larger than 4095 bytes materializes a `mach.slot` offset in `x17`, but saved registers, spill slots, and loads/stores still assume an encodable offset.
+- Apple's arm64 ABI is not implemented beyond the Mach-O syntax: a call to C does not sign- or zero-extend an `i1`/`i8`/`i16` argument to 32 bits, and variadic arguments go in registers instead of on the stack.
+  The extension needs the C parameter's signedness, which an `Idx` does not carry, so an `extern` declaration would have to record it.
+  No allowlist test passes either to C yet.
 - At most eight arguments per call or entry; a `csel` with both operands literal uses both scratch registers.
 - A conversion or bitcast only has rules between the register sizes `i1`, `i8`, `i16`, `i32`, `i64`.
 - The scheduler leaves a dead copy of a branch's `cmp` behind (the same rematerialization as `x86`), which `mach.color`'s pruning removes.
-- No lit test assembles or runs AArch64 code; the `qemu-aarch64` checks above are manual.
+- `lit/arm/` only checks assembly with FileCheck; the shared allowlist's `%if native` runs need an AArch64 host, and a cross run (`qemu-aarch64`) is still manual.
 - `arm.reg`, `arm.fpr`, `arm.cc`, `arm.csel`, and `arm.fcsel` must stay in hardware encoding order; C++ reads registers and condition codes off the subtag and nothing checks it.
 
 ## Next Steps
 
-1. A lit feature for `qemu-aarch64` with a minimal `_start`, so the allowlist runs on ARM in CI.
+1. A lit feature for `qemu-aarch64` with a minimal `_start`, so the shared allowlist also runs when the host is x86.
 2. Address-mode rules (`[xN, #imm]`, `[xN, xM, lsl #s]`) as non-terminals, like `x86`'s `Base`/`Index`, and shifted-operand forms.

@@ -256,11 +256,11 @@ void Emitter::emit(bool global) {
 
     auto sym = symbol(fun_);
     if (global) std::println(os_, "\t.globl {}", sym);
-    std::println(os_, "\t.type {}, {}", sym, function_type());
+    if (target_.is_elf()) std::println(os_, "\t.type {}, {}", sym, function_type());
     std::println(os_, "{}:", sym);
     prologue(os_);
     os_ << body_.view();
-    std::println(os_, "\t.size {}, .-{}", sym, sym);
+    if (target_.is_elf()) std::println(os_, "\t.size {}, .-{}", sym, sym);
 }
 
 } // namespace mim::native

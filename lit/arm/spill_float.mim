@@ -1,4 +1,4 @@
-// RUN: %mim -p opt %s -p arm -X arm:k=2 -X arm:o=- | %FileCheck %s
+// RUN: %mim -p opt %s -p arm -X arm:k=2 -X arm:o=- | %FileCheck %s %asmdefs
 
 plugin core;
 plugin mem;
@@ -22,7 +22,7 @@ extern con many (m: mem.M 0, a: math.F64, return: Cn [mem.M 0, math.F64]) =
     let s3 = p6 + p7;
     return (m, (s0 + s1) * (s2 + s3));
 
-// CHECK: .globl many
+// CHECK: .globl [[SYM]]many
 // CHECK: sub sp, sp, #64
 // CHECK-COUNT-8: str d{{[0-9]+}}, [sp, #{{[0-9]+}}]
 // CHECK: ldr d{{[0-9]+}}, [sp, #{{[0-9]+}}]

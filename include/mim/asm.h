@@ -5,6 +5,7 @@
 #include <string>
 
 #include "mim/phase.h"
+#include "mim/target.h"
 
 namespace mim {
 
@@ -12,9 +13,9 @@ namespace mim {
 /// calls. The output goes to `<world>.s` (or `a.s` if the World is unnamed), or to `<file>` of `-X <plugin>:o=<file>`.
 class AsmEmit : public Phase {
 public:
-    AsmEmit(World& world, flags_t annex, std::string_view backend)
+    AsmEmit(World& world, flags_t annex, const Target& target)
         : Phase(world, annex)
-        , backend_(backend) {}
+        , target_(target) {}
 
     void start() final;
 
@@ -27,7 +28,7 @@ protected:
     virtual void finish(std::ostream&) {}
 
 private:
-    std::string_view backend_;
+    const Target& target_;
     std::deque<Lam*> todo_;
     LamSet seen_;
 };

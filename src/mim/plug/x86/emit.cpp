@@ -111,7 +111,9 @@ private:
     /// The `f64` 2^32, which turns a signed `i32` into an unsigned one.
     std::string two32() { return pool(std::bit_cast<u64>(4294967296.0), 0); }
     /// A fresh label for an instruction's own fixup.
-    std::string local(std::string_view what) { return std::format(".L{}.{}{}", fun()->unique_name(), what, sel_++); }
+    std::string local(std::string_view what) {
+        return std::format("{}{}.{}{}", target().local_prefix(), fun()->unique_name(), what, sel_++);
+    }
     /// `ucomiss src, a` and the `setcc` of the `x86.fcmp` subtag @p sub into @p dst.
     void ucomi(size_t sub, nat_t w, std::string_view src, size_t a, size_t dst);
     /// The `x86.fsqrt` or conversion @p id of the operand @p src, @p ws bits wide, into the result @p res.
@@ -181,7 +183,9 @@ std::string Emitter::addr(const Def* a) const {
     return res + ")";
 }
 
-std::string Emitter::pool(u64 lo, u64 hi) { return std::format(".Lpool{}(%rip)", emit_.pool(lo, hi)); }
+std::string Emitter::pool(u64 lo, u64 hi) {
+    return std::format("{}pool{}(%rip)", target().local_prefix(), emit_.pool(lo, hi));
+}
 
 void Emitter::move(Reg dst, Reg src) {
     if (dst.cls == Target::Fpr)
@@ -513,10 +517,10 @@ void Emit::finish(std::ostream& os) {
     auto constants = fe::Vector<std::pair<u64, u64>>(pool_.size());
     for (auto& [c, i] : pool_)
         constants[i] = c;
-    std::println(os, "\t.section .rodata");
+    std::println(os, "\t{}", target().is_elf() ? ".section .rodata" : ".section __TEXT,__const");
     std::println(os, "\t.p2align 4");
     for (size_t i = 0; i != constants.size(); ++i) {
-        std::println(os, ".Lpool{}:", i);
+        std::println(os, "{}pool{}:", target().local_prefix(), i);
         std::println(os, "\t.quad 0x{:016x}", constants[i].first);
         std::println(os, "\t.quad 0x{:016x}", constants[i].second);
     }

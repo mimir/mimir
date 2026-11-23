@@ -261,7 +261,7 @@ Frontend bugs that `x86_isel` hits (libmim, not fixed):
 
 Testing and tooling:
 
-- Only `emit_cf.mim`, `constrain.mim`, and `color.mim` run at a small `k` by default; `scripts/x86_ksweep.sh` runs the whole allowlist at `k = 2`, `3`, `4`, and `6` via `--param x86_k=<n>` against each test's expected exit codes, but no CI job runs it yet.
+- Only `emit_cf.mim`, `constrain.mim`, and `color.mim` run at a small `k` by default; `scripts/native_ksweep.sh` runs the whole allowlist at `k = 2`, `3`, `4`, and `6` via `--param x86_k=<n>` against each test's expected exit codes, but no CI job runs it yet.
   At `k = 2`, ten tests stop with "needs more than 2 registers", the error without fallback described under *Spilling*.
 - No lit test pins the parallel-copy cases directly (an `xchg` cycle, a memory-φ `push`/`pop`, callee-saved saves, the `trunc` division); only the manual sweep exercises them, at small `k`.
 - The emit tests match registers by pattern now; they check the chosen instructions and address modes, not the assignment.
@@ -494,8 +494,9 @@ The explosion is in forms (widths, register/memory/immediate operands, VEX/EVEX)
 
 ## Verification
 
-- Integer-only lit tests that run under `-p ll` should also run under `-p x86` with the same expected output.
-  The allowlist is a set of `%if x86_64-linux %{ … %}` RUN lines in those tests (feature set in `lit/lit.cfg.py`): every test that `-p opt … -p x86` compiles and runs correctly, 50 in `lit/` besides `lit/x86/`.
+- Integer-only lit tests that run under `-p ll` should also run under `-p %native` with the same expected output.
+  The allowlist is a set of `%if native %{ … %}` RUN lines in those tests (feature set in `lit/lit.cfg.py`): every test that `-p opt … -p %native` compiles and runs correctly, 50 in `lit/` besides `lit/x86/`.
+  On an AArch64 host the same lines run the `arm` backend, which is verified less far; see `../arm/AGENTS.md`.
   The others need calls to `malloc`/`free`, aggregate memory operations, unions, or a `math` operation beyond `f32`/`f64` arithmetic and conversion.
 - `mim-pbqp-test` checks `solve` against `solve_exhaustive` on small instances; there is no `mim-x86-test` yet, and the register-allocation invariants are checked by `mach.color` on every compiled function instead.
 - The optimizer-dump oracle for any change to the pre-isel pipeline.

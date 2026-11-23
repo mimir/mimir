@@ -1,4 +1,4 @@
-// RUN: %mim -p opt %s -p arm -X arm:o=- | %FileCheck %s
+// RUN: %mim -p opt %s -p arm -X arm:o=- | %FileCheck %s %asmdefs
 
 plugin core;
 plugin mem;
@@ -36,7 +36,7 @@ extern con preds (m: mem.M 0, x y: math.F64, return: Cn [mem.M 0, I32]) =
     return (m, add (a, add (b, add (c, add (d, add (e, add (f, g)))))));
 
 // Each predicate is one condition code on the `fcmp`'s flags, except `ne` (`mi` or `gt`) and `ue` (`eq` or `vs`).
-// CHECK: .globl main
+// CHECK: .globl [[SYM]]main
 // CHECK-DAG: fcmp s{{[0-9]+}}, s{{[0-9]+}}
 // CHECK-DAG: fcmp s{{[0-9]+}}, s{{[0-9]+}}
 // CHECK-DAG: fcmp s{{[0-9]+}}, s{{[0-9]+}}
@@ -52,7 +52,7 @@ extern con preds (m: mem.M 0, x y: math.F64, return: Cn [mem.M 0, I32]) =
 // CHECK-DAG: cset w{{[0-9]+}}, ge
 // CHECK-DAG: cset w{{[0-9]+}}, cs
 // CHECK-DAG: cset w{{[0-9]+}}, le
-// CHECK: .globl preds
+// CHECK: .globl [[SYM]]preds
 // CHECK-DAG: fcmp d{{[0-9]+}}, d{{[0-9]+}}
 // CHECK-DAG: fcmp d{{[0-9]+}}, d{{[0-9]+}}
 // CHECK-DAG: fcmp d{{[0-9]+}}, d{{[0-9]+}}

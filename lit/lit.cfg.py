@@ -32,6 +32,8 @@ if roundtrip:
 
 config.substitutions.append(('%mim', config.mim))
 config.substitutions.append(('%FileCheck', '"{}"'.format(config.filecheck)))
+# The native backends' symbol and local-label prefixes of the host's object format, as FileCheck's [[SYM]] and [[LBL]].
+config.substitutions.append(('%asmdefs', '-DSYM=_ -DLBL=L' if sys.platform == 'darwin' else '-DSYM= -DLBL=.L'))
 # Parent of the plugin directory, so that a test can spell a plugin as the path `mim/<plugin>`.
 # os.path.join would mix in a backslash on Windows, which the external bash then swallows as an escape.
 config.substitutions.append(('%libdir', config.my_obj_root + '/lib'))
@@ -63,20 +65,37 @@ if getattr(config, 'fp16', False):
 # operating system is detected using sys.platform (see https://docs.python.org/3/library/sys.html#sys.platform)
 # Tests that only work on e.g. Linux operating systems specify this via `// REQUIRES: system-linux`.
 config.available_features.add(f"system-{sys.platform}")
-# The native x86 backend emits SysV/ELF assembly; tests run its binaries via `%if x86_64-linux %{ ... %}`.
+
+# A native backend emits assembly for the host, so its binaries can be assembled and run here.
+# Tests gate on `native` and spell the backend as `%native`.
 # Static and cross builds have no native backend plugins.
+native = None
 if not getattr(config, 'x86', True):
     config.excludes.update({'x86', 'arm'})
-elif sys.platform == 'linux' and platform.machine() == 'x86_64':
-    config.available_features.add('x86_64-linux')
-# `--param x86_k=<n>` compiles every `-p x86 … -X x86:o=` run with `-X x86:k=<n>`, so the expected exit codes check the spiller at small k.
-x86_k = lit_config.params.get('x86_k')
-if x86_k:
-    if not x86_k.isdigit():
-        lit_config.fatal(f"x86_k expects a register count, got '{x86_k}'")
+else:
+    machine = platform.machine().lower()
+    if sys.platform == 'linux' and machine in ('x86_64', 'amd64'):
+        native = 'x86'
+        config.available_features.add('x86_64-linux')
+    elif sys.platform in ('linux', 'darwin') and machine in ('aarch64', 'arm64'):
+        native = 'arm'
+if native:
+    config.available_features.add('native')
+    config.substitutions.append(('%native', native))
+
+# `--param <backend>_k=<n>` (`x86_k`, `arm_k`) compiles every `-p <backend> … -X <backend>:o=` run with `-X <backend>:k=<n>`, so the expected exit codes check the spiller at small k.
+# On a host whose native backend it is, this includes the `%native` spelling of the shared backend tests.
+for backend in ('x86', 'arm'):
+    k = lit_config.params.get(f'{backend}_k')
+    if not k:
+        continue
+    if not k.isdigit():
+        lit_config.fatal(f"{backend}_k expects a register count, got '{k}'")
+    spellings = [backend] + (['%native'] if native == backend else [])
     # lit escapes backslashes in replacements, so no backreferences.
-    for after in (r'(?<=-p x86)', r'(?<=\.ll)'):
-        config.substitutions.insert(0, (after + ' -X x86:o=', f' -X x86:k={x86_k} -X x86:o='))
+    for spelling in spellings:
+        for after in (rf'(?<=-p {spelling})', r'(?<=\.ll)'):
+            config.substitutions.insert(0, (f'{after} -X {spelling}:o=', f' -X {backend}:k={k} -X {spelling}:o='))
 # CUDA support (needs CUDA toolkit) is detected once by CMake and passed in via
 # lit.site.cfg.py. Tests gate on this via `// REQUIRES: cuda`.
 if getattr(config, 'cuda_can_run_on_device', False):

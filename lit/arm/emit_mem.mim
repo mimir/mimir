@@ -1,4 +1,4 @@
-// RUN: %mim -p opt %s -p arm -X arm:o=- | %FileCheck %s
+// RUN: %mim -p opt %s -p arm -X arm:o=- | %FileCheck %s %asmdefs
 
 plugin core;
 plugin mem;
@@ -18,15 +18,15 @@ extern con st8 (m: mem.M 0, p: mem.Ptr0 I8, x: I8, q: mem.Ptr0 I16, return: Cn [
     let m = mem.store (m, q, 5I16);
     return (m, 0I32);
 
-// CHECK: .globl ld
+// CHECK: .globl [[SYM]]ld
 // CHECK: ldr {{w[0-9]+}}, [x{{[0-9]+}}]
-// CHECK: .globl slotf
+// CHECK: .globl [[SYM]]slotf
 // CHECK: sub sp, sp, #16
 // CHECK: add x[[P:[0-9]+]], sp, #0
 // CHECK: str {{w[0-9]+}}, [x[[P]]]
 // CHECK: ldr {{w[0-9]+}}, [x[[P]]]
 // CHECK: ldp x29, x30, [sp], #16
 // CHECK-NEXT: ret
-// CHECK: .globl st8
+// CHECK: .globl [[SYM]]st8
 // CHECK: strb w{{[0-9]+}}, [x{{[0-9]+}}]
 // CHECK: strh w{{[0-9]+}}, [x{{[0-9]+}}]
