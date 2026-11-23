@@ -202,23 +202,42 @@ const Def* LowerMapReduce::lower_concat(const App* app) {
     auto nisn = *nis_l, rn = *r_l, axn = *ax_l;
 
     auto exts = concat_extents(Sis, nisn, rn, axn);
-    if (!exts) {
-        log().w("an extent of {} along the concat axis is not known at lowering time", app);
-        return RWPhase::rewrite_imm_App(app);
-    }
 
     auto compute = [&](const DefVec& iters, const Def* ins, const Def* mem) -> std::pair<const Def*, const Def*> {
+        auto& w        = mem->world();
         const Def* cur = mem;
-        auto read      = [&](u64 i, const Def* ax_idx) {
+        if (exts) {
+            auto read = [&](u64 i, const Def* ax_idx) {
+                auto coords = iters;
+                coords[axn] = ax_idx;
+                auto [rd_mem, rd_val]
+                    = buffer::op_read(cur, ins->proj(nisn, i), folded_idx(Sis->proj(nisn, i), coords))->projs<2>();
+                cur = rd_mem;
+                return rd_val;
+            };
+            auto result = concat_select(iters[axn], *exts, read);
+            return {cur, result};
+        }
+
+        // A runtime extent along the axis may be 0, so an input is only read inside its own range `[off, off + ext)`.
+        auto i64         = w.type_i64();
+        const Def* off   = w.lit_i64(0);
+        const Def* value = w.bot(T);
+        for (u64 i = 0; i != nisn; ++i) {
+            auto ext = w.call<core::bitcast>(i64, Sis->proj(nisn, i)->proj(rn, axn));
+            auto loc = w.call(core::wrap::sub, core::Mode::none, Defs{iters[axn], off});
+            auto valid
+                = w.call(core::icmp::ul, Defs{loc, ext}); // underflow wraps high, so one compare covers both bounds
             auto coords = iters;
-            coords[axn] = ax_idx;
-            auto [rd_mem, rd_val]
-                = buffer::op_read(cur, ins->proj(nisn, i), folded_idx(Sis->proj(nisn, i), coords))->projs<2>();
-            cur = rd_mem;
-            return rd_val;
-        };
-        auto result = concat_select(iters[axn], *exts, read);
-        return {cur, result};
+            coords[axn] = loc;
+            auto [rd, value_]
+                = conditional_read(valid, cur, ins->proj(nisn, i), folded_idx(Sis->proj(nisn, i), coords), value)
+                      ->projs<2>();
+            cur   = rd;
+            value = value_;
+            off   = w.call(core::wrap::add, core::Mode::none, Defs{off, ext});
+        }
+        return {cur, value};
     };
 
     return build_pointwise(result_ty, op_mem, dst, op_is, s_out, rn, "concat", compute);

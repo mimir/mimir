@@ -498,15 +498,8 @@ const Def* LowerToMem::lower_concat(const App* app) {
     if (!nis_l || !r_l || !ax_l)
         app->blame("cannot bufferize: concat requires literal operand count, rank and axis").bail();
 
-    // The logical output shape retains size-1 axes for loop generation.
-    u64 sum_ax = 0;
-    for (u64 i = 0; i < *nis_l; ++i) {
-        auto e = Lit::isa<u64>(Sis->proj(*nis_l, i)->proj(*r_l, *ax_l));
-        if (!e) app->blame("cannot bufferize: concat requires literal extents along its axis").bail();
-        sum_ax += *e;
-    }
-    DefVec so(*r_l, [&](size_t d) { return d == *ax_l ? w.lit_nat(sum_ax) : Sis->proj(*nis_l, 0)->proj(*r_l, d); });
-    auto s_out = w.tuple(so);
+    // The logical output shape retains size-1 axes for loop generation; its extent along the axis may be a runtime sum.
+    auto s_out = rewrite(TensorType::decode(app->type()->as<Nom>()).s);
 
     // NB: `{T, nis, r}` and `{Sis}` cannot be left to inference (hence no `w.call` here). `Sis` holds the
     // *logical* per-input shapes, but the operands are `buffer.Buf` handles with their literal size-1 axes

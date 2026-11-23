@@ -1,0 +1,26 @@
+// RUN: %mim -p opt -p ll %s -X ll:o=%t.ll
+// RUN: clang %t.ll %S/concat_dynamic_aux.c -o %t -Wno-override-module
+// RUN: %t | %FileCheck %s
+
+// Concatenation along an axis whose extent is only known at runtime, including inputs of extent 0.
+
+plugin core;
+plugin tensor;
+
+extern fun concat_rows {n m cols: Nat} (a: tensor.Tensor 2 (n, cols) I32, b: tensor.Tensor 2 (m, cols) I32)
+    : tensor.Tensor 2 (core.nat.add (n, m), cols) I32 =
+    return (tensor.concat 0₂ (a, b));
+
+extern fun concat_cols {rows n m: Nat} (a: tensor.Tensor 2 (rows, n) I32, b: tensor.Tensor 2 (rows, m) I32)
+    : tensor.Tensor 2 (rows, core.nat.add (n, m)) I32 =
+    return (tensor.concat 1₂ (a, b));
+
+extern fun concat_mixed {n: Nat} (a: tensor.Tensor 1 n I32, b: tensor.Tensor 1 3 I32)
+    : tensor.Tensor 1 (core.nat.add (n, 3)) I32 =
+    return (tensor.concat 0₁ (a, b));
+
+extern fun concat_three {n m: Nat} (a: tensor.Tensor 1 n I32, b: tensor.Tensor 1 3 I32, c: tensor.Tensor 1 m I32)
+    : tensor.Tensor 1 (core.nat.add (core.nat.add (n, m), 3)) I32 =
+    return (tensor.concat 0₁ (a, b, c));
+
+// CHECK: dynamic concat: 62 shapes passed
