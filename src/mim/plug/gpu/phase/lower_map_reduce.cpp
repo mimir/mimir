@@ -42,7 +42,16 @@ struct LowerMapReduce::Call {
     nat_t ax                                     = 0; ///< `Concat`: the axis.
     Vector<u64> exts;                                 ///< `Concat`: the inputs' extents along `ax`.
     const Def *lo = nullptr, *fill = nullptr;         ///< `Pad`: the low padding and the literal fill value.
-    nat_t readers = 0;                                ///< Slots reading the result
+    nat_t readers     = 0;                            ///< Slots reading the result
+    nat_t reads       = 0;                            ///< Planning: reads of `result` within the chain.
+    const Def* result = nullptr;
+    const Def* dptr   = nullptr; ///< Emitting: the result's device buffer, once launched.
+};
+
+struct LowerMapReduce::Chain {
+    std::deque<Call> calls;
+    DefMap<Call*> planned;
+    DefSet excluded; ///< Producers also read outside the chain.
 };
 
 struct LowerMapReduce::Session {
@@ -662,12 +671,12 @@ const Def* LowerMapReduce::rewrite_imm_App(const App* app) {
     return Super::rewrite_imm_App(app);
 }
 
-const App* LowerMapReduce::chainable(const Def* def) {
-    if (auto i = uses_.find(def); i == uses_.end() || i->second != 1) return nullptr;
+const App* LowerMapReduce::chainable(const Def* def, const Chain& chain) {
+    if (!uses_.contains(def)) return nullptr;
     if (auto ex = def->isa<Extract>())
         if (auto app = ex->tuple()->isa<App>(); app && lowerable(app)) {
-            // A producer already lowered on its own keeps its host result.
-            if (lookup(app) || absorbed_.contains(app)) return nullptr;
+            // Lowered on its own or read outside the chain: keeps its host result.
+            if (lookup(app) || absorbed_.contains(app) || chain.excluded.contains(app)) return nullptr;
             // Nobody may observe the destination of an absorbed producer, so it has to be a fresh buffer.
             auto dst = app->arg(app->num_args(), 1)->isa<Extract>();
             if (dst && Axm::isa<buffer::alloc>(dst->tuple())) return app;
@@ -675,19 +684,19 @@ const App* LowerMapReduce::chainable(const Def* def) {
     return nullptr;
 }
 
-void LowerMapReduce::plan_inputs(Call& call, bool post, const Def* group, std::deque<Call>& calls) {
+void LowerMapReduce::plan_inputs(Call& call, bool post, const Def* group, Chain& chain) {
     auto& ins = post ? call.posts : call.ins;
     auto n    = ins.size();
     // A group tuple shared between two calls would chain the same producer into both.
     auto shared = n > 1 && uses_[group] != 1;
     for (size_t i = 0; i != n; ++i) {
         auto old      = group->proj(n, i);
-        auto producer = shared ? nullptr : chainable(old);
-        ins[i]        = {producer ? plan(producer, calls) : nullptr, old};
+        auto producer = shared ? nullptr : chainable(old, chain);
+        ins[i]        = {producer ? plan(producer, chain) : nullptr, old};
     }
 }
 
-LowerMapReduce::Call* LowerMapReduce::plan_concat(const App* app, std::deque<Call>& calls) {
+LowerMapReduce::Call* LowerMapReduce::plan_concat(const App* app, Chain& chain) {
     auto& w                      = new_world();
     auto [TnisR, ax, Sis, s_out] = rewrite(app->callee())->as<App>()->uncurry_args<4>();
     auto [T, nis, r]             = TnisR->projs<3>();
@@ -724,11 +733,11 @@ LowerMapReduce::Call* LowerMapReduce::plan_concat(const App* app, std::deque<Cal
     call.kind = Call::Kind::Concat;
     call.ax   = *ax_l;
     call.exts = *exts;
-    plan_inputs(call, false, app->arg(3, 2), calls);
-    return &calls.emplace_back(std::move(call));
+    plan_inputs(call, false, app->arg(3, 2), chain);
+    return &chain.calls.emplace_back(std::move(call));
 }
 
-LowerMapReduce::Call* LowerMapReduce::plan_pad(const App* app, std::deque<Call>& calls) {
+LowerMapReduce::Call* LowerMapReduce::plan_pad(const App* app, Chain& chain) {
     auto [Tr, s_in, params, s_out] = rewrite(app->callee())->as<App>()->uncurry_args<4>();
     auto [T, r]                    = Tr->projs<2>();
     auto [mode, lo, hi]            = params->projs<3>();
@@ -765,17 +774,19 @@ LowerMapReduce::Call* LowerMapReduce::plan_pad(const App* app, std::deque<Call>&
     call.kind = Call::Kind::Pad;
     call.lo   = lo;
     call.fill = fill;
-    plan_inputs(call, false, app->arg(4, 2), calls);
-    return &calls.emplace_back(std::move(call));
+    plan_inputs(call, false, app->arg(4, 2), chain);
+    return &chain.calls.emplace_back(std::move(call));
 }
 
-LowerMapReduce::Call* LowerMapReduce::plan(const App* app, std::deque<Call>& calls) {
-    return Axm::isa<btensor::concat>(app) ? plan_concat(app, calls)
-         : Axm::isa<btensor::pad>(app)    ? plan_pad(app, calls)
-                                          : plan_map_reduce(app, calls);
+LowerMapReduce::Call* LowerMapReduce::plan(const App* app, Chain& chain) {
+    if (auto i = chain.planned.find(app); i != chain.planned.end()) return i->second;
+    auto call                 = Axm::isa<btensor::concat>(app) ? plan_concat(app, chain)
+                              : Axm::isa<btensor::pad>(app)    ? plan_pad(app, chain)
+                                                               : plan_map_reduce(app, chain);
+    return chain.planned[app] = call;
 }
 
-LowerMapReduce::Call* LowerMapReduce::plan_map_reduce(const App* app, std::deque<Call>& calls) {
+LowerMapReduce::Call* LowerMapReduce::plan_map_reduce(const App* app, Chain& chain) {
     auto mr    = btensor::MapRedPost::of(rewrite(app->callee())->as<App>());
     auto ranks = mr.ranks();
     if (!ranks) {
@@ -807,18 +818,19 @@ LowerMapReduce::Call* LowerMapReduce::plan_map_reduce(const App* app, std::deque
 
     auto [mem, dst, is, post_is] = app->args<4>();
     Call call{app, mr, ro, rr, out_dims, comb, post, Vector<Call::In>(nis), Vector<Call::In>(nps)};
-    plan_inputs(call, false, is, calls);
-    plan_inputs(call, true, post_is, calls);
-    return &calls.emplace_back(std::move(call));
+    plan_inputs(call, false, is, chain);
+    plan_inputs(call, true, post_is, chain);
+    return &chain.calls.emplace_back(std::move(call));
 }
 
 void LowerMapReduce::commit(Call& call, DefVec& hosts, DefMap<size_t>& host_index, Vector<nat_t>& host_readers) {
     for (auto group : {&call.ins, &call.posts})
         for (auto& in : *group)
             if (in.producer) {
-                ++in.producer->readers;
-                absorbed_.emplace(in.producer->app);
-                commit(*in.producer, hosts, host_index, host_readers);
+                if (in.producer->readers++ == 0) {
+                    absorbed_.emplace(in.producer->app);
+                    commit(*in.producer, hosts, host_index, host_readers);
+                }
             } else {
                 auto [i, fresh] = host_index.emplace(in.host, hosts.size());
                 if (fresh) {
@@ -830,7 +842,8 @@ void LowerMapReduce::commit(Call& call, DefVec& hosts, DefMap<size_t>& host_inde
             }
 }
 
-const Def* LowerMapReduce::emit(const Call& call, Session& s) {
+const Def* LowerMapReduce::emit(Call& call, Session& s) {
+    if (call.dptr) return call.dptr;
     auto& w  = new_world();
     auto& mr = call.mr;
 
@@ -899,7 +912,7 @@ const Def* LowerMapReduce::emit(const Call& call, Session& s) {
     // Free each input after its last reader.
     for (size_t i = 0, e = args.size() - 1; i != e; ++i)
         if (--s.pending[args[i]] == 0) s.global = w.call(gpu::free::block, Defs{s.global, args[i]});
-    return out_dptr;
+    return call.dptr = out_dptr;
 }
 
 const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
@@ -910,9 +923,25 @@ const Def* LowerMapReduce::lower_map_reduce_post(const App* app) {
 
     if (absorbed_.contains(app)) return w.tuple({rewrite(old_mem), rewrite(old_dst)});
 
-    std::deque<Call> calls;
-    auto call = plan(app, calls);
-    if (!call) return Super::rewrite_imm_App(app);
+    // Replan until no absorbed producer is also read outside the chain.
+    Chain chain;
+    Call* call = nullptr;
+    for (;;) {
+        chain.calls.clear();
+        chain.planned.clear();
+        if (!(call = plan(app, chain))) return Super::rewrite_imm_App(app);
+        auto count = [&](auto& self, Call& c) -> void {
+            for (auto group : {&c.ins, &c.posts})
+                for (auto& in : *group)
+                    if (in.producer && (in.producer->result = in.host, in.producer->reads++ == 0))
+                        self(self, *in.producer);
+        };
+        count(count, *call);
+        auto stable = true;
+        for (auto& c : chain.calls)
+            if (&c != call && c.reads != uses_[c.result]) chain.excluded.emplace(c.app), stable = false;
+        if (stable) break;
+    }
 
     // Decide what is absorbed before rewriting any operand: the mem chain leads through the producers.
     // Not members: rewriting the operands lowers earlier chains recursively.
