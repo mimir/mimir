@@ -14,7 +14,7 @@ extern lam _compile (): compile.Phase = x86_isel.gen;
 // CHECK:          return false; // mem.load
 // CHECK-NOT:      r[
 // CHECK:          return false; // core.Ptr
-// A pointer looks through the cast `x86.legalize` inserts.
+// A pointer looks through the cast `mem.legalize_native` inserts.
 // CHECK:          m[[[P:[0-9]+]]] = strip_ptr_cast(m[[[P]]]);
 // An inner node is captured once and compared where it occurs again.
 // CHECK:          r[2] = [[VAL:d[0-9]+]];

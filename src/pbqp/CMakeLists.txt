@@ -20,7 +20,7 @@ target_link_libraries(pbqp
         Threads::Threads
 )
 
-# A static x86 plugin carries pbqp as a link dependency in the export set.
+# A static libmim carries pbqp as a link dependency in the export set.
 if(NOT BUILD_SHARED_LIBS)
     install(
         TARGETS pbqp

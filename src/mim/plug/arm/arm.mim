@@ -1,0 +1,262 @@
+/// # The ARM Plugin {#arm}
+///
+/// @see mim::plug::arm
+///
+/// [TOC]
+///
+/// The native AArch64 backend.
+/// Loading this plugin (`mim foo.mim -p arm`) appends instruction selection, register allocation, and emission to the compilation pipeline.
+/// Instruction selection rewrites a scalar subset of `core`, `mem`, and `math` into the axioms below and those of `mach`; register allocation is the phases of `mach`.
+/// AArch64 is three-address, so no operand is tied to a result.
+/// Registers are no concern of these types; register allocation introduces them later.
+/// The schedule is the `mem.M 0` chain: memory instructions sit on it, and `mem.schedule` threads all other instructions onto it via `mem.sched`.
+///
+/// ## Dependencies
+///
+plugin core;
+plugin mem;
+plugin math;
+plugin mach;
+plugin opt;
+import compile;
+///
+/// ## Registers
+///
+/// ### reg
+///
+/// The general-purpose registers in hardware encoding order, as the register `r` of `mach.in r v`.
+/// A register's subtag is its hardware encoding, so they have to stay in this order.
+///
+pub mod reg
+    anx let x0  = 0I5;
+    anx let x1  = 1I5;
+    anx let x2  = 2I5;
+    anx let x3  = 3I5;
+    anx let x4  = 4I5;
+    anx let x5  = 5I5;
+    anx let x6  = 6I5;
+    anx let x7  = 7I5;
+    anx let x8  = 8I5;
+    anx let x9  = 9I5;
+    anx let x10 = 10I5;
+    anx let x11 = 11I5;
+    anx let x12 = 12I5;
+    anx let x13 = 13I5;
+    anx let x14 = 14I5;
+    anx let x15 = 15I5;
+    anx let x16 = 16I5;
+    anx let x17 = 17I5;
+    anx let x18 = 18I5;
+    anx let x19 = 19I5;
+    anx let x20 = 20I5;
+    anx let x21 = 21I5;
+    anx let x22 = 22I5;
+    anx let x23 = 23I5;
+    anx let x24 = 24I5;
+    anx let x25 = 25I5;
+    anx let x26 = 26I5;
+    anx let x27 = 27I5;
+    anx let x28 = 28I5;
+    anx let x29 = 29I5;
+    anx let x30 = 30I5;
+end
+///
+/// ### fpr
+///
+/// The floating-point registers in hardware encoding order, as the register `r` of `mach.in r v` for a `math.F pe` value `v`.
+/// The operand size selects the `s` or `d` name of a register.
+/// A register's subtag is its hardware encoding, so they have to stay in this order.
+///
+pub mod fpr
+    anx let d0  = 0I5;
+    anx let d1  = 1I5;
+    anx let d2  = 2I5;
+    anx let d3  = 3I5;
+    anx let d4  = 4I5;
+    anx let d5  = 5I5;
+    anx let d6  = 6I5;
+    anx let d7  = 7I5;
+    anx let d8  = 8I5;
+    anx let d9  = 9I5;
+    anx let d10 = 10I5;
+    anx let d11 = 11I5;
+    anx let d12 = 12I5;
+    anx let d13 = 13I5;
+    anx let d14 = 14I5;
+    anx let d15 = 15I5;
+    anx let d16 = 16I5;
+    anx let d17 = 17I5;
+    anx let d18 = 18I5;
+    anx let d19 = 19I5;
+    anx let d20 = 20I5;
+    anx let d21 = 21I5;
+    anx let d22 = 22I5;
+    anx let d23 = 23I5;
+    anx let d24 = 24I5;
+    anx let d25 = 25I5;
+    anx let d26 = 26I5;
+    anx let d27 = 27I5;
+    anx let d28 = 28I5;
+    anx let d29 = 29I5;
+    anx let d30 = 30I5;
+    anx let d31 = 31I5;
+end
+///
+/// ## Instructions
+///
+/// ### load
+///
+/// `ldr r, [addr]`, zero-extending a narrower value to its register.
+///
+axm load: [s: Nat] → [mem.M 0, I64] → [mem.M 0, Idx s];
+///
+/// ### store
+///
+/// `str [addr], r`.
+///
+axm store: [s: Nat] → [mem.M 0, I64, Idx s] → mem.M 0;
+///
+/// ### Arithmetic
+///
+/// Three-address arithmetic `op d, a, b`.
+///
+axm (add, sub, and, or, xor, mul): {s: Nat} → «2; Idx s» → Idx s;
+///
+/// ### madd
+///
+/// `madd (a, b, c)` is `a * b + c`.
+///
+axm madd: {s: Nat} → «3; Idx s» → Idx s;
+///
+/// ### Shifts
+///
+/// `lsl`, `lsr`, and `asr` by a register or an immediate.
+///
+axm (shl, shr, sar): {s: Nat} → «2; Idx s» → Idx s;
+///
+/// ### Division
+///
+/// `udiv`/`sdiv` yield the quotient only; a remainder is a `mul` and a `sub` around them.
+///
+axm (udiv, sdiv): {s: Nat} → «2; Idx s» → Idx s;
+///
+/// ### Conversions
+///
+/// `ubfx`/`sbfx` and truncation to the low bits of the register.
+///
+axm zext: {s: Nat} → [d: Nat] → Idx s → Idx d;
+axm sext: {s: Nat} → [d: Nat] → Idx s → Idx d;
+axm trunc: {s: Nat} → [d: Nat] → Idx s → Idx d;
+///
+/// ### Comparisons
+///
+/// `cmp a, b` sets the flags from `a - b`.
+///
+axm cmp: {s: Nat} → «2; Idx s» → mach.Flags;
+///
+/// ## Condition Codes
+///
+/// The condition codes in hardware encoding order:
+///
+/// | Subtag | cc |
+/// |--------|----|
+/// | `eq`   |  0 |
+/// | `ne`   |  1 |
+/// | `cs`   |  2 |
+/// | `cc`   |  3 |
+/// | `mi`   |  4 |
+/// | `pl`   |  5 |
+/// | `vs`   |  6 |
+/// | `vc`   |  7 |
+/// | `hi`   |  8 |
+/// | `ls`   |  9 |
+/// | `ge`   | 10 |
+/// | `lt`   | 11 |
+/// | `gt`   | 12 |
+/// | `le`   | 13 |
+/// | `al`   | 14 |
+/// | `nv`   | 15 |
+///
+/// ### csel
+///
+/// `csel.<c> (f, x, y)` yields `y` if `<c>` holds on `f`, else `x`, like `(x, y)#cond`.
+/// `csel.ne (cmp (cc.<c> f, 0), x, y)` normalizes to `csel.<c> (f, x, y)`.
+///
+axm csel.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): {s: Nat} → [mach.Flags, Idx s, Idx s] → Idx s, normalize_csel;
+///
+/// ### fcsel
+///
+/// `fcsel.<c> (f, x, y)` yields `y` if `<c>` holds on `f`, else `x`, and normalizes like `csel`.
+///
+axm fcsel.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): {pe: «2; Nat»} → [mach.Flags, math.F pe, math.F pe] → math.F (mach.fpe pe), normalize_fcsel;
+///
+/// ### cc
+///
+/// Tests a condition code on the flags: `bcc` as a branch condition, `cset` otherwise.
+///
+axm cc.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): mach.Flags → Bool;
+///
+/// ## Floating-Point Instructions
+///
+/// A `math.F pe` value is a whole `d` register, whatever its format; the instruction names the `s` or `d` form.
+/// An operand is always a register: a literal is materialized by `fmov` first.
+///
+/// ### fmov
+///
+/// Materializes a floating-point constant via a general-purpose scratch register.
+///
+axm fmov: {pe: «2; Nat»} → math.F pe → math.F (mach.fpe pe);
+///
+/// ### fload
+///
+/// `ldr` of an `s` or `d` register.
+///
+axm fload: [pe: «2; Nat»] → [mem.M 0, I64] → [mem.M 0, math.F (mach.fpe pe)];
+///
+/// ### fstore
+///
+/// `str` of an `s` or `d` register.
+///
+axm fstore: {pe: «2; Nat»} → [mem.M 0, I64, math.F pe] → mem.M (mach.fok pe 0);
+///
+/// ### Floating-Point Arithmetic
+///
+/// `fadd`, `fsub`, `fmul`, and `fdiv`.
+///
+axm (fadd, fsub, fmul, fdiv): {pe: «2; Nat»} → «2; math.F pe» → math.F (mach.fpe pe);
+///
+/// ### Floating-Point Unary
+///
+/// `fsqrt` and `fabs`.
+///
+axm (fsqrt, fabs): {pe: «2; Nat»} → math.F pe → math.F (mach.fpe pe);
+///
+/// ### fcmp
+///
+/// `fcmp a, b` sets the flags: `Z C` if equal, `N` if less, `C` if greater, and `C V` if unordered.
+///
+axm fcmp: {pe: «2; Nat»} → «2; math.F pe» → mach.Flags;
+///
+/// ### Floating-Point Conversions
+///
+/// Both formats and sizes are explicit, since a conversion has no operand that names them.
+///
+axm i2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (mach.fpe pe);
+axm u2f: [s: Nat] → [pe: «2; Nat»] → Idx s → math.F (mach.fpe pe);
+axm f2i: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx (mach.fok pe s);
+axm f2u: [pe: «2; Nat»] → [s: Nat] → math.F pe → Idx (mach.fok pe s);
+axm f2f: [spe: «2; Nat»] → [dpe: «2; Nat»] → math.F spe → math.F (mach.fpe dpe);
+///
+/// ## Phases
+///
+/// ### isel
+///
+/// Instruction selection for a scalar subset of `core`, `mem`, and `math` by the rules of `arm_isel`.
+///
+axm isel: compile.Phase;
+///
+/// ### emit
+///
+/// Emits GNU assembler code (AArch64 syntax) to `<world>.s`.
+///
+axm emit: compile.Phase;

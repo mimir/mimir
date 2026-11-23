@@ -126,6 +126,15 @@ anx fun cstr (m: M 0, p: Ptr0 Char): [M 0, n: Nat, Str n] =
             end
     end;
 ///
+/// ## Native Backends
+///
+/// ### sched
+///
+/// Places the pure instruction `f x` of a native backend on the `mem.M 0` chain right after `m`: `let (m, y) = mem.sched x86.add m (a, b)`.
+/// The chain token makes each placement a distinct Def, so copies, spills, and reloads at different points never merge.
+///
+axm sched: {D C: *} → (D → C) → M 0 → D → [M 0, C];
+///
 /// ## Phases
 ///
 /// ### add_mem
@@ -165,3 +174,17 @@ axm alloc2malloc_repl: compile.Phase;
 /// An index `core.conv.u n y` into an `Idx n` that is no register size becomes `y` modulo a literal `n`, or `y` itself for a dynamic `n`.
 ///
 axm legalize_ptr: compile.Phase;
+///
+/// ### legalize_native
+///
+/// Turns every `Nat` value and every pointer into an `I64`, so that the instruction selection of a native backend only sees register types (see mim::plug::mem::phase::LegalizeNative).
+/// `mem.ptradd` becomes `core.wrap.add`, the `Nat` operations become their `I64` counterparts, and `mem.mslot` of a literal size becomes the backend's `slot`.
+///
+axm legalize_native: compile.Phase;
+///
+/// ### schedule
+///
+/// Makes each continuation's `mem.M 0` chain total over the instructions of the native backend, in a topological order (see mim::plug::mem::phase::Schedule).
+/// Memory instructions are rethreaded onto the chain; all others are wrapped in `mem.sched`.
+///
+axm schedule: compile.Phase;

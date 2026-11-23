@@ -8,6 +8,7 @@ on:
 jobs:
   build-and-test:
     name: Build and test ${{matrix.build-type}}
+    # macos-latest is arm64, so lit's `native` feature assembles and runs the arm backend here.
     runs-on: macos-latest
     strategy:
       fail-fast: false

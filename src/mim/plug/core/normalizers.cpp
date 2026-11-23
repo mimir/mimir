@@ -1,6 +1,9 @@
 #include <bit>
 #include <type_traits>
 
+#include <mim/driver.h>
+#include <mim/target.h>
+
 #include <mim/plug/math/math.h>
 
 #include "mim/plug/core/core.h"
@@ -968,7 +971,12 @@ const Def* normalize_bitcast(const Def* dst_t, const Def*, const Def* src) {
     return {};
 }
 
-// TODO this currently hard-codes x86_64 ABI
+/// The pointer size of the one loaded native backend; a 64-bit host otherwise, which is what `ll` compiles for.
+static nat_t ptr_size(World& world) {
+    auto target = world.driver().isa_target();
+    return target ? target->ptr_size() : 8;
+}
+
 // TODO in contrast to C, we might want to give singleton types like 'Idx 1' a size of 0 and simply nuke each
 // and every occurance of these types in a later phase
 // TODO Pi and others
@@ -977,8 +985,10 @@ const Def* normalize_trait(const Def*, const Def*, const Def* type) {
     auto& world = type->world();
     if (Axm::isa<M>(type)) {
         return world.lit_nat(id == trait::size ? 0 : 1); // the ll backend drops it
-    } else if (Axm::isa<Ptr>(type) || type->isa<Nat>() || type->isa<Pi>()) {
-        return world.lit_nat(8); // a Pi gets lowered to a function pointer
+    } else if (Axm::isa<Ptr>(type) || type->isa<Pi>()) {
+        return world.lit_nat(ptr_size(world)); // a Pi gets lowered to a function pointer
+    } else if (type->isa<Nat>()) {
+        return world.lit_nat(8); // every backend lowers a Nat value to an I64
     } else if (auto size = Idx::isa_lit(type)) {
         return world.lit_nat(std::max(1_n, std::bit_ceil(Idx::size2bitwidth(*size)) / 8_n));
     } else if (auto w = math::isa_f(type)) {

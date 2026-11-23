@@ -1,0 +1,41 @@
+// RUN: %mim -p opt %s -p arm -X arm:o=- | %FileCheck %s %asmdefs
+
+plugin core;
+plugin mem;
+
+use core.ops.u.w;
+
+/// Passes `b` on as `a`, so the jump back must swap the two.
+extern con fib (m: mem.M 0, n: I32, return: Cn [mem.M 0, I32]) =
+    loop (m, 0I32, 0I32, 1I32)
+    where
+        con loop (m: mem.M 0, i a b: I32) =
+            (exit, body)#(i < n) m
+            where
+                con body (m: mem.M 0) = loop (m, i + 1I32, b, a + b);
+                con exit (m: mem.M 0) = return (m, a);
+            end
+    end;
+
+extern con lt (m: mem.M 0, a b: I32, return: Cn [mem.M 0, I32]) =
+    let c = core.icmp.ul (a, b);
+    return (m, (a, b)#c);
+
+extern con main (m: mem.M 0, argc: I32, return: Cn [mem.M 0, I32]) =
+    fib (m, 8I32 + argc, fib_cont)
+    where
+        con fib_cont (m: mem.M 0, x: I32) = return (m, x);
+    end;
+
+// CHECK: .globl [[SYM]]fib
+// CHECK: cmp {{w[0-9]+}}, {{w[0-9]+}}
+// CHECK: b.cc [[LBL]]
+// CHECK: mov x16, x
+// CHECK: b [[LBL]]
+// CHECK: .globl [[SYM]]lt
+// CHECK: cmp {{w[0-9]+}}, {{w[0-9]+}}
+// CHECK-NEXT: csel {{w[0-9]+}}, {{w[0-9]+}}, {{w[0-9]+}}, cc
+// CHECK: .globl [[SYM]]main
+// CHECK: bl [[SYM]]fib
+// CHECK: ldp x29, x30, [sp], #16
+// CHECK-NEXT: ret

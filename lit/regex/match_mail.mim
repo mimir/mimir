@@ -14,21 +14,21 @@
 // RUN: %t "test@.a.test.de"; test $? -eq 255
 // RUN: %t "a@a.de#a"; test $? -eq 2
 // RUN: %t "a@a.de/a"; test $? -eq 2
-// RUN: %if x86_64-linux %{ %mim -p opt %s -p x86 -X x86:o=%t.s %}
-// RUN: %if x86_64-linux %{ clang %t.s -o %t.x86 %}
-// RUN: %if x86_64-linux %{ %t.x86 "test@cs.uni-saarland.de"; test $? -eq 0 %}
-// RUN: %if x86_64-linux %{ %t.x86 "tester@test.de"; test $? -eq 0 %}
-// RUN: %if x86_64-linux %{ %t.x86 "a@a.de"; test $? -eq 0 %}
-// RUN: %if x86_64-linux %{ %t.x86 "test@a.test.de"; test $? -eq 0 %}
-// RUN: %if x86_64-linux %{ %t.x86 "test.b@a.test.de"; test $? -eq 0 %}
-// RUN: %if x86_64-linux %{ %t.x86 "joachim..b@a.test.de"; test $? -eq 0 %}
-// RUN: %if x86_64-linux %{ %t.x86 "test@cs.uni-sb"; test $? -eq 255 %}
-// RUN: %if x86_64-linux %{ %t.x86 "tester@test"; test $? -eq 255 %}
-// RUN: %if x86_64-linux %{ %t.x86 "test.de"; test $? -eq 255 %}
-// RUN: %if x86_64-linux %{ %t.x86 "cs.uni-sb.de"; test $? -eq 255 %}
-// RUN: %if x86_64-linux %{ %t.x86 "test@.a.test.de"; test $? -eq 255 %}
-// RUN: %if x86_64-linux %{ %t.x86 "a@a.de#a"; test $? -eq 2 %}
-// RUN: %if x86_64-linux %{ %t.x86 "a@a.de/a"; test $? -eq 2 %}
+// RUN: %if native %{ %mim -p opt %s -p %native -X %native:o=%t.s %}
+// RUN: %if native %{ clang %t.s -o %t.native %}
+// RUN: %if native %{ %t.native "test@cs.uni-saarland.de"; test $? -eq 0 %}
+// RUN: %if native %{ %t.native "tester@test.de"; test $? -eq 0 %}
+// RUN: %if native %{ %t.native "a@a.de"; test $? -eq 0 %}
+// RUN: %if native %{ %t.native "test@a.test.de"; test $? -eq 0 %}
+// RUN: %if native %{ %t.native "test.b@a.test.de"; test $? -eq 0 %}
+// RUN: %if native %{ %t.native "joachim..b@a.test.de"; test $? -eq 0 %}
+// RUN: %if native %{ %t.native "test@cs.uni-sb"; test $? -eq 255 %}
+// RUN: %if native %{ %t.native "tester@test"; test $? -eq 255 %}
+// RUN: %if native %{ %t.native "test.de"; test $? -eq 255 %}
+// RUN: %if native %{ %t.native "cs.uni-sb.de"; test $? -eq 255 %}
+// RUN: %if native %{ %t.native "test@.a.test.de"; test $? -eq 255 %}
+// RUN: %if native %{ %t.native "a@a.de#a"; test $? -eq 2 %}
+// RUN: %if native %{ %t.native "a@a.de/a"; test $? -eq 2 %}
 
 plugin mem;
 plugin core;

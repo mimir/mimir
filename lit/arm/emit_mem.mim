@@ -1,0 +1,32 @@
+// RUN: %mim -p opt %s -p arm -X arm:o=- | %FileCheck %s %asmdefs
+
+plugin core;
+plugin mem;
+
+extern con slotf (m: mem.M 0, a: I32, return: Cn [mem.M 0, I32]) =
+    ret (m, p) = mem.mslot (I32, 0) $ (m, 4);
+    let m = mem.store (m, p, a);
+    let (m, x) = mem.load (m, p);
+    return (m, x);
+
+extern con ld (m: mem.M 0, p: mem.Ptr0 I32, return: Cn [mem.M 0, I32]) =
+    let (m, x) = mem.load (m, p);
+    return (m, x);
+
+extern con st8 (m: mem.M 0, p: mem.Ptr0 I8, x: I8, q: mem.Ptr0 I16, return: Cn [mem.M 0, I32]) =
+    let m = mem.store (m, p, x);
+    let m = mem.store (m, q, 5I16);
+    return (m, 0I32);
+
+// CHECK: .globl [[SYM]]ld
+// CHECK: ldr {{w[0-9]+}}, [x{{[0-9]+}}]
+// CHECK: .globl [[SYM]]slotf
+// CHECK: sub sp, sp, #16
+// CHECK: add x[[P:[0-9]+]], sp, #0
+// CHECK: str {{w[0-9]+}}, [x[[P]]]
+// CHECK: ldr {{w[0-9]+}}, [x[[P]]]
+// CHECK: ldp x29, x30, [sp], #16
+// CHECK-NEXT: ret
+// CHECK: .globl [[SYM]]st8
+// CHECK: strb w{{[0-9]+}}, [x{{[0-9]+}}]
+// CHECK: strh w{{[0-9]+}}, [x{{[0-9]+}}]

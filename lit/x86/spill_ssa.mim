@@ -3,6 +3,7 @@
 
 plugin compile;
 plugin mem;
+plugin mach;
 plugin x86;
 
 /// `t` evicts `a` and reloads it for `join`, while `e` keeps it, so `join` gets a new parameter for `a`.
@@ -12,11 +13,11 @@ extern con f (m: mem.M 0, c: Bool, a b: I32, return: Cn [mem.M 0, I32]) =
     con e (m: mem.M 0) = join (m, b);
     (e, t)#c m;
 
-extern lam _compile (): compile.Phase = compile.phases ff (x86.schedule, x86.spilling, x86.live);
+extern lam _compile (): compile.Phase = compile.phases ff (mem.schedule, mach.spilling, mach.live);
 
 // CHECK-DAG: con join (m{{[_0-9]*}}: core.M 0, y: I32, a{{[_0-9]+}}: I32)
 // CHECK-DAG: join (m{{[_0-9]*}}, b, a);
-// CHECK-DAG: [[R:_[0-9]+]] = x86.sched @ (x86.Spill i32, I32) (x86.reload @ i32)
+// CHECK-DAG: [[R:_[0-9]+]] = mem.sched @ (mach.Spill I32, I32) (mach.reload @ I32)
 // CHECK-DAG: join ([[R]]#ff, {{_[0-9]+}}#tt, [[R]]#tt);
 // LIVE:      fun f
 // LIVE-NOT:  max {{([4-9]|[1-9][0-9]+)}} flags

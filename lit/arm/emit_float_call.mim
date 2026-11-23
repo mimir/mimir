@@ -1,0 +1,44 @@
+// RUN: %mim -p opt %s -p arm -X arm:o=- | %FileCheck %s %asmdefs
+
+plugin core;
+plugin mem;
+plugin math;
+
+use math.ops.none;
+
+/// `x - y`, with both operands in `d0` and `d1`.
+extern con minus (m: mem.M 0, x y: math.F64, return: Cn [mem.M 0, math.F64]) =
+    return (m, x - y);
+
+/// Swaps the two float arguments, so the call needs `d31` to break the cycle.
+extern con swap (m: mem.M 0, a b: math.F64, return: Cn [mem.M 0, math.F64]) =
+    minus (m, b, a, return);
+
+/// A float and an integer argument travel in `d0` and `w0` independently.
+extern con mixed (m: mem.M 0, a: I32, x: math.F64, return: Cn [mem.M 0, math.F64]) =
+    minus (m, math.conv.s2f math.f64 a, x, return);
+
+/// `x` lives across the call in a callee-saved register, which the prologue saves and the epilogue restores.
+extern con across (m: mem.M 0, x: math.F64, return: Cn [mem.M 0, math.F64]) =
+    minus (m, x, 2.0:math.F64, after)
+    where
+        con after (m: mem.M 0, y: math.F64) = return (m, x * y);
+    end;
+
+// CHECK: .globl [[SYM]]across
+// CHECK: str d[[S:(8|9|1[0-5])]], [sp, #0]
+// CHECK: fmov d[[S]], d0
+// CHECK: bl [[SYM]]minus
+// CHECK: fmul d0, {{.*}}d[[S]]
+// CHECK: ldr d[[S]], [sp, #0]
+// CHECK: ret
+// CHECK: .globl [[SYM]]minus
+// CHECK: fsub d0, d0, d1
+// CHECK: .globl [[SYM]]mixed
+// CHECK: scvtf d{{[0-9]+}}, w0
+// CHECK: bl [[SYM]]minus
+// CHECK: .globl [[SYM]]swap
+// CHECK: fmov d31, d1
+// CHECK: fmov d1, d0
+// CHECK: fmov d0, d31
+// CHECK: bl [[SYM]]minus

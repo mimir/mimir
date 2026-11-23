@@ -1,0 +1,90 @@
+// RUN: %mim -p opt %s -p arm -X arm:o=- | %FileCheck %s %asmdefs
+
+plugin core;
+plugin mem;
+plugin math;
+
+use math.ops.none;
+
+/// `fmov` takes `2.0` as an immediate, `0.0` from `xzr`, and `0.1` through a general-purpose register.
+extern con lits (m: mem.M 0, x: math.F64, return: Cn [mem.M 0, math.F64]) =
+    return (m, (x * 2.0:math.F64 - 0.1:math.F64) * (x + 0.0:math.F64));
+
+/// Arithmetic, a square root, and a negation on `f64`.
+extern con arith (m: mem.M 0, a b: math.F64, return: Cn [mem.M 0, math.F64]) =
+    let x = (a - b) * (a + b);
+    let y = math.rt.sq 0 x;
+    return (m, math.abs 0 (y / 3.0:math.F64 - 1.0:math.F64));
+
+/// The same on `f32`, which uses the `s` register names.
+extern con arith32 (m: mem.M 0, a b: math.F32, return: Cn [mem.M 0, math.F32]) =
+    return (m, (a * 0.1:math.F32) / (a - b));
+
+/// Conversions, including the mixed `f2f` pair.
+extern con conv (m: mem.M 0, argc: I32, n: I64, x: math.F64, return: Cn [mem.M 0, I64]) =
+    let a = math.conv.s2f math.f64 argc;
+    let b = math.conv.u2f math.f64 n;
+    let c = math.conv.f2s i32 (a + b);
+    let d = math.conv.f2u i64 (math.conv.f2f math.f32 x);
+    return (m, core.wrap.add 0 (core.conv.s i64 c, d));
+
+/// An `i8` or `i16` converts through a `w` register.
+extern con conv_narrow (m: mem.M 0, a: I8, b: I16, return: Cn [mem.M 0, I16]) =
+    let x = math.conv.s2f math.f32 a + math.conv.u2f math.f32 b;
+    return (m, math.conv.f2s i16 x);
+
+/// A load, a store, and a select of `f64` values.
+extern con mem_select (m: mem.M 0, p: mem.Ptr0 (math.F64), x: math.F64, c: Bool,
+                       return: Cn [mem.M 0, math.F64]) =
+    let (m, y) = mem.load (m, p);
+    let m = mem.store (m, p, (x, y)#c);
+    return (m, (x, y)#c);
+
+/// A select on an integer or a float comparison fuses into one `fcsel`.
+extern con select_cmp (m: mem.M 0, i j: I32, x y: math.F64, return: Cn [mem.M 0, math.F64]) =
+    return (m, (x, y)#(core.icmp.sl (i, j)));
+
+extern con select_fcmp (m: mem.M 0, x y: math.F64, return: Cn [mem.M 0, math.F64]) =
+    return (m, (x, y)#(math.cmp.l math.mode.none (x, y)));
+
+// CHECK: .globl [[SYM]]arith
+// CHECK-DAG: fadd d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}
+// CHECK-DAG: fsub d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}
+// CHECK-DAG: fmul d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}
+// CHECK-DAG: fsqrt d{{[0-9]+}}, d{{[0-9]+}}
+// CHECK-DAG: fdiv d{{[0-9]+}}, d{{[0-9]+}}, d{{[0-9]+}}
+// CHECK-DAG: fabs d{{[0-9]+}}, d{{[0-9]+}}
+// CHECK: .globl [[SYM]]arith32
+// CHECK: ldr w[[B1:[0-9]+]], =1036831949
+// CHECK-NEXT: fmov s[[C1:[0-9]+]], w[[B1]]
+// CHECK: fmul s{{[0-9]+}}, s{{[0-9]+}}, s{{[0-9]+}}
+// CHECK: fsub s{{[0-9]+}}, s{{[0-9]+}}, s{{[0-9]+}}
+// CHECK: fdiv s{{[0-9]+}}, s{{[0-9]+}}, s{{[0-9]+}}
+// CHECK: .globl [[SYM]]conv
+// CHECK: scvtf d{{[0-9]+}}, w{{[0-9]+}}
+// CHECK: ucvtf d{{[0-9]+}}, x{{[0-9]+}}
+// CHECK: fcvtzs w{{[0-9]+}}, d{{[0-9]+}}
+// CHECK: fcvt s{{[0-9]+}}, d{{[0-9]+}}
+// CHECK: fcvtzu x{{[0-9]+}}, s{{[0-9]+}}
+// CHECK: .globl [[SYM]]conv_narrow
+// CHECK-DAG: sbfx w[[A:[0-9]+]], w{{[0-9]+}}, #0, #8
+// CHECK-DAG: scvtf s{{[0-9]+}}, w[[A]]
+// CHECK-DAG: ubfx w[[B:[0-9]+]], w{{[0-9]+}}, #0, #16
+// CHECK-DAG: ucvtf s{{[0-9]+}}, w[[B]]
+// CHECK: fcvtzs w{{[0-9]+}}, s{{[0-9]+}}
+// CHECK: .globl [[SYM]]lits
+// CHECK-DAG: fmov d{{[0-9]+}}, #2.0
+// CHECK-DAG: fmov d{{[0-9]+}}, xzr
+// CHECK-DAG: ldr x[[B0:[0-9]+]], =4591870180066957722
+// CHECK-DAG: fmov d{{[0-9]+}}, x[[B0]]
+// CHECK: .globl [[SYM]]mem_select
+// CHECK: ldr d[[Y:[0-9]+]], [x{{[0-9]+}}]
+// CHECK: cmp w{{[0-9]+}}, #0
+// CHECK-NEXT: fcsel d{{[0-9]+}}, d[[Y]], d{{[0-9]+}}, ne
+// CHECK: str d{{[0-9]+}}, [x{{[0-9]+}}]
+// CHECK: .globl [[SYM]]select_cmp
+// CHECK: cmp w0, w1
+// CHECK-NEXT: fcsel d0, d1, d0, lt
+// CHECK: .globl [[SYM]]select_fcmp
+// CHECK: fcmp d0, d1
+// CHECK-NEXT: fcsel d0, d1, d0, mi

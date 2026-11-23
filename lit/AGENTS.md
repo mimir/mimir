@@ -10,7 +10,9 @@
 - Never write output to `/dev/null` (hangs Windows CI); use `-` as in `lit/annex.mim`.
 - lit's internal shell knows neither `$?` nor `VAR=value`, so don't add more RUN lines that need the external one.
 - The `ll` backend cannot emit runtime-size packs: leave `-p ll` off such tests.
-- `-p x86` runs are guarded by `%if x86_64-linux %{ … %}`; keep `-p x86 -X x86:o=` adjacent, since `--param x86_k=<n>` (`scripts/x86_ksweep.sh`) hooks into that spelling.
+- Backend-independent runs are guarded by `%if native %{ … %}` with `-p %native -X %native:o=%t.s`; `native` / `%native` select `x86` or `arm` from the host (`lit/lit.cfg.py`).
+  Keep `-p %native -X %native:o=` adjacent, since `--param x86_k=<n>`/`arm_k=<n>` (`scripts/native_ksweep.sh`) hooks into that spelling on the matching host; `lit/x86/` uses the same pattern with the literal `x86` and `// REQUIRES: x86_64-linux`.
+- Assembly checks spell external symbols `[[SYM]]main` and local labels `[[LBL]]` and pass `%asmdefs` to FileCheck, which defines both for the host's object format.
 - New `main`s take a dependent `argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 I8»`; read memory of unknown length from C through `mem.assume (p, n)` and pass C element pointers as `mem.decay p`.
 
 Mim surface gotchas:
