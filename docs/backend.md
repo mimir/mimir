@@ -83,16 +83,13 @@ f:
 	ret
 ```
 
-Right before emission, the x86 World reads (with `-o -`, abridged and with binders renamed):
+Right before emission, the x86 World reads (with `-o -`, slightly edited):
 
 ```mim
 extern con f (m: mem.M 0, a b: I64, ret: Cn [mem.M 0, I64]) =
-    let a_rax = mach.in 0I4 a;
-    let b_rsi = mach.in 6I4 b;
-    let x     = mach.sched (x86.add @ 0) m (a_rax, b_rsi);
-    let x_rax = mach.in 0I4 x#tt;
-    let y     = mach.sched (x86.imul @ 0) x#ff (x_rax, 3I64);
-    ret (y#ff, mach.in 0I4 y#tt);
+    let (m, x) = mach.sched (x86.add  @ 0) m (mach.in x86.rax a, mach.in x86.rsi b);
+    let (m, y) = mach.sched (x86.imul @ 0) m (mach.in x86.rax x, 3I64);
+    ret (m, mach.in x86.rax y);
 ```
 
 Every instruction sits on the `mem.M` chain via `mach.sched`, and every use of a value states its register with `mach.in`.
