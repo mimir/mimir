@@ -16,11 +16,11 @@ concurrency:
   # Only one run per group queues, so deploying runs share a group instead of racing on
   # mimir.github.io, all others are keyed by run_id, and `doxygen.yml` needs a group of its own.
   # `env` is unavailable here, hence the repeated DEPLOY condition.
-  group: ${{github.workflow}}-${{(github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')))) && 'deploy' || github.run_id}}
+  group: ${{github.workflow}}-${{(github.repository == 'mimir/mimir' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))))) && 'deploy' || github.run_id}}
   cancel-in-progress: false
 
 env:
-  DEPLOY: ${{github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')))}}
+  DEPLOY: ${{github.repository == 'mimir/mimir' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))))}}
 
 jobs:
   build:
