@@ -2,14 +2,13 @@
 
 #include <mim/phase.h>
 
-namespace mim::plug::x86::phase {
+namespace mim::plug::mem::phase {
 
 /// Turns every `Nat` value and every pointer into an `I64`, so that instruction selection only sees register types.
 /// `Nat` literals stay `Nat` as type-level arguments and become `I64` only as values.
 /// `mem.ptradd` becomes `core.wrap.add`, the `Nat` operations become their `I64` counterparts, and `mem.mslot` becomes
-/// `x86.slot`.
-/// An operation that needs a typed pointer gets a `core.bitcast` of the `I64`.
-class Legalize : public RWPhase {
+/// the backend's `slot`. An operation that needs a typed pointer gets a `core.bitcast` of the `I64`.
+class LegalizeNative : public RWPhase {
 public:
     using RWPhase::RWPhase;
 
@@ -26,4 +25,4 @@ private:
     const Def* coerce_leaf(const Def*, const Def*) final;
 };
 
-} // namespace mim::plug::x86::phase
+} // namespace mim::plug::mem::phase

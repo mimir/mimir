@@ -1,0 +1,184 @@
+/// # The ARM Plugin {#arm}
+///
+/// @see mim::plug::arm
+///
+/// [TOC]
+///
+/// The native AArch64 backend.
+/// Loading this plugin (`mim foo.mim -p arm`) appends instruction selection, register allocation, and emission to the compilation pipeline.
+/// Instruction selection rewrites a small integer subset of `core` and `mem` into the axioms below.
+/// AArch64 is three-address, so no operand is tied to a result.
+/// Registers are no concern of these types; register allocation introduces them later.
+/// The schedule is the `mem.M 0` chain: memory instructions sit on it, and `mem.schedule` threads all other instructions onto it via `mem.sched`.
+///
+/// ## Dependencies
+///
+plugin core;
+plugin mem;
+plugin opt;
+import compile;
+///
+/// ## Types
+///
+/// ### Flags
+///
+/// The condition flags `NZCV`.
+///
+axm Flags: *;
+///
+/// ## Registers
+///
+/// ### in
+///
+/// `in r v` is `v`, which lives in register `r`; the operand size `s` selects the width.
+/// Register allocation wraps every use of a value, so all uses of `v` share one `in r v`.
+/// It is no instruction: it is neither scheduled nor on the chain.
+///
+axm in: [r: Idx 32] → {s: Nat} → Idx s → Idx s;
+///
+/// ### reg
+///
+/// The general-purpose registers in hardware encoding order.
+/// A register's subtag is its hardware encoding, so they have to stay in this order.
+///
+pub mod reg
+    anx let x0  = 0I5;
+    anx let x1  = 1I5;
+    anx let x2  = 2I5;
+    anx let x3  = 3I5;
+    anx let x4  = 4I5;
+    anx let x5  = 5I5;
+    anx let x6  = 6I5;
+    anx let x7  = 7I5;
+    anx let x8  = 8I5;
+    anx let x9  = 9I5;
+    anx let x10 = 10I5;
+    anx let x11 = 11I5;
+    anx let x12 = 12I5;
+    anx let x13 = 13I5;
+    anx let x14 = 14I5;
+    anx let x15 = 15I5;
+    anx let x16 = 16I5;
+    anx let x17 = 17I5;
+    anx let x18 = 18I5;
+    anx let x19 = 19I5;
+    anx let x20 = 20I5;
+    anx let x21 = 21I5;
+    anx let x22 = 22I5;
+    anx let x23 = 23I5;
+    anx let x24 = 24I5;
+    anx let x25 = 25I5;
+    anx let x26 = 26I5;
+    anx let x27 = 27I5;
+    anx let x28 = 28I5;
+    anx let x29 = 29I5;
+    anx let x30 = 30I5;
+end
+///
+/// ## Instructions
+///
+/// ### load
+///
+/// `ldr r, [addr]`, zero-extending a narrower value to its register.
+///
+axm load: [s: Nat] → [mem.M 0, I64] → [mem.M 0, Idx s];
+///
+/// ### store
+///
+/// `str [addr], r`.
+///
+axm store: [s: Nat] → [mem.M 0, I64, Idx s] → mem.M 0;
+///
+/// ### slot
+///
+/// Reserves `n` bytes in the stack frame and yields their address.
+///
+axm slot: [n: Nat] → mem.M 0 → [mem.M 0, I64];
+///
+/// ### Arithmetic
+///
+/// Three-address arithmetic `op d, a, b`.
+///
+axm (add, sub, and, or, xor, mul): {s: Nat} → «2; Idx s» → Idx s;
+///
+/// ### Shifts
+///
+/// `lsl`, `lsr`, and `asr` by a register or an immediate.
+///
+axm (shl, shr, sar): {s: Nat} → «2; Idx s» → Idx s;
+///
+/// ### Division
+///
+/// `udiv`/`sdiv` yield the quotient only; a remainder is a `mul` and a `sub` around them.
+///
+axm (udiv, sdiv): {s: Nat} → «2; Idx s» → Idx s;
+///
+/// ### Conversions
+///
+/// `ubfx`/`sbfx` and truncation to the low bits of the register.
+///
+axm zext: {s: Nat} → [d: Nat] → Idx s → Idx d;
+axm sext: {s: Nat} → [d: Nat] → Idx s → Idx d;
+axm trunc: {s: Nat} → [d: Nat] → Idx s → Idx d;
+///
+/// ### Comparisons
+///
+/// `cmp a, b` sets the flags from `a - b`.
+///
+axm cmp: {s: Nat} → «2; Idx s» → Flags;
+///
+/// ## Condition Codes
+///
+/// The condition codes in hardware encoding order:
+///
+/// | Subtag | cc |
+/// |--------|----|
+/// | `eq`   |  0 |
+/// | `ne`   |  1 |
+/// | `cs`   |  2 |
+/// | `cc`   |  3 |
+/// | `mi`   |  4 |
+/// | `pl`   |  5 |
+/// | `vs`   |  6 |
+/// | `vc`   |  7 |
+/// | `hi`   |  8 |
+/// | `ls`   |  9 |
+/// | `ge`   | 10 |
+/// | `lt`   | 11 |
+/// | `gt`   | 12 |
+/// | `le`   | 13 |
+/// | `al`   | 14 |
+/// | `nv`   | 15 |
+///
+/// ### csel
+///
+/// `csel.<c> (f, x, y)` yields `y` if `<c>` holds on `f`, else `x`, like `(x, y)#cond`.
+///
+axm csel.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): {s: Nat} → [Flags, Idx s, Idx s] → Idx s;
+///
+/// ### cc
+///
+/// Tests a condition code on the flags: `bcc` as a branch condition, `cset` otherwise.
+///
+axm cc.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): Flags → Bool;
+///
+/// ## Phases
+///
+/// ### isel
+///
+/// Instruction selection for a small integer subset of `core` and `mem`.
+///
+axm isel: compile.Phase;
+///
+/// ### color
+///
+/// Assigns a register to every value by greedy graph coloring and wraps each use of a value in `arm.in`.
+/// Jumps, calls, and returns are parallel copies: their arguments only prefer the registers of the parameters they bind.
+///
+axm color: compile.Phase;
+///
+/// ### emit
+///
+/// Emits GNU assembler code (AArch64 syntax) to `<world>.s`.
+///
+axm emit: compile.Phase;

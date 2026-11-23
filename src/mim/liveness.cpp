@@ -1,14 +1,14 @@
-#include "mim/plug/x86/liveness.h"
+#include "mim/liveness.h"
 
+#include <deque>
 #include <ranges>
 
-#include <mim/plug/math/math.h>
+#include "mim/world.h"
 
-#include "mim/plug/x86/x86.h"
+namespace mim {
 
-namespace mim::plug::x86 {
-
-Liveness::Liveness(Lam* fun) {
+Liveness::Liveness(const Target& target, Lam* fun)
+    : target_(&target) {
     add(fun);
     for (size_t i = 0; i != blocks_.size(); ++i)
         chain(i);
@@ -38,19 +38,19 @@ size_t Liveness::add(Lam* lam) {
 void Liveness::chain(size_t b) {
     auto lam  = blocks_[b].lam;
     auto term = lam->body()->isa<App>();
-    if (!term) lam->blame(MIM_X86_BE "`{}` does not end in a jump", lam).bail();
+    if (!term) lam->blame("{} backend: `{}` does not end in a jump", target_->name(), lam).bail();
 
     const Def* end = nullptr;
     for (auto arg : term->args())
-        if (is_mem(arg)) end = arg;
-    if (!end) lam->blame(MIM_X86_BE "`{}` has no `mem.M` chain", lam).bail();
+        if (target_->is_mem(arg)) end = arg;
+    if (!end) lam->blame("{} backend: `{}` has no `mem.M` chain", target_->name(), lam).bail();
 
     auto insns = fe::Vector<const App*>();
     for (auto m = end; !(m->isa<Extract>() && m->as<Extract>()->tuple() == lam->var()) && m != lam->var();) {
         auto node = m->isa<Extract>() ? m->as<Extract>()->tuple() : m;
         auto app  = node->isa<App>();
-        auto prev = app ? prev_mem(app) : nullptr;
-        if (!prev) m->blame(MIM_X86_BE "unexpected memory `{}` in `{}`", m, lam).bail();
+        auto prev = app ? target_->prev_mem(app) : nullptr;
+        if (!prev) m->blame("{} backend: unexpected memory `{}` in `{}`", target_->name(), m, lam).bail();
         insns.emplace_back(app);
         m = prev;
     }
@@ -64,13 +64,6 @@ void Liveness::chain(size_t b) {
         blocks_[b].succs.emplace_back(s);
         blocks_[s].preds.emplace_back(b);
     });
-}
-
-Liveness::Class Liveness::cls(const Def* value) {
-    auto type = value->type();
-    if (Axm::isa<x86::Flags>(type)) return Flags;
-    if (Axm::isa<Spill>(type) || Axm::isa<FSpill>(type)) return Stack;
-    return math::isa_f(type) ? Fpr : Gpr;
 }
 
 bool Liveness::local(const Def* def) const {
@@ -87,7 +80,7 @@ void Liveness::values(const Def* def, DefVec& res, DefSet& done) const {
     if (def->isa_mut() || !done.emplace(def).second) return;
 
     if (local(def)) {
-        if (is_mem(def) || def->type()->isa<Pi>()) return;
+        if (target_->is_mem(def) || def->type()->isa<Pi>()) return;
         if (auto n = def->num_projs(); n == 1)
             res.emplace_back(def);
         else
@@ -114,7 +107,7 @@ void Liveness::values(Block& block) {
     }
     auto term = block.lam->body()->as<App>();
     auto ex   = term->callee()->isa<Extract>();
-    if (auto cc = ex ? isa_sched_cc(ex->index()) : nullptr)
+    if (auto cc = ex ? target_->isa_sched_cc(ex->index()) : nullptr)
         block.term_uses = run(cc->arg(), ex->tuple(), term->arg());
     else
         block.term_uses = run(term);
@@ -144,28 +137,109 @@ void Liveness::sweep(Block& block) {
     auto live  = block.live_out;
     auto count = Pressure{};
     for (auto value : live)
-        ++count[cls(value)];
+        ++count[target_->cls(value)];
 
     auto gen = [&](const DefVec& values) {
         for (auto value : values)
-            if (live.emplace(value).second) ++count[cls(value)];
+            if (live.emplace(value).second) ++count[target_->cls(value)];
         for (size_t c = 0; c != Num_Classes; ++c)
             block.max_live[c] = std::max(block.max_live[c], count[c]);
     };
     auto kill = [&](const DefVec& values) {
         for (auto value : values)
-            if (live.erase(value)) --count[cls(value)];
+            if (live.erase(value)) --count[target_->cls(value)];
     };
 
     gen(block.term_uses);
     for (size_t i = block.insns.size(); i-- != 0;) {
         const auto& ds = block.defs[i];
         // A dead result occupies a register nonetheless, unless it is a condition that only a branch consumes.
-        if (!is_sched_cc(block.insns[i])) gen(ds);
+        if (!target_->is_sched_cc(block.insns[i])) gen(ds);
         kill(ds);
         gen(block.uses[i]);
     }
     gen(block.params);
 }
 
-} // namespace mim::plug::x86
+namespace {
+
+/// The block that @p block should fall through to; @p ret is the return continuation of its function.
+Lam* fall_through(const Target& target, const Liveness::Block& block, const Def* ret) {
+    auto term   = block.lam->body()->as<App>();
+    auto callee = term->callee();
+    if (callee == ret) return nullptr;
+    if (Lam::isa_mut_returning(callee)) {
+        auto k = term->arg(term->num_args(), term->num_args() - 1);
+        return k == ret ? nullptr : Lam::isa_mut_basicblock(k);
+    }
+    if (auto ex = callee->isa<Extract>()) {
+        if (ex->tuple()->num_projs() != 2) return nullptr;
+        auto [e, t] = ex->tuple()->projs<2>([](const Def* d) { return Lam::isa_mut_basicblock(d); });
+        if (!e || !t) return nullptr;
+        return takes_values(target, t) ? t : e;
+    }
+    return Lam::isa_mut_basicblock(callee);
+}
+
+} // namespace
+
+bool takes_values(const Target& target, Lam* lam) {
+    return std::ranges::any_of(lam->vars(), [&](const Def* x) { return !target.is_mem(x); });
+}
+
+fe::Vector<const Liveness::Block*> layout(const Liveness& live) {
+    auto ret    = live.blocks().front().lam->ret_var();
+    auto order  = fe::Vector<const Liveness::Block*>();
+    auto placed = LamSet();
+    for (auto queue = std::deque<Lam*>{live.blocks().front().lam}; !queue.empty(); queue.pop_front()) {
+        for (auto lam = queue.front(); lam && placed.emplace(lam).second;) {
+            auto b = live.block(lam);
+            order.emplace_back(b);
+            for (auto s : b->succs)
+                queue.emplace_back(live.blocks()[s].lam);
+            lam = fall_through(live.target(), *b, ret);
+            if (lam && !live.block(lam)) lam = nullptr;
+        }
+    }
+    return order;
+}
+
+void rewrite_blocks(const Liveness& live, Rewriter& rw) {
+    for (const auto& block : live.blocks()) {
+        auto lam    = block.lam;
+        auto filter = rw.rewrite(lam->filter());
+        auto body   = rw.rewrite(lam->body());
+        lam->unset()->set(filter, body);
+    }
+}
+
+const Def* Assign::rewrite(const Def* def) {
+    auto& w = world();
+    if (def->isa_mut() || def->is_closed()) return def;
+    if (live_.target().is_in(def)) {
+        auto app = def->as<App>();
+        return w.app(rewrite(app->callee()), raw(app->arg()));
+    }
+    if (live_.local(def)) {
+        if (auto r = fe::lookup(regs_, def)) return live_.target().in(cls_, *r, raw(def));
+        // A tuple of values, e.g. the whole variable of a block or an instruction, is used through its projections.
+        if (auto projs = def->projs(); projs.size() > 1 && std::ranges::any_of(projs, [&](const Def* d) {
+                                           return regs_.contains(d) || d->num_projs() > 1;
+                                       })) {
+            auto ops = DefVec();
+            for (auto d : projs)
+                ops.emplace_back(rewrite(d));
+            return w.tuple(ops);
+        }
+        return raw(def);
+    }
+    return Rewriter::rewrite(def);
+}
+
+const Def* Assign::raw(const Def* def) {
+    if (auto ex = def->isa<Extract>()) return world().extract(raw(ex->tuple()), ex->index());
+    if (def->isa<Var>()) return def;
+    return Rewriter::rewrite(def);
+}
+
+} // namespace mim

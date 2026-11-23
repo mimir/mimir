@@ -2,6 +2,7 @@ add_library(libmim) # BUILD_SHARED_LIBS picks the type; a wasm build turns it of
 add_library(mim::libmim ALIAS libmim)
 target_sources(libmim
     PRIVATE
+        asm.cpp
         axm.cpp
         check.cpp
         def.cpp
@@ -9,6 +10,7 @@ target_sources(libmim
         driver.cpp
         dump.cpp
         lam.cpp
+        liveness.cpp
         manifest.cpp
         nest.cpp
         phase.cpp

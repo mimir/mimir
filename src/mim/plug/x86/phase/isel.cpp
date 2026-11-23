@@ -440,8 +440,8 @@ const Def* ISel::rewrite_imm_App(const App* app) {
     if (auto res = selected(app)) return res;
     if (auto ptr = strip_ptr_cast(app); ptr != app) return rewrite(ptr);
 
-    if (auto axm = app->axm(); axm && is_lowered_plugin(axm) && !app->type()->isa<Pi>() && !app->type()->isa<Type>()
-                               && !app->type()->isa<Nat>())
+    if (auto axm = app->axm(); axm && is_lowered_plugin(axm) && !Axm::isa<mem::sched>(app) && !app->type()->isa<Pi>()
+                               && !app->type()->isa<Type>() && !app->type()->isa<Nat>())
         app->blame(MIM_X86_BE "instruction selection does not support `{}`", axm).bail();
     return RWPhase::rewrite_imm_App(app);
 }

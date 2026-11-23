@@ -1,14 +1,13 @@
-#include "mim/plug/x86/phase/legalize.h"
+#include "mim/plug/mem/phase/legalize_native.h"
+
+#include <mim/driver.h>
+#include <mim/target.h>
 
 #include <mim/plug/core/core.h>
-#include <mim/plug/mem/mem.h>
 
-#include "mim/plug/x86/x86.h"
+#include "mim/plug/mem/mem.h"
 
-namespace mim::plug::x86::phase {
-
-namespace core = mim::plug::core;
-namespace mem  = mim::plug::mem;
+namespace mim::plug::mem::phase {
 
 namespace {
 
@@ -26,7 +25,7 @@ core::icmp unsigned_cmp(core::ncmp id) {
 
 } // namespace
 
-bool Legalize::is_value(const Def* args) {
+bool LegalizeNative::is_value(const Def* args) {
     for (auto arg : args->projs()) {
         auto res = rewrite(arg);
         if (res->type()->isa<Nat>() && !Lit::isa(res)) return false;
@@ -34,25 +33,25 @@ bool Legalize::is_value(const Def* args) {
     return true;
 }
 
-const Def* Legalize::val(const Def* def) {
+const Def* LegalizeNative::val(const Def* def) {
     auto res = rewrite(def);
     if (auto l = Lit::isa(res); l && res->type()->isa<Nat>()) return new_world().lit_i64(*l);
     return res;
 }
 
-const Def* Legalize::rewrite_imm_Lit(const Lit* lit) {
+const Def* LegalizeNative::rewrite_imm_Lit(const Lit* lit) {
     if (lit->type()->isa<Nat>()) return new_world().lit_nat(lit->get());
     return RWPhase::rewrite_imm_Lit(lit);
 }
 
-const Def* Legalize::coerce_leaf(const Def* type, const Def* val) {
+const Def* LegalizeNative::coerce_leaf(const Def* type, const Def* val) {
     auto& w = new_world();
     if (Axm::isa<core::Ptr>(type) && val->type() == w.type_i64()) return w.call<core::bitcast>(type, val);
     if (auto l = Lit::isa(val); l && type == w.type_i64() && val->type()->isa<Nat>()) return w.lit_i64(*l);
     return nullptr;
 }
 
-const Def* Legalize::rewrite_imm_Extract(const Extract* ex) {
+const Def* LegalizeNative::rewrite_imm_Extract(const Extract* ex) {
     // A select of `Nat`s is a value, so its literals become `I64`.
     if (auto tuple = ex->tuple()->isa<Tuple>(); tuple && ex->type()->isa<Nat>() && !Lit::isa(ex->index())) {
         auto ops = DefVec(tuple->ops(), [this](const Def* op) { return val(op); });
@@ -61,7 +60,7 @@ const Def* Legalize::rewrite_imm_Extract(const Extract* ex) {
     return RWPhase::rewrite_imm_Extract(ex);
 }
 
-const Def* Legalize::rewrite_imm_App(const App* app) {
+const Def* LegalizeNative::rewrite_imm_App(const App* app) {
     auto& w = new_world();
     if (Axm::isa<core::Ptr>(app)) return w.type_i64();
 
@@ -108,12 +107,13 @@ const Def* Legalize::rewrite_imm_App(const App* app) {
     if (auto slot = Axm::isa<mem::mslot>(app)) {
         auto [msz, k]  = slot->args<2>();
         auto [m, size] = msz->projs<2>();
-        if (!Lit::isa(size)) app->blame(MIM_X86_BE "`mem.mslot` needs a literal size").bail();
-        auto alloc = w.app(w.app(w.annex<x86::slot>(), rewrite(size)), rewrite(m));
+        auto& target   = driver().target(app->loc());
+        if (!Lit::isa(size)) app->blame("{} backend: `mem.mslot` needs a literal size", target.name()).bail();
+        auto alloc = w.app(w.app(w.annex(target.slot()), rewrite(size)), rewrite(m));
         return w.app(rewrite(k), alloc);
     }
 
     return RWPhase::rewrite_imm_App(app);
 }
 
-} // namespace mim::plug::x86::phase
+} // namespace mim::plug::mem::phase

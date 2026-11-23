@@ -155,13 +155,6 @@ axm rm1: {T C: *, i: Bool} → (T → C) → [mem.M 0, Addr i] → [mem.M 0, C];
 ///
 axm mr: {s: Nat, C: *, i: Bool} → («2; Idx s» → C) → [mem.M 0, Addr i, Idx s] → mem.M 0;
 ///
-/// ### sched
-///
-/// Places the pure instruction `f x` on the `mem.M 0` chain right after `m`: `let (m, y) = x86.sched x86.add m (a, b)`.
-/// The chain token makes each placement a distinct Def, so copies, spills, and reloads at different points never merge.
-///
-axm sched: {D C: *} → (D → C) → mem.M 0 → D → [mem.M 0, C];
-///
 /// ## Registers
 ///
 /// ### in
@@ -433,25 +426,12 @@ axm f2f: [spe: «2; Nat»] → [dpe: «2; Nat»] → math.F spe → math.F (fpe 
 ///
 /// ## Phases
 ///
-/// ### legalize
-///
-/// Turns every `Nat` value and every pointer into an `I64`, so that `isel` only sees register types.
-///
-axm legalize: compile.Phase;
-///
 /// ### isel
 ///
 /// Instruction selection.
 /// `-X x86:isel-dot=<file>` writes the PBQP graph in Graphviz DOT format, with the chosen options highlighted.
 ///
 axm isel: compile.Phase;
-///
-/// ### schedule
-///
-/// Threads every instruction of a block onto the block's `mem.M 0` chain.
-/// Expects every continuation to take a `mem.M 0`.
-///
-axm schedule: compile.Phase;
 ///
 /// ### spilling
 ///

@@ -5,7 +5,10 @@
 #include <ranges>
 #include <utility>
 
+#include <mim/target.h>
+
 #include <mim/plug/core/core.h>
+#include <mim/plug/mem/mem.h>
 
 #include "mim/plug/x86/autogen.h"
 
@@ -32,48 +35,29 @@ constexpr bool reserved(size_t r) { return r == encoding(reg::rsp) || r == encod
 constexpr size_t Num_Caller_Saved = std::ranges::count(Caller_Saved, true);
 constexpr size_t Num_Allocatable = Num_Regs - size_t(std::ranges::count_if(std::views::iota(0uz, +Num_Regs), reserved));
 
+using mem::sched;
+using mem::strip_ptr_cast;
+
 inline bool is_mem(const Def* def) {
     auto type = def->type(); // Level has no type
     return type && Axm::isa<core::M>(type);
 }
 
 /// The register `r` of `x86.in r v` in hardware encoding order.
-inline size_t in_reg(const Def* in) {
-    return *Lit::isa(in->as<App>()->callee()->as<App>()->callee()->as<App>()->arg());
-}
+inline size_t in_reg(const Def* in) { return mim::Target::in_reg(in); }
+
+/// The `f` of `mem.sched f m x`.
+inline const Def* sched_insn(const App* app) { return mim::Target::sched_insn(app); }
 
 /// The `v` of `x86.in r v` or `x86.fin r v`, otherwise @p def.
-inline const Def* strip(const Def* def) {
-    if (auto in = Axm::isa<x86::in>(def)) return in->arg();
-    if (auto in = Axm::isa<x86::fin>(def)) return in->arg();
-    return def;
-}
+const Def* strip(const Def* def);
 
-/// The `I64` under @p def if @p def is the cast to a pointer type that `x86.legalize` inserts, otherwise @p def.
-inline const Def* strip_ptr_cast(const Def* def) {
-    if (auto cast = Axm::isa<core::bitcast>(def); cast && Axm::isa<core::Ptr>(def->type())) return cast->arg();
-    return def;
-}
+bool is_sched_cc(const App* app);
 
-/// The `f` of `x86.sched f m x`.
-inline const Def* sched_insn(const App* app) { return app->callee()->as<App>()->callee()->as<App>()->arg(); }
-
-inline bool is_sched_cc(const App* app) { return Axm::isa<sched>(app) && Axm::isa<cc, 1>(sched_insn(app)); }
-
-/// The `x86.sched` of an `x86.cc` that yields @p cond, if any.
-inline const App* isa_sched_cc(const Def* cond) {
-    if (auto ex = cond->isa<Extract>())
-        if (auto app = ex->tuple()->isa<App>(); app && is_sched_cc(app)) return app;
-    return nullptr;
-}
+/// The `mem.sched` of an `x86.cc` that yields @p cond, if any.
+const App* isa_sched_cc(const Def* cond);
 
 /// The memory @p app continues, if @p app is an instruction on a `mem.M 0` chain.
-inline const Def* prev_mem(const App* app) {
-    if (Axm::isa<sched>(app)) return app->callee()->as<App>()->arg();
-    if (Axm::isa<load>(app) || Axm::isa<store>(app) || Axm::isa<slot>(app) || Axm::isa<rm>(app) || Axm::isa<mr>(app)
-        || Axm::isa<rm1>(app) || Axm::isa<fload>(app) || Axm::isa<fstore>(app))
-        return app->arg(app->num_args(), 0);
-    return nullptr;
-}
+const Def* prev_mem(const App* app);
 
 } // namespace mim::plug::x86

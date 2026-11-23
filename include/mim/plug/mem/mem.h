@@ -22,6 +22,12 @@ using core::pointee;
 using core::strip_mem_ty;
 ///@}
 
+/// The `I64` under @p def if @p def is the cast to a pointer type that `mem.legalize_native` inserts, otherwise @p def.
+inline const Def* strip_ptr_cast(const Def* def) {
+    if (auto cast = Axm::isa<core::bitcast>(def); cast && Axm::isa<core::Ptr>(def->type())) return cast->arg();
+    return def;
+}
+
 /// @name mem.lea
 ///@{
 inline const Def* op_lea(const Def* ptr, const Def* index) {

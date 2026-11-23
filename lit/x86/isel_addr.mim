@@ -5,7 +5,7 @@ plugin mem;
 plugin x86;
 import compile;
 
-extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_ptr, compile.named "x86.legalize", compile.named "x86.isel");
+extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_ptr, mem.legalize_native, compile.named "x86.isel");
 
 // The row offset, the column, and the base fold into one `lea` and an address, the column as a scaled index.
 extern lam row (m: mem.M 0, a: mem.Ptr0 «256; «256; I32»», i j: I8): [mem.M 0, I32] =

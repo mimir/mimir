@@ -1,5 +1,6 @@
 set(MIM_PLUGINS
     affine
+    arm
     autodiff
     btensor
     buffer

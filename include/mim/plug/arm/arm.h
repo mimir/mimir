@@ -1,0 +1,60 @@
+#pragma once
+
+#include <array>
+
+#include <mim/target.h>
+
+#include <mim/plug/core/core.h>
+#include <mim/plug/mem/mem.h>
+
+#include "mim/plug/arm/autogen.h"
+
+/// Prefix for this backend's diagnostics; concatenate it with the format literal.
+#define MIM_ARM_BE "arm backend: "
+
+namespace mim::plug::arm {
+
+/// The hardware encoding of @p r.
+constexpr size_t encoding(reg r) { return Annex::flags2sub(std::to_underlying(r)); }
+
+constexpr size_t Num_Regs = Annex::num<reg>();
+
+/// AAPCS64: arguments in x0 … x7, result in x0.
+// clang-format off
+constexpr std::array<size_t, 8> Arg_Regs = {
+    encoding(reg::x0), encoding(reg::x1), encoding(reg::x2), encoding(reg::x3),
+    encoding(reg::x4), encoding(reg::x5), encoding(reg::x6), encoding(reg::x7),
+};
+// clang-format on
+constexpr size_t Ret_Reg              = encoding(reg::x0);
+constexpr bool Caller_Saved[Num_Regs] = {
+    true,  true,  true,  true,  true,  true,  true,  true,                // x0 - x7
+    true,  true,  true,  true,  true,  true,  true,  true,                // x8 - x15
+    false, false, false,                                                  // x16 - x18: scratch, reserved
+    false, false, false, false, false, false, false, false, false, false, // x19 - x28: callee-saved
+    false, false,                                                         // x29 fp, x30 lr
+};
+/// `x16`/`x17`/`x18` are the scratch and platform registers, `x29`/`x30` the frame pointer and link register.
+constexpr bool reserved(size_t r) {
+    return r == encoding(reg::x16) || r == encoding(reg::x17) || r == encoding(reg::x18) || r == encoding(reg::x29)
+        || r == encoding(reg::x30);
+}
+
+using mem::sched;
+using mem::strip_ptr_cast;
+
+inline bool is_mem(const Def* def) {
+    auto type = def->type(); // Level has no type
+    return type && Axm::isa<core::M>(type);
+}
+
+/// The register `r` of `arm.in r v` in hardware encoding order.
+inline size_t in_reg(const Def* in) { return mim::Target::in_reg(in); }
+
+/// The `f` of `mem.sched f m x`.
+inline const Def* sched_insn(const App* app) { return mim::Target::sched_insn(app); }
+
+/// The `arm::csel` instance that selects on @p c.
+constexpr flags_t cc_to_csel(cc c) { return Annex::Base<csel> | Annex::flags2sub(std::to_underlying(c)); }
+
+} // namespace mim::plug::arm

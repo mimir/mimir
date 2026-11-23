@@ -32,64 +32,6 @@ pbqp::Costs base_costs(Liveness::Class cls) {
     });
 }
 
-/// Rewrites the filter and body of each block of @p live in place.
-void rewrite_blocks(const Liveness& live, Rewriter& rw) {
-    for (const auto& block : live.blocks()) {
-        auto lam    = block.lam;
-        auto filter = rw.rewrite(lam->filter());
-        auto body   = rw.rewrite(lam->body());
-        lam->unset()->set(filter, body);
-    }
-}
-
-/// Calls @p f for each use of a value in @p live.
-void for_each_use(const Liveness& live, auto f) {
-    for (const auto& block : live.blocks()) {
-        for (const auto& uses : block.uses)
-            for (auto u : uses)
-                f(u);
-        for (auto u : block.term_uses)
-            f(u);
-    }
-}
-
-/// The block that a call at the end of @p block returns to, if any.
-const Liveness::Block* call_cont(const Liveness& live, Lam* fun, const Liveness::Block& block) {
-    auto term = block.lam->body()->as<App>();
-    if (term->callee() == fun->ret_var() || !Lam::isa_mut_returning(term->callee())) return nullptr;
-    if (auto k = Lam::isa_mut_basicblock(term->arg(term->num_args(), term->num_args() - 1))) return live.block(k);
-    return nullptr;
-}
-
-/// Calls @p f `(d, v)` for each value `v` that is live at the definition of `d` or defined along with it.
-/// Only values that satisfy @p keep take part.
-void interferences(const Liveness& live, const Liveness::Block& block, auto keep, auto f) {
-    auto alive = DefSet();
-    auto gen   = [&](const auto& values) {
-        for (auto v : values)
-            if (keep(v)) alive.emplace(v);
-    };
-    auto def = [&](DefVec ds) {
-        std::erase_if(ds, [&](const Def* d) { return !keep(d); });
-        for (auto d : ds)
-            alive.erase(d);
-        for (size_t i = 0; i != ds.size(); ++i) {
-            for (auto v : alive)
-                f(ds[i], v);
-            for (size_t j = i + 1; j != ds.size(); ++j)
-                f(ds[i], ds[j]);
-        }
-    };
-
-    gen(block.live_out);
-    gen(live.term_uses(block));
-    for (auto insn : block.insns | std::views::reverse) {
-        def(live.defs(insn));
-        gen(live.uses(insn));
-    }
-    def(live.params(block));
-}
-
 class Prune : public Rewriter {
 public:
     Prune(World& world, const DefSet& dead)
@@ -118,7 +60,7 @@ void prune(Lam* fun) {
     }
 
     auto count = DefMap<size_t>();
-    for_each_use(live, [&](const Def* u) { ++count[u]; });
+    mim::for_each_use(live, [&](const Def* u) { ++count[u]; });
 
     auto unused = [&](const Def* d) {
         auto n = fe::lookup(count, d);
@@ -147,55 +89,8 @@ void prune(Lam* fun) {
     if (dead.empty()) return;
 
     auto prune = Prune(fun->world(), dead);
-    rewrite_blocks(live, prune);
+    mim::rewrite_blocks(live, prune);
 }
-
-/// Wraps every use of a value in `x86.in`, or an XMM value in `x86.fin`.
-class Assign : public Rewriter {
-public:
-    Assign(World& world, Liveness::Class cls, const Liveness& live, const DefMap<size_t>& regs)
-        : Rewriter(world)
-        , cls_(cls)
-        , live_(live)
-        , regs_(regs) {}
-
-    const Def* rewrite(const Def* def) final {
-        auto& w = world();
-        if (def->isa_mut() || def->is_closed()) return def;
-        if (Axm::isa<x86::in>(def) || Axm::isa<x86::fin>(def)) {
-            auto app = def->as<App>();
-            return w.app(rewrite(app->callee()), raw(app->arg()));
-        }
-        if (live_.local(def)) {
-            if (auto r = fe::lookup(regs_, def))
-                return cls_ == Liveness::Gpr ? w.call<x86::in>(w.lit_idx(Num_Regs, *r), raw(def))
-                                             : w.call<x86::fin>(w.lit_idx(Num_Xmm, *r), raw(def));
-            // A tuple of values, e.g. the whole variable of a block or an instruction, is used through its projections.
-            if (auto projs = def->projs(); projs.size() > 1 && std::ranges::any_of(projs, [&](const Def* d) {
-                                               return regs_.contains(d) || d->num_projs() > 1;
-                                           })) {
-                auto ops = DefVec();
-                for (auto d : projs)
-                    ops.emplace_back(rewrite(d));
-                return w.tuple(ops);
-            }
-            return raw(def);
-        }
-        return Rewriter::rewrite(def);
-    }
-
-private:
-    /// @p def, a parameter, an instruction, or a projection thereof, without wrapping it.
-    const Def* raw(const Def* def) {
-        if (auto ex = def->isa<Extract>()) return world().extract(raw(ex->tuple()), ex->index());
-        if (def->isa<Var>()) return def;
-        return Rewriter::rewrite(def);
-    }
-
-    Liveness::Class cls_;
-    const Liveness& live_;
-    const DefMap<size_t>& regs_;
-};
 
 class Colorer {
 public:
@@ -209,14 +104,14 @@ public:
     void run() {
         nodes();
         for (const auto& block : live_.blocks())
-            interferences(
+            mim::interferences(
                 live_, block, [&](const Def* v) { return ids_.contains(v); },
                 [&](const Def* a, const Def* b) { link(a, b, interfere_); });
         constraints();
         copies();
         solve();
-        auto assign = Assign(fun_->world(), cls_, live_, regs_);
-        rewrite_blocks(live_, assign);
+        auto assign = mim::Assign(fun_->world(), cls_, live_, regs_);
+        mim::rewrite_blocks(live_, assign);
     }
 
 private:
@@ -281,7 +176,7 @@ void Colorer::add(const Def* v) {
 /// Values are added in an order that respects dominance, so their ids are the PEO for RN.
 void Colorer::nodes() {
     auto used = DefSet();
-    for_each_use(live_, [&](const Def* u) { used.emplace(u); });
+    mim::for_each_use(live_, [&](const Def* u) { used.emplace(u); });
 
     for (const auto& block : live_.blocks()) {
         for (auto x : live_.params(block))
@@ -336,7 +231,7 @@ void Colorer::copies() {
             for (size_t i = 0, a = 0; i + 1 < m; ++i)
                 if (auto x = term->arg(m, i); is_value(x, cls_) && a < num_arg_regs(cls_))
                     prefer(x, arg_reg(cls_, a++));
-            if (auto k = call_cont(live_, fun_, block)) {
+            if (auto k = mim::call_cont(live_, fun_, block)) {
                 for (auto v : k->live_in)
                     if (auto cs = costs(v))
                         for (size_t r = 0; r != Num_Regs; ++r)
@@ -457,13 +352,13 @@ void Checker::run() {
     }
 
     for (const auto& block : live_.blocks()) {
-        interferences(
+        mim::interferences(
             live_, block, [&](const Def* v) { return regs_.contains(v); },
             [&](const Def* a, const Def* b) {
                 if (regs_[a] == regs_[b])
                     fail(block.lam, std::format("`{}` and `{}` interfere but share a register", a, b));
             });
-        if (auto k = call_cont(live_, fun_, block))
+        if (auto k = mim::call_cont(live_, fun_, block))
             for (auto v : k->live_in)
                 if (auto r = reg(v); r && caller_saved(cls_, *r))
                     fail(block.lam, std::format("`{}` lives across a call in a caller-saved register", v));

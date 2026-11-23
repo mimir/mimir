@@ -35,7 +35,7 @@ axm lit: {T: *} → T → Bool, normalize_lit;
 ///
 /// ### addr
 ///
-/// The pointer `p`, an `I64` under the cast of `x86.legalize`, as an address operand.
+/// The pointer `p`, an `I64` under the cast of `mem.legalize_native`, as an address operand.
 /// isel picks its form, `x86.Base` or `x86.Index`, and the builder infers which.
 ///
 axm addr: {T: *, a: Nat} → mem.Ptr (T, a) → x86.Base;
@@ -95,7 +95,7 @@ rule rem64 (d: Nat, x: I64): core.rem d x => (x86.div (x, x86.mov (core.idx 0 i6
 ///
 /// ### Conversions
 ///
-/// `mem.legalize_ptr` and `x86.legalize` leave only register sizes; each family takes the source and the destination size.
+/// `mem.legalize_ptr` and `mem.legalize_native` leave only register sizes; each family takes the source and the destination size.
 /// A conversion between sizes of the same register width truncates; `rank` is the register width of a size.
 ///
 lam rank (s: Nat): Nat = (((1, 2)#(core.ncmp.e (s, i16)), 3)#(core.ncmp.e (s, i32)), 4)#(core.ncmp.e (s, i64));
@@ -204,7 +204,7 @@ end
 ///
 /// ### Loads and Stores
 ///
-/// A pointer is an `I64` by now, which `x86.legalize` casts to the pointer type of each memory operation.
+/// A pointer is an `I64` by now, which `mem.legalize_native` casts to the pointer type of each memory operation.
 ///
 rule load  {s: Nat} (m: mem.M 0, p: mem.Ptr0 (Idx s)):          mem.load (m, p)     => x86.load s (m, addr p);
 rule store (s: Nat, m: mem.M 0, p: mem.Ptr0 (Idx s), x: Idx s):  mem.store (m, p, x) => x86.store (m, addr p, reg_imm x);
@@ -245,7 +245,7 @@ rule unscale (s: [I64, I2]): s => x86.lea (x86.index (x86.addr (0I32, 0I64)) s);
 ///
 anx let formats = (math.f16, math.f32, math.f64, math.bf16, math.nvtf32, math.amdfp24, math.pxr24);
 ///
-/// The values of a family's `{s: Nat}`: the register sizes that `mem.legalize_ptr` and `x86.legalize` leave.
+/// The values of a family's `{s: Nat}`: the register sizes that `mem.legalize_ptr` and `mem.legalize_native` leave.
 ///
 anx let sizes = (i1, i8, i16, i32, i64);
 let icmps = (

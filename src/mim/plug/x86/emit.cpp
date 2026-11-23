@@ -1,7 +1,6 @@
 #include "mim/plug/x86/emit.h"
 
 #include <bit>
-#include <deque>
 #include <map>
 #include <print>
 #include <ranges>
@@ -90,18 +89,6 @@ nat_t nat(const Def* def) {
     def->blame(MIM_X86_BE "expected a literal, got `{}`", def).bail();
 }
 
-/// Functions still to emit, shared by all Emitter%s.
-struct Funs {
-    std::deque<Lam*> todo;
-    LamSet seen;
-    /// 16-byte constants of the `.rodata` pool; a label is allocated on first use.
-    std::map<std::pair<u64, u64>, size_t> pool;
-
-    void push(Lam* lam) {
-        if (seen.emplace(lam).second) todo.emplace_back(lam);
-    }
-};
-
 /// A physical register of one of the two register classes.
 struct Reg {
     size_t num;
@@ -117,16 +104,11 @@ struct Src {
 
 using Moves = fe::Vector<std::pair<Reg, Src>>;
 
-/// Does a jump to @p lam pass values, which a branch cannot do on its own?
-bool takes_values(Lam* lam) {
-    return std::ranges::any_of(lam->vars(), [](const Def* x) { return !is_mem(x); });
-}
-
 class Emitter {
 public:
-    Emitter(std::ostream& os, Funs& funs, Lam* fun)
+    Emitter(std::ostream& os, Emit& emit, Lam* fun)
         : os_(os)
-        , funs_(funs)
+        , emit_(emit)
         , fun_(fun)
         , ret_(fun->ret_var())
         , live_(fun) {}
@@ -183,14 +165,13 @@ private:
     void insn(const Def* res, const Def* f, const Def* x);
     void step(const App*);
     void block(const Liveness::Block&);
-    Lam* tail(const Liveness::Block&) const;
     void parallel(Moves moves, fe::Vector<std::pair<size_t, size_t>> slot_moves);
     void copy(Lam* target, const Def* arg);
     void jump(Lam* target);
     void call(Lam* callee, const Def* arg);
 
     std::ostream& os_;
-    Funs& funs_;
+    Emit& emit_;
     Lam* fun_;
     const Def* ret_;
     Liveness live_;
@@ -204,11 +185,7 @@ private:
     size_t sel_       = 0;
 };
 
-std::string Emitter::symbol(Lam* lam) {
-    if (lam->is_external() || !lam->is_set()) return lam->sym().str();
-    funs_.push(lam);
-    return lam->unique_name();
-}
+std::string Emitter::symbol(Lam* lam) { return emit_.symbol(lam); }
 
 void Emitter::collect(const Def* def, DefSet& done) {
     if (def->isa_mut() || def->is_closed() || is_mem(def) || !done.emplace(def).second) return;
@@ -299,10 +276,7 @@ void Emitter::mov_imm(Reg dst, const Def* lit) {
         line("movq ${}, {}", s, name(dst.num, 64));
 }
 
-std::string Emitter::pool(u64 lo, u64 hi) {
-    auto [i, _] = funs_.pool.emplace(std::pair(lo, hi), funs_.pool.size());
-    return std::format(".Lpool{}(%rip)", i->second);
-}
+std::string Emitter::pool(u64 lo, u64 hi) { return std::format(".Lpool{}(%rip)", emit_.pool(lo, hi)); }
 
 void Emitter::use_flags(const Def* fl) const {
     if (fl != flags_) fl->blame(MIM_X86_BE "flags `{}` are clobbered before their use", fl).bail();
@@ -683,24 +657,6 @@ void Emitter::call(Lam* callee, const Def* arg) {
     jump(k);
 }
 
-/// The block that @p b should fall through to.
-Lam* Emitter::tail(const Liveness::Block& b) const {
-    auto term   = b.lam->body()->as<App>();
-    auto callee = term->callee();
-    if (callee == ret_) return nullptr;
-    if (Lam::isa_mut_returning(callee)) {
-        auto ret = term->arg(term->num_args(), term->num_args() - 1);
-        return ret == ret_ ? nullptr : Lam::isa_mut_basicblock(ret);
-    }
-    if (auto ex = callee->isa<Extract>()) {
-        if (ex->tuple()->num_projs() != 2) return nullptr;
-        auto [e, t] = ex->tuple()->projs<2>([](const Def* d) { return Lam::isa_mut_basicblock(d); });
-        if (!e || !t) return nullptr;
-        return takes_values(t) ? t : e;
-    }
-    return Lam::isa_mut_basicblock(callee);
-}
-
 void Emitter::block(const Liveness::Block& b) {
     for (auto insn : b.insns)
         step(insn);
@@ -726,7 +682,7 @@ void Emitter::block(const Liveness::Block& b) {
         auto [e, t] = targets->projs<2>([](const Def* d) { return Lam::isa_mut_basicblock(d); });
         if (!e || !t) b.lam->blame(MIM_X86_BE "`{}` branches to something other than blocks", b.lam).bail();
         auto c          = ex->index();
-        auto trampoline = takes_values(t);
+        auto trampoline = takes_values(target(), t);
         auto t_lbl      = trampoline ? label(b.lam) + ".t" : label(t);
         if (auto app = isa_sched_cc(c)) {
             use_flags(app->arg());
@@ -772,19 +728,7 @@ void Emitter::emit(bool global) {
     for (size_t r = 0; r != Num_Regs; ++r)
         if (!Caller_Saved[r] && !reserved(r) && used[r]) saved_.emplace_back(r);
 
-    auto order  = fe::Vector<const Liveness::Block*>();
-    auto placed = LamSet();
-    for (auto queue = std::deque<Lam*>{fun_}; !queue.empty();) {
-        for (auto lam = queue.front(); lam && placed.emplace(lam).second;) {
-            auto b = live_.block(lam);
-            order.emplace_back(b);
-            for (auto s : b->succs)
-                queue.emplace_back(live_.blocks()[s].lam);
-            lam = tail(*b);
-            if (lam && !live_.block(lam)) lam = nullptr;
-        }
-        queue.pop_front();
-    }
+    auto order = layout(live_);
 
     auto n     = fun_->num_vars();
     auto moves = Moves();
@@ -824,43 +768,20 @@ void Emitter::emit(bool global) {
 
 } // namespace
 
-void Emit::start() {
-    auto path = (world().name() ? world().name().str() : "a"s) + ".s";
-    if (auto o = arg_value(args(), "o", "output")) path = *o;
-    auto out = Out(path);
-    auto& os = *out.os();
+void Emit::emit(std::ostream& os, Lam* fun, bool global) { Emitter(os, *this, fun).emit(global); }
 
-    auto muts = world().externals().mutate();
-    std::ranges::sort(muts, {}, [](Def* mut) { return mut->sym().str(); });
-
-    std::println(os, "\t.text");
-    auto funs = Funs();
-    for (auto mut : muts) {
-        auto lam = mut->isa<Lam>();
-        if (!lam) mut->blame(MIM_X86_BE "cannot emit `{}`", mut).bail();
-        if (lam->is_set()) {
-            funs.seen.emplace(lam);
-            Emitter(os, funs, lam).emit(true);
-        }
+void Emit::finish(std::ostream& os) {
+    if (pool_.empty()) return;
+    auto constants = fe::Vector<std::pair<u64, u64>>(pool_.size());
+    for (auto& [c, i] : pool_)
+        constants[i] = c;
+    std::println(os, "\t.section .rodata");
+    std::println(os, "\t.p2align 4");
+    for (size_t i = 0; i != constants.size(); ++i) {
+        std::println(os, ".Lpool{}:", i);
+        std::println(os, "\t.quad 0x{:016x}", constants[i].first);
+        std::println(os, "\t.quad 0x{:016x}", constants[i].second);
     }
-    while (!funs.todo.empty()) {
-        auto lam = funs.todo.front();
-        funs.todo.pop_front();
-        Emitter(os, funs, lam).emit(false);
-    }
-    if (!funs.pool.empty()) {
-        auto constants = fe::Vector<std::pair<u64, u64>>(funs.pool.size());
-        for (auto& [c, i] : funs.pool)
-            constants[i] = c;
-        std::println(os, "\t.section .rodata");
-        std::println(os, "\t.p2align 4");
-        for (size_t i = 0; i != constants.size(); ++i) {
-            std::println(os, ".Lpool{}:", i);
-            std::println(os, "\t.quad 0x{:016x}", constants[i].first);
-            std::println(os, "\t.quad 0x{:016x}", constants[i].second);
-        }
-    }
-    std::println(os, "\t.section .note.GNU-stack,\"\",@progbits");
 }
 
 } // namespace mim::plug::x86

@@ -1,0 +1,29 @@
+#include "mim/plug/arm/arm.h"
+
+#include <mim/plugin.h>
+
+#include "mim/plug/arm/emit.h"
+#include "mim/plug/arm/phase/color.h"
+#include "mim/plug/arm/phase/isel.h"
+#include "mim/plug/arm/target.h"
+
+using namespace mim;
+
+static void reg_phases(Flags2Phases& phases) {
+    Phase::hook<plug::arm::isel, plug::arm::phase::ISel>(phases);
+    Phase::hook<plug::arm::color, plug::arm::phase::Color>(phases);
+    Phase::hook<plug::arm::emit, plug::arm::Emit>(phases);
+}
+
+// clang-format off
+static constexpr PluginArg known_args[] = {
+    {"o=<file>, output=<file>", "Writes the assembly to `<file>` instead of the default `<world>.s`/`a.s`; `<file>` may be `-` for stdout."},
+};
+// clang-format on
+
+MIM_PLUGIN_ENTRY(arm) {
+    plugin.register_phases = reg_phases;
+    plugin.args            = known_args;
+    plugin.num_args        = std::size(known_args);
+    plugin.target          = &plug::arm::target();
+}

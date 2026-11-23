@@ -50,6 +50,12 @@ Plugin-specific notes live in `plug/AGENTS.md` and below; phase-specific ones in
 - `extern` forward declarations are deliberately no World externals.
 - Verify any change with the 5-mode byte oracle (`-o -`, `--no-opt -o -`, `--mim-typed-let -o -`, `--no-opt -a -o -`, `--no-opt --output-dot -` over all lit/extra `.mim`; stdout, stderr, and exit code) plus `test-roundtrip`.
 
+## Native backends (`target.h`, `liveness.h`, `asm.h`)
+
+- `Target`, `Liveness`, and `AsmEmit` are the target-independent parts of `x86` and `arm`; they know `core.M` and `mem.sched` only as flags the backend's `Target` passes in.
+- A backend registers its `Target` via `Plugin::target`; `Driver::target` fails unless exactly one is loaded, since the docs build loads every plugin at once.
+- `Liveness` is slated for replacement; don't build further analyses on it.
+
 ## Frontend (`ast/`)
 
 - `+ - * / %` have no built-in meaning: `a op b` desugars to `` `op (a, b) ``, and the escaped Sym includes the backtick (needed for the `--output-ast` round trip).

@@ -47,7 +47,7 @@ using Alts = fe::Vector<Alt>;
 
 ///@}
 
-/// Rewrites the `core` and `mem` operations of a world that `x86.legalize` lowered into x86 instructions.
+/// Rewrites the `core` and `mem` operations of a world that `mem.legalize_native` lowered into x86 instructions.
 /// Everything this phase does not know is an error.
 ///
 /// Selection is a cover of the program by matches of rules, found as a PBQP (Buchwald & Zwinkau, CASES 2010), where

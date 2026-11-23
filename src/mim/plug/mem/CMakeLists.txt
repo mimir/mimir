@@ -6,6 +6,8 @@ add_mim_plugin(mem
         phase/add_mem.cpp
         phase/free_locals.cpp
         phase/heap2stack.cpp
+        phase/legalize_native.cpp
         phase/legalize_ptr.cpp
+        phase/schedule.cpp
         phase/seo.cpp
 )
