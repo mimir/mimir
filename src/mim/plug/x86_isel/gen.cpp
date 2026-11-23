@@ -10,11 +10,13 @@
 
 #include <mim/driver.h>
 #include <mim/plugin.h>
+#include <mim/rewrite.h>
 #include <mim/rule.h>
 #include <mim/world.h>
 
 #include <mim/plug/core/core.h>
 #include <mim/plug/math/math.h>
+#include <mim/plug/refly/autogen.h>
 #include <mim/plug/x86/autogen.h>
 #include <mim/plug/x86/insn.h>
 #include <mim/plug/x86/rule_table.h>
@@ -92,21 +94,29 @@ constexpr std::string_view name(Want want) {
     std::unreachable();
 }
 
-/// Does @p def use the meta variable @p i of @p var, by its projection or by @p var as a whole?
-bool uses(const Def* def, const Var* var, size_t i, DefSet& done) {
-    if (def == var) return true;
+/// Does @p def use @p meta, a projection of the Var @p var or a Var of its own, directly or by @p var as a whole?
+bool uses(const Def* def, const Def* meta, const Var* var, DefSet& done) {
+    if (def == meta) return true;
     if (!def || !done.emplace(def).second) return false;
-    if (auto ex = def->isa<Extract>(); ex && ex->tuple() == var)
-        if (auto j = Lit::isa(ex->index())) return *j == i;
-    if (auto type = def->type(); type && uses(type, var, i, done)) return true;
+    if (auto ex = meta->isa<Extract>(); def == var && ex && ex->tuple() == var) return true;
+    if (auto ex = def->isa<Extract>(); ex && ex->tuple() == var && Lit::isa(ex->index())) return false;
+    if (auto type = def->type(); type && uses(type, meta, var, done)) return true;
     for (auto op : def->ops())
-        if (uses(op, var, i, done)) return true;
+        if (uses(op, meta, var, done)) return true;
     return false;
 }
 
-bool uses(const Def* def, const Var* var, size_t i) {
+bool uses(const Def* def, const Def* meta, const Var* var) {
     auto done = DefSet();
-    return uses(def, var, i, done);
+    return uses(def, meta, var, done);
+}
+
+/// The conditions of the `refly.check`s in @p def, e.g. the one of `x86.fpe pe`.
+void checks(const Def* def, DefVec& conds, DefSet& done) {
+    if (def->isa_mut() || !done.emplace(def).second) return;
+    if (auto check = Axm::isa<refly::check>(def)) conds.emplace_back(check->arg(3, 0));
+    for (auto op : def->ops())
+        checks(op, conds, done);
 }
 
 /// The summed x86::insn::cost of the instructions in @p def.
@@ -148,9 +158,19 @@ public:
             commutes_.emplace(op->as<Axm>()->flags());
     }
 
+    /// The values of an implicit family parameter of type `«2; Nat»` or `Nat` that gen instantiates.
+    void universes(const Def* formats, const Def* sizes) {
+        for (auto op : formats->projs())
+            formats_.emplace_back(op);
+        for (auto op : sizes->projs())
+            sizes_.emplace_back(op);
+    }
+
     void collect(const Def* def) {
         if (auto rule = def->isa<Rule>())
             add(rule);
+        else if (auto lam = def->isa_mut<Lam>(); lam && lam->type()->as<Pi>()->is_implicit())
+            family(lam);
         else if (auto tuple = def->isa<Tuple>())
             for (auto op : tuple->ops())
                 collect(op);
@@ -206,7 +226,8 @@ private:
         std::vector<Meta> metas;
     };
 
-    void add(const Rule*);
+    void family(Lam*);
+    void add(const Rule*, const Var* param = nullptr);
     std::vector<Meta> metas(const Rule*);
     void guard(const Def*, std::vector<Meta>&);
     u32 node(const Def*);
@@ -228,7 +249,7 @@ private:
         return id;
     }
 
-    size_t num_metas() const { return var_ ? var_->num_projs() : 0; }
+    size_t num_metas() const { return metas_.size(); }
     /// The meta variable @p def is, under its markers.
     std::optional<size_t> meta(const Def* def) const {
         for (;;) {
@@ -236,15 +257,18 @@ private:
             if (!axm || curry != 0 || axm->plugin() != Plugin_Id) break;
             def = def->as<App>()->arg();
         }
-        if (def == var_) return 0;
-        if (auto ex = def->isa<Extract>(); ex && ex->tuple() == var_) return Lit::isa(ex->index());
+        if (auto i = fe::lookup(meta_ids_, def)) return *i;
         return {};
     }
     u32 tied(const Def* rhs) const;
 
     DefSet seen_;
+    DefVec formats_;
+    DefVec sizes_;
     ankerl::unordered_dense::map<u64, Want> marks_; ///< The marker of each meta variable of the current rule.
-    const Var* var_ = nullptr;
+    const Var* var_ = nullptr;                      ///< The Var of the current rule.
+    DefVec metas_; ///< The meta variables of the current rule: a family parameter, then the Var's projections.
+    DefMap<size_t> meta_ids_;
     DefMap<u32> def2node_;
     ankerl::unordered_dense::map<Node, u32, Node::Hash> node2id_;
     std::vector<Node> nodes_;
@@ -256,12 +280,68 @@ private:
     friend std::string sig(const Table&, u32, const std::vector<Meta>&, bool);
 };
 
-void Table::add(const Rule* rule) {
+/// Adds the Rule in the body of the implicit family @p lam, possibly under further implicit families.
+/// If a `refly.check` in that Rule or its guard mentions the family parameter, it is instantiated at each value of its
+/// universe that the checks admit, and the guard decides once all are instantiated. Otherwise, the parameter is a meta
+/// variable of the Rule.
+void Table::family(Lam* lam) {
+    if (!seen_.emplace(lam).second) return;
+    auto body = lam->body();
+    while (body->isa_mut<Lam>() && body->type()->as<Pi>()->is_implicit())
+        body = body->as_mut<Lam>()->body();
+    auto rule = body->isa<Rule>();
+    if (!rule) lam->blame("x86_isel: the body of the family `{}` is no rule", lam).bail();
+    auto param = lam->has_var();
+    if (!param) return collect(lam->body());
+
+    // A condition that also mentions an inner family parameter is decided once that one is instantiated.
+    auto conds = DefVec();
+    auto done  = DefSet();
+    for (auto def : {rule->type()->dom(), rule->type()->codom(), rule->rhs()})
+        checks(def, conds, done);
+    std::erase_if(conds, [&](const Def* c) {
+        auto fvs = c->free_vars();
+        return fvs.size() != 1 || !fvs.contains(param);
+    });
+    if (conds.empty() && !rule->guard()->has_free_var(param)) {
+        if (lam->body() != rule) lam->blame("x86_isel: `{}` of `{}` must be instantiated", lam->dom(), lam).bail();
+        return add(rule, param);
+    }
+
+    auto& w       = lam->world();
+    auto dom      = lam->dom();
+    auto universe = dom == w.type_nat() ? &sizes_ : dom == w.arr(2, w.type_nat()) ? &formats_ : nullptr;
+    if (!universe) lam->blame("x86_isel: no values to instantiate `{}` of `{}` with", dom, lam).bail();
+    for (auto val : *universe) {
+        auto ok = true;
+        for (auto cond : conds) {
+            auto c = Lit::isa<bool>(VarRewriter(param, val).rewrite(cond));
+            if (!c) lam->blame("x86_isel: cannot decide `{}` of `{}` at `{}`", cond, lam, val).bail();
+            ok &= *c;
+        }
+        if (ok) collect(lam->reduce_body(val));
+    }
+}
+
+/// Adds @p rule, whose meta variables are preceded by the family parameter @p param, if any.
+void Table::add(const Rule* rule, const Var* param) {
     if (!seen_.emplace(rule).second) return;
-    if (!rule->is_closed()) rule->blame("x86_isel: rule `{}` is not closed", rule).bail();
+    auto fvs = rule->free_vars();
+    if (!(fvs.empty() || (param && fvs.size() == 1 && fvs.contains(param))))
+        rule->blame("x86_isel: rule `{}` is not closed", rule).bail();
     if (rule->guard() == rule->world().lit_ff()) return;
 
     var_ = rule->has_var();
+    metas_.clear();
+    meta_ids_.clear();
+    if (param) metas_.emplace_back(param);
+    if (var_) {
+        auto n = var_->num_projs();
+        for (size_t i = 0; i != n; ++i)
+            metas_.emplace_back(n == 1 ? var_ : var_->proj(n, i));
+    }
+    for (size_t i = 0; i != metas_.size(); ++i)
+        meta_ids_[metas_[i]] = i;
     marks_.clear();
     auto lhs    = rule->lhs();
     auto mapped = u32(-1);
@@ -333,11 +413,11 @@ std::vector<Table::Meta> Table::metas(const Rule* rule) {
     auto res = std::vector<Meta>();
     auto n   = num_metas();
     for (size_t i = 0; i != n; ++i) {
-        auto meta  = var_->proj(n, i);
+        auto meta  = metas_[i];
         auto type  = meta->type();
-        bool param = !uses(rule->rhs(), var_, i);
+        bool param = !uses(rule->rhs(), meta, var_);
         for (size_t j = 0; j != n && !param; ++j)
-            param = j != i && uses(var_->proj(n, j)->type(), var_, i);
+            param = j != i && uses(metas_[j]->type(), meta, var_);
 
         auto want = Want::Param;
         if (!param) {
@@ -380,7 +460,7 @@ void Table::guard(const Def* g, std::vector<Meta>& metas) {
 
     auto set = [&](const Def* meta, Want from, Want to) {
         for (size_t i = 0; i != num_metas(); ++i)
-            if (var_->proj(num_metas(), i) == meta && metas[i].want == from) {
+            if (metas_[i] == meta && metas[i].want == from) {
                 metas[i].want = to;
                 return;
             }
@@ -402,15 +482,13 @@ u32 Table::node(const Def* def) {
 }
 
 u32 Table::node_(const Def* def) {
+    if (auto i = fe::lookup(meta_ids_, def)) return hole(*i);
     if (var_ && def == var_) {
-        if (num_metas() == 1) return hole(0);
         auto ops = std::vector<u32>();
-        for (size_t i = 0; i != num_metas(); ++i)
+        for (size_t i = num_metas() - var_->num_projs(); i != num_metas(); ++i)
             ops.emplace_back(hole(i));
         return make({Kind::Tuple, 0, std::move(ops)});
     }
-    if (auto ex = def->isa<Extract>(); ex && var_ && ex->tuple() == var_)
-        if (auto i = Lit::isa(ex->index())) return hole(*i);
 
     if (auto addr = Axm::isa<x86_isel::addr>(def)) return marked(addr->arg(), Want::Addr);
     if (auto ri = Axm::isa<x86_isel::reg_imm>(def)) return widened(ri->arg(), Want::RegImm);
@@ -921,6 +999,7 @@ void Gen::start() {
 
     auto table = Table();
     table.commutes(world().annex<commutes>());
+    table.universes(world().annex<formats>(), world().annex<sizes>());
     for (auto f : flags)
         table.collect(world().annex(f));
     table.sort();

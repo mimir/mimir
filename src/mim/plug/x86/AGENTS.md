@@ -67,7 +67,7 @@ Done (on `feature/x86`):
 
 - `x86` plugin (`src/mim/plug/x86/`), with `mem.add_mem`, `core.legalize_dyn_idx`, and `mem.legalize_ptr` (each if `x86` is loaded), `x86.legalize`, `x86.isel`, `x86.schedule`, `x86.spilling`, `x86.constrain`, `x86.color`, and `x86.emit` at the end of the default pipeline in `opt.mim`; by then no axiom pins a continuation's type, so every continuation has its `mem.M`.
 - `x86.mim`: `Flags`, `Addr` (`Base`, `Index`), `Spill`, `addr`, `scale_1`/`_2`/`_4`/`_8`, `index`, `lea`, `mov`, `rm`, `rm1`, `mr`, `load`, `store`, `add`, `sub`, `and`, `or`, `xor`, `imul`, `shl`, `shr`, `sar`, `movzx`, `movsx`, `trunc`, `cmp`, `test`, the condition-code families `cc` and `cmovcc`, `spill`, `reload`, `in` with the module `reg` of the register lets `x86.reg.rax` … `x86.reg.r15`, plus the size predicates.
-  For floating point it adds `fin` with the module `freg` of `x86.freg.xmm0` … `xmm15`, `fmov` (a literal from the constant pool), `fload`/`fstore`, `FSpill` with `fspill`/`freload`, `fadd`/`fsub`/`fmul`/`fdiv`, `fsqrt`/`fabs`, the family `fcmp` in the order of `math.cmp`, `fsel`, and `i2f`/`u2f`/`f2i`/`f2u`/`f2f`.
+  For floating point it adds `fin` with the module `xmm` of `x86.xmm.xmm0` … `xmm15`, `fmov` (a literal from the constant pool), `fload`/`fstore`, `FSpill` with `fspill`/`freload`, `fadd`/`fsub`/`fmul`/`fdiv`, `fsqrt`/`fabs`, the family `fcmp` in the order of `math.cmp`, `fsel`, and `i2f`/`u2f`/`f2i`/`f2u`/`f2f`.
 - `core.legalize_dyn_idx` turns each `Idx n` with a dynamic `n` into `I64`, ignoring the modulus as `ll` does; it must run after the last specialization, which is why it sits here and not in `core.legalize_idx`.
 - `mem.legalize_ptr` (`src/mim/plug/mem/phase/legalize_ptr.cpp`) runs after `ll.emit`, right before `x86.legalize`: every `mem.Ptr (T, a)` becomes the byte pointer `mem.Ptr (I8, a)`, an operation that needs a typed pointer gets a `core.bitcast` of it (`coerce_leaf`), and `mem.lea` becomes `mem.ptradd` with x86's layout: a literal byte offset, or `core.wrap.mul (conv.u i64 i, size)` for a dynamic index; `mem.assume` vanishes and `mem.mslot` gets its size in bytes.
   An index `conv.u n y` that `core.legalize_idx` or `core.legalize_dyn_idx` kept for the type of `lea` becomes `core.rem n y` for a literal odd `n` (an `and` for a power of two) and `y` for a dynamic one.
@@ -144,7 +144,7 @@ Done (on `feature/x86`):
   Every rule is a rule of `x86_isel`.
   An Extract at a dynamic index has root `0`, which is how the rules for a select `(x, y)#c` apply.
   A cast between pointer types is a no-op to isel: a generated matcher binds a pointer hole to what is under it (`x86::strip_ptr_cast`), and the rewrite drops it.
-  Which operand sizes an x86 instruction takes is stated by the `refly.check` in its codomain; the instance lists of `x86_isel` only name sizes it accepts.
+  Which operand sizes an x86 instruction takes is stated by the `refly.check` in its codomain; `x86_isel.gen` instantiates a family only at sizes it accepts.
   `match` tries every rule with the Def's root; an operand of a node is a projection of its argument; an inner node must be `sole` (its value and its parent's operand tuple have no other user).
   A match is an `Alt` with typed `Demand`s on the operands and the inner nodes it covers (`Cover`).
   `ISel::analyze()` builds the PBQP generically from that: every operation with a match is a node, inner alternatives are the classes of covers with equal demands (resolved bottom-up), edges price `conv` between rule type and hole type, and all-zero edges are left out.
@@ -329,7 +329,7 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 
 - *sole*: an inner node's value has no user outside the match, so the match does not duplicate it; required for loads.
 - *range*: a literal fits its encoding.
-- *size*: the operand size is one the instruction supports; this is the `refly.check` in the instruction's codomain, and the instance lists of `x86_isel` only name such sizes.
+- *size*: the operand size is one the instruction supports; this is the `refly.check` in the instruction's codomain, at which alone `x86_isel.gen` instantiates a family.
 - *memory order*: nothing may lie between the memory operations a match covers; the matcher rejects such a match before the PBQP is built.
 - *availability*: if the replacement sits at an inner node's place in the memory order (`x86.rm` sits at its load), the other holes must be available there.
 
@@ -373,7 +373,11 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
   `Rewrite::tied` marks the meta variables a two-address instruction of the rhs overwrites (`insn::tied`, which `constraint()` shares); an alternative adds `insn::Copy` for each that something else uses (`ISel::overwritten`), and a swap of a commuting node that saves such a copy is kept.
   An address form converted by `lea` adds 64-bit values without overwriting either, at the cost of an `add`, so it wins exactly where the `add` needs such a copy.
   Without liveness, a parameter or loop φ never counts as overwritten, since its other uses are mostly in other continuations (`lit/mem/seo/dont_prop_old.mim` regresses otherwise).
-  The frontend rejects a rule whose type mentions one of its meta variables, so a size the type names is a family parameter: a conversion of `core.conv` takes both sizes, one instance per pair of register sizes.
+  The frontend rejects a rule whose type mentions one of its meta variables, so a size or format the type names is an implicit family parameter, `{s: Nat}` or `{pe: «2; Nat»}`.
+  `Table::family` instantiates it at each of `x86_isel.sizes` or `x86_isel.formats` that the `refly.check`s in the rule's type and rhs admit, if those or the guard mention it, and lets the guard decide once every parameter of nested families (`{s: Nat} {d: Nat}`; one `{s d: Nat}` would be a `«2; Nat»`) is instantiated.
+  The guards say what no instruction type can: a conversion narrows or widens (`narrows`, `widens`), `select8` takes `Bool` and `i8`, and `rm`/`mr` take what `x86.load` takes (`x86.is_gpr`), since their folded load is not in their rhs.
+  An implicit family parameter that neither a check nor the guard mentions becomes the first meta variable of the rule instead (`Table::add`'s `param`), which normalizer rules generic in their sizes will need.
+  Every float instruction checks its format in its codomain, with `x86.fpe pe` where the codomain names it and `x86.fok pe n` on a `Nat` inside it otherwise (`Idx (fok pe 2)` for `fcmp`, `mem.M (fok pe 0)` for `fstore`); so every float family takes `{pe}` but `f2f`, whose two explicit pairs leave out the same-format ones.
 - The build runs `mim` with `x86_isel` loaded as a module, so `x86` and `x86_isel` exist only if `MIM_X86` (neither `MIM_STATIC_PLUGINS` nor `MIM_NATIVE_MIM`); lit then excludes `lit/x86/` and drops the `x86_64-linux` feature.
   Generating needs `x86.mim` but not `libmim_x86`.
 
@@ -408,7 +412,7 @@ axm fin: [r: I4] → {pe: «2; Nat»} → math.F pe → math.F pe;
 ```
 
 - `x86.in r v` is `v`, which lives in register `r` in hardware encoding order (rax = 0, rcx = 1, rdx = 2, rbx = 3, rsp = 4, rbp = 5, rsi = 6, rdi = 7, r8 = 8, …, r15 = 15) and `x86.fin` the same for an XMM register.
-  The lets `x86.reg.rax = 0I4` etc. form the module `x86.reg` and the lets `x86.freg.xmm0 = 0I4` etc. the module `x86.freg`, whose subtags are in that order; C++ takes `Num_Regs`/`Num_Fpr` and a register's encoding from them (`Annex::num<reg>()`, `encoding(reg::rax)`), so the registers are written down once.
+  The lets `x86.reg.rax = 0I4` etc. form the module `x86.reg` and the lets `x86.xmm.xmm0 = 0I4` etc. the module `x86.xmm`, whose subtags are in that order; C++ takes `Num_Regs`/`Num_Xmm` and a register's encoding from them (`Annex::num<reg>()`, `encoding(reg::rax)`), so the registers are written down once.
 - `I4` makes "a general-purpose register" a typing fact and the `math.F pe` of `fin` a floating-point one; the width comes from `s`, so al/ax/eax/rax need no names, and since one value occupies a whole physical register, subregisters cannot alias.
 - `in` and `fin` are no instructions: they are not scheduled and sit on no chain, like `x86.addr`.
 - Not wrapped: literals (immediates), `mem.M`, `Flags` (one flags register), `Spill s`/`FSpill pe` (a stack slot each, in `emit`), `Addr` itself (its base and index are wrapped inside it), and the `Bool` of a `cc` that only a branch consumes.
