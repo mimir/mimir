@@ -1,0 +1,11 @@
+# mach
+
+- The plugin `mach` is everything target-independent of the native backends `x86` and `arm`: the axioms `Flags`, `Spill`, `in`, `sched`, `slot`, `load`, `store`, `spill`, `reload`, the float format checks `fpe`/`fok`, the float rule types and the families `float.arith`/`float.unary`, the isel guard `lit`, and the phases `legalize`, `schedule`, `spilling`, `constrain`, `color`, and `live`; besides `Liveness`, `ISel`, the bases `Emitter`/`AsmEmit`, `mach::Gen`, and `mach::Target`.
+- Its code sees `core`, `mem`, and `mach` directly; there is no flag table of annexes in the Target.
+  A backend's Target only adds its instructions (`is_machine_insn`, `is_mem_insn`, `is_removable`), its register file, ABI, `constraint`, and `fits_imm`.
+- Plugins never link each other, so whatever a backend derives from or instantiates is header-only, and the longer parts are compiled once into `libmim_mach` and reached via `GET_FUN_PTR`, as `ll::Emitter` does: `mim_mach_emit` (the control flow behind `Emitter::emit`, which owns the `Liveness`), `mim_mach_isel` (the factory behind `hook_isel`), and `mim_mach_gen` (behind `<backend>_isel.gen`, which needs `core`/`math`/`refly`).
+  Keep `Liveness` out of the `Emitter` class: its constructor lives in `libmim_mach`, which a backend cannot link.
+- `hook` constructs a phase with `Target::of(driver)`, the one loaded backend's Target; the phases read their `-X` arguments as the backend's (`-X x86:k=3`).
+- After `legalize`, no `core.Ptr` is left: pointers are `I64` and memory goes through `load`/`store`, which isel must replace (`Target::is_lowered`).
+- `Liveness` is slated for replacement; don't build further analyses on it.
+- Inside a class derived from `Emitter` or `FunPhase`, a bare `target()` is the base's accessor; pass the backend's `x86::target()`/`arm::target()` to the base constructor explicitly.

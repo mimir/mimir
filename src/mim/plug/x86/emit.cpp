@@ -7,8 +7,7 @@
 
 #include <mim/plugin.h>
 
-#include <mim/native/emit.h>
-
+#include <mim/plug/mach/emit.h>
 #include <mim/plug/math/math.h>
 
 #include "mim/plug/x86/insn.h"
@@ -18,8 +17,8 @@
 namespace mim::plug::x86 {
 
 using namespace std::string_literals;
-using native::Reg;
-using native::Src;
+using mach::Reg;
+using mach::Src;
 
 namespace {
 
@@ -87,10 +86,10 @@ nat_t width(const Def* type) {
 }
 
 /// Writes one function in AT&T syntax.
-class Emitter : public native::Emitter {
+class Emitter : public mach::Emitter {
 public:
     Emitter(std::ostream& os, Emit& emit, Lam* fun)
-        : native::Emitter(x86::target(), os, emit, fun)
+        : mach::Emitter(x86::target(), os, emit, fun)
         , emit_(emit) {}
 
 private:

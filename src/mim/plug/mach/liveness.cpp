@@ -1,11 +1,11 @@
-#include "mim/liveness.h"
+#include "mim/plug/mach/liveness.h"
 
 #include <deque>
 #include <ranges>
 
-#include "mim/world.h"
+#include <mim/world.h>
 
-namespace mim {
+namespace mim::plug::mach {
 
 Liveness::Liveness(const Target& target, Lam* fun)
     : target_(&target) {
@@ -242,4 +242,4 @@ const Def* Assign::raw(const Def* def) {
     return Rewriter::rewrite(def);
 }
 
-} // namespace mim
+} // namespace mim::plug::mach

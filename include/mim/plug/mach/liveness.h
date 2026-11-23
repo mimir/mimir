@@ -4,12 +4,13 @@
 #include <array>
 #include <ranges>
 
-#include "mim/def.h"
-#include "mim/lam.h"
-#include "mim/rewrite.h"
-#include "mim/target.h"
+#include <mim/def.h>
+#include <mim/lam.h>
+#include <mim/rewrite.h>
 
-namespace mim {
+#include "mim/plug/mach/target.h"
+
+namespace mim::plug::mach {
 
 /// Calls @p f for each block, possibly repeatedly, that the jump @p term passes control or a return continuation to.
 inline void for_each_succ(const App* term, auto f) {
@@ -164,4 +165,4 @@ void interferences(const Liveness& live, const Liveness::Block& block, Keep keep
     def(live.params(block));
 }
 
-} // namespace mim
+} // namespace mim::plug::mach

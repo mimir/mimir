@@ -2,6 +2,7 @@
 
 #include <mim/plug/mach/target.h>
 
+#include "mim/plug/x86/imm.h"
 #include "mim/plug/x86/x86.h"
 
 namespace mim::plug::x86 {
@@ -27,7 +28,9 @@ public:
     size_t arg_reg(Class cls, size_t i) const final { return cls == Gpr ? Arg_Regs[i] : i; }
     size_t ret_reg(Class cls) const final { return cls == Gpr ? encoding(reg::rax) : 0; }
 
-    Constraint constraint(const App* insn) const final;
+    mach::Constraint constraint(const App* insn) const final;
+    /// A literal that fits a sign-extended 32-bit immediate.
+    bool fits_imm(const Def* lit) const final { return x86::fits_imm(lit); }
     bool is_removable(const App* insn) const final;
 };
 

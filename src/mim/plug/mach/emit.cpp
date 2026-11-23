@@ -1,43 +1,19 @@
-#include "mim/native/emit.h"
+#include "mim/plug/mach/emit.h"
 
 #include <ranges>
 
-namespace mim::native {
+#include "mim/plug/mach/liveness.h"
 
-nat_t Emitter::nat(const Def* def) const {
-    if (auto l = Lit::isa(def)) return *l;
-    def->blame("{} backend: expected a literal, got `{}`", backend(), def).bail();
-}
+namespace mim::plug::mach {
 
 void Emitter::collect(const Def* def, DefSet& done) {
-    if (def->isa_mut() || def->is_closed() || target_.is_mem(def) || !done.emplace(def).second) return;
-    if (target_.is_in(def)) {
-        regs_.emplace(target_.strip(def), Target::in_reg(def));
+    if (def->isa_mut() || def->is_closed() || Target::is_mem(def) || !done.emplace(def).second) return;
+    if (Target::is_in(def)) {
+        regs_.emplace(Target::strip(def), Target::in_reg(def));
         return;
     }
     for (auto op : def->ops())
         collect(op, done);
-}
-
-size_t Emitter::spill_slot(const Def* def) {
-    auto [i, ins] = slots_.emplace(def, num_slots_);
-    if (ins) ++num_slots_;
-    return i->second;
-}
-
-size_t Emitter::def_reg(const Def* def) const {
-    if (auto r = fe::lookup(regs_, def)) return *r;
-    def->blame("{} backend: `{}` has no register", backend(), def).bail();
-}
-
-size_t Emitter::use_reg(const Def* def) const {
-    if (target_.is_in(def)) return Target::in_reg(def);
-    if (Lit::isa(def)) def->blame("{} backend: literal `{}` cannot be an operand here", backend(), def).bail();
-    def->blame("{} backend: `{}` is not in a register", backend(), def).bail();
-}
-
-void Emitter::use_flags(const Def* fl) const {
-    if (fl != flags_) fl->blame("{} backend: flags `{}` are clobbered before their use", backend(), fl).bail();
 }
 
 /// Sequentializes the parallel copies @p moves between registers and @p slot_moves between spill slots.
@@ -92,7 +68,7 @@ void Emitter::copy(Lam* target, const Def* arg) {
     for (size_t i = 0; i != n; ++i) {
         auto x = target->var(n, i);
         auto a = arg->proj(n, i);
-        if (target_.is_mem(x)) continue;
+        if (Target::is_mem(x)) continue;
         if (auto cls = target_.cls(x); cls == Target::Stack)
             slot_moves.emplace_back(spill_slot(x), spill_slot(a));
         else if (auto r = fe::lookup(regs_, x))
@@ -110,8 +86,8 @@ void Emitter::call(Lam* callee, const Def* arg) {
     auto moves = Moves();
     auto num   = std::array<size_t, Target::Num_Classes>{};
     for (size_t i = 0; i + 1 < n; ++i) {
-        if (auto x = arg->proj(n, i); !target_.is_mem(x)) {
-            auto cls = target_.cls(target_.strip(x));
+        if (auto x = arg->proj(n, i); !Target::is_mem(x)) {
+            auto cls = target_.cls(Target::strip(x));
             auto& c  = num[cls];
             if (c == target_.num_arg_regs(cls))
                 arg->blame("{} backend: too many arguments are not supported yet", backend()).bail();
@@ -128,7 +104,7 @@ void Emitter::call(Lam* callee, const Def* arg) {
     auto m    = k->num_vars();
     auto back = Moves();
     for (size_t i = 0; i != m; ++i)
-        if (auto x = k->var(m, i); !target_.is_mem(x)) {
+        if (auto x = k->var(m, i); !Target::is_mem(x)) {
             auto cls = target_.cls(x);
             if (auto r = fe::lookup(regs_, x)) back.emplace_back(Reg{*r, cls}, Src{.reg = {target_.ret_reg(cls), cls}});
         }
@@ -137,35 +113,35 @@ void Emitter::call(Lam* callee, const Def* arg) {
 }
 
 void Emitter::insn(const App* app) {
-    const auto& ann = target_.annexes();
-    if (Target::is_axm(ann.sched, app)) {
+    if (Axm::isa<sched>(app)) {
         auto f   = Target::sched_insn(app);
         auto res = app->proj(2, 1);
-        if (Target::is_axm(ann.spill, f, 1)) return spill(source(app->arg()), app->arg()->type(), spill_slot(res));
-        if (Target::is_axm(ann.reload, f, 1))
+        if (Target::is_axm(Annex::base<mach::spill>(), f, 1))
+            return spill(source(app->arg()), app->arg()->type(), spill_slot(res));
+        if (Target::is_axm(Annex::base<mach::reload>(), f, 1))
             return reload(Reg{def_reg(res), target_.cls(res)}, res->type(), spill_slot(app->arg()));
-    } else if (Target::is_axm(ann.slot, app)) {
+    } else if (Axm::isa<slot>(app)) {
         auto first = alloc_slots(nat(app->callee()->as<App>()->arg()));
         return slot_addr(def_reg(app->proj(2, 1)), first, num_slots_ - first);
     }
     step(app);
 }
 
-void Emitter::block(const Liveness::Block& b) {
-    for (auto app : b.insns)
+void Emitter::block(Lam* lam, const fe::Vector<const App*>& insns) {
+    for (auto app : insns)
         insn(app);
 
-    auto term   = b.lam->body()->as<App>();
+    auto term   = lam->body()->as<App>();
     auto arg    = term->arg();
     auto callee = term->callee();
     if (callee == ret_) {
         auto moves = Moves();
         for (auto a : term->args()) {
-            if (target_.is_mem(a)) continue;
-            auto cls = target_.cls(target_.strip(a));
+            if (Target::is_mem(a)) continue;
+            auto cls = target_.cls(Target::strip(a));
             moves.emplace_back(Reg{target_.ret_reg(cls), cls}, source(a));
         }
-        if (moves.size() > 1) b.lam->blame("{} backend: `{}` returns more than one value", backend(), b.lam).bail();
+        if (moves.size() > 1) lam->blame("{} backend: `{}` returns more than one value", backend(), lam).bail();
         parallel(std::move(moves), {});
         epilogue();
     } else if (auto f = Lam::isa_mut_returning(callee)) {
@@ -173,12 +149,12 @@ void Emitter::block(const Liveness::Block& b) {
     } else if (auto ex = callee->isa<Extract>()) {
         auto targets = ex->tuple();
         if (targets->num_projs() != 2)
-            b.lam->blame("{} backend: only two-way branches are supported yet", backend()).bail();
+            lam->blame("{} backend: only two-way branches are supported yet", backend()).bail();
         auto [e, t] = targets->projs<2>([](const Def* d) { return Lam::isa_mut_basicblock(d); });
-        if (!e || !t) b.lam->blame("{} backend: `{}` branches to something other than blocks", backend(), b.lam).bail();
+        if (!e || !t) lam->blame("{} backend: `{}` branches to something other than blocks", backend(), lam).bail();
         auto c          = ex->index();
         auto trampoline = takes_values(target_, t);
-        auto t_lbl      = trampoline ? label(b.lam) + ".t" : label(t);
+        auto t_lbl      = trampoline ? label(lam) + ".t" : label(t);
         if (auto app = target_.isa_sched_cc(c)) {
             use_flags(app->arg());
             branch_cc(std::get<0>(Axm::get(Target::sched_insn(app)))->sub(), t_lbl);
@@ -200,15 +176,16 @@ void Emitter::block(const Liveness::Block& b) {
         copy(bb, arg);
         jump(bb);
     } else {
-        b.lam->blame("{} backend: cannot emit the jump to `{}`", backend(), callee).bail();
+        lam->blame("{} backend: cannot emit the jump to `{}`", backend(), callee).bail();
     }
 }
 
-void Emitter::emit(bool global) {
+void Emitter::run(bool global) {
+    auto live = Liveness(target_, fun_);
     if (!ret_) fun_->blame("{} backend: `{}` does not end in a return continuation", backend(), fun_).bail();
 
     auto done = DefSet();
-    for (const auto& b : live_.blocks()) {
+    for (const auto& b : live.blocks()) {
         for (auto insn : b.insns) {
             collect(insn->callee(), done);
             collect(insn->arg(), done);
@@ -228,13 +205,13 @@ void Emitter::emit(bool global) {
             if (used[c][r] && !target_.caller_saved(cls, r) && !target_.reserved(cls, r)) saved_[c].emplace_back(r);
     }
 
-    auto order = layout(live_);
+    auto order = layout(live);
 
     auto n     = fun_->num_vars();
     auto moves = Moves();
     auto num   = std::array<size_t, Target::Num_Classes>{};
     for (size_t i = 0; i + 1 < n; ++i) {
-        if (auto x = fun_->var(n, i); !target_.is_mem(x)) {
+        if (auto x = fun_->var(n, i); !Target::is_mem(x)) {
             auto cls = target_.cls(x);
             auto& c  = num[cls];
             if (c == target_.num_arg_regs(cls))
@@ -251,16 +228,18 @@ void Emitter::emit(bool global) {
         next_  = i + 1 != order.size() ? order[i + 1]->lam : nullptr;
         if (i != 0) label_here(label(b->lam));
         flags_ = nullptr;
-        block(*b);
+        block(b->lam, b->insns);
     }
 
     auto sym = symbol(fun_);
     if (global) std::println(os_, "\t.globl {}", sym);
-    if (target_.is_elf()) std::println(os_, "\t.type {}, {}", sym, function_type());
+    if (Target::is_elf()) std::println(os_, "\t.type {}, {}", sym, function_type());
     std::println(os_, "{}:", sym);
     prologue(os_);
     os_ << body_.view();
-    if (target_.is_elf()) std::println(os_, "\t.size {}, .-{}", sym, sym);
+    if (Target::is_elf()) std::println(os_, "\t.size {}, .-{}", sym, sym);
 }
 
-} // namespace mim::native
+void mim_mach_emit(Emitter& emitter, bool global) { emitter.run(global); }
+
+} // namespace mim::plug::mach

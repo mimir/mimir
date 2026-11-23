@@ -20,8 +20,6 @@
 
 namespace mim::plug::mach {
 
-namespace rules = native::rules;
-
 using rules::Ref;
 using rules::Ty;
 using rules::Want;
@@ -850,13 +848,13 @@ void Table::dump(std::ostream& os) const {
     std::println(os);
     std::println(os, "#include <mim/world.h>");
     std::println(os);
-    std::println(os, "#include <mim/native/rule_table.h>");
+    std::println(os, "#include <mim/plug/mach/rule_table.h>");
     std::println(os);
     std::println(os, "#include \"mim/plug/{0}/{0}.h\"", gen_.backend());
     std::println(os);
     std::println(os, "namespace mim::plug::{}::rules {{", gen_.backend());
     std::println(os);
-    std::println(os, "using namespace mim::native::rules;");
+    std::println(os, "using namespace mim::plug::mach::rules;");
     std::println(os);
 
     auto code     = Code(os, *this);

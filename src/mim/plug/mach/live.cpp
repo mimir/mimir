@@ -1,10 +1,9 @@
 #include <print>
 
-#include "mim/liveness.h"
+#include "mim/plug/mach/liveness.h"
+#include "mim/plug/mach/regalloc.h"
 
-#include "mim/native/regalloc.h"
-
-namespace mim::native {
+namespace mim::plug::mach {
 
 namespace {
 
@@ -30,4 +29,4 @@ void Live::visit(Lam* fun) {
                      block.max_live[Liveness::Flags]);
 }
 
-} // namespace mim::native
+} // namespace mim::plug::mach

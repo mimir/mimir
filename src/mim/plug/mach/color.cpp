@@ -4,12 +4,12 @@
 #include <pbqp/dot.h>
 #include <pbqp/solver.h>
 
-#include "mim/liveness.h"
-#include "mim/rewrite.h"
+#include <mim/rewrite.h>
 
-#include "mim/native/regalloc.h"
+#include "mim/plug/mach/liveness.h"
+#include "mim/plug/mach/regalloc.h"
 
-namespace mim::native {
+namespace mim::plug::mach {
 
 namespace {
 
@@ -112,7 +112,7 @@ private:
     void copies();
     void solve();
 
-    bool is_value(const Def* v) const { return mim::is_value(v, cls_, target_); }
+    bool is_value(const Def* v) const { return mach::is_value(v, cls_, target_); }
     void add(const Def* v);
     pbqp::Costs* costs(const Def* v) {
         auto id = fe::lookup(ids_, target_.strip(v));
@@ -270,7 +270,7 @@ public:
     void run();
 
 private:
-    bool is_value(const Def* v) const { return mim::is_value(v, cls_, target_); }
+    bool is_value(const Def* v) const { return mach::is_value(v, cls_, target_); }
     void walk(const Def* def, const Def* at);
     std::optional<size_t> reg(const Def* v) const {
         if (auto r = fe::lookup(regs_, target_.strip(v))) return *r;
@@ -381,4 +381,4 @@ std::ostream* Color::dot() {
     return nullptr;
 }
 
-} // namespace mim::native
+} // namespace mim::plug::mach

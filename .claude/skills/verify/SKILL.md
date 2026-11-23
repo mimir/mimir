@@ -22,7 +22,7 @@ Never `git stash` to get a baseline; `scripts/oracle.sh rev` uses a scratch work
 | `include/mim/*.h` signatures, `py/`, a `.mim` surface `py/` mirrors | `cmake --build build --target test-py` (Linux CI does not build Python) |
 | library APIs covered by `test/*.cpp` | `ctest --test-dir build --output-on-failure` |
 | `src/pbqp/` | `build/bin/mim-pbqp-test` |
-| `src/mim/plug/x86/` | `scripts/lit.sh x86/` + `scripts/native_ksweep.sh`, then the `x86-status` skill |
+| `src/mim/plug/x86/` | `scripts/lit.sh x86/` + `scripts/mach_ksweep.sh`, then the `x86-status` skill |
 | `nest.cpp`/`schedule.cpp` | `nest` and `ll` oracles besides `opt` |
 | hot paths (`Def`, `World`, hashing, `Checker`, `Zonker`, SEO) or a claimed speedup | `scripts/perf_ab.sh` on a Release tree |
 | `lit/*.mim` only | `scripts/lit.sh <those tests>` (re-stages for you) |

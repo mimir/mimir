@@ -14,11 +14,10 @@ namespace mim::plug::mach {
 /// No type changes, so each Nest is rewritten in place.
 class Schedule : public NestPhase<Lam>, private Rewriter {
 public:
-    /// Every backend's @p target is a mach::Target.
-    Schedule(World& world, flags_t annex, const mim::Target& target)
+    Schedule(World& world, flags_t annex, const Target& target)
         : NestPhase(world, annex, true)
         , Rewriter(world)
-        , target_(static_cast<const Target&>(target)) {}
+        , target_(target) {}
 
     using NestPhase::world;
 

@@ -50,20 +50,11 @@ Plugin-specific notes live in `plug/AGENTS.md` and below; phase-specific ones in
 - `extern` forward declarations are deliberately no World externals.
 - Verify any change with the 5-mode byte oracle (`-o -`, `--no-opt -o -`, `--mim-typed-let -o -`, `--no-opt -a -o -`, `--no-opt --output-dot -` over all lit/extra `.mim`; stdout, stderr, and exit code) plus `test-roundtrip`.
 
-## Native backends (`target.h`, `liveness.h`, `asm.h`)
+## Native backends (`target.h`)
 
-- `Target`, `Liveness`, `AsmEmit`, and the phases in `native/` (namespace `mim::native`: isel, spilling, constrain, color, live, and the emitter's control flow) are the target-independent parts of `x86` and `arm`.
-  They know `core.M` and the `mach` axioms only as the flags in `Target::Annexes`, and ask the Target virtual `is_lowered` for the rest, so libmim never includes a plugin header; ABI and constraints are `Target` virtuals as well.
-- A backend registers its `Target` via `Plugin::target`; `Driver::target` fails unless exactly one is loaded, since the docs build loads every plugin at once.
-- `Liveness` is slated for replacement; don't build further analyses on it.
-- The plugin `mach` is the machine-independent surface of the backends: `Flags`, `Spill`, `in`, `sched`, `slot`, `load`, `store`, `spill`, `reload`, the float format checks `fpe`/`fok`, the float rule types and the families `float.arith`/`float.unary`, the isel guard `lit`, and the phases `legalize`, `schedule`, `spilling`, `constrain`, `color`, and `live`.
-  `legalize` and `schedule` are its own (`mach::Legalize`, `mach::Schedule`); the others live in libmim.
-  It hooks the target-dependent phases with `native::hook`, which takes the Target from `Driver::target`; they read their `-X` arguments as the backend's (`-X x86:k=3`).
-  After `legalize`, no `core.Ptr` is left: pointers are `I64` and memory goes through `mach.load`/`mach.store`, which isel must replace (`is_lowered`).
-  The header-only `mach::Target` implements everything `mach` determines, so a backend's Target only adds its instructions, register file, ABI, and constraints.
-  The rule generator behind `<backend>_isel.gen` needs `core`/`math`/`refly`, so it lives in `mach` as `mim_mach_gen`, which the header-only `mach::Gen` reaches via `GET_FUN_PTR`, as `ll::Emitter` does.
-  It is not called `native`: that would shadow `native::` inside `mim::plug::<backend>`.
-- Inside a class derived from `native::Emitter` or `native::FunPhase`, a bare `target()` is the base's accessor; pass the backend's `x86::target()`/`arm::target()` to the base constructor explicitly.
+- `mim::Target` is all that libmim knows of a native backend: its name and `ptr_size` (`core.trait`).
+  A backend registers it via `Plugin::target`; `Driver::target` fails unless exactly one is loaded, since the docs build loads every plugin at once.
+- Everything else lives in the plugin `mach`, see `plug/mach/AGENTS.md`.
 
 ## Frontend (`ast/`)
 

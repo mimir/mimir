@@ -1,11 +1,10 @@
 #include <ranges>
 
-#include "mim/liveness.h"
+#include "mim/plug/mach/liveness.h"
+#include "mim/plug/mach/regalloc.h"
+#include "mim/plug/mach/subst.h"
 
-#include "mim/native/regalloc.h"
-#include "mim/native/subst.h"
-
-namespace mim::native {
+namespace mim::plug::mach {
 
 namespace {
 
@@ -121,4 +120,4 @@ void Constrain::visit(Lam* fun) {
     }
 }
 
-} // namespace mim::native
+} // namespace mim::plug::mach

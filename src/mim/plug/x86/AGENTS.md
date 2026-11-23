@@ -63,7 +63,7 @@ Everything stays in MimIR, libFirm style: no separate machine IR.
 
 ## Status
 
-The target-independent phases live in libmim (`src/mim/native/`), shared with `../arm/`: isel, spilling, constrain, color, live, and the emitter's control flow (`native::Emitter`).
+The target-independent phases live in the plugin `mach` (`src/mim/plug/mach/`), shared with `../arm/`: isel, spilling, constrain, color, live, and the emitter's control flow (`mach::Emitter`).
 The plugin `mach` holds the machine-independent axioms (`Flags`, `Spill`, `in`, `slot`, `spill`, `reload`, `fpe`/`fok`, the float rule types and the families `float.arith`/`float.unary`, the guard `lit`), the rule generator `mach::Gen`, and the phases `mach.spilling`, `mach.constrain`, `mach.color`, and `mach.live`, which take `x86::Target` from `Driver::target` and read `-X x86:<arg>`; so loading `x86` together with `arm` is an error.
 `mach::Target` implements what `mach` determines (classes, `in`, the spill instructions); this plugin supplies `x86::Target` (`include/mim/plug/x86/target.h`: memory instructions, register file, ABI, constraints) and its instruction printing.
 Their diagnostics read `<backend> backend: …`.
@@ -81,7 +81,7 @@ Done (on `feature/x86`):
   `Nat` literals stay `Nat` so they still work as type-level arguments, and become `I64` only as values.
   `core.nat.add`/`mul` become `core.wrap`, `core.nat.sub` a select of `core.wrap.sub` and `0` on `core.icmp.ul`, `core.nat.div`/`rem` `core.div.udiv`/`urem` on a `⊥` memory, `core.ncmp` the unsigned `core.icmp`, `core.idx` and `core.idx2nat` a `core.conv.u`, and a `core.bitcast` between types that became equal its operand.
   `mem.mslot` of a literal size becomes `mach.slot`; a dynamic size is an error.
-- `x86.isel` (`native::ISel` in `src/mim/native/isel.cpp` over the rules of `x86_isel`) covers `core.wrap`, `core.bit2` (and/or/xor), `core.shr`, `core.icmp`, `core.conv`, `mach.load`/`mach.store` of integers, `core.rem`, `core.div`, integer `core.bitcast`, and a select `(x, y)#c` (as `cmovcc`).
+- `x86.isel` (`mach::ISel` in `src/mim/plug/mach/isel.cpp` over the rules of `x86_isel`) covers `core.wrap`, `core.bit2` (and/or/xor), `core.shr`, `core.icmp`, `core.conv`, `mach.load`/`mach.store` of integers, `core.rem`, `core.div`, integer `core.bitcast`, and a select `(x, y)#c` (as `cmovcc`).
   Of `math` it covers `arith.add`/`sub`/`mul`/`div` in `f32` and `f64`, `abs`, `rt.sq`, `cmp` for the fourteen ordered and unordered predicates (not `f` and `t`, which normalize to constant booleans), a float select, `mach.load`/`mach.store` of a float, and `conv.s2f`/`f2s`/`f2f` plus `conv.u2f`/`f2u` with an `i32` integer; a float literal becomes `fmov`.
   `ll.drop_hints` removes the loop hints `ll.vec`/`ll.novec` before (`opt.mim`).
   Any other `core`/`mem`/`math` operation or `mach.load`/`mach.store` left in the selected world is an error naming the axiom.
@@ -91,12 +91,12 @@ Done (on `feature/x86`):
   So do `cmp`/`test` and `cc`, since flags are no register value: each consumer recomputes them right before itself, so at most one flags value is live and nothing clobbers it before its consumer.
   Instructions that `Scheduler::smart` hoists into a block are appended after that block's own ones, i.e., after the condition of its branch; so `chain()` appends a fresh `cmp`/`cc` for the branch at the very end.
   A continuation without a `mem.M`, a direct-style function with one, and a continuation whose body is no jump are errors.
-- `Liveness` (`mim::Liveness`, `src/mim/liveness.cpp`) is a side table over one scheduled function: blocks with their chains, predecessors and successors, live-in and live-out sets (path exploration per use), and MaxLive per register class (general-purpose, floating-point, flags; spill slots are class `Stack` and unbounded).
+- `Liveness` (`mach::Liveness`, `src/mim/plug/mach/liveness.cpp`) is a side table over one scheduled function: blocks with their chains, predecessors and successors, live-in and live-out sets (path exploration per use), and MaxLive per register class (general-purpose, floating-point, flags; spill slots are class `Stack` and unbounded).
   A value's class comes from its type: `math.F pe` is `Fpr`, `mach.Spill T` is `Stack`, `mach.Flags` is `Flags` (`mach::Target::cls`), everything else `Gpr`.
   A value is a non-memory result of a chain instruction or a non-memory parameter; a parameter is defined at block entry and a jump uses its arguments, so a parameter is never live-in.
   A branch on an `x86.cc` uses its flags; the `Bool` is a value only if something else uses it.
   `mach.live` prints it (`-X x86:live=<file>`) and is not part of the default pipeline.
-- `mach.spilling` (`native::Spilling`, `src/mim/native/spilling.cpp`) brings MaxLive of the general-purpose class down to `k` (14 by default, `-X x86:k=<n>`) and then the floating-point class down to `k` (16 by default) in a second, independent pass over the function, per function and in place (Braun & Hack, CC 2009):
+- `mach.spilling` (`mach::Spilling`, `src/mim/plug/mach/spilling.cpp`) brings MaxLive of the general-purpose class down to `k` (14 by default, `-X x86:k=<n>`) and then the floating-point class down to `k` (16 by default) in a second, independent pass over the function, per function and in place (Braun & Hack, CC 2009):
   - Global next-use distances by a fixpoint over the CFG, plus `2^20` across an edge into a smaller loop depth; loops are natural loops over the dominator tree (Cooper, Harvey, Kennedy) of the block graph, since `Nest` misses closed blocks.
   - `W_entry`: at a block whose predecessors are all processed, the candidates in a register at the end of all predecessors first, then those of some, by next use; otherwise (loop header) the candidates used in the loop first, then live-through ones only as far as the loop's MaxLive leaves room.
   - Per instruction: reload missing operands, `limit(W, k − extra)` (`div`/`idiv` need `rdx`), `limit(W, k − #defs)` after it; a call keeps at most `k − 9` general-purpose values across it (five callee-saved registers at `k = 14`) and no floating-point one, since every XMM register is caller-saved.
@@ -106,12 +106,12 @@ Done (on `feature/x86`):
   - Coupling reloads go to the end of the predecessor.
     EtaConv does not quite rule out critical edges: a hash-consed branch tuple can share one wrapper among several branches, so `mach.spilling` first gives each branch to such a target a fresh wrapper.
   - Reloads give a value several definitions; SSA reconstruction (Braun et al., CC 2013, every block sealed, union-find for trivial φ removal) runs symbolically first, so each block whose signature changes is rebuilt as a new Lam exactly once with its memory φs and new φ parameters appended.
-  - `mach.spill`/`mach.reload` are pure instructions on the chain via `sched` for either class; `native::Emitter` gives every `mach.Spill` value a stack slot of its own and has `x86.emit` turn them into stores and loads.
-- `mach.constrain` (`native::Constrain`, `src/mim/native/constrain.cpp`) runs after `mach.spilling`: right before an instruction with a fixed operand (`div`'s dividend in `rax`, a shift count in `rcx`) or a two-address operand that stays live, the block jumps to a fresh continuation that takes these operands; the fixed copies are wrapped in `mach.in`.
+  - `mach.spill`/`mach.reload` are pure instructions on the chain via `sched` for either class; `mach::Emitter` gives every `mach.Spill` value a stack slot of its own and has `x86.emit` turn them into stores and loads.
+- `mach.constrain` (`mach::Constrain`, `src/mim/plug/mach/constrain.cpp`) runs after `mach.spilling`: right before an instruction with a fixed operand (`div`'s dividend in `rax`, a shift count in `rcx`) or a two-address operand that stays live, the block jumps to a fresh continuation that takes these operands; the fixed copies are wrapped in `mach.in`.
   Likewise, right after an instruction with fixed results (`div`'s quotient in `rax` and remainder in `rdx`), the live ones go to a fresh continuation as `mach.in rax q`, `mach.in rdx r`, so a precolored live range ends at once; this costs no extra register, as the arguments die where the parameters are defined.
   The table of fixed operands, tied operands, and fixed results is `x86::Target::constraint` (`src/mim/plug/x86/target.cpp`), shared with the spiller, the colorer, and `emit`.
   `mach.spilling` counts these copies as `extra` registers; if an instruction would then need more than `k`, the operands to copy leave their registers at it instead and are reloaded at their next use.
-- `mach.color` (`native::Color`, `src/mim/native/color.cpp`) runs after `mach.constrain`, per function and in place:
+- `mach.color` (`mach::Color`, `src/mim/plug/mach/color.cpp`) runs after `mach.constrain`, per function and in place:
   - It first drops chain instructions none of whose results is used (to a fixpoint), so a result without a use is one whose register its instruction implies (`div`'s remainder); and it sets every block's filter to `ff`, since rebuilding a jump must not inline its target (pruning can make both targets of a branch α-equal, and the World then folds the branch).
   - One PBQP per register class with 16 options: `rsp` and `rbp` are ∞ and callee-saved registers cost 1 in the general-purpose one, all XMM registers are caller-saved and reserved ones do not exist in the floating-point one.
     A dead parameter is no node.
@@ -259,7 +259,7 @@ Frontend bugs that `x86_isel` hits (libmim, not fixed):
 
 Testing and tooling:
 
-- Only `emit_cf.mim`, `constrain.mim`, and `color.mim` run at a small `k` by default; `scripts/native_ksweep.sh` runs the whole allowlist at `k = 2`, `3`, `4`, and `6` via `--param x86_k=<n>` against each test's expected exit codes, but no CI job runs it yet.
+- Only `emit_cf.mim`, `constrain.mim`, and `color.mim` run at a small `k` by default; `scripts/mach_ksweep.sh` runs the whole allowlist at `k = 2`, `3`, `4`, and `6` via `--param x86_k=<n>` against each test's expected exit codes, but no CI job runs it yet.
   At `k = 2`, ten tests stop with "needs more than 2 registers", the error without fallback described under *Spilling*.
 - No lit test pins the parallel-copy cases directly (an `xchg` cycle, a memory-φ `push`/`pop`, callee-saved saves, the `trunc` division); only the manual sweep exercises them, at small `k`.
 - The emit tests match registers by pattern now; they check the chosen instructions and address modes, not the assignment.
@@ -357,7 +357,7 @@ Conditions come from a small fixed vocabulary instead of arbitrary predicates pe
 
 - `isel.cpp` has no rules of its own; `ISel::build` is the only builder.
   The PBQP construction, the rewrite, and the solvability checks are generic over the tables.
-- The rules move to Mim: the plugin `x86_isel` (`src/mim/plug/x86_isel/x86_isel.mim`) holds rule families, their instance tuples, and the phase `x86_isel.gen`, which writes every closed rule reachable from its annexes to `build/include/mim/plug/x86/isel_rules.h` (types in `include/mim/native/rule_table.h`; the generator is `mach::Gen` in `src/mim/plug/mach/gen.cpp`, which `x86_isel::Gen` gives the cost, tied operands, and address classification of `x86`): one C++ matcher per distinct lhs, one builder per distinct rhs, and a `Rewrite` row per rule with its cost, root axiom, non-terminal, and the `Want` of each meta.
+- The rules move to Mim: the plugin `x86_isel` (`src/mim/plug/x86_isel/x86_isel.mim`) holds rule families, their instance tuples, and the phase `x86_isel.gen`, which writes every closed rule reachable from its annexes to `build/include/mim/plug/x86/isel_rules.h` (types in `include/mim/plug/mach/rule_table.h`; the generator is `mach::Gen` in `src/mim/plug/mach/gen.cpp`, which `x86_isel::Gen` gives the cost, tied operands, and address classification of `x86`): one C++ matcher per distinct lhs, one builder per distinct rhs, and a `Rewrite` row per rule with its cost, root axiom, non-terminal, and the `Want` of each meta.
   The non-terminal of a rule and the want of a meta come from one classification of their types: `x86.Addr ff`/`tt` is `Base`/`Index` (`Addr` for a meta of a dynamic `i`), `[I64, I2]` is `Scaled`, anything else a register; a memory operation's rhs counts by its value, and an rhs of a dynamic address form is an error.
   A meta of type `Idx s` takes its want from a marker (`x86_isel.scaled`), else it is a register.
   An atomic rule has only holes that every non-terminal converts into, which `conv` decides.

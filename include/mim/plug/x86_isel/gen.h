@@ -11,7 +11,7 @@ public:
 
     u32 cost(const App* insn) const final;
     std::optional<size_t> tied(const App* insn) const final;
-    std::optional<native::rules::Want> classify(const Def* type) const final;
+    std::optional<mach::rules::Want> classify(const Def* type) const final;
 };
 
 } // namespace mim::plug::x86_isel

@@ -5,12 +5,13 @@
 
 #include <pbqp/graph.h>
 
-#include "mim/phase.h"
-#include "mim/target.h"
+#include <mim/driver.h>
+#include <mim/phase.h>
 
-#include "mim/native/rule_table.h"
+#include "mim/plug/mach/rule_table.h"
+#include "mim/plug/mach/target.h"
 
-namespace mim::native {
+namespace mim::plug::mach {
 
 /// @name Rules
 /// A rule rewrites a pattern over `core`/`mach`/`math` into a backend's term; the holes of the pattern are typed.
@@ -51,6 +52,18 @@ using Alts = fe::Vector<Alt>;
 
 ///@}
 
+/// A new ISel for the annex @p annex of a backend, with the rules @p table; compiled once into `libmim_mach`.
+extern "C" MIM_EXPORT Phase* mim_mach_isel(World&, flags_t annex, const rules::Table& table);
+
+/// Registers ISel with the rules @p table as the Phase of the backend's annex @p A.
+template<class A>
+void hook_isel(Flags2Phases& phases, const rules::Table& table) {
+    fe::assert_emplace(phases, Annex::base<A>(), [&table](World& world) {
+        return std::unique_ptr<Phase>(
+            world.driver().GET_FUN_PTR("mach", mim_mach_isel)(world, Annex::base<A>(), table));
+    });
+}
+
 /// Rewrites the `core`, `mach`, and `math` operations of a world that `mach.legalize` lowered into the
 /// instructions of a backend by the rules of its generated rules::Table. Everything this phase does not know is an
 /// error.
@@ -68,10 +81,6 @@ public:
         , target_(target)
         , table_(table) {}
 
-protected:
-    /// Does the literal @p lit fit a hole of type `Want::Imm`?
-    virtual bool fits_imm(const Def* lit) const = 0;
-
 private:
     /// @name Table
     ///@{
@@ -82,7 +91,9 @@ private:
     pbqp::Cost conv(Ty from, Want want) const;
     Ty leaf_ty(const Def* def) const;
     pbqp::Cost leaf(const Def* def, Want want) const { return conv(leaf_ty(def), want); }
-    bool literal(const Def* def, Want want) const { return Lit::isa(def) && (want == Want::Sh || fits_imm(def)); }
+    bool literal(const Def* def, Want want) const {
+        return Lit::isa(def) && (want == Want::Sh || target_.fits_imm(def));
+    }
     Want resolve(const Def* def, Want want) const;
     ///@}
 
@@ -143,4 +154,4 @@ private:
     Def2Def repls_;
 };
 
-} // namespace mim::native
+} // namespace mim::plug::mach

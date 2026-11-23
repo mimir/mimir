@@ -25,7 +25,7 @@ x86 leg for an executable (only if `-p opt … -p x86` compiles and runs it corr
 // RUN: %if x86_64-linux %{ %t.x86 <args>; test $? -eq <N> %}
 ```
 
-Keep `-p %native -X %native:o=` (or `-p x86 -X x86:o=` in `lit/x86/`) adjacent: `--param x86_k`/`arm_k` and `scripts/native_ksweep.sh` rely on that spelling.
+Keep `-p %native -X %native:o=` (or `-p x86 -X x86:o=` in `lit/x86/`) adjacent: `--param x86_k`/`arm_k` and `scripts/mach_ksweep.sh` rely on that spelling.
 
 ## 2. Write it
 
@@ -42,4 +42,4 @@ Keep `-p %native -X %native:o=` (or `-p x86 -X x86:o=` in `lit/x86/`) adjacent: 
    A refly test whose expected side is spelled with the axioms under test passes vacuously.
 3. For a regression test, confirm it fails without the fix (`scripts/oracle.sh rev`'s worktree under `${TMPDIR:-/tmp}/mim-oracle/wt-*` has a `HEAD` build).
 4. `cd lit && ./lit ../build/lit --param roundtrip=mim -a --filter <name>`; add `// UNSUPPORTED: roundtrip` only if the input needs RUN-line flags to compile.
-5. With a native leg: `scripts/native_ksweep.sh <name>`.
+5. With a native leg: `scripts/mach_ksweep.sh <name>`.

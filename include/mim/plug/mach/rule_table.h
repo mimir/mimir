@@ -5,7 +5,7 @@
 #include <string_view>
 #include <utility>
 
-#include "mim/util/types.h"
+#include <mim/util/types.h>
 
 namespace mim {
 class Def;
@@ -13,7 +13,7 @@ class World;
 } // namespace mim
 
 /// The closed rewrite rules of a backend's isel plugin as C++; its `gen` writes them to the backend's `isel_rules.h`.
-namespace mim::native::rules {
+namespace mim::plug::mach::rules {
 
 #define MIM_NATIVE_RULE_WANTS(X) \
     X(Param) X(Lit) X(Reg) X(FReg) X(Imm) X(Sh) X(RegImm) X(RegSh) X(Base) X(Index) X(Addr) X(Scaled)
@@ -227,4 +227,4 @@ struct Table {
     size_t max_refs, max_covers, max_metas;
 };
 
-} // namespace mim::native::rules
+} // namespace mim::plug::mach::rules

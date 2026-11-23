@@ -2,11 +2,11 @@
 
 #include <optional>
 
-#include "mim/plugin.h"
+#include <mim/plugin.h>
 
-#include "mim/native/native.h"
+#include "mim/plug/mach/phase.h"
 
-namespace mim::native {
+namespace mim::plug::mach {
 
 /// Prints the Liveness of every function to `-X <backend>:live=<file>` or stdout; a debugging and testing aid.
 class Live : public FunPhase {
@@ -61,4 +61,4 @@ private:
     Out dot_;
 };
 
-} // namespace mim::native
+} // namespace mim::plug::mach

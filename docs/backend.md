@@ -102,14 +102,14 @@ The entry parameter `a` arrives in `rdi` but lives in `rax`, so the emitter copi
 
 | Where | What |
 | ----- | ---- |
-| `src/mim/native/`, `include/mim/native/` | The target-independent phases in libmim: `native::ISel`, `native::Spilling`, `native::Constrain`, `native::Color`, `native::Live`, and `native::Emitter`, all parametrized by a `mim::Target`. |
-| `include/mim/target.h` | `mim::Target`: what the libmim phases need of a backend: register classes, the register file and ABI per class, and fixed-register constraints. |
-| `src/mim/plug/mach/` | The machine-independent axioms (`mach.Flags`, `mach.Spill`, `mach.in`, `mach.sched`, `mach.slot`, `mach.load`/`store`, `mach.spill`/`reload`, the float format checks `fpe`/`fok`), the phases `mach.legalize` and `mach.schedule` (`mach::Legalize`, `mach::Schedule`), the hooks of `mach.spilling`, `mach.constrain`, `mach.color`, and `mach.live`, the rule generator `mach::Gen`, and `mach::Target`. |
+| `include/mim/target.h` | `mim::Target`: the name and pointer size of the loaded backend, which is all that libmim (`Driver::target`, `core.trait`) needs. |
+| `src/mim/plug/mach/`, `include/mim/plug/mach/` | Everything target-independent: the axioms (`mach.Flags`, `mach.Spill`, `mach.in`, `mach.sched`, `mach.slot`, `mach.load`/`store`, `mach.spill`/`reload`, the float format checks `fpe`/`fok`); the phases `mach::Legalize`, `mach::Schedule`, `mach::ISel`, `mach::Spilling`, `mach::Constrain`, `mach::Color`, and `mach::Live`; `mach::Liveness`; the bases `mach::Emitter` and `mach::AsmEmit`; the rule generator `mach::Gen`; and `mach::Target`, the register classes, the register file and ABI per class, and fixed-register constraints. |
 | `src/mim/plug/x86/`, `src/mim/plug/arm/` | Registers, instructions, and condition codes as axioms; the target description (`target.h`: memory instructions, register file, ABI, constraints); instruction costs (`insn.h`); the phases `<backend>.isel` and `<backend>.emit`. |
 | `src/mim/plug/x86_isel/`, `src/mim/plug/arm_isel/` | The instruction-selection rules in Mim and the phase `<backend>_isel.gen`, which writes them as C++ tables into `build/include/mim/plug/<backend>/isel_rules.h`. |
 | `src/pbqp/` | The PBQP solver with the RN heuristic and a `rn_priority` hook. |
 
 A backend plugin is thin: it registers its `Target` via `Plugin::target` and supplies its instructions, its rules, and the textual form of its instructions; the rest is shared.
+Plugins never link each other, so what a backend derives from or instantiates is header-only, as with `ll::Emitter`: `mach::Emitter` reaches its control flow and `mach::hook_isel` the selector in `libmim_mach` via `GET_FUN_PTR`.
 
 ## Pipeline {#backend_pipeline}
 
@@ -184,7 +184,7 @@ It also checks the rule set for solvability and fails the build naming the offen
 
 ### The PBQP
 
-`native::ISel` builds one PBQP for the whole World:
+`mach::ISel` builds one PBQP for the whole World:
 
 - Every operation with a matching rule is a node; Vars and literals are not.
 - A node's alternatives are one *root* alternative per rule rooted at it and one *inner* alternative per class of matches that cover it as an inner node.
@@ -218,7 +218,7 @@ Allocation is SSA-based: spill until the register pressure fits, then assign reg
 
 ### Liveness
 
-`mim::Liveness` is a side table over one scheduled function: its blocks with their chains, predecessors and successors, live-in and live-out sets, and the maximal pressure (MaxLive) per register class.
+`mach::Liveness` is a side table over one scheduled function: its blocks with their chains, predecessors and successors, live-in and live-out sets, and the maximal pressure (MaxLive) per register class.
 A value's class comes from its type: `math.F pe` is floating-point, `mach.Spill T` a stack slot, `mach.Flags` the flags, everything else general-purpose.
 A block parameter is defined at the block's entry and a jump uses its arguments, so parameters are the φs.
 
@@ -263,7 +263,7 @@ Any violation is an error naming the values.
 
 ## Emission {#backend_emit}
 
-`native::Emitter` handles everything that is not an instruction, and `x86.emit`/`arm.emit` print the instructions:
+`mach::Emitter` handles everything that is not an instruction, and `x86.emit`/`arm.emit` print the instructions:
 
 - **Blocks** are laid out by chasing each block's last jump, so a block falls through to its successor where possible.
 - **Jumps, calls, returns, and the entry are parallel copies**, which is where SSA destruction happens: spill slots first, then register moves in dependency order, breaking cycles with `xchg` (x86) or a scratch register (AArch64), then immediates.
@@ -292,7 +292,7 @@ Vectors, aggregates, the transcendental `math` functions, `malloc`/`free`, more 
 
 - `lit/x86/` and `lit/arm/` test each stage, mostly with FileCheck over the assembly; the x86 tests also assemble and run the result on an x86-64 Linux host.
 - Integer and float programs elsewhere in `lit/` that run under `-p ll` also run under the host's native backend, via `%if native %{ … -p %native … %}` RUN lines; see `lit/lit.cfg.py`.
-- [`scripts/native_ksweep.sh`](@ref native_ksweep) reruns that allowlist at small register counts `k`, which exercises spilling, memory φs, and parallel-copy cycles.
+- [`scripts/mach_ksweep.sh`](@ref mach_ksweep) reruns that allowlist at small register counts `k`, which exercises spilling, memory φs, and parallel-copy cycles.
 - Each stage dumps and round-trips, so `-o -` shows the IR after the backend: `mach.sched` chains, `mach.spill`/`reload`, and `mach.in` registers.
   To stop after a stage, write a local `_compile` with just the phases you need.
 - `-X x86:isel-dot=` and `-X <backend>:color-dot=` show the PBQPs and the chosen options; `mach.live` prints liveness.

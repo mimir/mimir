@@ -1,10 +1,11 @@
 #pragma once
 
-#include "mim/rewrite.h"
-#include "mim/target.h"
-#include "mim/world.h"
+#include <mim/rewrite.h>
+#include <mim/world.h>
 
-namespace mim::native {
+#include "mim/plug/mach/target.h"
+
+namespace mim::plug::mach {
 
 /// Rewrites a value of a block under reconstruction: memory becomes @p m; @p map and @p lams replace values and blocks.
 class Subst : public Rewriter {
@@ -32,4 +33,4 @@ private:
     const Def* m_;
 };
 
-} // namespace mim::native
+} // namespace mim::plug::mach

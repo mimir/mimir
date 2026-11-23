@@ -1,13 +1,13 @@
 #include <limits>
 #include <ranges>
 
-#include "mim/driver.h"
-#include "mim/liveness.h"
+#include <mim/driver.h>
 
-#include "mim/native/regalloc.h"
-#include "mim/native/subst.h"
+#include "mim/plug/mach/liveness.h"
+#include "mim/plug/mach/regalloc.h"
+#include "mim/plug/mach/subst.h"
 
-namespace mim::native {
+namespace mim::plug::mach {
 
 namespace {
 
@@ -31,8 +31,8 @@ const Def* reroot(const Def* value, const Def* old_app, const Def* new_app) {
 }
 
 /// A closed instruction is recomputed instead of reloaded.
-bool is_remat(const Target& target, const Def* value) {
-    if (auto app = root(value); app && Target::is_axm(target.annexes().sched, app))
+bool is_remat(const Def* value) {
+    if (auto app = root(value); app && Axm::isa<sched>(app))
         return Target::sched_insn(app)->is_closed() && app->arg()->is_closed();
     return false;
 }
@@ -295,7 +295,7 @@ void Spiller::reload(size_t b, size_t pos, const Def* v) {
     auto& rs = reloads_[b][pos];
     if (std::ranges::contains(rs, v, &Reload::value)) return;
     rs.emplace_back(Reload{v, Inf});
-    if (!mphi_.contains(v) && !is_remat(target_, v)) spill_.emplace(v);
+    if (!mphi_.contains(v) && !is_remat(v)) spill_.emplace(v);
 }
 
 void Spiller::entry(size_t b) {
@@ -514,12 +514,12 @@ void Spiller::phis() {
 }
 
 const Def* Spiller::sched(const Def* f, const Def* x) {
-    auto res = world_.call(world_.annex(target_.annexes().sched), f, m_, x);
+    auto res = world_.call<mach::sched>(f, m_, x);
     m_       = res->proj(2, 0);
     return res->proj(2, 1);
 }
 
-const Def* Spiller::spill(const Def* x) { return sched(target_.spill(cls_, x->type()), x); }
+const Def* Spiller::spill(const Def* x) { return sched(Target::spill(x->type()), x); }
 
 void Spiller::build() {
     vers_.resize(parent_.size());
@@ -534,7 +534,7 @@ void Spiller::build() {
         auto dom = DefVec();
         for (size_t i = 0; i != n; ++i) {
             auto x = lam->var(n, i);
-            dom.emplace_back(mphi_.contains(x) ? target_.spill_type(cls_, x->type()) : x->type());
+            dom.emplace_back(mphi_.contains(x) ? Target::spill_type(x->type()) : x->type());
         }
         for (auto phi : phis_[b])
             dom.emplace_back(phi_[phi].value->type());
@@ -586,9 +586,8 @@ void Spiller::build(size_t b) {
     auto reloads = [&](size_t pos) {
         for (auto [v, ver] : reloads_[b][pos]) {
             auto app = root(v);
-            cur[v] = vers_[ver] = is_remat(target_, v)
-                                    ? reroot(v, app->proj(2, 1), sched(Target::sched_insn(app), app->arg()))
-                                    : sched(target_.reload(cls_, v->type()), slot(v));
+            cur[v] = vers_[ver] = is_remat(v) ? reroot(v, app->proj(2, 1), sched(Target::sched_insn(app), app->arg()))
+                                              : sched(Target::reload(v->type()), slot(v));
         }
     };
 
@@ -706,4 +705,4 @@ void Spilling::visit(Lam* fun) {
         Spiller(t, fun, Liveness::Fpr, k_.value_or(t.num_allocatable(Liveness::Fpr))).run();
 }
 
-} // namespace mim::native
+} // namespace mim::plug::mach

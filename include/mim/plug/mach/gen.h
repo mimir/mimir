@@ -6,7 +6,7 @@
 #include <mim/driver.h>
 #include <mim/phase.h>
 
-#include <mim/native/rule_table.h>
+#include "mim/plug/mach/rule_table.h"
 
 namespace mim::plug::mach {
 
@@ -63,7 +63,7 @@ public:
     /// The operand whose register the result of the two-address instruction @p insn takes.
     virtual std::optional<size_t> tied(const App*) const { return {}; }
     /// What an operand of the backend's address type @p type is: Want::Base, Want::Index, or Want::Addr.
-    virtual std::optional<native::rules::Want> classify(const Def*) const { return {}; }
+    virtual std::optional<mach::rules::Want> classify(const Def*) const { return {}; }
     ///@}
 
 private:
