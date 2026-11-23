@@ -506,19 +506,17 @@ const Def* World::fire(const Def* callee, const Def* arg) {
     if (!rho)
         callee->blame("callee is not a rewrite rule").n("callee `{}` has type `{}`", callee, type_of(callee)).bail();
 
-    if (auto sig = rho->instantiate(arg->type())) {
-        if (auto new_arg = Check::coerce((*sig)[0], arg)) {
-            arg    = new_arg->zonk();
-            callee = callee->zonk();
-            if (auto rule = callee->isa<Rule>())
-                if (auto res = rule->fire(arg)) return res;
-            return unify<Fire>((*rho->instantiate(arg->type()))[1]->zonk(), callee, arg);
-        }
-    }
+    auto new_arg = Check::coerce(rho->dom(), arg);
+    if (!new_arg)
+        arg->blame("argument is not assignable to the rule's domain")
+            .n("expected `{}`, got `{}`", rho->dom(), type_of(arg))
+            .bail();
 
-    arg->blame("argument is not assignable to the rule's domain")
-        .n("expected `{}`, got `{}`", rho->dom(), type_of(arg))
-        .bail();
+    arg    = new_arg->zonk();
+    callee = callee->zonk();
+    if (auto rule = callee->isa<Rule>())
+        if (auto res = rule->fire(arg)) return res;
+    return unify<Fire>(callee->type()->as<Rho>()->reduce(arg)->zonk(), callee, arg);
 }
 
 const Def* World::raw_app(const Def* type, const Def* callee, const Def* arg) {

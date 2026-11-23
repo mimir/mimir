@@ -94,21 +94,21 @@ constexpr std::string_view name(Want want) {
     std::unreachable();
 }
 
-/// Does @p def use the meta variable @p i of @p var, by its projection or by @p var as a whole?
-bool uses(const Def* def, const Var* var, size_t i, DefSet& done) {
-    if (def == var) return true;
+/// Does @p def use @p meta, a projection of the Var @p var or a Var of its own, directly or by @p var as a whole?
+bool uses(const Def* def, const Def* meta, const Var* var, DefSet& done) {
+    if (def == meta) return true;
     if (!def || !done.emplace(def).second) return false;
-    if (auto ex = def->isa<Extract>(); ex && ex->tuple() == var)
-        if (auto j = Lit::isa(ex->index())) return *j == i;
-    if (auto type = def->type(); type && uses(type, var, i, done)) return true;
+    if (auto ex = meta->isa<Extract>(); def == var && ex && ex->tuple() == var) return true;
+    if (auto ex = def->isa<Extract>(); ex && ex->tuple() == var && Lit::isa(ex->index())) return false;
+    if (auto type = def->type(); type && uses(type, meta, var, done)) return true;
     for (auto op : def->ops())
-        if (uses(op, var, i, done)) return true;
+        if (uses(op, meta, var, done)) return true;
     return false;
 }
 
-bool uses(const Def* def, const Var* var, size_t i) {
+bool uses(const Def* def, const Def* meta, const Var* var) {
     auto done = DefSet();
-    return uses(def, var, i, done);
+    return uses(def, meta, var, done);
 }
 
 /// The conditions of the `refly.check`s in @p def, e.g. the one of `x86.fpe pe`.
@@ -158,7 +158,7 @@ public:
             commutes_.emplace(op->as<Axm>()->flags());
     }
 
-    /// The values of a meta variable of type `«2; Nat»` in a rule's type.
+    /// The values of an implicit family parameter of type `«2; Nat»` that a `refly.check` in its rule's type mentions.
     void formats(const Def* def) {
         for (auto op : def->projs())
             formats_.emplace_back(op);
@@ -166,7 +166,9 @@ public:
 
     void collect(const Def* def) {
         if (auto rule = def->isa<Rule>())
-            rule->type()->isa_mut() ? instantiate(rule) : add(rule);
+            add(rule);
+        else if (auto lam = def->isa_mut<Lam>(); lam && lam->type()->is_implicit())
+            family(lam);
         else if (auto tuple = def->isa<Tuple>())
             for (auto op : tuple->ops())
                 collect(op);
@@ -222,9 +224,8 @@ private:
         std::vector<Meta> metas;
     };
 
-    void instantiate(const Rule*);
-    const Rule* fix(const Rule*, const Def* val, size_t n, const std::vector<std::pair<size_t, const Def*>>& fixed);
-    void add(const Rule*);
+    void family(Lam*);
+    void add(const Rule*, const Var* param = nullptr);
     std::vector<Meta> metas(const Rule*);
     void guard(const Def*, std::vector<Meta>&);
     u32 node(const Def*);
@@ -246,7 +247,7 @@ private:
         return id;
     }
 
-    size_t num_metas() const { return var_ ? var_->num_projs() : 0; }
+    size_t num_metas() const { return metas_.size(); }
     /// The meta variable @p def is, under its markers.
     std::optional<size_t> meta(const Def* def) const {
         for (;;) {
@@ -254,8 +255,7 @@ private:
             if (!axm || curry != 0 || axm->plugin() != Plugin_Id) break;
             def = def->as<App>()->arg();
         }
-        if (def == var_) return 0;
-        if (auto ex = def->isa<Extract>(); ex && ex->tuple() == var_) return Lit::isa(ex->index());
+        if (auto i = fe::lookup(meta_ids_, def)) return *i;
         return {};
     }
     u32 tied(const Def* rhs) const;
@@ -263,7 +263,9 @@ private:
     DefSet seen_;
     DefVec formats_;
     ankerl::unordered_dense::map<u64, Want> marks_; ///< The marker of each meta variable of the current rule.
-    const Var* var_ = nullptr;
+    const Var* var_ = nullptr;                      ///< The Var of the current rule.
+    DefVec metas_; ///< The meta variables of the current rule: a family parameter, then the Var's projections.
+    DefMap<size_t> meta_ids_;
     DefMap<u32> def2node_;
     ankerl::unordered_dense::map<Node, u32, Node::Hash> node2id_;
     std::vector<Node> nodes_;
@@ -275,121 +277,68 @@ private:
     friend std::string sig(const Table&, u32, const std::vector<Meta>&, bool);
 };
 
-/// Adds an instance of @p rule for each value of its type's Var that the `refly.check`s in its type admit.
-void Table::instantiate(const Rule* rule) {
-    auto rho = rule->type();
-    auto var = rule->has_var();
-    auto val = rho->solve(rule->lhs()->type());
-
-    // Which meta variable of the Rule each component of the Rho's Var stands for.
-    auto comps = std::vector<size_t>();
-    auto n     = size_t(1);
-    auto comp  = [&](const Def* def) {
-        if (def == var) return comps.emplace_back(0), true;
-        if (auto ex = def->isa<Extract>(); ex && ex->tuple() == var)
-            if (auto i = Lit::isa(ex->index())) return n = var->num_projs(), comps.emplace_back(*i), true;
-        return false;
-    };
-    if (!comp(val)) {
-        auto tuple = val->isa<Tuple>();
-        if (!tuple || !std::ranges::all_of(tuple->ops(), comp))
-            rule->blame("x86_isel: the type of `{}` must depend on meta variables only", rule).bail();
-    }
-
-    auto domains = std::vector<std::span<const Def* const>>();
-    for (auto i : comps) {
-        auto type = n == 1 ? var->type() : var->proj(n, i)->type();
-        auto& w   = rule->world();
-        if (type != w.arr(2, w.type_nat()))
-            rule->blame("x86_isel: no values to instantiate meta variable of type `{}` of `{}` with", type, rule)
-                .bail();
-        domains.emplace_back(formats_);
-    }
+/// Adds the Rule in the body of the implicit family @p lam.
+/// It is instantiated at each of `formats` that the `refly.check`s in its type admit if they mention the family
+/// parameter, and the parameter is a meta variable of it otherwise.
+void Table::family(Lam* lam) {
+    if (!seen_.emplace(lam).second) return;
+    auto rule = lam->body()->isa<Rule>();
+    if (!rule) lam->blame("x86_isel: the body of the family `{}` is no rule", lam).bail();
+    auto param = lam->has_var();
+    if (!param) return add(rule);
 
     auto conds = DefVec();
     auto done  = DefSet();
-    checks(rho->dom(), conds, done);
-    checks(rho->codom(), conds, done);
+    checks(rule->type()->dom(), conds, done);
+    checks(rule->type()->codom(), conds, done);
+    if (std::ranges::none_of(conds, [&](const Def* c) { return c->has_free_var(param); })) return add(rule, param);
 
     auto& w = rule->world();
-    auto k  = comps.size();
+    auto pe = w.arr(2, w.type_nat());
+    auto ty = lam->dom();
+    auto k  = ty == pe ? 1 : ty->isa<Sigma>() ? ty->num_ops() : 0;
+    for (size_t j = 0; j != k; ++j)
+        if (k != 1 && ty->op(j) != pe) k = 0;
+    if (k == 0) lam->blame("x86_isel: no values to instantiate `{}` of `{}` with", ty, lam).bail();
+
     auto ix = std::vector<size_t>(k);
     for (;;) {
-        auto vals = DefVec(k, [&](size_t j) { return domains[j][ix[j]]; });
+        auto vals = DefVec(k, [&](size_t j) { return formats_[ix[j]]; });
         auto arg  = k == 1 ? vals.front() : w.tuple(vals);
         auto ok   = true;
         for (auto cond : conds) {
-            auto c = Lit::isa<bool>(VarRewriter(rho->has_var(), arg).rewrite(cond));
-            if (!c) rule->blame("x86_isel: cannot decide `{}` of `{}` at `{}`", cond, rule, arg).bail();
+            auto c = Lit::isa<bool>(VarRewriter(param, arg).rewrite(cond));
+            if (!c) lam->blame("x86_isel: cannot decide `{}` of `{}` at `{}`", cond, lam, arg).bail();
             ok &= *c;
         }
-        if (ok) {
-            auto fixed = std::vector<std::pair<size_t, const Def*>>();
-            for (size_t j = 0; j != k; ++j)
-                fixed.emplace_back(comps[j], vals[j]);
-            add(fix(rule, arg, n, fixed));
-        }
+        if (ok) add(lam->reduce_body(arg)->as<Rule>());
 
         size_t j = k;
-        while (j-- != 0 && ++ix[j] == domains[j].size())
+        while (j-- != 0 && ++ix[j] == formats_.size())
             ix[j] = 0;
         if (j == size_t(-1)) break;
     }
 }
 
-/// @p rule of type Rho::reduce @p val with each of its @p n meta variables in @p fixed replaced.
-const Rule*
-Table::fix(const Rule* rule, const Def* val, size_t n, const std::vector<std::pair<size_t, const Def*>>& fixed) {
-    auto& w   = rule->world();
-    auto var  = rule->has_var();
-    auto proj = [&](size_t i) { return n == 1 ? var : var->proj(n, i); };
-    auto tup  = [&](const DefVec& vals) { return n == 1 ? vals.front() : w.tuple(vals); };
-    auto vals = DefVec(n);
-    for (auto [i, v] : fixed)
-        vals[i] = v;
-    auto rest = std::vector<size_t>();
-    for (size_t i = 0; i != n; ++i)
-        if (!vals[i]) rest.emplace_back(i);
-
-    auto sig = rule->type()->reduce(val);
-    auto res = w.mut_rule(w.rho(sig[0], sig[1]));
-    res->set(rule->sym());
-
-    auto m = rest.size();
-    if (m == 0) {
-        res->set_meta(w.sigma());
-    } else if (m == 1) {
-        auto sub     = DefVec(vals);
-        sub[rest[0]] = w.lit_nat_0(); // a type never mentions its own meta variable
-        res->set_meta(VarRewriter(var, tup(sub)).rewrite(proj(rest[0])->type()));
-        vals[rest[0]] = res->var();
-    } else {
-        // A type only mentions the meta variables before it, whose projections exist once they are set.
-        auto sigma = w.mut_sigma(m);
-        auto sub   = DefVec(n, [&](size_t i) { return vals[i] ? vals[i] : w.lit_nat_0(); });
-        for (size_t j = 0; j != m; ++j) {
-            sigma->set(j, VarRewriter(var, tup(sub)).rewrite(proj(rest[j])->type()));
-            sub[rest[j]] = sigma->var()->proj(m, j);
-        }
-        auto imm = sigma->immutabilize();
-        res->set_meta(imm ? imm : sigma);
-        for (size_t j = 0; j != m; ++j)
-            vals[rest[j]] = res->var()->proj(m, j);
-    }
-
-    auto rw = VarRewriter(var, tup(vals));
-    res->set_lhs(rw.rewrite(rule->lhs()));
-    res->set_guard(rw.rewrite(rule->guard()));
-    res->set_rhs(rw.rewrite(rule->rhs()));
-    return res;
-}
-
-void Table::add(const Rule* rule) {
+/// Adds @p rule, whose meta variables are preceded by the family parameter @p param, if any.
+void Table::add(const Rule* rule, const Var* param) {
     if (!seen_.emplace(rule).second) return;
-    if (!rule->is_closed()) rule->blame("x86_isel: rule `{}` is not closed", rule).bail();
+    auto fvs = rule->free_vars();
+    if (!(fvs.empty() || (param && fvs.size() == 1 && fvs.contains(param))))
+        rule->blame("x86_isel: rule `{}` is not closed", rule).bail();
     if (rule->guard() == rule->world().lit_ff()) return;
 
     var_ = rule->has_var();
+    metas_.clear();
+    meta_ids_.clear();
+    if (param) metas_.emplace_back(param);
+    if (var_) {
+        auto n = var_->num_projs();
+        for (size_t i = 0; i != n; ++i)
+            metas_.emplace_back(n == 1 ? var_ : var_->proj(n, i));
+    }
+    for (size_t i = 0; i != metas_.size(); ++i)
+        meta_ids_[metas_[i]] = i;
     marks_.clear();
     auto lhs    = rule->lhs();
     auto mapped = u32(-1);
@@ -461,11 +410,11 @@ std::vector<Table::Meta> Table::metas(const Rule* rule) {
     auto res = std::vector<Meta>();
     auto n   = num_metas();
     for (size_t i = 0; i != n; ++i) {
-        auto meta  = var_->proj(n, i);
+        auto meta  = metas_[i];
         auto type  = meta->type();
-        bool param = !uses(rule->rhs(), var_, i);
+        bool param = !uses(rule->rhs(), meta, var_);
         for (size_t j = 0; j != n && !param; ++j)
-            param = j != i && uses(var_->proj(n, j)->type(), var_, i);
+            param = j != i && uses(metas_[j]->type(), meta, var_);
 
         auto want = Want::Param;
         if (!param) {
@@ -508,7 +457,7 @@ void Table::guard(const Def* g, std::vector<Meta>& metas) {
 
     auto set = [&](const Def* meta, Want from, Want to) {
         for (size_t i = 0; i != num_metas(); ++i)
-            if (var_->proj(num_metas(), i) == meta && metas[i].want == from) {
+            if (metas_[i] == meta && metas[i].want == from) {
                 metas[i].want = to;
                 return;
             }
@@ -530,15 +479,13 @@ u32 Table::node(const Def* def) {
 }
 
 u32 Table::node_(const Def* def) {
+    if (auto i = fe::lookup(meta_ids_, def)) return hole(*i);
     if (var_ && def == var_) {
-        if (num_metas() == 1) return hole(0);
         auto ops = std::vector<u32>();
-        for (size_t i = 0; i != num_metas(); ++i)
+        for (size_t i = num_metas() - var_->num_projs(); i != num_metas(); ++i)
             ops.emplace_back(hole(i));
         return make({Kind::Tuple, 0, std::move(ops)});
     }
-    if (auto ex = def->isa<Extract>(); ex && var_ && ex->tuple() == var_)
-        if (auto i = Lit::isa(ex->index())) return hole(*i);
 
     if (auto addr = Axm::isa<x86_isel::addr>(def)) return marked(addr->arg(), Want::Addr);
     if (auto ri = Axm::isa<x86_isel::reg_imm>(def)) return widened(ri->arg(), Want::RegImm);

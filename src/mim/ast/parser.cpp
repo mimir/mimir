@@ -488,13 +488,6 @@ Ptr<Expr> Parser::parse_pi_expr() {
     auto ptrn = parse_ptrn({.brckt = true, .implicit = true}, prec, "domain of a {}", entity);
     auto dloc = Loc(domt);
 
-    if (tag == Tag::D_brace_l && !ahead().isa(Tag::T_arrow_r)) {
-        auto dom = parse_expr("domain of a rule type", Prec::Pi);
-        expect(Tag::T_leadsto, "rule type");
-        auto codom = parse_expr("codomain of a rule type", Prec::Arrow);
-        return ptr<RhoExpr>(track, ptrn, dom, codom);
-    }
-
     auto codom = ISA(tag, C_CN) ? nullptr
                                 : (expect(Tag::T_arrow_r, entity), parse_expr(Prec::Arrow, "codomain of a {}", entity));
 

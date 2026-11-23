@@ -604,30 +604,6 @@ private:
     Ptr<Expr> level_;
 };
 
-/// `{meta} dom ↝ codom`: a rule type whose types depend on meta variables.
-class RhoExpr : public Expr {
-public:
-    RhoExpr(Loc loc, Ptr<Ptrn> meta, Ptr<Expr> dom, Ptr<Expr> codom)
-        : Expr(loc)
-        , meta_(meta)
-        , dom_(dom)
-        , codom_(codom) {}
-
-    const Ptrn* meta() const { return meta_.get(); }
-    const Expr* dom() const { return dom_.get(); }
-    const Expr* codom() const { return codom_.get(); }
-
-    void bind(Scopes&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
-
-private:
-    const Def* emit_(Emitter&) const override;
-
-    Ptr<Ptrn> meta_;
-    Ptr<Expr> dom_;
-    Ptr<Expr> codom_;
-};
-
 /// `rl meta: lhs when guard => rhs`; RuleExpr::is_norm, if it stems from a `norm` declaration.
 class RuleExpr : public Expr {
 public:

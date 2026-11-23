@@ -240,7 +240,7 @@ const Def* Def::var_type() {
     switch (mut_node()) {
         case MutNode::Lam:     return as<Lam >()->dom();
         case MutNode::Pi:      return as<Pi  >()->dom();
-        case MutNode::Rho:     return as<Rho >()->meta();
+        case MutNode::Rho:     return as<Rho >()->dom();
         case MutNode::Rule:    return as<Rule>()->meta();
         case MutNode::Arr:
         case MutNode::Pack:    return world().type_indices(as<Seq>()->shape());

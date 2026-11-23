@@ -210,10 +210,6 @@ void MatchExpr::stream(fe::Tab& tab, std::ostream& os) const {
     --tab;
 }
 
-void RhoExpr::stream(fe::Tab& tab, std::ostream& os) const {
-    std::print(os, "{} {} {} {}", S(tab, meta()), S(tab, dom()), Tag::T_leadsto, S(tab, codom()));
-}
-
 void PiExpr::Dom::stream(fe::Tab& tab, std::ostream& os) const {
     std::print(os, "{}", S(tab, ptrn()));
     if (ret_type()) std::print(os, " {} {}", Tag::T_arrow_r, S(tab, ret_type()));

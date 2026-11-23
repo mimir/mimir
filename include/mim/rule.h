@@ -1,46 +1,38 @@
 #pragma once
 
-#include <array>
-#include <optional>
-
 #include "mim/def.h"
 
 namespace mim {
 
-/// The type `{meta} dom ↝ codom` of a rewrite Rule that rewrites a term of type Rho::dom into one of type Rho::codom.
-/// A mutable Rho's Var binds the meta variables its types mention; Rho::instantiate solves them from the term's type.
-/// An immutable Rho has no Var, so its Rho::meta is `[]`.
+/// The type of a rewrite Rule that rewrites a term of type Rho::dom into one of type Rho::codom.
+/// Its Var is that term.
 /// @see Rule
 class Rho : public Def, public Setters<Rho> {
 protected:
     /// Constructor for an *immutable* Rho.
-    Rho(const Def* type, const Def* meta, const Def* dom, const Def* codom)
-        : Def(Node, type, {meta, dom, codom}, 0) {}
+    Rho(const Def* type, const Def* dom, const Def* codom)
+        : Def(Node, type, {dom, codom}, 0) {}
     /// Constructor for a *mutable* Rho.
     Rho(const Def* type)
-        : Def(Node, type, 3, 0) {}
+        : Def(Node, type, 2, 0) {}
 
 public:
-    /// @name meta, dom & codom
+    /// @name dom & codom
     /// @see @ref proj
     ///@{
-    const Def* meta() const { return op(0); } ///< The type of the Var.
-    const Def* dom() const { return op(1); }
-    const Def* codom() const { return op(2); }
-    MIM_PROJ(meta, const)
+    const Def* dom() const { return op(0); }
+    const Def* codom() const { return op(1); }
     MIM_PROJ(dom, const)
     MIM_PROJ(codom, const)
     ///@}
 
     /// @name Setters
-    /// Set Rho::meta first, as it is the type of the Var the others may use.
     /// @see @ref set_ops "Setting Ops"
     ///@{
     using Setters<Rho>::set;
-    Rho* set(const Def* meta, const Def* dom, const Def* codom) { return Def::set({meta, dom, codom})->as<Rho>(); }
-    Rho* set_meta(const Def* meta) { return Def::set(0, meta)->as<Rho>(); }
-    Rho* set_dom(const Def* dom) { return Def::set(1, dom)->as<Rho>(); }
-    Rho* set_codom(const Def* codom) { return Def::set(2, codom)->as<Rho>(); }
+    Rho* set(const Def* dom, const Def* codom) { return Def::set({dom, codom})->as<Rho>(); }
+    Rho* set_dom(const Def* dom) { return Def::set(0, dom)->as<Rho>(); }
+    Rho* set_codom(const Def* codom) { return Def::set(1, codom)->as<Rho>(); }
     Rho* unset() { return Def::unset()->as<Rho>(); }
     ///@}
 
@@ -49,16 +41,13 @@ public:
     static const Def* infer(const Def* dom, const Def* codom);
     ///@}
 
-    /// @name Instantiate
+    /// @name Reduce
     ///@{
-    /// The value of the Var that matching Rho::dom against @p type determines; `nullptr` if there is none.
-    const Def* solve(const Def* type) const;
-    /// Rho::dom and Rho::codom with the Var solved by matching Rho::dom against @p type; `{}` if it does not match.
-    std::optional<std::array<const Def*, 2>> instantiate(const Def* type) const;
+    const Def* reduce(const Def* arg) const { return Def::reduce(arg).front(); }
     ///@}
 
     static constexpr auto Node      = mim::Node::Rho;
-    static constexpr size_t Num_Ops = 3;
+    static constexpr size_t Num_Ops = 2;
 
 private:
     friend class World;
@@ -89,10 +78,8 @@ public:
     /// @see @ref proj
     ///@{
     const Rho* type() const { return Def::type()->as<Rho>(); }
-    /// Rho::dom, instantiated for this Rule's Var; needs Rule::lhs for a mutable Rho.
-    const Def* dom() const;
-    /// Rho::codom, instantiated for this Rule's Var; needs Rule::lhs for a mutable Rho.
-    const Def* codom() const;
+    const Def* dom() const { return type()->dom(); }
+    const Def* codom() const { return type()->codom(); }
     MIM_PROJ(dom, const)
     MIM_PROJ(codom, const)
     ///@}

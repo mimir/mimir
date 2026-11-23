@@ -242,14 +242,6 @@ void HoleExpr   ::bind(Scopes&) const {}
 void PrimaryExpr::bind(Scopes&) const {}
 // clang-format on
 
-void RhoExpr::bind(Scopes& s) const {
-    s.push();
-    meta()->bind(s, false, false);
-    dom()->bind(s);
-    codom()->bind(s);
-    s.pop();
-}
-
 void RuleExpr::bind(Scopes& s) const {
     s.push();
     if (meta()) meta()->bind(s, true, false);
