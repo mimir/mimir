@@ -28,8 +28,10 @@ public:
     /// hash-consing can make several annexes share a single Def (e.g. `mod foo anx let bar = 23; anx let baz = 23;
     /// end`).
     void attach(AnnexInfo* annex, sub_t sub, Sym name, const Def* def) {
-        if (annex)
+        if (annex) {
             world().annexes().attach(annex->plugin_id(), annex->id.tag, sub, annex->qualified(driver(), name), def);
+            ast().add_annex_def(Annex::flags(annex->plugin_id(), annex->id.tag, sub), def);
+        }
     }
 
     void attach_alias(AnnexInfo* annex, sub_t sub, Sym name) {
