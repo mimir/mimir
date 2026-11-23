@@ -246,7 +246,7 @@ d      ::= vis? import (I | S) ("as" (I | "*"))? ";"
         |  vis? "anx" I "=" path
         |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e
         |  vis?  "extern"          lam I fwd+ (":" e)? ";"
-        |  vis? "anx"? "rec" I "=" e
+        |  vis? "anx"? "rec" I ndom* "=" e
         |  vis? "anx"? "nom" I ndom* "=" e
         |  vis? ("extern" | "anx")? "mutual" d* "end"
         |  vis? "axm" axm
@@ -280,6 +280,9 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 - `rec` declares a recursive type.
   Its body must be a sigma, a [variant](@ref variant), or a function type, as those are built as a mutable and filled in afterwards, so that `I` is already in scope inside it; its universe level is inferred from the body.
   A recursive _function_ is declared with `lam`/`con`/`fun` instead.
+  `rec I ndom+ = e` declares a recursive type constructor; it is sugar for `lam I ndom+ = rec I = e; I`.
+  Within `e`, `I` names the type constructor, so a recursive instance refers to itself as `I ndom+`.
+  An instance carries no constructor or field names, so select its cases and components by index.
 - `nom` declares a [nominal newtype](@ref nominal); like `rec`, it is in scope inside its own body, but its body may be any type.
 - `mutual` ... `end` groups declarations that may refer to each other, as in Lean.
   Its members must be `rec`, `nom`, `lam`, `con`, or `fun` declarations.

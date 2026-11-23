@@ -1,0 +1,23 @@
+// RUN: %mim %s
+// `rec I (dom)+ = e` is sugar for `lam I (dom)+ = rec I = e; I`; within `e`, `I` is the type constructor.
+plugin core;
+plugin refly;
+
+rec List (T: *) = | Nil | Cons: [T, List T];
+rec Rose (T: *) = | Node: [T, List (Rose T)];
+rec Vec {T: *} (n: Nat) = [x: «n; T», next: Vec @T n → Nat];
+
+lam len {T: *} (l: List T): Nat =
+    match l with
+        | 0        => 0
+        | 1 (_, t) => core.nat.add (1, len t);
+
+let L = List Nat;
+let _ = refly.struc.e (len (L#1 (1, L#1 (2, L#0))), 2);
+
+let R  = Rose Nat;
+let RL = List R;
+let _ = refly.struc.e (match R#0 (1, RL#1 (R#0 (2, RL#0), RL#0)) with | 0 (x, _) => x, 1);
+
+lam k (T U: *) (a: List T, k: List U → Nat): Nat = 0;
+let _: [List Nat, List Nat → Nat] → Nat = k (Nat, Nat);

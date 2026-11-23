@@ -186,6 +186,10 @@ let _ = refly.struc.e (first (Nats#Cons (23, Nats#Nil)), 23);
 /// An arm selects its case by index just as well, exactly like `T#n` does.
 lam first_by_index (l: Nats): Nat = match l with | 0 => 0 | 1 (h, _) => h;
 let _ = refly.struc.e (first_by_index (Nats#Cons (23, Nats#Nil)), 23);
+/// With parameters, `rec` declares a type constructor; its instances carry no names, so they select cases by index.
+rec Seq (T: *) = | Nil | Cons: [T, Seq T];
+lam head (l: Seq Nat): Nat = match l with | 0 => 0 | 1 (h, _) => h;
+let _ = refly.struc.e (head ((Seq Nat)#1 (5, (Seq Nat)#0)), 5);
 /// A variant is a type like any other, so it may just as well be anonymous.
 lam get (x: | None | Some: Nat): Nat = match x with | None => 0 | Some n => n;
 let _ = refly.struc.e (get ((| None | Some: Nat)#Some 42), 42);

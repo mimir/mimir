@@ -976,6 +976,12 @@ void RecDecl::emit_body(Emitter& e) const {
     e.attach(annex_, sub_, dbg().sym(), def_);
 }
 
+void RecDecl::emit_sugar(Emitter& e, Lam* lam) const {
+    emit_decl(e);
+    lam->set_body(def_);
+    emit_body(e);
+}
+
 void NomDecl::emit_decl(Emitter& e) const {
     if (!has_mut_body()) return;
     auto _ = e.world().push(loc());
@@ -1067,8 +1073,8 @@ void LamDecl::emit_body(Emitter& e) const {
     {
         auto _body = e.world().push(body()->loc());
         auto lam   = doms().back()->lam_;
-        if (auto nom = nom_sugar())
-            nom->emit_sugar(e, lam);
+        if (auto rec = rec_sugar())
+            rec->emit_sugar(e, lam);
         else
             lam->set_body(body()->emit(e));
     }

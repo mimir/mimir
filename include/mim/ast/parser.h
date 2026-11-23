@@ -174,7 +174,6 @@ private:
     Ptr<ValDecl> parse_alias_decl(Tracker, Mods);
     Ptr<ValDecl> parse_let_decl(Tracker, Mods);
     Ptr<ValDecl> parse_mod_decl(Tracker, Mods);
-    Ptr<RecDecl> parse_nom_decl(Tracker, Mods);
     Ptr<ValDecl> parse_use_decl(Tracker, Mods);
     Ptr<ValDecl> parse_rule_decl(Tracker, Mods);
 

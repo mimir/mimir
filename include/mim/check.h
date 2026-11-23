@@ -163,6 +163,7 @@ private:
     Binders binders_;
     Vars bound_; ///< Var%s of all binders_; these are the Var%s subject to renaming.
     std::array<ankerl::unordered_dense::set<u64>, 2> memo_;
+    ankerl::unordered_dense::set<u64> assumed_; ///< memo_key%s of mutables without Var%s assumed α-equivalent.
     fe::Vector<std::pair<const LMax*, const Def*>> deferred_;
 };
 
