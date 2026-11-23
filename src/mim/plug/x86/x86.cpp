@@ -30,5 +30,5 @@ MIM_PLUGIN_ENTRY(x86) {
     plugin.register_phases      = reg_phases;
     plugin.args                 = known_args;
     plugin.num_args             = std::size(known_args);
-    plugin.target               = &plug::x86::target();
+    plugin.target               = []() -> mim::Target* { return new plug::x86::Target(); };
 }

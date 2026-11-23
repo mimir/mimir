@@ -33,9 +33,4 @@ public:
     }
 };
 
-inline const Target& target() {
-    static const auto res = Target();
-    return res;
-}
-
 } // namespace mim::plug::arm

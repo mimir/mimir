@@ -25,6 +25,4 @@ constexpr std::array<size_t, 6> Arg_Regs = {
 constexpr std::array<bool, Num_Regs> Caller_Saved = {1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0};
 constexpr bool reserved(size_t r) { return r == encoding(reg::rsp) || r == encoding(reg::rbp); }
 
-using mach::sched;
-
 } // namespace mim::plug::x86

@@ -47,8 +47,6 @@ constexpr size_t Fpr_Scratch = encoding(fpr::d31);
 /// AAPCS64: `d8`–`d15` are callee-saved.
 constexpr bool caller_saved_fpr(size_t r) { return r < encoding(fpr::d8) || r > encoding(fpr::d15); }
 
-using mach::sched;
-
 /// The instance of the select family @p Sel (`csel` or `fcsel`) that selects on @p c.
 template<class Sel>
 constexpr flags_t cc_to(cc c) {

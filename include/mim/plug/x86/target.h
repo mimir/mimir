@@ -34,9 +34,4 @@ public:
     bool is_removable(const App* insn) const final;
 };
 
-inline const Target& target() {
-    static const auto res = Target();
-    return res;
-}
-
 } // namespace mim::plug::x86

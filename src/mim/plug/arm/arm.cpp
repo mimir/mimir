@@ -29,5 +29,5 @@ MIM_PLUGIN_ENTRY(arm) {
     plugin.register_phases      = reg_phases;
     plugin.args                 = known_args;
     plugin.num_args             = std::size(known_args);
-    plugin.target               = &plug::arm::target();
+    plugin.target               = []() -> mim::Target* { return new plug::arm::Target(); };
 }

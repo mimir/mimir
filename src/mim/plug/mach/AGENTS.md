@@ -8,4 +8,4 @@
 - `hook` constructs a phase with `Target::of(driver)`, the one loaded backend's Target; the phases read their `-X` arguments as the backend's (`-X x86:k=3`).
 - After `legalize`, no `core.Ptr` is left: pointers are `I64` and memory goes through `load`/`store`, which isel must replace (`Target::is_lowered`).
 - `Liveness` is slated for replacement; don't build further analyses on it.
-- Inside a class derived from `Emitter` or `FunPhase`, a bare `target()` is the base's accessor; pass the backend's `x86::target()`/`arm::target()` to the base constructor explicitly.
+- Inside a class derived from `Emitter` or `FunPhase`, a bare `target()` is the base's accessor; pass `Target::of(driver)` to the base constructor explicitly.

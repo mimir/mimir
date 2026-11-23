@@ -53,7 +53,7 @@ Plugin-specific notes live in `plug/AGENTS.md` and below; phase-specific ones in
 ## Native backends (`target.h`)
 
 - `mim::Target` is all that libmim knows of a native backend: its name and `ptr_size` (`core.trait`).
-  A backend registers it via `Plugin::target`; `Driver::target` fails unless exactly one is loaded, since the docs build loads every plugin at once.
+  The factory `Plugin::target` creates it and the `Driver` owns it, so there is no global instance; `Driver::target` fails unless exactly one is loaded, since the docs build loads every plugin at once.
 - Everything else lives in the plugin `mach`, see `plug/mach/AGENTS.md`.
 
 ## Frontend (`ast/`)
