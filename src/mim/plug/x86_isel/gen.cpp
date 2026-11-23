@@ -1,5 +1,6 @@
 #include "mim/plug/x86_isel/gen.h"
 
+#include <mim/plug/mach/mach.h>
 #include <mim/plug/x86/autogen.h>
 #include <mim/plug/x86/insn.h>
 
@@ -10,23 +11,23 @@ namespace mim::plug::x86_isel {
 using native::rules::Want;
 
 Gen::Gen(World& world, flags_t annex)
-    : native::Gen(world,
-                  annex,
-                  "x86",
-                  x86::Plugin_Id,
-                  "x86_isel",
-                  Plugin_Id,
-                  {
-                      .addr     = Annex::base<addr>(),
-                      .reg_imm  = Annex::base<reg_imm>(),
-                      .reg_sh   = Annex::base<reg_sh>(),
-                      .scaled   = Annex::base<scaled>(),
-                      .imm      = Annex::base<imm>(),
-                      .lit      = Annex::base<lit>(),
-                      .commutes = Annex::base<commutes>(),
-                      .formats  = Annex::base<formats>(),
-                      .sizes    = Annex::base<sizes>(),
-                  }) {}
+    : mach::Gen(world,
+                annex,
+                "x86",
+                x86::Plugin_Id,
+                "x86_isel",
+                Plugin_Id,
+                {
+                    .addr     = Annex::base<addr>(),
+                    .reg_imm  = Annex::base<reg_imm>(),
+                    .reg_sh   = Annex::base<reg_sh>(),
+                    .scaled   = Annex::base<scaled>(),
+                    .imm      = Annex::base<imm>(),
+                    .lit      = Annex::base<mach::lit>(),
+                    .commutes = Annex::base<commutes>(),
+                    .formats  = Annex::base<formats>(),
+                    .sizes    = Annex::base<sizes>(),
+                }) {}
 
 u32 Gen::cost(const App* insn) const { return x86::insn::cost(insn); }
 

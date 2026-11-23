@@ -8,7 +8,6 @@ The artifact a file belongs to - and hence the prefix of its own headers - is de
     src/automaton/... include/automaton/...     libautomaton            "automaton/..."
     src/pbqp/... include/pbqp/...               libpbqp                 "pbqp/..."
     src/mim/plug/X/... include/mim/plug/X/...   plugin X                "mim/plug/X/..."
-    src/mim/native/... include/mim/native/...   libmim_native           "mim/native/..."
     extra/X/...                                 out-of-tree plugin X    "mim/plug/X/..."
     src/mim/cli/...                             the mim CLI             -
     test/...                                    the unit tests          -
@@ -63,8 +62,6 @@ def artifact_of(path: Path) -> tuple[str, str | None] | None:
             return f'plugin "{plugin}"', f'mim/plug/{plugin}/'
         case ('extra', plugin, *rest) if rest:
             return f'plugin "{plugin}"', f'mim/plug/{plugin}/'
-        case ('src' | 'include', 'mim', 'native', *rest) if rest:
-            return 'libmim_native', 'mim/native/'
         case ('src', 'mim', 'cli', *rest) if rest:
             return 'the mim CLI', None
         case ('test', *rest) if rest:

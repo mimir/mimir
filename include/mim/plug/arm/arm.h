@@ -3,17 +3,14 @@
 #include <array>
 
 #include <mim/plug/core/core.h>
+#include <mim/plug/mach/mach.h>
 #include <mim/plug/mem/mem.h>
 
 #include "mim/plug/arm/autogen.h"
 
-/// Prefix for this backend's diagnostics; concatenate it with the format literal.
-#define MIM_ARM_BE "arm backend: "
-
 namespace mim::plug::arm {
 
-/// The hardware encoding of @p r.
-constexpr size_t encoding(reg r) { return Annex::flags2sub(std::to_underlying(r)); }
+using mach::encoding;
 
 constexpr size_t Num_Regs = Annex::num<reg>();
 

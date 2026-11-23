@@ -109,7 +109,7 @@ const Def* LegalizeNative::rewrite_imm_App(const App* app) {
         auto [m, size] = msz->projs<2>();
         auto& target   = driver().target(app->loc());
         if (!Lit::isa(size)) app->blame("{} backend: `mem.mslot` needs a literal size", target.name()).bail();
-        auto alloc = w.app(w.app(w.annex(target.slot()), rewrite(size)), rewrite(m));
+        auto alloc = w.app(w.app(w.annex(target.annexes().slot), rewrite(size)), rewrite(m));
         return w.app(rewrite(k), alloc);
     }
 

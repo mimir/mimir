@@ -2,8 +2,6 @@
 
 #include <mim/plugin.h>
 
-#include <mim/native/regalloc.h>
-
 #include "mim/plug/x86/emit.h"
 #include "mim/plug/x86/phase/isel.h"
 #include "mim/plug/x86/target.h"
@@ -12,19 +10,14 @@ using namespace mim;
 
 static void reg_phases(Flags2Phases& phases) {
     Phase::hook<plug::x86::isel, plug::x86::phase::ISel>(phases);
-    const auto& target = plug::x86::target();
-    native::hook<plug::x86::spilling, native::Spilling>(phases, target);
-    native::hook<plug::x86::constrain, native::Constrain>(phases, target);
-    native::hook<plug::x86::color, native::Color>(phases, target);
-    native::hook<plug::x86::live, native::Live>(phases, target);
     Phase::hook<plug::x86::emit, plug::x86::Emit>(phases);
 }
 
 // clang-format off
 static constexpr PluginArg known_args[] = {
     {"o=<file>, output=<file>", "Writes the assembly to `<file>` instead of the default `<world>.s`/`a.s`; `<file>` may be `-` for stdout."},
-    {"live=<file>", "Writes the output of `x86.live` to `<file>` instead of stdout."},
-    {"k=<n>", "Lets `x86.spilling` keep at most `<n>` general-purpose values in registers instead of 14."},
+    {"live=<file>", "Writes the output of `mach.live` to `<file>` instead of stdout."},
+    {"k=<n>", "Lets `mach.spilling` keep at most `<n>` general-purpose values in registers instead of 14."},
     {"isel-dot=<file>", "Writes the instruction-selection PBQP graph of `x86.isel` in Graphviz DOT format to `<file>`, with the chosen options highlighted; `<file>` may be `-` for stdout."},
     {"color-dot=<file>", "Writes the register-assignment PBQP graph of each function in Graphviz DOT format to `<file>`, with the chosen options highlighted; `<file>` may be `-` for stdout."},
 };

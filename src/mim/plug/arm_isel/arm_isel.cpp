@@ -15,8 +15,7 @@ static constexpr PluginArg known_args[] = {
 // clang-format on
 
 MIM_PLUGIN_ENTRY(arm_isel) {
-    plugin.register_normalizers = plug::arm_isel::register_normalizers;
-    plugin.register_phases      = reg_phases;
-    plugin.args                 = known_args;
-    plugin.num_args             = std::size(known_args);
+    plugin.register_phases = reg_phases;
+    plugin.args            = known_args;
+    plugin.num_args        = std::size(known_args);
 }

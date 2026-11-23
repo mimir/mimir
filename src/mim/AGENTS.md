@@ -52,11 +52,15 @@ Plugin-specific notes live in `plug/AGENTS.md` and below; phase-specific ones in
 
 ## Native backends (`target.h`, `liveness.h`, `asm.h`)
 
-- `Target`, `Liveness`, and `AsmEmit` are the target-independent parts of `x86` and `arm`; they know `core.M` and `mem.sched` only as flags the backend's `Target` passes in.
+- `Target`, `Liveness`, `AsmEmit`, and the phases in `native/` (namespace `mim::native`: isel, spilling, constrain, color, live, and the emitter's control flow) are the target-independent parts of `x86` and `arm`.
+  They know `core.M`, `mem.sched`, and the `mach` axioms only as the flags in `Target::Annexes`, and ask the Target virtuals `is_lowered` and `strip_ptr_cast` for the rest, so libmim never includes a plugin header; ABI and constraints are `Target` virtuals as well.
 - A backend registers its `Target` via `Plugin::target`; `Driver::target` fails unless exactly one is loaded, since the docs build loads every plugin at once.
 - `Liveness` is slated for replacement; don't build further analyses on it.
-- Everything a native backend's phases need beyond that sits in the static library `mim_native` (`src/mim/native/`, namespace `mim::native`), not in libmim: it uses `core`/`mem`/`math` headers and `pbqp`, which libmim must not.
-  A backend links it and hooks its phases with `native::hook`; ABI, constraints, and spill instructions are `Target` virtuals, so the library never names a backend axiom.
+- The plugin `mach` is the machine-independent surface of the backends: `Flags`, `Spill`, `in`, `slot`, `spill`, `reload`, the isel guard `lit`, and the phases `spilling`, `constrain`, `color`, and `live`.
+  It hooks those phases with `native::hook`, which takes the Target from `Driver::target`; they read their `-X` arguments as the backend's (`-X x86:k=3`).
+  The header-only `mach::Target` implements everything `mach` determines, so a backend's Target only adds its instructions, register file, ABI, and constraints.
+  The rule generator behind `<backend>_isel.gen` needs `core`/`math`/`refly`, so it lives in `mach` as `mim_mach_gen`, which the header-only `mach::Gen` reaches via `GET_FUN_PTR`, as `ll::Emitter` does.
+  It is not called `native`: that would shadow `native::` inside `mim::plug::<backend>`.
 - Inside a class derived from `native::Emitter` or `native::FunPhase`, a bare `target()` is the base's accessor; pass the backend's `x86::target()`/`arm::target()` to the base constructor explicitly.
 
 ## Frontend (`ast/`)

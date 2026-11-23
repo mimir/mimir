@@ -3,11 +3,17 @@
 #include <optional>
 #include <string_view>
 
+#include <mim/driver.h>
 #include <mim/phase.h>
 
-#include "mim/native/rule_table.h"
+#include <mim/native/rule_table.h>
 
-namespace mim::native {
+namespace mim::plug::mach {
+
+class Gen;
+
+/// Gen::start, compiled once into `libmim_mach`; Gen reaches it via `GET_FUN_PTR`.
+extern "C" MIM_EXPORT void mim_mach_gen(Gen&);
 
 /// Writes the closed rules among the annexes of a backend's isel plugin as the C++ matchers and builders of a
 /// rules::Table in `mim::plug::<backend>::rules`, to `-X <isel>:o=<file>` or stdout.
@@ -43,7 +49,7 @@ public:
         , isel_id_(isel_id)
         , annexes_(annexes) {}
 
-    void start() final;
+    void start() final { driver().GET_FUN_PTR("mach", mim_mach_gen)(*this); }
 
     std::string_view backend() const { return backend_; }
     plugin_t backend_id() const { return backend_id_; }
@@ -58,7 +64,7 @@ public:
     /// The operand whose register the result of the two-address instruction @p insn takes.
     virtual std::optional<size_t> tied(const App*) const { return {}; }
     /// What an operand of the backend's address type @p type is: Want::Base, Want::Index, or Want::Addr.
-    virtual std::optional<rules::Want> classify(const Def*) const { return {}; }
+    virtual std::optional<native::rules::Want> classify(const Def*) const { return {}; }
     ///@}
 
 private:
@@ -69,4 +75,4 @@ private:
     Annexes annexes_;
 };
 
-} // namespace mim::native
+} // namespace mim::plug::mach

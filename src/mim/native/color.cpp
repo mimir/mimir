@@ -4,8 +4,8 @@
 #include <pbqp/dot.h>
 #include <pbqp/solver.h>
 
-#include <mim/liveness.h>
-#include <mim/rewrite.h>
+#include "mim/liveness.h"
+#include "mim/rewrite.h"
 
 #include "mim/native/regalloc.h"
 
@@ -374,7 +374,7 @@ void Color::visit(Lam* fun) {
 }
 
 std::ostream* Color::dot() {
-    if (auto d = arg_value(args(), "color-dot")) {
+    if (auto d = arg_value(target_args(), "color-dot")) {
         if (dot_.name().empty()) dot_.name() = std::string(*d);
         return dot_.os();
     }

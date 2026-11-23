@@ -28,6 +28,13 @@ target_sources(libmim
         ast/parser.cpp
         ast/stream.cpp
         ast/tok.cpp
+        native/color.cpp
+        native/constrain.cpp
+        native/emit.cpp
+        native/isel.cpp
+        native/live.cpp
+        native/spilling.cpp
+        native/subst.cpp
         phase/adce.cpp
         phase/lam_spec.cpp
         phase/optimize.cpp
@@ -84,6 +91,8 @@ target_link_libraries(libmim
     PUBLIC
         fe::fe
         ${CMAKE_DL_LIBS}
+    PRIVATE
+        pbqp
 )
 
 install(
@@ -97,8 +106,10 @@ install(
     # They need automaton, which is linked into the regex plugin only.
     PATTERN "dfa2matcher.h" EXCLUDE
     PATTERN "regex2nfa.h" EXCLUDE
-    # It needs mim_native, which is linked into the native backends only.
-    PATTERN "native" EXCLUDE
+)
+install(
+    DIRECTORY ${PROJECT_SOURCE_DIR}/include/pbqp
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
 add_subdirectory(cli)
@@ -108,7 +119,6 @@ configure_file(
     @ONLY
 )
 set(mim_DIR "${CMAKE_BINARY_DIR}")
-add_subdirectory(native)
 add_subdirectory(plug)
 
 add_dependencies(mim_all libmim)

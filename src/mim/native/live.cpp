@@ -1,6 +1,6 @@
 #include <print>
 
-#include <mim/liveness.h>
+#include "mim/liveness.h"
 
 #include "mim/native/regalloc.h"
 
@@ -20,7 +20,7 @@ void Live::visit(Lam* fun) {
     // A closed basic block belongs to the function that jumps to it.
     if (!Lam::isa_mut_returning(fun)) return;
 
-    auto out  = Out(std::string(arg_value(args(), "live").value_or("-")));
+    auto out  = Out(std::string(arg_value(target_args(), "live").value_or("-")));
     auto& os  = *out.os();
     auto live = Liveness(target(), fun);
     std::println(os, "fun {}", fun);

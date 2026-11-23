@@ -5,8 +5,10 @@
 #include <sstream>
 #include <utility>
 
-#include <mim/asm.h>
-#include <mim/liveness.h>
+#include <fe/algo.h>
+
+#include "mim/asm.h"
+#include "mim/liveness.h"
 
 namespace mim::native {
 
@@ -54,9 +56,15 @@ protected:
     /// A register of class @p cls that breaks a copy cycle instead of swap(), if any.
     virtual std::optional<Reg> scratch(Target::Class) const { return {}; }
     /// Pushes the spill slot @p i; the pops come in reverse order.
-    virtual void push_slot(size_t i)         = 0;
-    virtual void pop_slot(size_t i)          = 0;
-    virtual void jmp(std::string_view label) = 0;
+    virtual void push_slot(size_t i) = 0;
+    virtual void pop_slot(size_t i)  = 0;
+    /// Stores @p x, a register operand or a literal, into the spill slot @p i.
+    virtual void spill(const Def* x, size_t i) = 0;
+    /// Loads the spill slot @p i into the register of the result @p res.
+    virtual void reload(const Def* res, size_t i) = 0;
+    /// Puts the address of the @p n slots from @p first on into the register @p dst.
+    virtual void slot_addr(size_t dst, size_t first, size_t n) = 0;
+    virtual void jmp(std::string_view label)                   = 0;
     /// Branches to @p label if the condition code @p cc holds.
     virtual void branch_cc(size_t cc, std::string_view label) = 0;
     /// Branches to @p label if the `Bool` in register @p r is set.
@@ -124,7 +132,11 @@ protected:
 
     std::ostringstream& body() { return body_; }
 
+    /// The bytes of the callee-saved registers, slots, and spill slots, rounded up to keep `sp` 16-byte aligned.
+    size_t frame_size() const { return fe::pad(8 * (saved_.size() + num_slots_), 16); }
+
 private:
+    void insn(const App*);
     void collect(const Def*, DefSet&);
     void block(const Liveness::Block&);
     void parallel(Moves moves, fe::Vector<std::pair<size_t, size_t>> slot_moves);

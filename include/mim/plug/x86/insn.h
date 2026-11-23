@@ -6,6 +6,8 @@
 #include <mim/axm.h>
 #include <mim/lam.h>
 
+#include <mim/plug/mach/mach.h>
+
 #include "mim/plug/x86/autogen.h"
 #include "mim/plug/x86/imm.h"
 
@@ -46,7 +48,7 @@ inline u32 latency(flags_t base, nat_t s) {
     if (base == Annex::Base<fdiv>) return 11;
     if (base == Annex::Base<fsqrt>) return 14;
     if (base == Annex::Base<load> || base == Annex::Base<fload>) return Load;
-    if (base == Annex::Base<slot>) return 0;
+    if (base == Annex::Base<mach::slot>) return 0;
     return 1;
 }
 

@@ -5,7 +5,7 @@
 #include <string_view>
 #include <utility>
 
-#include <mim/util/types.h>
+#include "mim/util/types.h"
 
 namespace mim {
 class Def;

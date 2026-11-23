@@ -1,10 +1,8 @@
 #include <limits>
 #include <ranges>
 
-#include <mim/driver.h>
-#include <mim/liveness.h>
-
-#include <mim/plug/mem/mem.h>
+#include "mim/driver.h"
+#include "mim/liveness.h"
 
 #include "mim/native/regalloc.h"
 #include "mim/native/subst.h"
@@ -34,7 +32,7 @@ const Def* reroot(const Def* value, const Def* old_app, const Def* new_app) {
 
 /// A closed instruction is recomputed instead of reloaded.
 bool is_remat(const Target& target, const Def* value) {
-    if (auto app = root(value); app && Target::is_axm(target.sched(), app))
+    if (auto app = root(value); app && Target::is_axm(target.annexes().sched, app))
         return Target::sched_insn(app)->is_closed() && app->arg()->is_closed();
     return false;
 }
@@ -516,7 +514,7 @@ void Spiller::phis() {
 }
 
 const Def* Spiller::sched(const Def* f, const Def* x) {
-    auto res = world_.call<plug::mem::sched>(f, m_, x);
+    auto res = world_.call(world_.annex(target_.annexes().sched), f, m_, x);
     m_       = res->proj(2, 0);
     return res->proj(2, 1);
 }

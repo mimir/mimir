@@ -7,7 +7,7 @@
 namespace mim::plug::x86 {
 
 /// Writes GNU assembler code (AT&T syntax) for the scheduled world; see AsmEmit for the output file.
-/// Values live in the registers that x86.color assigned; jumps, calls, returns, and the entry are parallel copies.
+/// Values live in the registers that `mach.color` assigned; jumps, calls, returns, and the entry are parallel copies.
 class Emit : public AsmEmit {
 public:
     Emit(World& world, flags_t annex)

@@ -18,8 +18,17 @@ size_t Target::num_caller_saved(Class cls) const {
     return n;
 }
 
+const Def* Target::mem_def(const Def* def) const {
+    if (is_mem(def)) return def;
+    if (def->isa<Arr>() || def->type()->isa<Arr>()) return nullptr; // don't look into possibly gigantic arrays
+    if (def->num_projs() > 1)
+        for (auto proj : def->projs())
+            if (auto m = mem_def(proj)) return m;
+    return nullptr;
+}
+
 DefVec Target::operands(const App* insn) const {
-    auto ops = is_axm(sched_, insn) ? insn->arg()->projs() : insn->args();
+    auto ops = is_axm(annexes_.sched, insn) ? insn->arg()->projs() : insn->args();
     return DefVec(ops.begin(), ops.end());
 }
 
@@ -30,7 +39,8 @@ const Def* Target::result(const App* insn, size_t j) {
 
 const App* Target::rebuild(const App* insn, const Def* m, const DefVec& ops) const {
     auto& w = insn->world();
-    if (is_axm(sched_, insn)) return w.app(w.app(insn->callee()->as<App>()->callee(), m), w.tuple(ops))->as<App>();
+    if (is_axm(annexes_.sched, insn))
+        return w.app(w.app(insn->callee()->as<App>()->callee(), m), w.tuple(ops))->as<App>();
     auto args = ops;
     args[0]   = m;
     return w.app(insn->callee(), w.tuple(args))->as<App>();

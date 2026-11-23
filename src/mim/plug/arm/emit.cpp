@@ -67,6 +67,9 @@ private:
     void branch_cc(size_t cc, std::string_view label) final { line("b.{} {}", ccs[cc], label); }
     void branch_if(size_t r, std::string_view label) final { line("cbnz w{}, {}", r, label); }
     void call_insn(std::string_view sym, const std::array<size_t, Target::Num_Classes>&) final { line("bl {}", sym); }
+    void spill(const Def* x, size_t i) final { line("str {}, {}", operand(x, 64, Scratch2), slot(i)); }
+    void reload(const Def* res, size_t i) final { line("ldr x{}, {}", def_reg(res), slot(i)); }
+    void slot_addr(size_t dst, size_t first, size_t) final;
     void prologue(std::ostream& os) final;
     void epilogue() final;
     std::string_view function_type() const final { return "%function"; }
@@ -153,29 +156,13 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         auto ra = operand(a, w, Scratch2);
         auto rb = operand(a, b, w, 0);
         line("csel {}, {}, {}, {}", reg(def_reg(res), w), rb, ra, ccs[axm->sub()]);
-    } else if (id == Annex::Base<arm::spill>) {
-        line("str {}, {}", operand(x, 64, Scratch2), slot(spill_slot(res)));
-    } else if (id == Annex::Base<reload>) {
-        line("ldr x{}, {}", def_reg(res), slot(spill_slot(x)));
     } else {
-        f->blame(MIM_ARM_BE "cannot emit `{}`", axm).bail();
+        f->blame("{} backend: cannot emit `{}`", backend(), axm).bail();
     }
 }
 
 void Emitter::step(const App* app) {
     if (Axm::isa<sched>(app)) return insn(app->proj(2, 1), Target::sched_insn(app), app->arg());
-
-    if (Axm::isa<arm::slot>(app)) {
-        auto dst = def_reg(app->proj(2, 1));
-        auto off = 8 * (saved().size() + alloc_slots(nat(app->callee()->as<App>()->arg())));
-        if (off <= 4095) {
-            line("add x{}, sp, #{}", dst, off);
-        } else {
-            line("ldr x{}, ={}", Scratch2, off);
-            line("add x{}, sp, x{}", dst, Scratch2);
-        }
-        return;
-    }
 
     if (Axm::isa<load>(app)) {
         auto [_, p] = app->args<2>();
@@ -193,11 +180,18 @@ void Emitter::step(const App* app) {
         return;
     }
 
-    app->blame(MIM_ARM_BE "cannot emit `{}`", app).bail();
+    app->blame("{} backend: cannot emit `{}`", backend(), app).bail();
+}
+
+void Emitter::slot_addr(size_t dst, size_t first, size_t) {
+    auto off = 8 * (saved().size() + first);
+    if (off <= 4095) return line("add x{}, sp, #{}", dst, off);
+    line("ldr x{}, ={}", Scratch2, off);
+    line("add x{}, sp, x{}", dst, Scratch2);
 }
 
 void Emitter::prologue(std::ostream& os) {
-    auto frame = (8 * (saved().size() + num_slots()) + 15) & ~size_t(15);
+    auto frame = frame_size();
     std::println(os, "\tstp x29, x30, [sp, #-16]!");
     std::println(os, "\tmov x29, sp");
     if (frame != 0) std::println(os, "\tsub sp, sp, #{}", frame);

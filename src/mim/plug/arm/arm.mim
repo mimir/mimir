@@ -6,7 +6,7 @@
 ///
 /// The native AArch64 backend.
 /// Loading this plugin (`mim foo.mim -p arm`) appends instruction selection, register allocation, and emission to the compilation pipeline.
-/// Instruction selection rewrites a small integer subset of `core` and `mem` into the axioms below.
+/// Instruction selection rewrites a small integer subset of `core` and `mem` into the axioms below and those of `mach`; register allocation is the phases of `mach`.
 /// AArch64 is three-address, so no operand is tied to a result.
 /// Registers are no concern of these types; register allocation introduces them later.
 /// The schedule is the `mem.M 0` chain: memory instructions sit on it, and `mem.schedule` threads all other instructions onto it via `mem.sched`.
@@ -15,36 +15,15 @@
 ///
 plugin core;
 plugin mem;
+plugin mach;
 plugin opt;
 import compile;
 ///
-/// ## Types
-///
-/// ### Flags
-///
-/// The condition flags `NZCV`.
-///
-axm Flags: *;
-///
-/// ### Spill
-///
-/// A spill slot holding a value of type `Idx s`.
-///
-axm Spill: Nat → *;
-///
 /// ## Registers
-///
-/// ### in
-///
-/// `in r v` is `v`, which lives in register `r`; the operand size `s` selects the width.
-/// Register allocation wraps every use of a value, so all uses of `v` share one `in r v`.
-/// It is no instruction: it is neither scheduled nor on the chain.
-///
-axm in: [r: Idx 32] → {s: Nat} → Idx s → Idx s;
 ///
 /// ### reg
 ///
-/// The general-purpose registers in hardware encoding order.
+/// The general-purpose registers in hardware encoding order, as the register `r` of `mach.in r v`.
 /// A register's subtag is its hardware encoding, so they have to stay in this order.
 ///
 pub mod reg
@@ -95,12 +74,6 @@ axm load: [s: Nat] → [mem.M 0, I64] → [mem.M 0, Idx s];
 ///
 axm store: [s: Nat] → [mem.M 0, I64, Idx s] → mem.M 0;
 ///
-/// ### slot
-///
-/// Reserves `n` bytes in the stack frame and yields their address.
-///
-axm slot: [n: Nat] → mem.M 0 → [mem.M 0, I64];
-///
 /// ### Arithmetic
 ///
 /// Three-address arithmetic `op d, a, b`.
@@ -137,19 +110,7 @@ axm trunc: {s: Nat} → [d: Nat] → Idx s → Idx d;
 ///
 /// `cmp a, b` sets the flags from `a - b`.
 ///
-axm cmp: {s: Nat} → «2; Idx s» → Flags;
-///
-/// ### spill
-///
-/// `spill x` stores `x` into a spill slot; it is placed on the chain via `mem.sched` like any other pure instruction.
-///
-axm spill: {s: Nat} → Idx s → Spill s;
-///
-/// ### reload
-///
-/// `reload x` loads the value of the spill slot `x` into a register.
-///
-axm reload: {s: Nat} → Spill s → Idx s;
+axm cmp: {s: Nat} → «2; Idx s» → mach.Flags;
 ///
 /// ## Condition Codes
 ///
@@ -179,13 +140,13 @@ axm reload: {s: Nat} → Spill s → Idx s;
 /// `csel.<c> (f, x, y)` yields `y` if `<c>` holds on `f`, else `x`, like `(x, y)#cond`.
 /// `csel.ne (cmp (cc.<c> f, 0), x, y)` normalizes to `csel.<c> (f, x, y)`.
 ///
-axm csel.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): {s: Nat} → [Flags, Idx s, Idx s] → Idx s, normalize_csel;
+axm csel.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): {s: Nat} → [mach.Flags, Idx s, Idx s] → Idx s, normalize_csel;
 ///
 /// ### cc
 ///
 /// Tests a condition code on the flags: `bcc` as a branch condition, `cset` otherwise.
 ///
-axm cc.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): Flags → Bool;
+axm cc.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): mach.Flags → Bool;
 ///
 /// ## Phases
 ///
@@ -194,25 +155,6 @@ axm cc.(eq, ne, cs, cc, mi, pl, vs, vc, hi, ls, ge, lt, gt, le, al, nv): Flags �
 /// Instruction selection for an integer subset of `core` and `mem` by the rules of `arm_isel`.
 ///
 axm isel: compile.Phase;
-///
-/// ### spilling
-///
-/// Spills and reloads values until at most `k` of them are live in registers at any point (`-X arm:k=<n>`).
-///
-axm spilling: compile.Phase;
-///
-/// ### color
-///
-/// Assigns a register to every value by one PBQP per function and wraps each use of a value in `arm.in`.
-/// Jumps, calls, and returns are parallel copies: their arguments only prefer the registers of the parameters they bind.
-///
-axm color: compile.Phase;
-///
-/// ### live
-///
-/// Prints the liveness of each function (`-X arm:live=<file>`); not part of the default pipeline.
-///
-axm live: compile.Phase;
 ///
 /// ### emit
 ///

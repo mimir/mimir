@@ -23,7 +23,7 @@ set(MIM_PLUGINS
     vec
 )
 if(MIM_NATIVE_BACKENDS)
-    list(APPEND MIM_PLUGINS arm arm_isel x86 x86_isel)
+    list(APPEND MIM_PLUGINS arm arm_isel mach x86 x86_isel)
 endif()
 
 foreach(PLUGIN IN LISTS MIM_PLUGINS)

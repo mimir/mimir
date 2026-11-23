@@ -1,24 +1,20 @@
 #pragma once
 
-#include <mim/target.h>
+#include <mim/plug/mach/target.h>
 
 #include "mim/plug/arm/arm.h"
 
 namespace mim::plug::arm {
 
 /// The machine facts of the AArch64 backend; the ABI is AAPCS64.
-class Target : public mim::Target {
+class Target : public mach::Target {
 public:
-    Target();
+    Target()
+        : mach::Target("arm", Plugin_Id, Annex::Base<cc>) {}
 
-    Class cls(const Def* def) const final;
-    bool is_machine_insn(const App* app) const final;
     bool is_mem_insn(const App* app) const final {
-        return Axm::isa<load>(app) || Axm::isa<store>(app) || Axm::isa<arm::slot>(app);
+        return mach::Target::is_mem_insn(app) || Axm::isa<load>(app) || Axm::isa<store>(app);
     }
-    bool is_in(const Def* def) const final { return Axm::isa<arm::in>(def); }
-    const Def* in(Class cls, size_t r, const Def* v) const final;
-    nat_t ptr_size() const final { return 8; }
 
     size_t num_regs(Class cls) const final { return cls == Gpr ? Num_Regs : 0; }
     bool reserved(Class, size_t r) const final { return arm::reserved(r); }
@@ -27,12 +23,12 @@ public:
     size_t arg_reg(Class, size_t i) const final { return Arg_Regs[i]; }
     size_t ret_reg(Class) const final { return Ret_Reg; }
 
-    bool is_removable(const App* insn) const final;
-    const Def* spill(Class cls, const Def* type) const final;
-    const Def* reload(Class cls, const Def* type) const final;
-    const Def* spill_type(Class cls, const Def* type) const final;
+    bool is_removable(const App* insn) const final { return mach::Target::is_removable(insn) || Axm::isa<load>(insn); }
 };
 
-const Target& target();
+inline const Target& target() {
+    static const auto res = Target();
+    return res;
+}
 
 } // namespace mim::plug::arm

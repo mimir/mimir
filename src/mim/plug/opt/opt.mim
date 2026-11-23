@@ -115,9 +115,9 @@ extern lam _default_compile (): compile.Phase =
         compile.cond "x86" mem.legalize_native,
         compile.named "x86.isel",
         compile.cond "x86" mem.schedule,
-        compile.named "x86.spilling",
-        compile.named "x86.constrain",
-        compile.named "x86.color",
+        compile.cond "x86" (compile.named "mach.spilling"),
+        compile.cond "x86" (compile.named "mach.constrain"),
+        compile.cond "x86" (compile.named "mach.color"),
         compile.named "x86.emit",
 
         // arm
@@ -128,7 +128,7 @@ extern lam _default_compile (): compile.Phase =
         compile.cond "arm" mem.legalize_native,
         compile.named "arm.isel",
         compile.cond "arm" mem.schedule,
-        compile.named "arm.spilling",
-        compile.named "arm.color",
+        compile.cond "arm" (compile.named "mach.spilling"),
+        compile.cond "arm" (compile.named "mach.color"),
         compile.named "arm.emit",
     );

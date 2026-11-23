@@ -5,6 +5,4 @@ add_mim_plugin(x86
         normalizers.cpp
         phase/isel.cpp
         target.cpp
-    PRIVATE
-        mim_native
 )

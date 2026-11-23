@@ -4,7 +4,4 @@ add_mim_plugin(arm
         emit.cpp
         normalizers.cpp
         phase/isel.cpp
-        target.cpp
-    PRIVATE
-        mim_native
 )

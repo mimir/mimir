@@ -136,9 +136,23 @@ void Emitter::call(Lam* callee, const Def* arg) {
     jump(k);
 }
 
+void Emitter::insn(const App* app) {
+    const auto& ann = target_.annexes();
+    if (Target::is_axm(ann.sched, app)) {
+        auto f   = Target::sched_insn(app);
+        auto res = app->proj(2, 1);
+        if (Target::is_axm(ann.spill, f, 1)) return spill(app->arg(), spill_slot(res));
+        if (Target::is_axm(ann.reload, f, 1)) return reload(res, spill_slot(app->arg()));
+    } else if (Target::is_axm(ann.slot, app)) {
+        auto first = alloc_slots(nat(app->callee()->as<App>()->arg()));
+        return slot_addr(def_reg(app->proj(2, 1)), first, num_slots_ - first);
+    }
+    step(app);
+}
+
 void Emitter::block(const Liveness::Block& b) {
-    for (auto insn : b.insns)
-        step(insn);
+    for (auto app : b.insns)
+        insn(app);
 
     auto term   = b.lam->body()->as<App>();
     auto arg    = term->arg();

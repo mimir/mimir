@@ -82,7 +82,7 @@ std::string_view alu(flags_t id) {
 /// Width of the register holding a value of @p type; a spill slot is as wide as its value.
 nat_t width(const Def* type) {
     if (auto w = math::isa_f(type)) return *w;
-    if (auto spill = Axm::isa<Spill>(type)) type = type->world().type_idx(spill->arg());
+    if (auto spill = Axm::isa<mach::Spill>(type)) return width(spill->arg());
     return std::bit_ceil(std::max<nat_t>(Idx::expect_bitwidth(type, "an integer"), 8));
 }
 
@@ -125,6 +125,12 @@ private:
     void mov_imm(Reg dst, const Def* lit) final;
     void push_slot(size_t i) final { line("pushq {}", slot(i)); }
     void pop_slot(size_t i) final { line("popq {}", slot(i)); }
+    void spill(const Def* x, size_t i) final;
+    void reload(const Def* res, size_t i) final;
+    /// The area grows down from `rbp`, so its address is that of its last slot.
+    void slot_addr(size_t dst, size_t first, size_t n) final {
+        line("leaq {}, {}", slot(first + n - 1), name(dst, 64));
+    }
     void jmp(std::string_view label) final { line("jmp {}", label); }
     void branch_cc(size_t cc, std::string_view label) final { line("j{} {}", ccs[cc], label); }
     void branch_if(size_t r, std::string_view label) final {
@@ -147,7 +153,8 @@ private:
 std::string Emitter::imm(const Def* lit, nat_t w) const {
     auto l = *Lit::isa(lit);
     auto s = std::bit_cast<int64_t>(l << (64 - w)) >> (64 - w);
-    if (s < INT32_MIN || s > INT32_MAX) lit->blame(MIM_X86_BE "literal `{}` does not fit an immediate", lit).bail();
+    if (s < INT32_MIN || s > INT32_MAX)
+        lit->blame("{} backend: literal `{}` does not fit an immediate", backend(), lit).bail();
     return std::format("${}", s);
 }
 
@@ -160,7 +167,7 @@ std::string Emitter::addr(const Def* a) const {
     auto ix           = Axm::isa<x86::index>(a);
     auto [disp, base] = Axm::as<x86::addr>(ix ? ix->decurry()->arg() : a)->args<2>();
     auto d            = std::bit_cast<int32_t>(u32(nat(disp)));
-    if (auto l = Lit::isa(base); l && *l != 0) base->blame(MIM_X86_BE "literal base `{}`", base).bail();
+    if (auto l = Lit::isa(base); l && *l != 0) base->blame("{} backend: literal base `{}`", backend(), base).bail();
     auto has_base = !Lit::isa(base);
     if (!has_base && !ix) return std::to_string(d);
 
@@ -195,7 +202,7 @@ void Emitter::mov_imm(Reg dst, const Def* lit) {
     auto w = width(lit->type());
     auto l = *Lit::isa(lit);
     if (dst.cls == Target::Fpr) {
-        if (w != 32 && w != 64) lit->blame(MIM_X86_BE "`math.F` of {} bits is not supported", w).bail();
+        if (w != 32 && w != 64) lit->blame("{} backend: `math.F` of {} bits is not supported", backend(), w).bail();
         return line("mov{} {}, {}", fsz(w), pool(l, w == 64 ? 0 : l), xmm(dst.num));
     }
     // `xorl` clobbers the flags, so only use it while none are pending.
@@ -211,13 +218,11 @@ void Emitter::mov_imm(Reg dst, const Def* lit) {
 void Emitter::insn(const Def* res, const Def* f, const Def* x) {
     auto axm  = std::get<0>(Axm::get(f));
     auto id   = axm->base();
-    auto keep = id == Annex::Base<mov> || id == Annex::Base<x86::spill> || id == Annex::Base<reload>
-             || id == Annex::Base<lea> || id == Annex::Base<movzx> || id == Annex::Base<movsx> || id == Annex::Base<cc>
-             || id == Annex::Base<cmovcc> || id == Annex::Base<fmov> || id == Annex::Base<fspill>
-             || id == Annex::Base<freload> || id == Annex::Base<fadd> || id == Annex::Base<fsub>
-             || id == Annex::Base<fmul> || id == Annex::Base<fdiv> || id == Annex::Base<fsqrt>
-             || id == Annex::Base<fabs> || id == Annex::Base<i2f> || id == Annex::Base<f2i> || id == Annex::Base<f2u>
-             || id == Annex::Base<f2f>;
+    auto keep = id == Annex::Base<mov> || id == Annex::Base<lea> || id == Annex::Base<movzx> || id == Annex::Base<movsx>
+             || id == Annex::Base<cc> || id == Annex::Base<cmovcc> || id == Annex::Base<fmov> || id == Annex::Base<fadd>
+             || id == Annex::Base<fsub> || id == Annex::Base<fmul> || id == Annex::Base<fdiv>
+             || id == Annex::Base<fsqrt> || id == Annex::Base<fabs> || id == Annex::Base<i2f> || id == Annex::Base<f2i>
+             || id == Annex::Base<f2u> || id == Annex::Base<f2f>;
     if (!keep) clobber_flags();
 
     auto binary = [&](std::string_view mnemonic) {
@@ -271,15 +276,8 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
     else if (id == Annex::Base<movsx>) extend('s');
     // clang-format on
     else if (id == Annex::Base<mov>) {
-        if (!Lit::isa(x)) x->blame(MIM_X86_BE "`x86.mov` of `{}`, which is no literal", x).bail();
+        if (!Lit::isa(x)) x->blame("{} backend: `x86.mov` of `{}`, which is no literal", backend(), x).bail();
         mov_imm(Reg{def_reg(res), Target::Gpr}, x);
-    } else if (id == Annex::Base<x86::spill>) {
-        if (Lit::isa(x))
-            line("movq {}, {}", imm(x, 64), slot(spill_slot(res)));
-        else
-            line("movq {}, {}", name(use_reg(x), 64), slot(spill_slot(res)));
-    } else if (id == Annex::Base<reload>) {
-        line("movq {}, {}", slot(spill_slot(x)), name(def_reg(res), 64));
     } else if (id == Annex::Base<lea>) {
         line("leaq {}, {}", addr(x), name(def_reg(res), 64));
     } else if (id == Annex::Base<trunc>) {
@@ -345,20 +343,8 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         assert(use_reg(x) == dst);
         line("and{} {}, {}", w == 64 ? "pd" : "ps", abs_mask(w), xmm(dst));
     } else if (id == Annex::Base<fmov>) {
-        if (!Lit::isa(x)) x->blame(MIM_X86_BE "`x86.fmov` of `{}`, which is no literal", x).bail();
+        if (!Lit::isa(x)) x->blame("{} backend: `x86.fmov` of `{}`, which is no literal", backend(), x).bail();
         mov_imm(Reg{def_reg(res), Target::Fpr}, x);
-    } else if (id == Annex::Base<fspill>) {
-        auto w = width(x->type());
-        auto s = spill_slot(res);
-        if (auto l = Lit::isa(x)) {
-            line("movl ${}, {}", u32(*l), slot(s));
-            if (w == 64) line("movl ${}, {}", u32(*l >> 32), slot(s, 4));
-        } else {
-            line("mov{} {}, {}", fsz(w), xmm(use_reg(x)), slot(s));
-        }
-    } else if (id == Annex::Base<freload>) {
-        auto w = width(res->type());
-        line("mov{} {}, {}", fsz(w), slot(spill_slot(x)), xmm(def_reg(res)));
     } else if (id == Annex::Base<fcmp>) {
         auto [a, b] = x->projs<2>();
         ucomi(axm->sub(), width(a->type()), xmm(use_reg(b)), use_reg(a), def_reg(res));
@@ -374,7 +360,7 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
     } else if (id == Annex::Base<u2f>) {
         auto ws = width(x->type());
         auto wr = width(res->type());
-        if (ws == 64) f->blame(MIM_X86_BE "`x86.u2f` from `i64` is not supported yet").bail();
+        if (ws == 64) f->blame("{} backend: `x86.u2f` from `i64` is not supported yet", backend()).bail();
         auto src = name(use_reg(x), 32);
         auto dst = xmm(def_reg(res));
         auto l   = local("u2f");
@@ -386,7 +372,7 @@ void Emitter::insn(const Def* res, const Def* f, const Def* x) {
         label_here(l);
         if (wr == 32) line("cvtsd2ss {}, {}", dst, dst);
     } else {
-        f->blame(MIM_X86_BE "cannot emit `{}`", axm).bail();
+        f->blame("{} backend: cannot emit `{}`", backend(), axm).bail();
     }
 }
 
@@ -409,19 +395,13 @@ void Emitter::unary(flags_t id, std::string_view src, nat_t ws, const Def* res) 
     if (id == Annex::Base<i2f>) return line("cvtsi2{}{} {}, {}", fsz(wr), ws == 64 ? "q" : "l", src, xmm(dst));
     if (id == Annex::Base<f2i>) return line("cvtt{}2si{} {}, {}", fsz(ws), wr == 64 ? "q" : "l", src, name(dst, wr));
     if (id == Annex::Base<f2f>) return line("cvt{}2{} {}, {}", fsz(ws), fsz(wr), src, xmm(dst));
-    if (wr == 64) res->blame(MIM_X86_BE "`x86.f2u` to `i64` is not supported yet").bail();
+    if (wr == 64) res->blame("{} backend: `x86.f2u` to `i64` is not supported yet", backend()).bail();
     line("cvtt{}2siq {}, {}", fsz(ws), src, name(dst, 64));
     line("movl {}, {}", name(dst, 32), name(dst, 32));
 }
 
 void Emitter::step(const App* app) {
     if (Axm::isa<sched>(app)) return insn(app->proj(2, 1), Target::sched_insn(app), app->arg());
-
-    if (Axm::isa<x86::slot>(app)) {
-        alloc_slots(nat(app->callee()->as<App>()->arg()));
-        line("leaq {}, {}", slot(num_slots() - 1), name(def_reg(app->proj(2, 1)), 64));
-        return;
-    }
 
     if (!Axm::isa<load>(app) && !Axm::isa<store>(app) && !Axm::isa<fload>(app) && !Axm::isa<fstore>(app))
         clobber_flags();
@@ -481,6 +461,27 @@ void Emitter::step(const App* app) {
     line("mov{} {}, {}", suffix(w), src(v, w), addr(p));
 }
 
+void Emitter::spill(const Def* x, size_t i) {
+    if (!math::isa_f(x->type())) {
+        auto src = Lit::isa(x) ? imm(x, 64) : std::string(name(use_reg(x), 64));
+        return line("movq {}, {}", src, slot(i));
+    }
+    auto w = width(x->type());
+    if (auto l = Lit::isa(x)) {
+        line("movl ${}, {}", u32(*l), slot(i));
+        if (w == 64) line("movl ${}, {}", u32(*l >> 32), slot(i, 4));
+    } else {
+        line("mov{} {}, {}", fsz(w), xmm(use_reg(x)), slot(i));
+    }
+}
+
+void Emitter::reload(const Def* res, size_t i) {
+    if (math::isa_f(res->type()))
+        line("mov{} {}, {}", fsz(width(res->type())), slot(i), xmm(def_reg(res)));
+    else
+        line("movq {}, {}", slot(i), name(def_reg(res), 64));
+}
+
 void Emitter::epilogue() {
     if (saved().empty()) {
         line("leave");
@@ -494,8 +495,7 @@ void Emitter::epilogue() {
 }
 
 void Emitter::prologue(std::ostream& os) {
-    auto pushed = 8 * saved().size();
-    auto frame  = fe::pad(8 * num_slots() + pushed, 16) - pushed;
+    auto frame = frame_size() - 8 * saved().size();
     std::println(os, "\tpushq %rbp");
     std::println(os, "\tmovq %rsp, %rbp");
     for (auto r : saved())

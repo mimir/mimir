@@ -5,8 +5,8 @@
 /// [TOC]
 ///
 /// The native x86-64 backend.
-/// Loading this plugin (`mim foo.mim -p x86`) appends instruction selection and emission to the compilation pipeline.
-/// Instruction selection rewrites `core`, `math`, and `mem` into the axioms below.
+/// Loading this plugin (`mim foo.mim -p x86`) appends instruction selection, register allocation, and emission to the compilation pipeline.
+/// Instruction selection rewrites `core`, `math`, and `mem` into the axioms below and `mach.slot`; register allocation is the phases of `mach`.
 /// A literal operand of an instruction is an immediate and has to fit its encoding; `mov` puts any other constant into a register.
 /// Registers are no concern of these types; register allocation introduces them later.
 /// The schedule is the `mem.M 0` chain: memory instructions sit on it, and scheduling threads all other instructions onto it via `sched`.
@@ -16,17 +16,12 @@
 plugin core;
 plugin mem;
 plugin math;
+plugin mach;
 plugin opt;
 plugin refly;
 import compile;
 ///
 /// ## Types
-///
-/// ### Flags
-///
-/// The flags register.
-///
-axm Flags: *;
 ///
 /// ### Addr
 ///
@@ -68,19 +63,6 @@ anx let scale_1 = 0I2;
 anx let scale_2 = 1I2;
 anx let scale_4 = 2I2;
 anx let scale_8 = 3I2;
-///
-/// ### Spill
-///
-/// A spill slot holding a value of type `Idx s`.
-/// It is no register value; slot assignment gives it a place in the stack frame.
-///
-axm Spill: Nat → *;
-///
-/// ### FSpill
-///
-/// A spill slot holding a floating-point value of type `math.F pe`.
-///
-axm FSpill: «2; Nat» → *;
 ///
 /// ## Operand Sizes
 ///
@@ -157,23 +139,9 @@ axm mr: {s: Nat, C: *, i: Bool} → («2; Idx s» → C) → [mem.M 0, Addr i, I
 ///
 /// ## Registers
 ///
-/// ### in
-///
-/// `in r v` is `v`, which lives in register `r`; the operand size `s` selects the subregister.
-/// Register allocation wraps every use of a value, so all uses of `v` share one `in r v`.
-/// It is no instruction: it is neither scheduled nor on the chain.
-///
-axm in: [r: I4] → {s: Nat} → Idx s → Idx s;
-///
-/// ### fin
-///
-/// `fin r v` is the floating-point value `v`, which lives in XMM register `r`.
-///
-axm fin: [r: I4] → {pe: «2; Nat»} → math.F pe → math.F pe;
-///
 /// ### reg
 ///
-/// The general-purpose registers in hardware encoding order.
+/// The general-purpose registers in hardware encoding order, as the register `r` of `mach.in r v`; the operand size selects the subregister.
 /// A register's subtag is its hardware encoding, so they have to stay in this order.
 ///
 pub mod reg
@@ -197,7 +165,7 @@ end
 ///
 /// ### xmm
 ///
-/// The floating-point registers in hardware encoding order.
+/// The floating-point registers in hardware encoding order, as the register `r` of `mach.in r v` for a `math.F pe` value `v`.
 /// A register's subtag is its hardware encoding, so they have to stay in this order.
 ///
 pub mod xmm
@@ -246,24 +214,6 @@ axm load: [s: Nat] → {i: Bool} → [mem.M 0, Addr i] → [mem.M 0, Idx (gpr s)
 ///
 axm store: {s: Nat, i: Bool} → [mem.M 0, Addr i, Idx s] → mem.M 0;
 ///
-/// ### slot
-///
-/// Reserves `n` bytes in the stack frame and yields their address via `lea`.
-///
-axm slot: [n: Nat] → mem.M 0 → [mem.M 0, I64];
-///
-/// ### spill
-///
-/// `spill x` stores `x` into a spill slot; it is placed on the chain via `sched` like any other pure instruction.
-///
-axm spill: {s: Nat} → Idx s → Spill s;
-///
-/// ### reload
-///
-/// `reload x` loads `x` from its spill slot.
-///
-axm reload: {s: Nat} → Spill s → Idx s;
-///
 /// ### Arithmetic
 ///
 /// Two-address arithmetic `op r, r/imm`.
@@ -296,7 +246,7 @@ axm trunc: {s: Nat} → [d: Nat] → Idx s → Idx d, normalize_trunc;
 ///
 /// `cmp r, r/imm` and `test r, r/imm`.
 ///
-axm (cmp, test): {s: Nat} → «2; Idx s» → Flags;
+axm (cmp, test): {s: Nat} → «2; Idx s» → mach.Flags;
 ///
 /// ### Condition Codes
 ///
@@ -325,7 +275,7 @@ axm (cmp, test): {s: Nat} → «2; Idx s» → Flags;
 ///
 /// Tests a condition code on the flags: `jcc` as a branch condition, `setcc` otherwise.
 ///
-axm cc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): Flags → Bool;
+axm cc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): mach.Flags → Bool;
 ///
 /// #### cmovcc
 ///
@@ -333,7 +283,7 @@ axm cc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): Flags → Bool;
 ///
 /// `cmovcc.ne (test (cc.l f, cc.l f), x, y)` normalizes to `cmovcc.l (f, x, y)`.
 ///
-axm cmovcc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): {s: Nat} → [Flags, Idx s, Idx s] → Idx (gpr16 s), normalize_cmovcc;
+axm cmovcc.(o, no, b, ae, e, ne, be, a, s, ns, p, np, l, ge, le, g): {s: Nat} → [mach.Flags, Idx s, Idx s] → Idx (gpr16 s), normalize_cmovcc;
 ///
 /// ## Floating-Point Instructions
 ///
@@ -357,18 +307,6 @@ axm fload: [pe: «2; Nat»] → {i: Bool} → [mem.M 0, Addr i] → [mem.M 0, ma
 /// `movss`/`movsd addr, r`.
 ///
 axm fstore: {pe: «2; Nat», i: Bool} → [mem.M 0, Addr i, math.F pe] → mem.M (fok pe 0);
-///
-/// ### fspill
-///
-/// `fspill x` stores the floating-point value `x` into a spill slot; it is placed on the chain via `sched` like any other pure instruction.
-///
-axm fspill: {pe: «2; Nat»} → math.F pe → FSpill pe;
-///
-/// ### freload
-///
-/// `freload x` loads `x` from its floating-point spill slot.
-///
-axm freload: {pe: «2; Nat»} → FSpill pe → math.F (fpe pe);
 ///
 /// ### Floating-Point Arithmetic
 ///
@@ -433,39 +371,8 @@ axm f2f: [spe: «2; Nat»] → [dpe: «2; Nat»] → math.F spe → math.F (fpe 
 ///
 axm isel: compile.Phase;
 ///
-/// ### spilling
-///
-/// Spills and reloads until at most `k` general-purpose values are live at every point (Braun & Hack, CC 2009).
-/// `k` is 14 by default and `-X x86:k=<n>` overrides it.
-///
-axm spilling: compile.Phase;
-///
-/// ### constrain
-///
-/// Moves the operands that an instruction needs in a fixed register, and a two-address operand that stays live, into a fresh continuation right before it.
-/// The jump is the copy, so the copies' live ranges end at the instruction and the interference graph stays chordal.
-/// The fixed operands are wrapped in `in`.
-/// Likewise, a fixed result that stays live is passed on to a fresh continuation right after its instruction.
-///
-axm constrain: compile.Phase;
-///
-/// ### color
-///
-/// Assigns a register to every general-purpose value by one PBQP per function (Buchwald, Zwinkau, Bersch, CC 2011) and wraps each use of a value in `in`.
-/// Jumps, calls, and returns are parallel copies: their arguments only prefer the registers of the parameters they bind.
-/// Removes chain instructions whose results are all dead.
-/// `-X x86:color-dot=<file>` writes the PBQP graph of each function in Graphviz DOT format, with the chosen options highlighted.
-///
-axm color: compile.Phase;
-///
 /// ### emit
 ///
 /// Emits GNU assembler code (AT&T syntax) to `<world>.s`.
 ///
 axm emit: compile.Phase;
-///
-/// ### live
-///
-/// Prints the liveness of every scheduled function to stdout, or to `-X x86:live=<file>`: per block the live-in and live-out values and the maximum number of live values (general-purpose registers, flags).
-///
-axm live: compile.Phase;

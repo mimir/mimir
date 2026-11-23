@@ -30,25 +30,30 @@ inline fe::Vector<std::pair<size_t, std::optional<size_t>>> copies(const Constra
 
 /// The machine facts that the target-independent parts of a native backend need, such as Liveness and `mem.schedule`.
 /// A backend plugin registers its Target via Plugin::target; see Driver::target.
-/// The constructor takes the base flags of `core.M`, `mem.sched`, and the backend's axioms `slot`, `cc`, and `Flags`.
 class Target {
 public:
     /// The register classes; `Stack` values live in a spill slot and are unbounded.
     enum Class : size_t { Gpr, Fpr, Flags, Stack, Num_Classes };
 
-    Target(std::string_view name, flags_t mem, flags_t sched, flags_t slot, flags_t cc, flags_t flags)
+    /// The base flags of the annexes that libmim knows only through the Target.
+    struct Annexes {
+        flags_t mem;    ///< `core.M`.
+        flags_t sched;  ///< `mem.sched`.
+        flags_t slot;   ///< `slot n m`, which allocates `n` bytes of the stack frame.
+        flags_t spill;  ///< `spill T`, the instruction that spills a value of type `T`.
+        flags_t reload; ///< `reload T`, the instruction that reloads it.
+        flags_t cc;     ///< The backend's condition-code family.
+        flags_t flags;  ///< The type `Flags`.
+    };
+
+    Target(std::string_view name, Annexes annexes)
         : name_(name)
-        , mem_(mem)
-        , sched_(sched)
-        , slot_(slot)
-        , cc_(cc)
-        , flags_(flags) {}
+        , annexes_(annexes) {}
     virtual ~Target() = default;
 
     /// The plugin name, used as the prefix of diagnostics.
     std::string_view name() const { return name_; }
-    flags_t sched() const { return sched_; }
-    flags_t slot() const { return slot_; }
+    const Annexes& annexes() const { return annexes_; }
 
     /// The register class of the value @p def, from its type.
     virtual Class cls(const Def* def) const = 0;
@@ -62,6 +67,10 @@ public:
     virtual const Def* in(Class cls, size_t r, const Def* v) const = 0;
     /// The size and alignment of a pointer in bytes; see `core.trait`.
     virtual nat_t ptr_size() const = 0;
+    /// Is @p axm an operation that instruction selection must have replaced?
+    virtual bool is_lowered(const Axm* axm) const = 0;
+    /// The integer under @p def if @p def is a cast of one to a pointer, otherwise @p def.
+    virtual const Def* strip_ptr_cast(const Def* def) const = 0;
 
     /// @name Register File and ABI
     /// Registers are hardware encodings within their Class.
@@ -89,7 +98,7 @@ public:
         return res;
     }
     /// May @p insn go if nothing uses its results, e.g. a load?
-    virtual bool is_removable(const App* insn) const { return is_axm(sched_, insn); }
+    virtual bool is_removable(const App* insn) const { return is_axm(annexes_.sched, insn); }
     /// The instruction `f` of `mem.sched f m x` that spills a value of class @p cls and @p type, or `nullptr`.
     virtual const Def* spill(Class, const Def*) const { return nullptr; }
     /// The instruction that reloads a value of class @p cls and @p type from its spill slot.
@@ -117,21 +126,27 @@ public:
     }
 
     /// Is @p app an instruction that belongs on a `mem.M 0` chain?
-    bool is_insn(const App* app) const { return is_axm(sched_, app) || is_machine_insn(app); }
+    bool is_insn(const App* app) const { return is_axm(annexes_.sched, app) || is_machine_insn(app); }
     bool is_mem(const Def* def) const {
         auto type = def->type(); // Level has no type
-        return type && is_axm(mem_, type);
+        return type && is_axm(annexes_.mem, type);
     }
+    /// The memory in @p def, or `nullptr`; see `core::mem_def`.
+    const Def* mem_def(const Def* def) const;
+    /// The memory parameter of @p lam, or `nullptr`.
+    const Def* mem_var(Lam* lam) const { return mem_def(lam->var()); }
     /// The memory @p app continues, if @p app is an instruction on a `mem.M 0` chain.
     const Def* prev_mem(const App* app) const {
-        if (is_axm(sched_, app)) return app->callee()->as<App>()->arg();
+        if (is_axm(annexes_.sched, app)) return app->callee()->as<App>()->arg();
         return is_mem_insn(app) ? app->arg(app->num_args(), 0) : nullptr;
     }
     /// The `v` of `in r v`, otherwise @p def.
     const Def* strip(const Def* def) const { return is_in(def) ? def->as<App>()->arg() : def; }
     /// Is @p def a `Flags` value or a condition tested on one, neither of which is a register value?
-    bool is_flags(const Def* def) const { return is_axm(flags_, def->type()) || is_axm(cc_, def); }
-    bool is_sched_cc(const App* app) const { return is_axm(sched_, app) && is_axm(cc_, sched_insn(app), 1); }
+    bool is_flags(const Def* def) const { return is_axm(annexes_.flags, def->type()) || is_axm(annexes_.cc, def); }
+    bool is_sched_cc(const App* app) const {
+        return is_axm(annexes_.sched, app) && is_axm(annexes_.cc, sched_insn(app), 1);
+    }
     /// The `mem.sched` of a `cc` that yields @p cond, if any.
     const App* isa_sched_cc(const Def* cond) const {
         if (auto ex = cond->isa<Extract>())
@@ -141,7 +156,7 @@ public:
 
 private:
     std::string_view name_;
-    flags_t mem_, sched_, slot_, cc_, flags_;
+    Annexes annexes_;
 };
 
 } // namespace mim

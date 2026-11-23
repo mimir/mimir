@@ -13,15 +13,8 @@
 plugin core;
 import compile;
 import mem;
+plugin mach;
 import arm;
-///
-/// ## Guards
-///
-/// ### lit
-///
-/// A literal.
-///
-axm lit: {T: *} → T → Bool, normalize_lit;
 ///
 /// ## Operands
 ///
@@ -92,7 +85,7 @@ rule cast_zext  {s: Nat} {d: Nat} (x: Idx s): core.bitcast (Idx d) x when widens
 /// Each `icmp` takes the predicate and its condition code.
 /// `arm.csel`'s normalizer fuses a condition code into it, so a select on a comparison is one `cmp` and one `csel`.
 ///
-rule icmp (p: {s: Nat} → «2; Idx s» → Bool, c: arm.Flags → Bool) (s: Nat, a b: Idx s): p (a, b) => c (arm.cmp (a, b));
+rule icmp (p: {s: Nat} → «2; Idx s» → Bool, c: mach.Flags → Bool) (s: Nat, a b: Idx s): p (a, b) => c (arm.cmp (a, b));
 anx let compares = (
     icmp (core.icmp.e,  arm.cc.eq), icmp (core.icmp.ne,  arm.cc.ne), icmp (core.icmp.ul, arm.cc.cc), icmp (core.icmp.ule, arm.cc.ls),
     icmp (core.icmp.ug, arm.cc.hi), icmp (core.icmp.uge, arm.cc.cs), icmp (core.icmp.sl, arm.cc.lt), icmp (core.icmp.sle, arm.cc.le),
@@ -110,7 +103,7 @@ rule store (s: Nat, m: mem.M 0, p: mem.Ptr0 (Idx s), x: Idx s): mem.store (m, p,
 ///
 /// A literal stays a literal operand; the emitter puts it into a register where the encoding has no immediate.
 ///
-rule mov (x: I64): x when lit x => x;
+rule mov (x: I64): x when mach.lit x => x;
 ///
 /// ## Instances
 ///

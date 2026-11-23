@@ -6,6 +6,7 @@
 
 plugin compile;
 plugin mem;
+plugin mach;
 plugin x86;
 
 /// `a`, `b`, and `c` are only used after the loop, `n` and `x` inside.
@@ -16,21 +17,21 @@ extern con f (m: mem.M 0, a b c n x: I32, return: Cn [mem.M 0, I32]) =
         (exit, body)#(x86.cc.l (x86.cmp (i, n))) m;
     head (m, 0I32, 0I32);
 
-extern lam _compile (): compile.Phase = compile.phases ff (mem.schedule, x86.spilling, x86.live);
+extern lam _compile (): compile.Phase = compile.phases ff (mem.schedule, mach.spilling, mach.live);
 
 // `b` and `c` are used last, so they are spilled at the entry and reloaded only after the loop.
 // ENTRY:      extern con f
-// ENTRY-NEXT: (x86.spill @ i32) m b;
-// ENTRY-NEXT: (x86.spill @ i32) {{.*}} c;
+// ENTRY-NEXT: (mach.spill @ I32) m b;
+// ENTRY-NEXT: (mach.spill @ I32) {{.*}} c;
 // BODY:       con body
 // BODY-NEXT:  (x86.add @ i32)
 // BODY-NEXT:  (x86.add @ i32)
 // BODY-NEXT:  head
 // EXIT:       con exit
 // EXIT-NEXT:  (x86.add @ i32) {{.*}} (acc, a);
-// EXIT-NEXT:  (x86.reload @ i32)
+// EXIT-NEXT:  (mach.reload @ I32)
 // EXIT-NEXT:  (x86.add @ i32)
-// EXIT-NEXT:  (x86.reload @ i32)
+// EXIT-NEXT:  (mach.reload @ I32)
 // EXIT-NEXT:  (x86.add @ i32)
 // LIVE:       fun f
 // LIVE-NOT:   max {{([6-9]|[1-9][0-9]+)}} flags

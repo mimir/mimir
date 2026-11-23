@@ -5,8 +5,8 @@
 
 #include <pbqp/graph.h>
 
-#include <mim/phase.h>
-#include <mim/target.h>
+#include "mim/phase.h"
+#include "mim/target.h"
 
 #include "mim/native/rule_table.h"
 

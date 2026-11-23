@@ -1,4 +1,4 @@
-#include "mim/native/gen.h"
+#include "mim/plug/mach/gen.h"
 
 #include <cctype>
 
@@ -16,13 +16,11 @@
 
 #include <mim/plug/core/core.h>
 #include <mim/plug/math/math.h>
-#include <mim/plug/refly/autogen.h>
+#include <mim/plug/refly/refly.h>
 
-namespace mim::native {
+namespace mim::plug::mach {
 
-namespace core  = mim::plug::core;
-namespace math  = mim::plug::math;
-namespace refly = mim::plug::refly;
+namespace rules = native::rules;
 
 using rules::Ref;
 using rules::Ty;
@@ -1012,22 +1010,23 @@ std::string sig(const Table& t, u32 n, const std::vector<Table::Meta>& metas, bo
 
 } // namespace
 
-void Gen::start() {
-    auto& lib  = *driver().library();
+void mim_mach_gen(Gen& gen) {
+    auto& lib  = *gen.driver().library();
     auto flags = std::vector<flags_t>();
     for (const auto& [f, _] : lib.annexes())
-        if (Annex::flags2plugin(f) == isel_id()) flags.emplace_back(f);
+        if (Annex::flags2plugin(f) == gen.isel_id()) flags.emplace_back(f);
     std::ranges::sort(flags);
 
-    auto table = Table(*this);
-    table.commutes(world().annex(annexes_.commutes));
-    table.universes(world().annex(annexes_.formats), world().annex(annexes_.sizes));
+    auto& w    = gen.world();
+    auto table = Table(gen);
+    table.commutes(w.annex(gen.annexes().commutes));
+    table.universes(w.annex(gen.annexes().formats), w.annex(gen.annexes().sizes));
     for (auto f : flags)
-        table.collect(world().annex(f));
+        table.collect(w.annex(f));
     table.sort();
 
-    auto out = Out(std::string(arg_value(args(), "o", "output").value_or("-")));
+    auto out = Out(std::string(arg_value(gen.args(), "o", "output").value_or("-")));
     table.dump(*out.os());
 }
 
-} // namespace mim::native
+} // namespace mim::plug::mach

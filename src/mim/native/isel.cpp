@@ -9,39 +9,26 @@
 #include <pbqp/dot.h>
 #include <pbqp/solver.h>
 
-#include <mim/plugin.h>
-
-#include <mim/plug/core/core.h>
-#include <mim/plug/math/math.h>
-#include <mim/plug/mem/mem.h>
+#include "mim/plugin.h"
 
 namespace mim::native {
 
-namespace core = mim::plug::core;
-namespace math = mim::plug::math;
-namespace mem  = mim::plug::mem;
-
 namespace {
 
-bool is_lowered_plugin(const Axm* axm) {
-    auto p = axm->plugin();
-    return p == core::Plugin_Id || p == mem::Plugin_Id || p == math::Plugin_Id;
-}
-
 /// Is @p def a memory operation, whose value is its second result?
-bool mem_valued(const Def* def) {
+bool mem_valued(const Target& target, const Def* def) {
     auto t = def->type();
-    return t->num_projs() == 2 && Axm::isa<core::M>(t->proj(2, 0));
+    return t->num_projs() == 2 && Target::is_axm(target.annexes().mem, t->proj(2, 0));
 }
 
 /// The continuation whose `mem.M` chain @p m is on.
-Lam* chain(const Def* m) {
+Lam* chain(const Target& target, const Def* m) {
     for (;;) {
         if (auto ex = m->isa<Extract>()) m = ex->tuple();
         if (auto var = m->isa<Var>()) return var->binder()->isa<Lam>();
         auto app = m->isa<App>();
         if (!app) return nullptr;
-        m = core::mem_def(app->arg());
+        m = target.mem_def(app->arg());
         if (!m) return nullptr;
     }
 }
@@ -158,7 +145,7 @@ ISel::append(const rules::Rewrite& r, const Def* root, u32 swap, std::optional<u
             parent[c] = o;
             if (!root_of(cov.def)) return {};
             if (sole(node(u.owner), def) != cov.def) {
-                if (mem_valued(cov.def) || c + 1u == r.maps) return {};
+                if (mem_valued(target_, cov.def) || c + 1u == r.maps) return {};
                 cov.through = true;
                 continue;
             }
@@ -215,7 +202,7 @@ bool ISel::holds(const Alt& alt) {
     // The replacement sits at the inner node whose memory it replaces, so the root's holes must be available there.
     if (!alt.rule->maps) return true;
     auto ld = alt.covers[alt.rule->maps - 1].def->as<App>();
-    auto bb = chain(ld->arg(2, 0));
+    auto bb = chain(target_, ld->arg(2, 0));
     if (!bb) return false;
     // `done` is shared, since a Def that does not reach `ld` never will.
     auto done = DefSet();
@@ -365,7 +352,7 @@ const App* ISel::sole_value(const Def* def) const {
 
 const Def* ISel::key(const Def* def) const {
     if (auto ex = def->isa<Extract>(); ex && Lit::isa(ex->index()) == 1)
-        if (auto app = ex->tuple()->isa<App>(); app && root_of(app) && mem_valued(app)) return app;
+        if (auto app = ex->tuple()->isa<App>(); app && root_of(app) && mem_valued(target_, app)) return app;
     return def;
 }
 
@@ -420,13 +407,14 @@ const Def* ISel::rewrite_imm_Extract(const Extract* ex) {
 }
 
 const Def* ISel::rewrite_imm_App(const App* app) {
-    auto& w = new_world();
-    if (Axm::isa<core::M>(app)) return w.call<core::M>(w.lit_nat_0());
+    auto& w         = new_world();
+    const auto& ann = target_.annexes();
+    if (Target::is_axm(ann.mem, app)) return w.call(w.annex(ann.mem), w.lit_nat_0());
     if (auto res = selected(app)) return res;
-    if (auto ptr = mem::strip_ptr_cast(app); ptr != app) return rewrite(ptr);
+    if (auto ptr = target_.strip_ptr_cast(app); ptr != app) return rewrite(ptr);
 
-    if (auto axm = app->axm(); axm && is_lowered_plugin(axm) && !Axm::isa<mem::sched>(app) && !app->type()->isa<Pi>()
-                               && !app->type()->isa<Type>() && !app->type()->isa<Nat>())
+    if (auto axm = app->axm(); axm && target_.is_lowered(axm) && !Target::is_axm(ann.sched, app)
+                               && !app->type()->isa<Pi>() && !app->type()->isa<Type>() && !app->type()->isa<Nat>())
         app->blame("{} backend: instruction selection does not support `{}`", target_.name(), axm).bail();
     return RWPhase::rewrite_imm_App(app);
 }

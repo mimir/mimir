@@ -1,17 +1,19 @@
 #pragma once
 
-#include <mim/phase.h>
-#include <mim/target.h>
+#include "mim/driver.h"
+#include "mim/phase.h"
+#include "mim/target.h"
 
 /// The target-independent phases of a native backend, parametrized by its Target.
-/// A backend plugin links the static library `mim_native` and hooks them with native::hook.
+/// The plugin `mach` hooks them with native::hook.
 namespace mim::native {
 
-/// Registers the Phase @p P, constructed with @p target, for the annex @p A.
+/// Registers the Phase @p P for the annex @p A, constructed with the Target of the one loaded backend.
 template<class A, class P>
-void hook(Flags2Phases& phases, const Target& target) {
-    fe::assert_emplace(phases, Annex::base<A>(),
-                       [&target](World& world) { return std::make_unique<P>(world, Annex::base<A>(), target); });
+void hook(Flags2Phases& phases) {
+    fe::assert_emplace(phases, Annex::base<A>(), [](World& world) {
+        return std::make_unique<P>(world, Annex::base<A>(), world.driver().target());
+    });
 }
 
 /// A ClosedMutPhase over the functions of a scheduled world for one Target.
@@ -22,6 +24,8 @@ public:
         , target_(target) {}
 
     const Target& target() const { return target_; }
+    /// The arguments `-X <backend>:<arg>` of the Target's backend plugin.
+    const fe::Vector<std::string>& target_args() { return driver().args(target_.name()); }
 
 private:
     const Target& target_;
