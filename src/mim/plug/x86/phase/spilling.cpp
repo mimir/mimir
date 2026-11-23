@@ -86,7 +86,7 @@ private:
         return values;
     }
     /// The registers of this class that a call may clobber.
-    size_t caller_saved() const { return cls_ == Liveness::Fpr ? Num_Fpr : Num_Caller_Saved; }
+    size_t caller_saved() const { return cls_ == Liveness::Fpr ? Num_Xmm : Num_Caller_Saved; }
     /// @p G applied to the size of a general-purpose @p type, or @p F to the format of a floating-point one.
     template<class G, class F>
     const Def* by_class(const Def* type) const {
@@ -708,7 +708,7 @@ void Spilling::visit(Lam* fun) {
     if (Lam::isa_mut_returning(fun)) {
         split_critical_edges(fun);
         Spiller(fun, Liveness::Gpr, k_.value_or(Num_Allocatable)).run();
-        Spiller(fun, Liveness::Fpr, k_.value_or(Num_Fpr)).run();
+        Spiller(fun, Liveness::Fpr, k_.value_or(Num_Xmm)).run();
     }
 }
 

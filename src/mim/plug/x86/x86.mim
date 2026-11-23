@@ -202,12 +202,12 @@ pub mod reg
     anx let r15 = 15I4;
 end
 ///
-/// ### freg
+/// ### xmm
 ///
 /// The floating-point registers in hardware encoding order.
 /// A register's subtag is its hardware encoding, so they have to stay in this order.
 ///
-pub mod freg
+pub mod xmm
     anx let xmm0  = 0I4;
     anx let xmm1  = 1I4;
     anx let xmm2  = 2I4;

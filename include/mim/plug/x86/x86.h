@@ -18,7 +18,7 @@ namespace mim::plug::x86 {
 constexpr size_t encoding(reg r) { return Annex::flags2sub(std::to_underlying(r)); }
 
 constexpr size_t Num_Regs = Annex::num<reg>();
-constexpr size_t Num_Fpr  = Annex::num<freg>();
+constexpr size_t Num_Xmm  = Annex::num<xmm>();
 
 /// System V AMD64 ABI.
 // clang-format off

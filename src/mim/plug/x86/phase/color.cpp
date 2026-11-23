@@ -169,7 +169,7 @@ public:
         if (live_.local(def)) {
             if (auto r = fe::lookup(regs_, def))
                 return cls_ == Liveness::Gpr ? w.call<x86::in>(w.lit_idx(Num_Regs, *r), raw(def))
-                                             : w.call<x86::fin>(w.lit_idx(Num_Fpr, *r), raw(def));
+                                             : w.call<x86::fin>(w.lit_idx(Num_Xmm, *r), raw(def));
             // A tuple of values, e.g. the whole variable of a block or an instruction, is used through its projections.
             if (auto projs = def->projs(); projs.size() > 1 && std::ranges::any_of(projs, [&](const Def* d) {
                                                return regs_.contains(d) || d->num_projs() > 1;
