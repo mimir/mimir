@@ -1,18 +1,17 @@
 #pragma once
 
-#include "mim/driver.h"
-#include "mim/phase.h"
-#include "mim/target.h"
+#include <mim/driver.h>
+#include <mim/phase.h>
 
-/// The target-independent phases of a native backend, parametrized by its Target.
-/// The plugin `mach` hooks them with native::hook.
-namespace mim::native {
+#include "mim/plug/mach/target.h"
+
+namespace mim::plug::mach {
 
 /// Registers the Phase @p P for the annex @p A, constructed with the Target of the one loaded backend.
 template<class A, class P>
 void hook(Flags2Phases& phases) {
     fe::assert_emplace(phases, Annex::base<A>(), [](World& world) {
-        return std::make_unique<P>(world, Annex::base<A>(), world.driver().target());
+        return std::make_unique<P>(world, Annex::base<A>(), Target::of(world.driver()));
     });
 }
 
@@ -31,4 +30,4 @@ private:
     const Target& target_;
 };
 
-} // namespace mim::native
+} // namespace mim::plug::mach

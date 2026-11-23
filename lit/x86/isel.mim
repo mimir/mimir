@@ -3,10 +3,11 @@
 
 plugin core;
 plugin mem;
+plugin mach;
 plugin x86;
 import compile;
 
-extern lam _compile (): compile.Phase = compile.phases ff (mem.legalize_ptr, mem.legalize_native, compile.named "x86.isel", mem.schedule);
+extern lam _compile (): compile.Phase = compile.phases ff (mach.legalize, compile.named "x86.isel", mach.schedule);
 
 extern con f (m: mem.M 0, p: mem.Ptr0 «256; I32», i: I8, x: I32, return: Cn [mem.M 0, I32]) =
     let q = mem.lea (p, i);

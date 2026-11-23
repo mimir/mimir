@@ -16,7 +16,6 @@ Gen::Gen(World& world, flags_t annex)
                 "arm_isel",
                 Plugin_Id,
                 {
-                    .reg      = Annex::base<reg>(),
                     .lit      = Annex::base<mach::lit>(),
                     .commutes = Annex::base<commutes>(),
                     .formats  = Annex::base<formats>(),

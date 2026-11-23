@@ -8,7 +8,7 @@
 
 namespace mim::plug::x86_isel {
 
-using native::rules::Want;
+using mach::rules::Want;
 
 Gen::Gen(World& world, flags_t annex)
     : mach::Gen(world,

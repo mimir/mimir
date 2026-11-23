@@ -4,7 +4,7 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-usage: scripts/native_ksweep.sh [-k "2 3 4 6"] [FILTER...]
+usage: scripts/mach_ksweep.sh [-k "2 3 4 6"] [FILTER...]
 
 For each k, runs every lit test that compiles with `-X %native:o=` (or, on x86-64, `-X x86:o=`) through
 `scripts/lit.sh --param <backend>_k=<k>`, which adds `-X <backend>:k=<k>` to those RUN lines (see lit/lit.cfg.py).
@@ -31,7 +31,7 @@ done
 case "$(uname -m)" in
     x86_64 | amd64) backend=x86 patterns=(-e '-X %native:o=' -e '-X x86:o=') ;;
     aarch64 | arm64) backend=arm patterns=(-e '-X %native:o=') ;;
-    *) echo "native_ksweep: no native backend for $(uname -m)" >&2; exit 1 ;;
+    *) echo "mach_ksweep: no native backend for $(uname -m)" >&2; exit 1 ;;
 esac
 
 # No mapfile: macOS ships bash 3.2.
@@ -43,7 +43,7 @@ if ((${#filters[@]})); then
     while IFS= read -r t; do kept+=("$t"); done < <(printf '%s\n' ${tests[@]+"${tests[@]}"} | grep -E -- "$re" || true)
     tests=(${kept[@]+"${kept[@]}"})
 fi
-((${#tests[@]})) || { echo "native_ksweep: no tests" >&2; exit 1; }
+((${#tests[@]})) || { echo "mach_ksweep: no tests" >&2; exit 1; }
 filter="$(printf '%s\n' "${tests[@]}" | sed 's/[.]/[.]/g; s/^/(^|[ \/])/; s/$/$/' | paste -sd'|' -)"
 
 status=0

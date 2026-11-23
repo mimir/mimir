@@ -30,10 +30,10 @@ axm imm: {s: Nat} → Idx s → Bool, normalize_imm;
 ///
 /// ### addr
 ///
-/// The pointer `p`, an `I64` under the cast of `mem.legalize_native`, as an address operand.
+/// The address `p` as an address operand.
 /// isel picks its form, `x86.Base` or `x86.Index`, and the builder infers which.
 ///
-axm addr: {T: *, a: Nat} → mem.Ptr (T, a) → x86.Base;
+axm addr: I64 → x86.Base;
 ///
 /// ### reg_imm
 ///
@@ -90,7 +90,7 @@ rule rem64 (d: Nat, x: I64): core.rem d x => (x86.div (x, x86.mov (core.idx 0 i6
 ///
 /// ### Conversions
 ///
-/// `mem.legalize_ptr` and `mem.legalize_native` leave only register sizes; each family takes the source and the destination size.
+/// `mach.legalize` leaves only register sizes; each family takes the source and the destination size.
 /// A conversion between sizes of the same register width truncates; `rank` is the register width of a size.
 ///
 lam rank (s: Nat): Nat = (((1, 2)#(core.ncmp.e (s, i16)), 3)#(core.ncmp.e (s, i32)), 4)#(core.ncmp.e (s, i64));
@@ -129,8 +129,8 @@ pub mod float
     ///
     /// #### Arithmetic
     ///
-    rule rm    (op: Op2, insn: Insn2) {pe: «2; Nat»} (k: Nat, a: math.F pe, m: mem.M 0, p: mem.Ptr0 (math.F pe)): let (mm, v) = mem.load (m, p); (mm, op k (a, v)) => x86.rm insn (m, a, addr p);
-    rule sqrt_rm {pe: «2; Nat»} (k: Nat, m: mem.M 0, p: mem.Ptr0 (math.F pe)):                                 let (mm, v) = mem.load (m, p); (mm, math.rt.sq k v) => x86.rm1 (x86.fsqrt @ pe) (m, addr p);
+    rule rm    (op: Op2, insn: Insn2) {pe: «2; Nat»} (k: Nat, a: math.F pe, m: mem.M 0, p: I64): let (mm, v) = mach.load (math.F pe) (m, p); (mm, op k (a, v)) => x86.rm insn (m, a, addr p);
+    rule sqrt_rm {pe: «2; Nat»} (k: Nat, m: mem.M 0, p: I64):                                let (mm, v) = mach.load (math.F pe) (m, p); (mm, math.rt.sq k v) => x86.rm1 (x86.fsqrt @ pe) (m, addr p);
     anx let arithmetic = (
         arith (math.arith.add, x86.fadd), arith (math.arith.sub, x86.fsub),
         arith (math.arith.mul, x86.fmul), arith (math.arith.div, x86.fdiv),
@@ -145,8 +145,8 @@ pub mod float
     ///
     rule cmp     (op: Pred, c: Cmp) {pe: «2; Nat»} (k: Nat, a b: math.F pe): op k (a, b) => c (a, b);
     rule swap    (op: Pred, c: Cmp) {pe: «2; Nat»} (k: Nat, a b: math.F pe): op k (a, b) => c (b, a);
-    rule cmp_rm  (op: Pred, c: Cmp) {pe: «2; Nat»} (k: Nat, a: math.F pe, m: mem.M 0, p: mem.Ptr0 (math.F pe)): let (mm, v) = mem.load (m, p); (mm, op k (a, v)) => x86.rm c (m, a, addr p);
-    rule swap_rm (op: Pred, c: Cmp) {pe: «2; Nat»} (k: Nat, a: math.F pe, m: mem.M 0, p: mem.Ptr0 (math.F pe)): let (mm, v) = mem.load (m, p); (mm, op k (v, a)) => x86.rm c (m, a, addr p);
+    rule cmp_rm  (op: Pred, c: Cmp) {pe: «2; Nat»} (k: Nat, a: math.F pe, m: mem.M 0, p: I64): let (mm, v) = mach.load (math.F pe) (m, p); (mm, op k (a, v)) => x86.rm c (m, a, addr p);
+    rule swap_rm (op: Pred, c: Cmp) {pe: «2; Nat»} (k: Nat, a: math.F pe, m: mem.M 0, p: I64): let (mm, v) = mach.load (math.F pe) (m, p); (mm, op k (v, a)) => x86.rm c (m, a, addr p);
     ///
     /// `cmps` folds a load into the second operand, `swaps` into the first via the converse, and `syms` of a symmetric predicate into either.
     ///
@@ -164,8 +164,8 @@ pub mod float
     /// #### Selects, Loads, and Stores
     ///
     rule select {pe: «2; Nat»} (x y: math.F pe, c: Bool):                           (x, y)#c            => x86.fsel (c, x, y);
-    rule load   {pe: «2; Nat»} (m: mem.M 0, p: mem.Ptr0 (math.F pe)):               mem.load (m, p)     => x86.fload pe (m, addr p);
-    rule store  {pe: «2; Nat»} (m: mem.M 0, p: mem.Ptr0 (math.F pe), x: math.F pe): mem.store (m, p, x) => x86.fstore (m, addr p, x);
+    rule load   {pe: «2; Nat»} (m: mem.M 0, p: I64):               mach.load (math.F pe) (m, p) => x86.fload pe (m, addr p);
+    rule store  {pe: «2; Nat»} (m: mem.M 0, p: I64, x: math.F pe): mach.store (m, p, x)         => x86.fstore (m, addr p, x);
     ///
     /// #### Conversions
     ///
@@ -178,10 +178,10 @@ pub mod float
     rule f2s (s: Nat) {pe: «2; Nat»} (x: math.F pe):              math.conv.f2s s x   => x86.f2i pe s x;
     rule f2u (s: Nat) {pe: «2; Nat»} (x: math.F pe):              math.conv.f2u s x   => x86.f2u pe s x;
     rule f2f (spe: «2; Nat», dpe: «2; Nat») (x: math.F spe):      math.conv.f2f dpe x => x86.f2f spe dpe x;
-    rule s2f_rm (s: Nat) {pe: «2; Nat»} (m: mem.M 0, p: mem.Ptr0 (Idx s)):              let (mm, v) = mem.load (m, p); (mm, math.conv.s2f pe v)  => x86.rm1 (x86.i2f s pe) (m, addr p);
-    rule f2s_rm (s: Nat) {pe: «2; Nat»} (m: mem.M 0, p: mem.Ptr0 (math.F pe)):         let (mm, v) = mem.load (m, p); (mm, math.conv.f2s s v)   => x86.rm1 (x86.f2i pe s) (m, addr p);
-    rule f2u_rm (s: Nat) {pe: «2; Nat»} (m: mem.M 0, p: mem.Ptr0 (math.F pe)):         let (mm, v) = mem.load (m, p); (mm, math.conv.f2u s v)   => x86.rm1 (x86.f2u pe s) (m, addr p);
-    rule f2f_rm (spe: «2; Nat», dpe: «2; Nat») (m: mem.M 0, p: mem.Ptr0 (math.F spe)): let (mm, v) = mem.load (m, p); (mm, math.conv.f2f dpe v) => x86.rm1 (x86.f2f spe dpe) (m, addr p);
+    rule s2f_rm (s: Nat) {pe: «2; Nat»} (m: mem.M 0, p: I64):              let (mm, v) = mach.load (Idx s) (m, p);      (mm, math.conv.s2f pe v)  => x86.rm1 (x86.i2f s pe) (m, addr p);
+    rule f2s_rm (s: Nat) {pe: «2; Nat»} (m: mem.M 0, p: I64):              let (mm, v) = mach.load (math.F pe) (m, p);  (mm, math.conv.f2s s v)   => x86.rm1 (x86.f2i pe s) (m, addr p);
+    rule f2u_rm (s: Nat) {pe: «2; Nat»} (m: mem.M 0, p: I64):              let (mm, v) = mach.load (math.F pe) (m, p);  (mm, math.conv.f2u s v)   => x86.rm1 (x86.f2u pe s) (m, addr p);
+    rule f2f_rm (spe: «2; Nat», dpe: «2; Nat») (m: mem.M 0, p: I64):       let (mm, v) = mach.load (math.F spe) (m, p); (mm, math.conv.f2f dpe v) => x86.rm1 (x86.f2f spe dpe) (m, addr p);
     anx let conversions = (
         s2f i32, s2f i64, u2f i32,
         f2s i32, f2s i64, f2u i32,
@@ -193,18 +193,18 @@ end
 ///
 /// ### Loads and Stores
 ///
-/// A pointer is an `I64` by now, which `mem.legalize_native` casts to the pointer type of each memory operation.
+/// `mach.legalize` has turned every pointer into an `I64` and every `mem.load` and `mem.store` into a `mach.load` and `mach.store`.
 ///
-rule load  {s: Nat} (m: mem.M 0, p: mem.Ptr0 (Idx s)):          mem.load (m, p)     => x86.load s (m, addr p);
-rule store (s: Nat, m: mem.M 0, p: mem.Ptr0 (Idx s), x: Idx s):  mem.store (m, p, x) => x86.store (m, addr p, reg_imm x);
+rule load  {s: Nat} (m: mem.M 0, p: I64):          mach.load (Idx s) (m, p) => x86.load s (m, addr p);
+rule store (s: Nat, m: mem.M 0, p: I64, x: Idx s): mach.store (m, p, x)     => x86.store (m, addr p, reg_imm x);
 ///
 /// ### Memory Operands
 ///
 /// `op r, m` folds a load into the second operand; `op m, r` also stores to the address it loads from.
 /// Either takes only a size that `x86.load` takes.
 ///
-rule rm (c: Nat → Nat) (op: Nat → {s: Nat} → «2; Idx s» → Idx s, insn: {s: Nat} → «2; Idx s» → Idx (c s)) {s: Nat} (k: Nat, a: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); (mm, op k (a, v))              when x86.is_gpr s => x86.rm insn (m, a, addr p);
-rule mr (c: Nat → Nat) (op: Nat → {s: Nat} → «2; Idx s» → Idx s, insn: {s: Nat} → «2; Idx s» → Idx (c s)) {s: Nat} (k: Nat, b: Idx s, m: mem.M 0, p: mem.Ptr0 (Idx s)): let (mm, v) = mem.load (m, p); mem.store (mm, p, op k (v, b)) when x86.is_gpr s => x86.mr (insn @ s) (m, addr p, reg_imm b);
+rule rm (c: Nat → Nat) (op: Nat → {s: Nat} → «2; Idx s» → Idx s, insn: {s: Nat} → «2; Idx s» → Idx (c s)) {s: Nat} (k: Nat, a: Idx s, m: mem.M 0, p: I64): let (mm, v) = mach.load (Idx s) (m, p); (mm, op k (a, v))              when x86.is_gpr s => x86.rm insn (m, a, addr p);
+rule mr (c: Nat → Nat) (op: Nat → {s: Nat} → «2; Idx s» → Idx s, insn: {s: Nat} → «2; Idx s» → Idx (c s)) {s: Nat} (k: Nat, b: Idx s, m: mem.M 0, p: I64): let (mm, v) = mach.load (Idx s) (m, p); mach.store (mm, p, op k (v, b)) when x86.is_gpr s => x86.mr (insn @ s) (m, addr p, reg_imm b);
 ///
 /// ### Addresses
 ///
@@ -234,7 +234,7 @@ rule unscale (s: [I64, I2]): s => x86.lea (x86.index (x86.addr (0I32, 0I64)) s);
 ///
 anx let formats = (math.f16, math.f32, math.f64, math.bf16, math.nvtf32, math.amdfp24, math.pxr24);
 ///
-/// The values of a family's `{s: Nat}`: the register sizes that `mem.legalize_ptr` and `mem.legalize_native` leave.
+/// The values of a family's `{s: Nat}`: the register sizes that `mach.legalize` leaves.
 ///
 anx let sizes = (i1, i8, i16, i32, i64);
 let icmps = (

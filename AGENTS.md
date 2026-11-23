@@ -31,7 +31,7 @@ cmake --build build -j$(nproc)   # binaries land in build/bin (mim, mim-test, mi
 | lit, memory-capped | `scripts/lit.sh [FILTER...]` — re-stages, `ulimit -v`, quiet summary, full log in `build/lit.log` |
 | Output oracle | `scripts/oracle.sh snap NAME` / `diff NAME` / `rev REV` (`-m opt\|noopt\|ast\|ll\|nest\|dump5\|…`) — byte-exact A/B over all lit/extra `.mim` |
 | Perf A/B | `scripts/perf_ab.sh snap NAME`, then `scripts/perf_ab.sh cmp NAME live` (instructions:u on a Release tree) |
-| Native backend at small `k` | `scripts/native_ksweep.sh [-k "2 3 4 6"]` (= `scripts/lit.sh --param <x86\|arm>_k=<k>` over the native allowlist, host's backend) |
+| Native backend at small `k` | `scripts/mach_ksweep.sh [-k "2 3 4 6"]` (= `scripts/lit.sh --param <x86\|arm>_k=<k>` over the native allowlist, host's backend) |
 | Reproducer from a failure | `./scripts/make_lit_error.sh foo.mim` / `./scripts/make_test_error.sh '<test case>'` |
 
 ## Gotchas
@@ -50,7 +50,7 @@ cmake --build build -j$(nproc)   # binaries land in build/bin (mim, mim-test, mi
 
 ## Architecture quick facts
 
-- `libmim` (`src/mim/`, headers in `include/mim/`) is the core library: IR (`Def`, `World`), the Mim AST frontend (`ast/`), rewriting, phases, checks, dumping, and utilities. `src/automaton/` backs the regex subsystem and `src/pbqp/` is the PBQP solver of the native backends, each a separate static library; libmim links pbqp.
+- `libmim` (`src/mim/`, headers in `include/mim/`) is the core library: IR (`Def`, `World`), the Mim AST frontend (`ast/`), rewriting, phases, checks, dumping, and utilities. `src/automaton/` backs the regex subsystem and `src/pbqp/` is the PBQP solver of the native backends, each a separate static library; the regex plugin links automaton and the `mach` plugin pbqp.
 - `Driver` is the central runtime object: it owns `Flags`, `Log`, the current `World`, plugin search paths and handles, and the normalizer/stage/backend registries. Plugins, imports, and backend runtimes have three separate lookups (`Driver::plugin_paths`/`import_paths`/`rt_paths`): `-P`/`-I` add plain directories, while `--prefix-path`, the install prefix, and the tree `libmim` came from add prefix roots deriving `<root>/<libdir>/mim`, `<root>/<datadir>/mim`, and `<root>/<libdir>/mim/rt`.
 - The `mim` CLI (`src/mim/cli/main.cpp`) is thin glue around `Driver`: parse Mim → compile into the `World` → `optimize(World&)` → emit whatever `--output-*` asks for. Plugins load on demand via `plugin` directives or `-p`/`--plugin`; `--output-h`/`--output-py` bootstrap plugin headers and exit before compilation. A `plugin` directive takes its `.mim` from the directory the library was loaded from, so both halves always pair up.
 - A plugin is two halves that must stay in sync under one name: `<plugin>.mim` (public annex surface) and `libmim_<plugin>` (exports `mim_get_plugin` to register normalizers, stages, and backends). Names: letters/digits/underscores, max 8 chars.
@@ -61,7 +61,7 @@ cmake --build build -j$(nproc)   # binaries land in build/bin (mim, mim-test, mi
 ## Nested instructions
 
 Subtrees carry their own `AGENTS.md` (each with a `CLAUDE.md` bridge); read the one nearest to the file you edit:
-`src/mim/` (core IR, Analysis/RWPhase, dumper, frontend), `src/mim/phase/`, `src/mim/plug/` (axiom design, plugin conventions), `src/mim/plug/{core,mem,clos,tensor,ll}/`, `src/mim/plug/x86/` and `src/mim/plug/arm/` (backend design and status), `src/pbqp/`, `lit/`, `web/`.
+`src/mim/` (core IR, Analysis/RWPhase, dumper, frontend), `src/mim/phase/`, `src/mim/plug/` (axiom design, plugin conventions), `src/mim/plug/{core,mem,clos,tensor,ll}/`, `src/mim/plug/mach/` (the target-independent native backend), `src/mim/plug/x86/` and `src/mim/plug/arm/` (backend design and status), `src/pbqp/`, `lit/`, `web/`.
 
 ## Verification
 

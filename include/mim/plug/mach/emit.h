@@ -8,10 +8,16 @@
 
 #include <fe/algo.h>
 
-#include "mim/asm.h"
-#include "mim/liveness.h"
+#include <mim/driver.h>
 
-namespace mim::native {
+#include "mim/plug/mach/asm.h"
+
+namespace mim::plug::mach {
+
+class Emitter;
+
+/// Emitter::emit, compiled once into `libmim_mach`; Emitter reaches it via `GET_FUN_PTR`.
+extern "C" MIM_EXPORT void mim_mach_emit(Emitter&, bool global);
 
 /// A physical register of a register class.
 struct Reg {
@@ -39,11 +45,10 @@ public:
         , os_(os)
         , emit_(emit)
         , fun_(fun)
-        , ret_(fun->ret_var())
-        , live_(target, fun) {}
+        , ret_(fun->ret_var()) {}
     virtual ~Emitter() = default;
 
-    void emit(bool global);
+    void emit(bool global) { fun_->world().driver().GET_FUN_PTR("mach", mim_mach_emit)(*this, global); }
 
 protected:
     /// @name Hooks
@@ -89,20 +94,30 @@ protected:
     const Target& target() const { return target_; }
     std::string_view backend() const { return target_.name(); }
     Lam* fun() const { return fun_; }
-    std::string label(Lam* lam) const { return std::format("{}{}", target_.local_prefix(), lam->unique_name()); }
+    std::string label(Lam* lam) const { return std::format("{}{}", Target::local_prefix(), lam->unique_name()); }
     std::string symbol(Lam* lam) { return emit_.symbol(lam); }
-    nat_t nat(const Def* def) const;
+    nat_t nat(const Def* def) const {
+        if (auto l = Lit::isa(def)) return *l;
+        def->blame("{} backend: expected a literal, got `{}`", backend(), def).bail();
+    }
 
     /// The register of the result @p def.
-    size_t def_reg(const Def* def) const;
+    size_t def_reg(const Def* def) const {
+        if (auto r = fe::lookup(regs_, def)) return *r;
+        def->blame("{} backend: `{}` has no register", backend(), def).bail();
+    }
     /// The register of the operand @p def, a Target::in.
-    size_t use_reg(const Def* def) const;
+    size_t use_reg(const Def* def) const {
+        if (Target::is_in(def)) return Target::in_reg(def);
+        if (Lit::isa(def)) def->blame("{} backend: literal `{}` cannot be an operand here", backend(), def).bail();
+        def->blame("{} backend: `{}` is not in a register", backend(), def).bail();
+    }
     std::optional<size_t> isa_reg(const Def* def) const {
         if (auto r = fe::lookup(regs_, def)) return *r;
         return {};
     }
     Src source(const Def* def) const {
-        auto cls = target_.cls(target_.strip(def));
+        auto cls = target_.cls(Target::strip(def));
         return Lit::isa(def) ? Src{.reg = {0, cls}, .imm = def} : Src{.reg = {use_reg(def), cls}};
     }
 
@@ -113,14 +128,20 @@ protected:
     void clobber_flags() { flags_ = nullptr; }
     bool flags_clobbered() const { return flags_ == nullptr; }
     /// Rejects a use of the flags @p fl if something clobbered them since.
-    void use_flags(const Def* fl) const;
+    void use_flags(const Def* fl) const {
+        if (fl != flags_) fl->blame("{} backend: flags `{}` are clobbered before their use", backend(), fl).bail();
+    }
     ///@}
 
     /// @name Frame
     /// The frame holds 8-byte slots: spill slots and the areas of `slot` instructions.
     ///@{
     /// The slot of the spilled value @p def.
-    size_t spill_slot(const Def* def);
+    size_t spill_slot(const Def* def) {
+        auto [i, ins] = slots_.emplace(def, num_slots_);
+        if (ins) ++num_slots_;
+        return i->second;
+    }
     /// Reserves @p bytes and yields the index of their first slot.
     size_t alloc_slots(nat_t bytes) {
         auto res = num_slots_;
@@ -141,9 +162,12 @@ protected:
     size_t frame_size() const { return fe::pad(8 * (num_saved() + num_slots_), 16); }
 
 private:
+    friend void mim_mach_emit(Emitter&, bool);
+
+    void run(bool global);
     void insn(const App*);
     void collect(const Def*, DefSet&);
-    void block(const Liveness::Block&);
+    void block(Lam* lam, const fe::Vector<const App*>& insns);
     void parallel(Moves moves, fe::Vector<std::pair<size_t, size_t>> slot_moves);
     void copy(Lam* target, const Def* arg);
     void jump(Lam* target);
@@ -154,7 +178,6 @@ private:
     AsmEmit& emit_;
     Lam* fun_;
     const Def* ret_;
-    Liveness live_;
     std::ostringstream body_;
     DefMap<size_t> regs_;
     DefMap<size_t> slots_;
@@ -164,4 +187,4 @@ private:
     const Def* flags_ = nullptr; ///< The result of the instruction that set the flags.
 };
 
-} // namespace mim::native
+} // namespace mim::plug::mach

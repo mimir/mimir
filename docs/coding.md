@@ -216,16 +216,16 @@ scripts/perf_ab.sh cmp before live -w vgg16 -w "mine=$PWD/foo.mim -p opt -o -"
 
 The default workloads are `hlo` (`-p opt -p gpu lit/tensor/hlo.mim -p nvptx`) and `vgg16` (`lit/tensor/vgg16.mim -p opt -o -`).
 
-### Native Backends at Small Register Counts {#native_ksweep}
+### Native Backends at Small Register Counts {#mach_ksweep}
 
 Most bugs in the x86 register allocator only show when it has to spill.
 `--param x86_k=<n>` makes lit compile every `-p x86 … -X x86:o=` RUN line with `-X x86:k=<n>`, so each test's expected exit codes check the spiller at that register count; on an x86 host it also applies to the `-p %native … -X %native:o=` RUN lines that the shared backend tests use.
 `--param arm_k=<n>` does the same for `arm` on an AArch64 host.
-`scripts/native_ksweep.sh` runs the whole allowlist that way, with the host's backend:
+`scripts/mach_ksweep.sh` runs the whole allowlist that way, with the host's backend:
 
 ```sh
-scripts/native_ksweep.sh                # k = 2, 3, 4, 6
-scripts/native_ksweep.sh -k 3 regex/    # one k, some tests
+scripts/mach_ksweep.sh                # k = 2, 3, 4, 6
+scripts/mach_ksweep.sh -k 3 regex/    # one k, some tests
 ```
 
 Keep `-p x86 -X x86:o=` or `-p %native -X %native:o=` adjacent in new RUN lines so the parameter finds them.

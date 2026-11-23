@@ -2,7 +2,7 @@
 
 #include <map>
 
-#include <mim/asm.h>
+#include <mim/plug/mach/asm.h>
 
 #include "mim/plug/x86/target.h"
 
@@ -10,10 +10,9 @@ namespace mim::plug::x86 {
 
 /// Writes GNU assembler code (AT&T syntax) for the scheduled world; see AsmEmit for the output file.
 /// Values live in the registers that `mach.color` assigned; jumps, calls, returns, and the entry are parallel copies.
-class Emit : public AsmEmit {
+class Emit : public mach::AsmEmit {
 public:
-    Emit(World& world, flags_t annex)
-        : AsmEmit(world, annex, target()) {}
+    using mach::AsmEmit::AsmEmit;
 
     /// The index of the 16-byte constant (@p lo, @p hi) in the `.rodata` pool; allocated on first use.
     size_t pool(u64 lo, u64 hi) { return pool_.emplace(std::pair(lo, hi), pool_.size()).first->second; }

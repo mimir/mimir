@@ -1,10 +1,6 @@
-#include "mim/plug/mem/phase/schedule.h"
+#include "mim/plug/mach/schedule.h"
 
-#include <mim/driver.h>
-
-#include "mim/plug/mem/mem.h"
-
-namespace mim::plug::mem::phase {
+namespace mim::plug::mach {
 
 void Schedule::place(Lam* curr, const Def* def) {
     if (def->isa_mut()) return;
@@ -12,7 +8,7 @@ void Schedule::place(Lam* curr, const Def* def) {
     auto insn  = is_insn(def);
     auto remat = is_remat(def);
     if (!remat && !(insn ? placed_ : visited_[curr]).emplace(def).second) return;
-    if (target_->is_mem(def)) mems_[scheduler_->early(def)->mut()->as<Lam>()].emplace_back(def);
+    if (target_.is_mem(def)) mems_[scheduler_->early(def)->mut()->as<Lam>()].emplace_back(def);
     if (auto node = insn && !remat ? scheduler_->smart(curr, def) : nullptr) curr = node->mut()->as<Lam>();
 
     auto ops = DefVec(def->ops().begin(), def->ops().end());
@@ -27,7 +23,6 @@ void Schedule::place(Lam* curr, const Def* def) {
 }
 
 void Schedule::visit(const Nest& nest) {
-    target_        = &driver().target();
     auto scheduler = Scheduler(nest);
     scheduler_     = &scheduler;
     reset();
@@ -50,7 +45,7 @@ const Def* Schedule::rewrite(const Def* old_def) {
 const Def* Schedule::rewrite_imm_App(const App* app) {
     // thread() maps every instruction it places, so this one escaped all schedules.
     if (is_insn(app))
-        app->blame("{} backend: instruction `{}` is not on the `mem.M` chain of a continuation", target_->name(), app)
+        app->blame("{} backend: instruction `{}` is not on the `mem.M` chain of a continuation", target_.name(), app)
             .bail();
     return Rewriter::rewrite_imm_App(app);
 }
@@ -59,17 +54,17 @@ void Schedule::thread(Lam* lam) {
     auto n = lam->num_vars();
     auto i = n;
     for (size_t j = 0; j != n && i == n; ++j)
-        if (target_->is_mem(lam->var(n, j))) i = j;
+        if (target_.is_mem(lam->var(n, j))) i = j;
 
     // Direct style has no chain, so an instruction in there runs into rewrite_imm_App.
     if (i == n && Lam::isa_cn(lam))
-        lam->blame("{} backend: continuation `{}` has no `mem.M` to schedule on", target_->name(), lam).bail();
+        lam->blame("{} backend: continuation `{}` has no `mem.M` to schedule on", target_.name(), lam).bail();
     if (i != n && !Lam::isa_cn(lam))
         lam->blame("{} backend: direct-style function `{}` takes a `mem.M`, which only a continuation can schedule on",
-                   target_->name(), lam)
+                   target_.name(), lam)
             .bail();
     if (i != n && !lam->body()->isa<App>())
-        lam->blame("{} backend: the body of continuation `{}` is no jump: `{}`", target_->name(), lam, lam->body())
+        lam->blame("{} backend: the body of continuation `{}` is no jump: `{}`", target_.name(), lam, lam->body())
             .bail();
 
     push(Vars(lam->has_var()), Vars(lam->has_var()));
@@ -96,26 +91,26 @@ void Schedule::chain(Lam* lam, size_t i) {
 
     for (auto old_def : order) {
         auto app = old_def->as<App>();
-        if (Axm::isa<sched>(app)) {
-            auto res = w.call<sched>(rewrite(Target::sched_insn(app)), m, rewrite(app->arg()));
+        if (Axm::isa<mach::sched>(app)) {
+            auto res = w.call<mach::sched>(rewrite(Target::sched_insn(app)), m, rewrite(app->arg()));
             m        = res->proj(2, 0);
             map(old_def, res);
-        } else if (target_->prev_mem(app)) {
+        } else if (target_.prev_mem(app)) {
             auto old_arg = app->arg();
             auto k       = old_arg->num_projs();
             auto args    = DefVec(k, [&](size_t j) {
                 auto a = old_arg->proj(k, j);
-                return target_->is_mem(a) ? m : rewrite(a);
+                return target_.is_mem(a) ? m : rewrite(a);
             });
             auto new_app = w.app(rewrite(app->callee()), w.tuple(args));
-            if (target_->is_mem(new_app)) {
+            if (target_.is_mem(new_app)) {
                 m = new_app;
             } else {
                 m = new_app->proj(2, 0);
                 map(old_def, new_app);
             }
         } else {
-            auto res = w.call<sched>(rewrite(app->callee()), m, rewrite(app->arg()));
+            auto res = w.call<mach::sched>(rewrite(app->callee()), m, rewrite(app->arg()));
             m        = res->proj(2, 0);
             map(old_def, res->proj(2, 1));
         }
@@ -127,4 +122,4 @@ void Schedule::chain(Lam* lam, size_t i) {
     if (n > 1) map(lam->var(), w.tuple(DefVec(n, [&](size_t j) { return j == i ? m : lam->var(n, j); })));
 }
 
-} // namespace mim::plug::mem::phase
+} // namespace mim::plug::mach

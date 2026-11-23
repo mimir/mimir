@@ -2,14 +2,16 @@
 
 #include <mim/plugin.h>
 
+#include <mim/plug/mach/isel.h>
+
 #include "mim/plug/x86/emit.h"
-#include "mim/plug/x86/phase/isel.h"
+#include "mim/plug/x86/isel_rules.h"
 #include "mim/plug/x86/target.h"
 
 using namespace mim;
 
 static void reg_phases(Flags2Phases& phases) {
-    Phase::hook<plug::x86::isel, plug::x86::phase::ISel>(phases);
+    plug::mach::hook_isel<plug::x86::isel>(phases, plug::x86::rules::table);
     Phase::hook<plug::x86::emit, plug::x86::Emit>(phases);
 }
 
@@ -28,5 +30,5 @@ MIM_PLUGIN_ENTRY(x86) {
     plugin.register_phases      = reg_phases;
     plugin.args                 = known_args;
     plugin.num_args             = std::size(known_args);
-    plugin.target               = &plug::x86::target();
+    plugin.target               = []() -> mim::Target* { return new plug::x86::Target(); };
 }

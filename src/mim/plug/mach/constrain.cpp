@@ -1,11 +1,10 @@
 #include <ranges>
 
-#include "mim/liveness.h"
+#include "mim/plug/mach/liveness.h"
+#include "mim/plug/mach/regalloc.h"
+#include "mim/plug/mach/subst.h"
 
-#include "mim/native/regalloc.h"
-#include "mim/native/subst.h"
-
-namespace mim::native {
+namespace mim::plug::mach {
 
 namespace {
 
@@ -59,7 +58,7 @@ void Constrain::visit(Lam* fun) {
         auto filter       = lam->filter();
         auto term         = lam->body()->as<App>();
         auto seg          = lam;
-        auto m            = t.mem_var(lam);
+        auto m            = core::mem_var(lam);
 
         auto finish = [&](const Def* body) {
             if (seg != lam)
@@ -121,4 +120,4 @@ void Constrain::visit(Lam* fun) {
     }
 }
 
-} // namespace mim::native
+} // namespace mim::plug::mach

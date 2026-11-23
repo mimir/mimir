@@ -3,5 +3,4 @@ add_mim_plugin(arm
         arm.cpp
         emit.cpp
         normalizers.cpp
-        phase/isel.cpp
 )

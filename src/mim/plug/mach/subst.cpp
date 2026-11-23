@@ -1,6 +1,6 @@
-#include "mim/native/subst.h"
+#include "mim/plug/mach/subst.h"
 
-namespace mim::native {
+namespace mim::plug::mach {
 
 const Def* Subst::rewrite(const Def* def) {
     if (target_.is_mem(def)) return m_;
@@ -13,4 +13,4 @@ const Def* Subst::rewrite(const Def* def) {
     return Rewriter::rewrite(def);
 }
 
-} // namespace mim::native
+} // namespace mim::plug::mach

@@ -9,13 +9,13 @@ bool Target::is_mem_insn(const App* app) const {
         || Axm::isa<mr>(app) || Axm::isa<rm1>(app) || Axm::isa<fload>(app) || Axm::isa<fstore>(app);
 }
 
-Constraint Target::constraint(const App* insn) const {
-    auto res = mim::Target::constraint(insn);
+mach::Constraint Target::constraint(const App* insn) const {
+    auto res = mach::Target::constraint(insn);
     if (Axm::isa<rm>(insn)) {
         res.tied = insn::tied(insn);
         return res;
     }
-    if (!Axm::isa<mem::sched>(insn)) return res;
+    if (!Axm::isa<mach::sched>(insn)) return res;
 
     auto axm = std::get<0>(Axm::get(Target::sched_insn(insn)));
     if (!axm) return res;

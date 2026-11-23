@@ -10,7 +10,12 @@ namespace mim::plug::arm {
 class Target : public mach::Target {
 public:
     Target()
-        : mach::Target("arm", Plugin_Id, Annex::Base<cc>) {}
+        : mach::Target("arm", Plugin_Id) {}
+
+    bool is_flags(const Def* def) const final { return Axm::isa<mach::Flags>(def->type()) || Axm::isa<cc>(def); }
+    bool is_sched_cc(const App* app) const final {
+        return Axm::isa<mach::sched>(app) && Axm::isa<cc, 1>(sched_insn(app));
+    }
 
     bool is_mem_insn(const App* app) const final {
         return mach::Target::is_mem_insn(app) || Axm::isa<load>(app) || Axm::isa<store>(app) || Axm::isa<fload>(app)
@@ -32,10 +37,5 @@ public:
         return mach::Target::is_removable(insn) || Axm::isa<load>(insn) || Axm::isa<fload>(insn);
     }
 };
-
-inline const Target& target() {
-    static const auto res = Target();
-    return res;
-}
 
 } // namespace mim::plug::arm

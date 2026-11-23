@@ -43,15 +43,34 @@ axm in: {n: Nat} → [r: Idx n] → {T: *} → T → T;
 ///
 /// ## Instructions
 ///
+/// ### sched
+///
+/// Places the pure instruction `f x` on the `mem.M 0` chain right after `m`: `let (m, y) = mach.sched x86.add m (a, b)`.
+/// The chain token makes each placement a distinct Def, so copies, spills, and reloads at different points never merge.
+///
+axm sched: {D C: *} → (D → C) → mem.M 0 → D → [mem.M 0, C];
+///
 /// ### slot
 ///
 /// Reserves `n` bytes in the stack frame and yields their address.
 ///
 axm slot: [n: Nat] → mem.M 0 → [mem.M 0, I64];
 ///
+/// ### load
+///
+/// Loads a `T` from the address `p`.
+///
+axm load: [T: *] → [mem.M 0, p: I64] → [mem.M 0, T];
+///
+/// ### store
+///
+/// Stores `x` to the address `p`.
+///
+axm store: {T: *} → [mem.M 0, p: I64, x: T] → mem.M 0;
+///
 /// ### spill
 ///
-/// `spill x` stores `x` into a spill slot; it is placed on the chain via `mem.sched` like any other pure instruction.
+/// `spill x` stores `x` into a spill slot; it is placed on the chain via `sched` like any other pure instruction.
 ///
 axm spill: {T: *} → T → Spill T;
 ///
@@ -110,6 +129,21 @@ end
 axm lit: {T: *} → T → Bool, normalize_lit;
 ///
 /// ## Phases
+///
+/// ### legalize
+///
+/// Turns every `Nat` value and every pointer into an `I64`, so that instruction selection only sees register types (see mim::plug::mach::Legalize).
+/// `mem.lea` becomes a `core.wrap.add` of its byte offset by the layout of `core.trait`, `mem.load` and `mem.store` become `load` and `store`, `mem.mslot` of a literal size becomes `slot`, and the `Nat` operations become their `I64` counterparts.
+/// Only address space 0 is supported.
+///
+axm legalize: compile.Phase;
+///
+/// ### schedule
+///
+/// Makes each continuation's `mem.M 0` chain total over the instructions of the backend, in a topological order (see mim::plug::mach::Schedule).
+/// Memory instructions are rethreaded onto the chain; all others are wrapped in `sched`.
+///
+axm schedule: compile.Phase;
 ///
 /// ### spilling
 ///

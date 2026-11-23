@@ -2,7 +2,6 @@ add_library(libmim) # BUILD_SHARED_LIBS picks the type; a wasm build turns it of
 add_library(mim::libmim ALIAS libmim)
 target_sources(libmim
     PRIVATE
-        asm.cpp
         axm.cpp
         check.cpp
         def.cpp
@@ -10,7 +9,6 @@ target_sources(libmim
         driver.cpp
         dump.cpp
         lam.cpp
-        liveness.cpp
         manifest.cpp
         nest.cpp
         phase.cpp
@@ -18,7 +16,6 @@ target_sources(libmim
         rewrite.cpp
         rule.cpp
         schedule.cpp
-        target.cpp
         tuple.cpp
         world.cpp
         ast/ast.cpp
@@ -28,13 +25,6 @@ target_sources(libmim
         ast/parser.cpp
         ast/stream.cpp
         ast/tok.cpp
-        native/color.cpp
-        native/constrain.cpp
-        native/emit.cpp
-        native/isel.cpp
-        native/live.cpp
-        native/spilling.cpp
-        native/subst.cpp
         phase/adce.cpp
         phase/lam_spec.cpp
         phase/optimize.cpp
@@ -91,8 +81,6 @@ target_link_libraries(libmim
     PUBLIC
         fe::fe
         ${CMAKE_DL_LIBS}
-    PRIVATE
-        pbqp
 )
 
 install(

@@ -6,7 +6,7 @@
 #include <mim/driver.h>
 #include <mim/phase.h>
 
-#include <mim/native/rule_table.h>
+#include "mim/plug/mach/rule_table.h"
 
 namespace mim::plug::mach {
 
@@ -22,8 +22,7 @@ class Gen : public Phase {
 public:
     /// The annexes of the isel plugin that Gen knows; `0` for one it does not have.
     struct Annexes {
-        flags_t addr    = 0; ///< `addr p`: the pointer `p` as an address operand, Want::Addr.
-        flags_t reg     = 0; ///< `reg p`: the pointer `p` in a register, Want::Reg.
+        flags_t addr    = 0; ///< `addr p`: the address `p` as an address operand, Want::Addr.
         flags_t reg_imm = 0; ///< `reg_imm x`: Want::RegImm.
         flags_t reg_sh  = 0; ///< `reg_sh x`: Want::RegSh.
         flags_t scaled  = 0; ///< `scaled i`: Want::Scaled.
@@ -64,7 +63,7 @@ public:
     /// The operand whose register the result of the two-address instruction @p insn takes.
     virtual std::optional<size_t> tied(const App*) const { return {}; }
     /// What an operand of the backend's address type @p type is: Want::Base, Want::Index, or Want::Addr.
-    virtual std::optional<native::rules::Want> classify(const Def*) const { return {}; }
+    virtual std::optional<mach::rules::Want> classify(const Def*) const { return {}; }
     ///@}
 
 private:

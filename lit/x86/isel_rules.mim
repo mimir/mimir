@@ -10,12 +10,10 @@ extern lam _compile (): compile.Phase = x86_isel.gen;
 // CHECK-NOT:      // core.wrap.add
 // The operands of a commuting node may be swapped.
 // CHECK:          m[1] = {{d[0-9]+}}->proj(2, swap >> 0 & 1);
-// The implicit type argument of `mem.load` is no inner node.
-// CHECK:          return false; // mem.load
+// The type argument of `mach.load` is no inner node.
+// CHECK:          return false; // mach.load
 // CHECK-NOT:      r[
-// CHECK:          return false; // core.Ptr
-// A pointer looks through the cast `mem.legalize_native` inserts.
-// CHECK:          m[[[P:[0-9]+]]] = strip_ptr_cast(m[[[P]]]);
+// CHECK:          return true;
 // An inner node is captured once and compared where it occurs again.
 // CHECK:          r[2] = [[VAL:d[0-9]+]];
 // CHECK-NEXT:     if ([[VAL]]->tuple() != {{d[0-9]+}}) return false;
@@ -40,10 +38,10 @@ extern lam _compile (): compile.Phase = x86_isel.gen;
 // CHECK:          Want::Param, Want::Reg, // scale(core.wrap.mul): I64 ↝ [I64, I2]
 // The divisor of `core.rem` is a parameter.
 // CHECK:          Want::Param, Want::Reg, // rem16(core.rem): I16 ↝ I16
-// A memory is a parameter and a pointer an address.
-// CHECK:          Want::Param, Want::Addr, // load(mem.load): [core.M 0, I64] ↝ [core.M 0, I64]
+// A memory is a parameter and an `I64` under `addr` an address.
+// CHECK:          Want::Param, Want::Addr, // load(mach.load): [core.M 0, I64] ↝ [core.M 0, I64]
 // A size that an operand's type mentions is a parameter.
-// CHECK:          Want::Param, Want::Param, Want::Addr, Want::RegImm, // store(mem.store): core.M 0 ↝ core.M 0
+// CHECK:          Want::Param, Want::Param, Want::Addr, Want::RegImm, // store(mach.store): core.M 0 ↝ core.M 0
 // CHECK:      inline constexpr size_t Max_Metas
 // CHECK:      inline constexpr Rewrite rewrites[] = {
 // The logical instructions also take `Bool`.
@@ -68,7 +66,7 @@ extern lam _compile (): compile.Phase = x86_isel.gen;
 // A scale is part of the address, so it costs nothing, and a product of either order is one.
 // CHECK:          {"scale(core.wrap.mul)", 0, {{0x[0-9a-f]+}}, Ty::Scaled, {{.*}}, 2, 0x1, 0x0, 0x0, 0}, // I64 ↝ [I64, I2]
 // CHECK-NOT:      {"rm(core.wrap.mul)", {{.*}} // [core.M 0, I8]
-// CHECK:          {"mr(mem.store)", 7, {{.*}}, 4, 0x1, 0x0, 0x0, 0}, // core.M 0 ↝ core.M 0
+// CHECK:          {"mr(mach.store)", 7, {{.*}}, 4, 0x1, 0x0, 0x0, 0}, // core.M 0 ↝ core.M 0
 // The rules of a root are adjacent, and `roots` indexes them.
 // CHECK:      inline constexpr Root roots[] = {
 // CHECK-NEXT:     {0x0, 0, {{[1-9][0-9]*}}},

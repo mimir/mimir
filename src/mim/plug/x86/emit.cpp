@@ -7,8 +7,7 @@
 
 #include <mim/plugin.h>
 
-#include <mim/native/emit.h>
-
+#include <mim/plug/mach/emit.h>
 #include <mim/plug/math/math.h>
 
 #include "mim/plug/x86/insn.h"
@@ -18,8 +17,8 @@
 namespace mim::plug::x86 {
 
 using namespace std::string_literals;
-using native::Reg;
-using native::Src;
+using mach::Reg;
+using mach::Src;
 
 namespace {
 
@@ -87,10 +86,10 @@ nat_t width(const Def* type) {
 }
 
 /// Writes one function in AT&T syntax.
-class Emitter : public native::Emitter {
+class Emitter : public mach::Emitter {
 public:
     Emitter(std::ostream& os, Emit& emit, Lam* fun)
-        : native::Emitter(x86::target(), os, emit, fun)
+        : mach::Emitter(mach::Target::of(emit.driver()), os, emit, fun)
         , emit_(emit) {}
 
 private:
@@ -405,7 +404,7 @@ void Emitter::unary(flags_t id, std::string_view src, nat_t ws, const Def* res) 
 }
 
 void Emitter::step(const App* app) {
-    if (Axm::isa<sched>(app)) return insn(app->proj(2, 1), Target::sched_insn(app), app->arg());
+    if (Axm::isa<mach::sched>(app)) return insn(app->proj(2, 1), Target::sched_insn(app), app->arg());
 
     if (!Axm::isa<load>(app) && !Axm::isa<store>(app) && !Axm::isa<fload>(app) && !Axm::isa<fstore>(app))
         clobber_flags();
@@ -517,10 +516,10 @@ void Emit::finish(std::ostream& os) {
     auto constants = fe::Vector<std::pair<u64, u64>>(pool_.size());
     for (auto& [c, i] : pool_)
         constants[i] = c;
-    std::println(os, "\t{}", target().is_elf() ? ".section .rodata" : ".section __TEXT,__const");
+    std::println(os, "\t{}", Target::is_elf() ? ".section .rodata" : ".section __TEXT,__const");
     std::println(os, "\t.p2align 4");
     for (size_t i = 0; i != constants.size(); ++i) {
-        std::println(os, "{}pool{}:", target().local_prefix(), i);
+        std::println(os, "{}pool{}:", Target::local_prefix(), i);
         std::println(os, "\t.quad 0x{:016x}", constants[i].first);
         std::println(os, "\t.quad 0x{:016x}", constants[i].second);
     }

@@ -2,9 +2,10 @@
 
 plugin core;
 plugin mem;
+plugin mach;
 import compile;
 
-extern lam _compile (): compile.Phase = mem.legalize_ptr;
+extern lam _compile (): compile.Phase = mach.legalize;
 
 // An index into a dynamic size ignores the modulus.
 extern lam dyn (n: Nat, p: mem.Ptr0 «n; I32», x: I64): mem.Ptr0 I32 = mem.lea (p, core.conv.u n x);

@@ -173,7 +173,7 @@ struct Plugin {
     size_t num_envs;       ///< Number of Plugin::envs.
     const PluginSym* syms; ///< The symbols other Plugin%s may look up; see PluginSym.
     size_t num_syms;       ///< Number of Plugin::syms.
-    const Target* target;  ///< The machine a native backend Plugin compiles for; see Driver::target.
+    Target* (*target)();   ///< Creates the machine a native backend Plugin compiles for; the Driver owns it.
 };
 
 /// @name Plugin Interface

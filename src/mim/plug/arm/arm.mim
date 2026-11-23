@@ -9,7 +9,7 @@
 /// Instruction selection rewrites a scalar subset of `core`, `mem`, and `math` into the axioms below and those of `mach`; register allocation is the phases of `mach`.
 /// AArch64 is three-address, so no operand is tied to a result.
 /// Registers are no concern of these types; register allocation introduces them later.
-/// The schedule is the `mem.M 0` chain: memory instructions sit on it, and `mem.schedule` threads all other instructions onto it via `mem.sched`.
+/// The schedule is the `mem.M 0` chain: memory instructions sit on it, and `mach.schedule` threads all other instructions onto it via `mach.sched`.
 ///
 /// ## Dependencies
 ///

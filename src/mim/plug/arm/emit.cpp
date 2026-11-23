@@ -4,16 +4,15 @@
 
 #include <mim/plugin.h>
 
-#include <mim/native/emit.h>
-
+#include <mim/plug/mach/emit.h>
 #include <mim/plug/math/math.h>
 
 #include "mim/plug/arm/target.h"
 
 namespace mim::plug::arm {
 
-using native::Reg;
-using native::Src;
+using mach::Reg;
+using mach::Src;
 
 namespace {
 
@@ -51,10 +50,10 @@ std::string name(size_t r, const Def* type) {
 }
 
 /// Writes one function in AArch64 syntax.
-class Emitter : public native::Emitter {
+class Emitter : public mach::Emitter {
 public:
     Emitter(std::ostream& os, Emit& emit, Lam* fun)
-        : native::Emitter(arm::target(), os, emit, fun) {}
+        : mach::Emitter(mach::Target::of(emit.driver()), os, emit, fun) {}
 
 private:
     /// The frame address @p off bytes above `sp`, also while push_slot() moved `sp` down.
@@ -248,7 +247,7 @@ void Emitter::fmov_imm(size_t dst, const Def* lit) {
 }
 
 void Emitter::step(const App* app) {
-    if (Axm::isa<sched>(app)) return insn(app->proj(2, 1), Target::sched_insn(app), app->arg());
+    if (Axm::isa<mach::sched>(app)) return insn(app->proj(2, 1), Target::sched_insn(app), app->arg());
 
     if (Axm::isa<load>(app) || Axm::isa<fload>(app)) {
         auto [_, p] = app->args<2>();
