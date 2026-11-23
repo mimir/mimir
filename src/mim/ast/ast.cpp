@@ -149,9 +149,9 @@ private:
         line("// the type of the whole application: {}", show(lhs->type()));
         match(lhs->type(), "type");
         if (auto guard = rule->guard()->zonk(); guard != guard->world().lit_tt())
-            line("if ({} != w.lit_tt()) return nullptr;", build(guard));
+            line("if ({} != w.lit_tt()) return nullptr; // the guard: `{}`", build(guard), source(expr->guard()));
         // TODO guard against an rhs that rebuilds the lhs, which recurses into this very normalizer forever
-        line("return {};", build(rule->rhs()->zonk()));
+        line("return {}; // the right-hand side: `{}`", build(rule->rhs()->zonk()), source(expr->rhs()));
 
         auto src = std::ostringstream();
         auto tab = fe::Tab::spaces();
@@ -179,6 +179,13 @@ private:
         res->set_guard(eraser.rewrite(rule->guard()));
         res->set_rhs(eraser.rewrite(rule->rhs()));
         return res;
+    }
+
+    static std::string source(const Expr* expr) {
+        auto src = std::ostringstream();
+        auto tab = fe::Tab::spaces();
+        expr->stream(tab, src);
+        return src.str();
     }
 
     /// @p def as Mim; the gid suffixes of names would make the generated header differ from build to build.
@@ -241,11 +248,13 @@ private:
     /// Like Matcher::match.
     void match(const Def* pat, const std::string& def) {
         if (is_meta(pat)) {
-            if (auto val = bound(pat)) return line("if ({} != {}) return nullptr;", def, *val);
+            if (auto val = bound(pat))
+                return line("if ({} != {}) return nullptr; // `{}` again, so it must equal its first match", def, *val,
+                            meta_show(pat));
             auto name = meta_name(pat);
-            line("[[maybe_unused]] auto {} = {};", name, def);
+            line("[[maybe_unused]] auto {} = {}; // binds `{}`", name, def, meta_show(pat));
             bound_.emplace(pat);
-            return match(pat->type(), name + "->type()");
+            return match_type(pat, name);
         }
 
         // An implicit argument that nothing in the lhs determines.
@@ -253,19 +262,22 @@ private:
 
         // A phase that retypes an Axm rebuilds it under the same flags, so it is no longer World::annex.
         if (auto axm = pat->isa<Axm>())
-            return line("if (auto axm = {}->isa<Axm>(); !axm || axm->flags() != {}->flags()) return nullptr;", def,
-                        build(axm));
+            return line(
+                "if (auto axm = {}->isa<Axm>(); !axm || axm->flags() != {}->flags()) return nullptr; // the axiom `{}`",
+                def, build(axm), show(axm));
 
         // TODO match up to normalization: e.g. a literal arg may stem from a folded application in the pattern
-        if (!mentions_meta(pat)) return line("if ({} != {}) return nullptr;", def, build(pat));
+        if (!mentions_meta(pat))
+            return line("if ({} != {}) return nullptr; // exactly `{}`", def, build(pat), show(pat));
 
         auto tmp = std::format("d{}", num_tmps_++);
-        line("auto {} = {}; // {}", tmp, def, show(pat));
+        line("auto {} = {}; // match `{}`", tmp, def, show(pat));
 
         // η: a tuple pattern matches any term of its arity by its projections.
         if (auto tuple = pat->isa<Tuple>()) {
             auto n = tuple->num_ops();
-            line("if (Lit::isa({}->arity()) != {}_n) return nullptr;", tmp, n);
+            line("if (Lit::isa({}->arity()) != {}_n) return nullptr; // {} elements, matched by projections", tmp, n,
+                 n);
             for (size_t i = 0; i != n; ++i)
                 match(tuple->op(i), std::format("{}->proj({}, {})", tmp, n, i));
             return;
@@ -277,12 +289,31 @@ private:
 
         // The flags of a Nom are its key, which differs from World to World.
         auto flags = pat->isa<Nom>() ? nom_key(pat->as<Nom>()) : std::format("0x{:x}_u64", pat->flags());
-        line("if ({}->node() != Node::{} || {}->flags() != {} || {}->num_ops() != {}) return nullptr;", tmp,
-             pat->node_name(), tmp, flags, tmp, pat->num_ops());
+        auto node  = std::string_view(pat->node_name());
+        auto what
+            = std::format("{} {} with {} operand{}", std::string_view("AEIOU").contains(node.front()) ? "an" : "a",
+                          node, pat->num_ops(), pat->num_ops() == 1 ? "" : "s");
+        if (pat->isa<Inj>()) what += std::format(", constructor {}", pat->flags());
+        if (pat->isa<Nom>()) what = std::format("the nominal type `{}`", show(pat));
+        line("if ({}->node() != Node::{} || {}->flags() != {} || {}->num_ops() != {}) return nullptr; // {}", tmp,
+             pat->node_name(), tmp, flags, tmp, pat->num_ops(), what);
         // The type of an App or Extract follows from its ops, and a dependent Axm type cannot be built.
-        if (!pat->isa<App>() && !pat->isa<Extract>()) match(pat->type(), tmp + "->type()");
+        if (!pat->isa<App>() && !pat->isa<Extract>()) match_type(pat, tmp);
         for (size_t i = 0, e = pat->num_ops(); i != e; ++i)
             match(pat->op(i), std::format("{}->op({})", tmp, i));
+    }
+
+    /// Matches the type of @p pat, whose C++ expression is @p def.
+    void match_type(const Def* pat, const std::string& def) {
+        if (!pat->type()) return;
+        line("// the type of `{}`: {}", is_meta(pat) ? meta_show(pat) : show(pat), show(pat->type()));
+        match(pat->type(), def + "->type()");
+    }
+
+    /// The name of the meta variable @p meta, as the rule spells it.
+    std::string meta_show(const Def* meta) {
+        if (auto i = names_.find(meta); i != names_.end()) return i->second.substr(0, i->second.size() - 1);
+        return show(meta);
     }
 
     /// The C++ expression that rebuilds @p def.
