@@ -81,6 +81,9 @@ void count_uses(const Def* def, DefMap<nat_t>& uses, DefSet& seen) {
         ++uses[d];
         count_uses(d, uses, seen);
     }
+    // A group `(h, h)` normalizes to `‹2; h›` with a single edge to `h`
+    if (auto pack = def->isa<Pack>())
+        if (auto n = Lit::isa<nat_t>(pack->arity()); n && *n > 1) uses[pack->body()] += *n - 1;
 }
 
 /// Whether this phase lowers @p app; all of these take `[mem, dst, …]` and return `[mem, Buf]`.
