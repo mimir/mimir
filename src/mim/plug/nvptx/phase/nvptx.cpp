@@ -92,7 +92,8 @@ private:
         return v_ptr;
     }
 
-    std::string emit_libdevice_unary(ll::BB& bb, const std::string& name, const Def* def, const Def* arg, std::string fn) {
+    std::string
+    emit_libdevice_unary(ll::BB& bb, const std::string& name, const Def* def, const Def* arg, std::string fn) {
         auto a    = emit(arg);
         auto type = convert(def->type());
         fn        = "__nv_" + fn + ll::detail::math_suffix(def->type());
@@ -703,8 +704,8 @@ std::optional<std::string> DeviceEmitter::isa_targetspecific_intrinsic(ll::BB& b
         return name;
     } else if (auto pow = Axm::isa<math::pow>(def)) {
         // NVPTX cannot select `llvm.pow`.
-        auto [a, b]   = pow->args<2>([this](auto def) { return emit(def); });
-        auto type     = convert(pow->type());
+        auto [a, b]    = pow->args<2>([this](auto def) { return emit(def); });
+        auto type      = convert(pow->type());
         auto func_name = "__nv_pow"s + ll::detail::math_suffix(pow->type());
         declare("{} @{}({}, {})", type, func_name, type, type);
         uses_libdevice = true;

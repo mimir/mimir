@@ -582,8 +582,7 @@ Kernel build_kernel_conv(const Op& op,
     auto load_flat         = add_i64(mul_i64(round, ow), item);
     auto [lm, load_coords] = unflatten_index(w, load_flat, filter_ext, entry);
     auto load_val          = load_at(weight, k.ins[weight_idx], op.n(), mr.Sr, iters(load_coords), lm).second;
-    load->app(true, load_yield,
-              w.call<mem::store>(Defs{load_shared, lea_i64(k.shared_ptr, load_flat), load_val}));
+    load->app(true, load_yield, w.call<mem::store>(Defs{load_shared, lea_i64(k.shared_ptr, load_flat), load_val}));
 
     auto [bar_mem, bar_shared] = w.app(w.annex<gpu::sync_work_items>(), Defs{entry, after_load->var()})->projs<2>();
 
