@@ -27,7 +27,7 @@ extern fun main (m0: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem
     let (m0, m1) = gpu.copy_to_device.block (m0, m1, ptr1, d_ptr1);
     let (m0, m1) = gpu.copy_to_device.block (m0, m1, ptr2, d_ptr2);
 
-    ret (m0, m1, m4) = gpu.launch (4, 4, gpu.default_stream, ff, ())
+    ret (m0, m1, m4) = gpu.launch (4, 4, gpu.default_stream)
         kernel (d_ptr1, d_ptr2) $ (m0, m1, m4);
 
     let (m0, m1) = gpu.copy_to_host.block (m0, m1, d_ptr1, ptr1);

@@ -27,8 +27,8 @@ extern fun main (m0: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem
             let (m0, m1, d_ptr1) = gpu.alloc_copy.asyn (m0, m1, ptr1, s1);
             let (m0, m1, d_ptr2) = gpu.alloc_copy.asyn (m0, m1, ptr2, s2);
 
-            ret (m0, m1, m4) = gpu.launch (4, 4, s1, ff, ()) kernel d_ptr1 $ (m0, m1, m4);
-            ret (m0, m1, m4) = gpu.launch (4, 4, s2, ff, ()) kernel d_ptr2 $ (m0, m1, m4);
+            ret (m0, m1, m4) = gpu.launch (4, 4, s1) kernel d_ptr1 $ (m0, m1, m4);
+            ret (m0, m1, m4) = gpu.launch (4, 4, s2) kernel d_ptr2 $ (m0, m1, m4);
 
             let (m0, m1) = gpu.copy_to_host.asyn (m0, m1, d_ptr1, ptr1, s1);
             let (m0, m1) = gpu.copy_to_host.asyn (m0, m1, d_ptr2, ptr2, s2);
