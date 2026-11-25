@@ -9,7 +9,7 @@ This page explains how they work; the living design notes and status of each bac
 ## Design in a Nutshell {#backend_design}
 
 - **Everything stays in MimIR.**
-  There is no separate machine IR: instruction selection, scheduling, spilling, register assignment, and SSA destruction are all [phases](@ref phases) on the [`World`](@ref mim::World), in the style of libFirm.
+  There is no separate machine IR: instruction selection, scheduling, spilling, register assignment, and SSA destruction are all [phases](@ref phases) on the [`World`](@ref mim::World), in the style of [libFirm](https://libfirm.github.io/).
   Machine instructions are ordinary axioms, so dumping, `-o` round-trips, lit tests, and the type checker work at every backend stage.
 - **SSA until the very end.**
   Register allocation runs on SSA form (Hack and Braun style); SSA destruction happens only in the emitter, which turns each jump into a parallel copy.
