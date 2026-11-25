@@ -204,7 +204,7 @@ int main(int argc, char** argv) {
             .opt(opts.plugin_args          , "plugin:arg", "-X", "--"s + Plugin_Arg_Key  , "Passes an argument to a plugin/phase, e.g. `-X ll:o=output.ll`. Repeatable.")
             .opt(config_path               , "path"      , ""  , "--config"              , "Reads project configuration from `<path>`.")
             .opt(flags.force_load          , ""          , ""  , "--force-load"          , "Loads plugins even on version mismatch.")
-            .opt(flags.bootstrap           , ""          , ""  , "--bootstrap"           , "Bootstrap mode: only read Mim AST, don't compile to MimIR.")
+            .opt(flags.bootstrap           , ""          , ""  , "--bootstrap"           , "Bootstrap mode: only read Mim AST, don't compile to MimIR (except for `norm` rules).")
             .opt(inc_verbose               , ""          , "-V", "--verbose"             , "Raises the log level from error to warn, info, verbose, debug, trace; repeatable.").cardinality(0, 5)
             .grp("Output")
             .opt(flags.ascii               , ""          , "-a", "--ascii"               , "Uses ASCII alternatives in output instead of UTF-8.")

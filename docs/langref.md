@@ -295,7 +295,9 @@ tail   ::= ("," I)? ("," L ("," L)?)?
   Its last domain `m` binds the meta variables, which matching determines; the `ndom`s before it make a family of rules, which whoever uses it instantiates.
   Without any domain, it is an `anx let I = rl (): l when g => r`.
   A rule is always an [annex](@ref annex), so phases leave it alone.
-- `norm` is the normalizing variant of `rule`: it must not change the type.
+- `norm I m: l when g => r` is the normalizing variant of `rule`: it must not change the type, and it has no family.
+  It is a plain `let I = rl m: l when g => r`, no annex, and its type may depend on its meta variables.
+  Bootstrapping a plugin turns all `norm` rules named `I` into the C++ normalizer `I`.
 
 #### Modifiers
 

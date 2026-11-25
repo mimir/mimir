@@ -1,0 +1,83 @@
+// UNSUPPORTED: roundtrip
+// RUN: %mim %s --output-h - --bootstrap | %FileCheck %s
+
+axm fam.(a, b, c): {T: *} → T → T, normalize_fam;
+norm normalize_fam (T: *, x: T): fam.a x => x;
+norm normalize_fam (T: *, x: T): (fam.b @ T) x => fam.a x;
+
+anx nom Meter = Nat;
+axm unwrap: Meter → Nat, normalize_unwrap;
+norm normalize_unwrap (x: Nat): unwrap (x inj Meter) => x;
+
+axm fst: [Nat, Nat] → Nat, normalize_fst;
+norm normalize_fst (a b: Nat): fst (a, b) => a;
+
+axm snd: [Nat, Nat] → Nat, normalize_snd;
+norm normalize_snd (a b: Nat): snd (b, a) => a;
+
+// CHECK:       /// `norm normalize_fam (T: *, x: T): fam.a x => x`
+// CHECK-NEXT:  inline const Def* normalize_fam_0(
+// CHECK:       auto d0 = callee; // match `normgen.fam.a @ T`
+// CHECK-NEXT:  if (d0->node() != Node::App || d0->flags() != 0x0_u64 || d0->num_ops() != 2) return nullptr;
+// CHECK-NEXT:  if (auto axm = d0->op(0)->isa<Axm>(); !axm || axm->flags() != w.annex(plug::normgen::fam::a)->flags()) return nullptr;
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto T_ = d0->op(1);
+// CHECK-NEXT:  // the type of `T`:
+// CHECK-NEXT:  if (T_->type() != w.type<0>()) return nullptr;
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto x_ = arg;
+// CHECK-NEXT:  // the type of `x`:
+// CHECK-NEXT:  if (x_->type() != T_) return nullptr;
+// CHECK-NEXT:  // the type of the whole application: T
+// CHECK-NEXT:  if (type != T_) return nullptr;
+// CHECK-NEXT:  return x_; // the right-hand side: `x`
+
+// CHECK-LABEL: inline const Def* normalize_fam_1(
+// CHECK:       return w.app(w.app(w.annex(plug::normgen::fam::a), T_), x_);
+
+// CHECK-LABEL: template<plug::normgen::fam id>
+// CHECK-NEXT:  inline const Def* normalize_fam(
+// CHECK-NEXT:  if constexpr (id == plug::normgen::fam::a)
+// CHECK-NEXT:  if (auto res = normalize_fam_0(type, callee, arg)) return res;
+// CHECK-NEXT:  if constexpr (id == plug::normgen::fam::b)
+// CHECK-NEXT:  if (auto res = normalize_fam_1(type, callee, arg)) return res;
+// CHECK-NEXT:  return nullptr;
+
+// The rule over a nominal type requires the Name, whose Nom it finds through its annex.
+// CHECK-LABEL: inline const Def* normalize_unwrap_0(
+// CHECK:       auto d0 = arg; // match `x inj normgen.Meter`
+// CHECK-NEXT:  if (d0->node() != Node::Name || d0->flags() != 0x0_u64 || d0->num_ops() != 1) return nullptr;
+// CHECK-NEXT:  // the type of `x inj normgen.Meter`: normgen.Meter
+// CHECK-NEXT:  if (d0->type() != w.nom(w.annex<plug::normgen::Meter>()->flags(), w.type_nat())) return nullptr;
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto x_ = d0->op(0);
+
+// Its erased twin matches the bare value.
+// CHECK:       /// with nominal types erased, for after NomErasure
+// CHECK-NEXT:  inline const Def* normalize_unwrap_1(
+// CHECK:       if (auto axm = callee->isa<Axm>(); !axm || axm->flags() != w.annex<plug::normgen::unwrap>()->flags()) return nullptr;
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto x_ = arg;
+// CHECK-NEXT:  // the type of `x`:
+// CHECK-NEXT:  if (x_->type() != w.type_nat()) return nullptr;
+
+// CHECK-LABEL: inline const Def* normalize_unwrap(
+// CHECK-SAME:  // generated from the `norm` rules `normalize_unwrap` in normgen.mim
+// CHECK-NEXT:  if (auto res = normalize_unwrap_0(type, callee, arg)) return res;
+// CHECK-NEXT:  if (auto res = normalize_unwrap_1(type, callee, arg)) return res;
+// CHECK-NEXT:  return nullptr;
+
+// `(a, b)` is η-reduced to the rule's Var, which binds as a whole and provides `a` as its projection.
+// CHECK-LABEL: inline const Def* normalize_fst_0(
+// CHECK:       {{\[\[maybe_unused\]\]}} auto v_ = arg; // binds `v`
+// CHECK-NEXT:  // the type of `v`: «2; Nat»
+// CHECK-NEXT:  if (v_->type() != w.arr(Shape(w.lit(w.type_nat(), 2_n)), w.type_nat())) return nullptr;
+// CHECK:       return v_->proj(2, 0);
+
+// A tuple pattern decomposes any value of its arity through projections.
+// CHECK-LABEL: inline const Def* normalize_snd_0(
+// CHECK:       auto d0 = arg; // match `(b, a)`
+// CHECK-NEXT:  if (Lit::isa(d0->arity()) != 2_n) return nullptr; // 2 elements, matched by projections
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto b_ = d0->proj(2, 0);
+// CHECK-NEXT:  // the type of `b`:
+// CHECK-NEXT:  if (b_->type() != w.type_nat()) return nullptr;
+// CHECK-NEXT:  {{\[\[maybe_unused\]\]}} auto a_ = d0->proj(2, 1);
+// CHECK-NEXT:  // the type of `a`:
+// CHECK-NEXT:  if (a_->type() != w.type_nat()) return nullptr;
+// CHECK:       return a_;

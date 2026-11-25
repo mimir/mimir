@@ -18,6 +18,7 @@ namespace mim::ast {
 class Decl;
 class Expr;
 class LamDecl;
+class LetDecl;
 class File;
 class Scopes;
 class Emitter;
@@ -168,6 +169,14 @@ public:
     };
     void add_foreign_alias(Sym plugin, ForeignAlias alias) { plugin2foreign_aliases_[plugin].emplace_back(alias); }
     const auto& plugin2foreign_aliases(Sym plugin) { return plugin2foreign_aliases_[plugin]; }
+
+    /// A `norm` rule of @p plugin; bootstrapping turns all rules of the same name into the C++ normalizer of that name.
+    /// Its Rule is only in Decl::def once AST::bootstrap has emitted its File.
+    void add_norm(Sym plugin, const LetDecl* norm) { plugin2norms_[plugin].emplace_back(norm); }
+    const auto& plugin2norms(Sym plugin) { return plugin2norms_[plugin]; }
+    /// Every emitted annex, even of a plugin whose library is not loaded, which World::Annexes::attach skips.
+    void add_annex(flags_t flags, Sym sym, const Def* def) { flags2annex_[flags] = {sym, def}; }
+    const auto& flags2annex() const { return flags2annex_; }
     ///@}
 
     /// @name bootstrap
@@ -185,6 +194,8 @@ public:
         swap(a1.scopes_, a2.scopes_);
         swap(a1.plugin2sym2annex_, a2.plugin2sym2annex_);
         swap(a1.plugin2foreign_aliases_, a2.plugin2foreign_aliases_);
+        swap(a1.plugin2norms_, a2.plugin2norms_);
+        swap(a1.flags2annex_, a2.flags2annex_);
         // clang-format on
     }
 
@@ -200,6 +211,8 @@ private:
     // so the elements must not be relocated when further annexes are inserted into the same plugin.
     std::unordered_map<fe::Sym, std::unordered_map<fe::Sym, AnnexInfo>> plugin2sym2annex_;
     std::unordered_map<fe::Sym, std::vector<ForeignAlias>> plugin2foreign_aliases_;
+    std::unordered_map<fe::Sym, std::vector<const LetDecl*>> plugin2norms_;
+    std::map<flags_t, World::Annexes::Entry> flags2annex_;
 };
 
 /// Base class of all AST nodes.

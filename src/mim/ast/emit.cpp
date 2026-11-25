@@ -28,8 +28,11 @@ public:
     /// hash-consing can make several annexes share a single Def (e.g. `mod foo anx let bar = 23; anx let baz = 23;
     /// end`).
     void attach(AnnexInfo* annex, sub_t sub, Sym name, const Def* def) {
-        if (annex)
-            world().annexes().attach(annex->plugin_id(), annex->id.tag, sub, annex->qualified(driver(), name), def);
+        if (annex) {
+            auto sym = annex->qualified(driver(), name);
+            world().annexes().attach(annex->plugin_id(), annex->id.tag, sub, sym, def);
+            ast().add_annex(Annex::flags(annex->plugin_id(), annex->id.tag, sub), sym, def);
+        }
     }
 
     void attach_alias(AnnexInfo* annex, sub_t sub, Sym name) {
@@ -381,7 +384,8 @@ const Def* RuleExpr::emit_(Emitter& e) const {
     rule->set_lhs(lhs()->emit(e));
     rule->set_guard(guard()->emit(e));
     rule->set_rhs(rhs()->emit(e));
-    if (auto var = rule->has_var(); var && rule->type()->has_free_var(var))
+    // A `norm` is neither fired nor imported, so its type may depend on what it matches, e.g. `(T: *, x: T)`.
+    if (auto var = rule->has_var(); var && !is_norm() && rule->type()->has_free_var(var))
         e.error()
             .e(loc(), "the type of a rule must not depend on its meta variables")
             .n("its type is `{}`; make what it depends on a parameter of the family", rule->type()->zonk())
@@ -916,6 +920,7 @@ void AxmDecl::emit(Emitter& e) const {
         auto axm    = e.world().axm(norm, n_curry, n_trip, type, plugin, tag, sub)->set(sym);
         name->def_  = axm;
         e.world().annexes().attach(plugin, tag, sub, sym, axm);
+        e.ast().add_annex(Annex::flags(plugin, tag, sub), sym, axm);
         for (auto alias : name->aliases())
             e.attach_alias(annex, sub, alias.sym());
     }

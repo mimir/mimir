@@ -517,6 +517,8 @@ void LetDecl::bind(Scopes& s) const {
     }
     ptrn()->bind(s, true, false);
     if (id && is_anx()) id->annex_ = s.ast().name2annex(s, id->dbg(), &id->sub_, value());
+    if (auto rule = value()->isa<RuleExpr>(); rule && rule->is_norm())
+        s.ast().add_norm(loc2plugin(s.ast(), loc()), this);
 }
 
 void RecDecl::bind(Scopes& s) const {

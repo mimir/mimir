@@ -1,0 +1,14 @@
+// RUN: %mim %s --output-mim - | %FileCheck %s
+
+// `mk` is only inlined after NomErasure, so only the erased twin of the rule sees the bare injection.
+
+plugin compile;
+plugin option;
+
+lam mk (x: Nat)@ff: option.Opt@Nat = option.Opt#Some x;
+extern lam f (x: Nat): Nat = option.unwrap_unsafe (mk x);
+
+extern lam _compile (): compile.Phase = compile.phases ff (compile.nom_erasure, compile.beta_red);
+
+// CHECK-LABEL: extern lam f ({{.*}}: Nat): Nat =
+// CHECK-NEXT:  {{x.*}};

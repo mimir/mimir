@@ -336,7 +336,7 @@ stream_rule(fe::Tab& tab, std::ostream& os, const Mods& mods, Dbg dbg, const aut
 }
 
 void LetDecl::stream(fe::Tab& tab, std::ostream& os) const {
-    if (auto rule = value()->isa<RuleExpr>(); rule && is_anx())
+    if (auto rule = value()->isa<RuleExpr>(); rule && (is_anx() || rule->is_norm()))
         if (auto id = ptrn()->isa<IdPtrn>(); id && !id->type())
             return stream_rule(tab, os, mods(), id->dbg(), fe::View<Ptr<LamDecl::Dom>>(), rule);
     std::print(os, "{}let {} = {};", mods(), S(tab, ptrn()), S(tab, value()));

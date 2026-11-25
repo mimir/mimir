@@ -843,10 +843,10 @@ Ptrs<LamDecl::Dom> Parser::parse_doms(Prec prec, fe::Cite entity, DomStyle style
 
 Ptr<ValDecl> Parser::parse_rule_decl(Tracker track, Mods mods) {
     check_no_extern(mods, "rewrite rule");
-    // A rule is data that phases leave alone, so it always lives in the library.
-    mods.is_anx  = true;
     auto is_norm = lex().tag() == Tag::K_norm;
-    auto dbg     = parse_id("rewrite rule");
+    // A rule is data that phases leave alone, so it lives in the library; a `norm` lives in its generated normalizer.
+    mods.is_anx = !is_norm;
+    auto dbg    = parse_id("rewrite rule");
 
     // `rule I (dom)* (meta): r` is sugar for `anx lam I (dom)* = rl (meta): r`.
     auto doms = parse_doms(Prec::Pi, "rewrite rule", {});
@@ -855,6 +855,8 @@ Ptr<ValDecl> Parser::parse_rule_decl(Tracker track, Mods mods) {
         meta = Ptr<Ptrn>(doms.back()->ptrn());
         doms.pop_back();
     }
+    if (is_norm && !doms.empty())
+        error().e(doms.front()->loc(), "a `norm` rule has no family parameters, since no one instantiates them");
     expect(Tag::T_colon, "rewrite rule declaration");
     auto rule = parse_rule_body(tracker(), meta, is_norm, dbg.sym());
     if (doms.empty()) return ptr<LetDecl>(track, mods, ptr<IdPtrn>(dbg.loc(), dbg, nullptr), rule);

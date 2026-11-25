@@ -48,6 +48,7 @@ add_mim_test(mim-test
         level.cpp
         lexer.cpp
         manifest.cpp
+        norm.cpp
         nom.cpp
         tensor.cpp
         test.cpp

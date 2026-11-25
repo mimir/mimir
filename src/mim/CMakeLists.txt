@@ -22,6 +22,7 @@ target_sources(libmim
         ast/bind.cpp
         ast/emit.cpp
         ast/lexer.cpp
+        ast/normgen.cpp
         ast/parser.cpp
         ast/stream.cpp
         ast/tok.cpp

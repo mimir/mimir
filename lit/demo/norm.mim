@@ -1,0 +1,14 @@
+// RUN: %mim %s --output-mim - | %FileCheck %s
+
+plugin demo;
+
+extern lam big (): Idx 100 = demo.const_idx 100;
+extern lam small (): Idx 10 = demo.const_idx 10;
+extern lam sym (n: Nat): Idx n = demo.const_idx n;
+
+// CHECK-LABEL: extern lam big (): Idx 100 =
+// CHECK-NEXT:  42₁₀₀;
+// CHECK-LABEL: extern lam small (): Idx 10 =
+// CHECK-NEXT:  demo.const_idx 10;
+// CHECK-LABEL: extern lam sym (n: Nat): Idx n =
+// CHECK-NEXT:  demo.const_idx n;

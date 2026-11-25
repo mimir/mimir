@@ -4,6 +4,8 @@
 
 #include "mim/ast/parser.h"
 
+#include "normgen.h"
+
 using namespace std::literals;
 
 namespace mim::ast {
@@ -63,14 +65,49 @@ std::string_view kind(const AnnexInfo& annex) { return annex.fields ? "field" : 
 
 } // namespace
 
+std::string cpp_id(Sym sym) { return escape(sym, Cpp_Keywords); }
+
 void AST::bootstrap(Sym plugin, std::ostream& h) {
+    auto targets = std::set<std::string>();
+
+    // Generate the rule-based normalizers first, so an unsupported rule fails before anything is written.
+    auto rule_norms = std::vector<std::pair<Sym, std::vector<const LetDecl*>>>();
+    for (auto rule : plugin2norms(plugin)) {
+        auto name = rule->value()->as<RuleExpr>()->name();
+        auto i    = std::ranges::find(rule_norms, name, [](const auto& p) { return p.first; });
+        if (i == rule_norms.end()) i = rule_norms.insert(i, {name, {}});
+        i->second.emplace_back(rule);
+    }
+    // TODO a normalizer shared by several families would need one template per family
+    auto family = [&](Sym norm) -> const AnnexInfo* {
+        for (const auto& [_, annex] : plugin2annexes(plugin))
+            if (annex.sym.plugin == plugin && !annex.subs.empty() && annex.normalizer.sym() == norm) return &annex;
+        return nullptr;
+    };
+    // Bootstrap skips File::compile, so emit just the Files with rules, and all of each, since a rule uses its axioms.
+    // LetDecl::emit then leaves each Rule in the LetDecl's Decl::def, where emit_norm reads it.
+    // Bootstrap mode loads no plugin library, so no normalizer touches the rules while they are emitted.
+    for (auto rule : plugin2norms(plugin))
+        if (auto i = files_->find(rule->loc().src); i != files_->end()) i->second->emit(*this);
+    error().ack();
+
+    auto norms_os = std::ostringstream();
+    for (const auto& [name, rules] : rule_norms)
+        emit_norm(norms_os, *this, targets, name, rules, family(name));
+    auto is_rule_norm = [&](Dbg norm) {
+        return std::ranges::contains(rule_norms, norm.sym(), [](const auto& p) { return p.first; });
+    };
+    error().ack();
+    targets.erase(plugin.str());
+
     auto tab = fe::Tab::spaces();
     std::println(h, "{}#pragma once\n", tab);
     std::println(h, "{}#include <mim/axm.h>", tab);
-    std::println(h, "{}#include <mim/plugin.h>\n", tab);
+    std::println(h, "{}#include <mim/plugin.h>", tab);
+    if (!rule_norms.empty()) std::println(h, "{}#include <mim/world.h>", tab);
+    std::println(h, "");
 
     const auto& foreign = plugin2foreign_aliases(plugin);
-    auto targets        = std::set<std::string>();
     for (const auto& alias : foreign)
         targets.emplace(alias.annex->sym.plugin.str());
     for (const auto& target : targets)
@@ -136,7 +173,7 @@ void AST::bootstrap(Sym plugin, std::ostream& h) {
 
         std::println(outer_namespace.emplace_back(), "template<> constexpr size_t Annex::Num<plug::{}::{}> = {};", plugin, tag, annex.subs.size());
 
-        if (auto norm = annex.normalizer) {
+        if (auto norm = annex.normalizer; norm && !is_rule_norm(norm)) {
             if (auto& subs = annex.subs; !subs.empty()) {
                 std::println(h, "{}template<{}>\nconst Def* {}(const Def*, const Def*, const Def*);\n", tab, tag,
                            norm);
@@ -197,6 +234,13 @@ void AST::bootstrap(Sym plugin, std::ostream& h) {
     }
 
     std::println(h, "{}\n#endif", tab);
+
+    // Only here are all Annex specializations, which the generated normalizers instantiate, complete.
+    if (!rule_norms.empty()) {
+        std::println(h, "\nnamespace mim::plug::{} {{\n", plugin);
+        std::print(h, "{}", norms_os.str());
+        std::println(h, "}} // namespace mim::plug::{}", plugin);
+    }
 }
 
 void AST::bootstrap_py(Sym plugin, std::ostream& h) {

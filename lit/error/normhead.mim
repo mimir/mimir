@@ -1,0 +1,8 @@
+// RUN: (! %mim %s --output-h - --bootstrap 2>&1) | %FileCheck %s
+// UNSUPPORTED: roundtrip
+
+axm f: Nat → Nat, normalize_f;
+axm g: Nat → Nat, normalize_g;
+norm normalize_f (x: Nat): g x => x;
+
+// CHECK: normhead.mim:6:28-6:30: error: the left-hand side of a `norm` rule must apply an axiom normalized by `normalize_f`

@@ -1,0 +1,11 @@
+// RUN: %mim %s --output-mim - | %FileCheck %s
+
+plugin option;
+
+extern lam some (x: Nat): Nat = option.unwrap_unsafe (option.Opt#Some x);
+extern lam none (): Nat = option.unwrap_unsafe (option.Opt#None);
+
+// CHECK-LABEL: extern lam none (): Nat =
+// CHECK-NEXT:  option.unwrap_unsafe
+// CHECK-LABEL: extern lam some ({{.*}}: Nat): Nat =
+// CHECK-NEXT:  {{x.*}};
