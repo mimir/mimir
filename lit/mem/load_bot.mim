@@ -1,0 +1,9 @@
+// RUN: %mim %s
+
+plugin mem;
+plugin refly;
+
+// Loading through ⊥ yields ⊥, even if `[M 0, T]` collapses into an array because `T` is `M 0`.
+lam nat (m: mem.M 0): [mem.M 0, Nat] = refly.struc.e (mem.load (m, ⊥:(mem.Ptr0 Nat)), (m, ⊥:Nat));
+lam token (m: mem.M 0): [mem.M 0, mem.M 0] =
+    refly.struc.e (mem.load (m, ⊥:(mem.Ptr0 (mem.M 0))), (m, ⊥:(mem.M 0)));

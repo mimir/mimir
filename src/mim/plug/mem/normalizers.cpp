@@ -15,7 +15,8 @@ const Def* normalize_load(const Def* type, const Def*, const Def* arg) {
     auto& world     = type->world();
     auto [mem, ptr] = arg->projs<2>();
 
-    if (ptr->isa<Bot>()) return world.tuple({mem, world.bot(type->as<Sigma>()->op(1))});
+    // `[M a, T]` is no Sigma if `T` is `M a`.
+    if (ptr->isa<Bot>()) return world.tuple({mem, world.bot(type->proj(2, 1))});
 
     // loading an empty tuple can only result in an empty tuple
     // TODO use common singleton magic here
