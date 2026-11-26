@@ -231,25 +231,26 @@ const Def* LowerToMem::uncurry(Lam* lam) {
     auto inner  = lam->body()->as_mut<Lam>();
     auto k = pi->dom()->num_projs(), m = inner->num_vars(), n = k + m;
     auto sigma = w.mut_sigma(n);
-    push();
-    if (pi_mut) bind_old(pi_mut->has_var());
-    bind_old(lam->has_var());
-    bind_old(inner->has_var());
-    for (size_t i = 0; i != k; ++i) {
-        sigma->set(i, rewrite(lam->var(k, i)->type()));
-        if (pi_mut) map(pi_mut->var(k, i), sigma->var(n, i));
-        map(lam->var(k, i), sigma->var(n, i));
+    {
+        auto _ = scoped();
+        if (pi_mut) bind_old(pi_mut->has_var());
+        bind_old(lam->has_var());
+        bind_old(inner->has_var());
+        for (size_t i = 0; i != k; ++i) {
+            sigma->set(i, rewrite(lam->var(k, i)->type()));
+            if (pi_mut) map(pi_mut->var(k, i), sigma->var(n, i));
+            map(lam->var(k, i), sigma->var(n, i));
+        }
+        if (k > 1) {
+            auto vars = w.tuple(DefVec(k, [&](size_t i) { return sigma->var(n, i); }));
+            if (pi_mut) map(pi_mut->var(), vars);
+            map(lam->var(), vars);
+        }
+        for (size_t i = 0; i != m; ++i) {
+            sigma->set(k + i, rewrite(inner->var(m, i)->type()));
+            map(inner->var(m, i), sigma->var(n, k + i));
+        }
     }
-    if (k > 1) {
-        auto vars = w.tuple(DefVec(k, [&](size_t i) { return sigma->var(n, i); }));
-        if (pi_mut) map(pi_mut->var(), vars);
-        map(lam->var(), vars);
-    }
-    for (size_t i = 0; i != m; ++i) {
-        sigma->set(k + i, rewrite(inner->var(m, i)->type()));
-        map(inner->var(m, i), sigma->var(n, k + i));
-    }
-    pop();
 
     auto new_lam = w.mut_con(sigma)->set(lam->dbg());
     map(lam, new_lam);

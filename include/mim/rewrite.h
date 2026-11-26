@@ -39,6 +39,22 @@ public:
     /// The root scope takes all others.
     void push(Vars old_vars = {}, Vars new_vars = {}) { scopes_.emplace_back(old_vars, new_vars); }
     void pop() { scopes_.pop_back(); }
+
+    /// pop()s at the end of its C++ scope.
+    class Pop {
+    public:
+        explicit Pop(Rewriter& rw)
+            : rw_(rw) {}
+        ~Pop() { rw_.pop(); }
+        Pop(const Pop&)            = delete;
+        Pop& operator=(const Pop&) = delete;
+
+    private:
+        Rewriter& rw_;
+    };
+
+    /// push()es a scope that lives as long as the returned Pop.
+    [[nodiscard]] Pop scoped(Vars old_vars = {}, Vars new_vars = {}) { return push(old_vars, new_vars), Pop(*this); }
     /// Adds the old @p var - if any - to the innermost scope.
     void bind_old(const Var* var);
     /// Adds the new @p var - if any - to the innermost scope.

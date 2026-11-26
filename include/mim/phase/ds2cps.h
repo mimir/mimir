@@ -34,14 +34,9 @@ protected:
         Scope(DS2CPS& phase, bool liftable)
             : phase_(phase)
             , base_(phase.pending_.size())
-            , old_liftable_(phase.liftable_) {
-            phase_.push(Vars());
-            phase_.liftable_ = liftable;
-        }
+            , liftable_(phase.liftable_, liftable) {}
         ~Scope() {
             assert((std::uncaught_exceptions() || phase_.pending_.size() == base_) && "pending calls must be wire()d");
-            phase_.pop();
-            phase_.liftable_ = old_liftable_;
         }
 
         size_t base() const { return base_; }
@@ -49,7 +44,8 @@ protected:
     private:
         DS2CPS& phase_;
         size_t base_;
-        bool old_liftable_;
+        Pop pop_ = phase_.scoped();
+        fe::Restore<bool> liftable_;
     };
 
     /// Is the body of a continuation being rewritten, so that lift() is legal?

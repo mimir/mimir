@@ -127,10 +127,9 @@ void ClosConv::finalize() {
         auto vars  = Vars();
         for (auto fv : stub.fvs)
             vars = vs.merge(vars, fv->free_vars());
-        push(vars);
+        auto _ = scoped(vars);
         bind_old(stub.old_fn->has_var());
         rewrite_body(stub);
-        pop();
     }
 }
 

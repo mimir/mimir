@@ -67,11 +67,10 @@ void Schedule::thread(Lam* lam) {
         lam->blame("{} backend: the body of continuation `{}` is no jump: `{}`", target_.name(), lam, lam->body())
             .bail();
 
-    push(Vars(lam->has_var()), Vars(lam->has_var()));
+    auto _ = scoped(Vars(lam->has_var()), Vars(lam->has_var()));
     if (i != n) chain(lam, i);
     auto filter = rewrite(lam->filter());
     auto body   = rewrite(lam->body());
-    pop();
     lam->unset()->set(filter, body);
 }
 

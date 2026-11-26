@@ -27,11 +27,11 @@ const Def* Conv::convert(Lam* old_lam) {
         auto sigma = w.mut_sigma(2);
         sigma->set(0, new_dom); // the codom may project sigma->var(2, 0), which needs its type
         sigma->var();
-        push({}, Vars(sigma->has_var()));
-        map(old_var, sigma->var(2, 0));
-        auto new_codom = rewrite(old_pi->codom());
-        pop();
-        sigma->set(1, w.cn(new_codom));
+        {
+            auto _ = scoped({}, Vars(sigma->has_var()));
+            map(old_var, sigma->var(2, 0));
+            sigma->set(1, w.cn(rewrite(old_pi->codom())));
+        }
         new_lam = w.mut_con(sigma);
     } else {
         new_lam = w.mut_fun(new_dom, rewrite(old_pi->codom()));

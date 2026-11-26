@@ -2,7 +2,8 @@
 
 - Scalarize is type-directed: it flattens per immutable `Cn` Pi, not per Lam, so every producer and consumer of a type is reshaped in one sweep.
   Interface signatures go through the nested `Scalarize::Keep` rewriter; a mutable with a Cn (a dependent Pi like `{m n: Nat} → …`) must be rebuilt there, or curried externs flatten.
-  The remaining keeps (dynamically indexed params, `tensor.buf`, `pin_opaque`) each guard a plugin's shape assumption.
+  Only two keeps remain: `keep_opaque` is needed for correctness (a `Cn` behind a pointer or a Variant, which coerce() cannot take apart), and a dynamically indexed param is kept for code quality only.
+  An interface's other params are spread and reassembled where used whole (`mem.store`, `core.bitcast`).
 - EtaConv gives every occurrence of an unknown Lam its own fresh `eta_` wrapper, like a per-call-site join point; the missing `map` on those paths is intended.
 - EtaConv does not rule out critical edges: a hash-consed branch tuple used by several branches shares its wrappers.
   A phase that assumes no critical edges must split them itself, as `mach.spilling` does.

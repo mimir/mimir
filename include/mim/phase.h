@@ -227,21 +227,6 @@ protected:
     /// @returns `true` iff this changed observable information - i.e. iff it invalidate()d.
     bool pin(const Def* def) { return lattice(def, def); }
 
-    /// pin%s every def in @p def%'s immutable subgraph for which @p pinnable holds.
-    /// Mutables are visited but not descended into; defs already in @p visited are skipped.
-    void pin_imm(DefSet& visited, const Def* def, DefPred auto pinnable) {
-        if (!visited.emplace(def).second) return;
-        if (pinnable(def)) pin(def);
-        if (def->isa_mut()) return;
-        for (auto d : def->deps())
-            pin_imm(visited, d, pinnable);
-    }
-
-    void pin_imm(const Def* def, DefPred auto pinnable) {
-        auto visited = DefSet();
-        pin_imm(visited, def, pinnable);
-    }
-
     /// Additionally schedules @p mut for the next sparse round.
     /// Use this when a lattice change must re-visit *other* mutables than curr_mut() -
     /// e.g. all call sites of a Lam whose var's abstract value changed.

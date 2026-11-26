@@ -19,60 +19,49 @@ static bool is_value_telescope(const Def* def) {
     return false;
 }
 
-/// Is the argument of the Axm application @p app typed by one of the Axm's type variables?
-static bool is_polymorphic_arg(const App* app) {
-    auto n = 0;
-    for (const Def* d = app; auto a = d->isa<App>(); d = a->callee())
-        ++n;
-
-    auto pi = app->uncurry_callee()->type()->isa<Pi>();
-    for (; pi && --n != 0;)
-        pi = pi->codom()->isa<Pi>();
-    if (!pi) return false;
-
-    auto dom = pi->dom();
-    if (auto ex = dom->isa<Extract>()) dom = ex->tuple();
-    return dom->isa<Var>();
-}
-
 /*
  * Analysis
  */
 
 bool Scalarize::Analysis::kept(const Pi* pi, size_t dom) const {
-    if (is_top(pi)) return true; // whole Pi pinned
     auto mask = fe::lookup(keeps_, pi);
     return mask && mask->test(dom);
 }
 
-void Scalarize::Analysis::keep(const Pi* pi, size_t dom) {
-    if (dom >= pi->num_tdoms() || is_top(pi)) return;
-    auto& mask = keeps_[pi];
-    if (mask.test(dom)) return;
-    mask.set(dom);
-    log().d("keep {}#{}", pi, dom);
+void Scalarize::Analysis::keep(const Pi* pi, const fe::Bitset& mask) {
+    auto& kept = keeps_[pi];
+    if (mask.subset_of(kept)) return;
+    kept |= mask;
+    log().d("keep {}: {}", pi, mask);
     touch();
 }
 
-void Scalarize::Analysis::keep_var(const Def* def) {
-    if (auto [var, i] = Var::isa_tproj(def); var) {
-        if (auto pi = isa_flattenable(var->binder()->type())) {
-            if (i)
-                keep(pi, *i);
-            else
-                pin(pi);
-        }
-    }
+/// The parameter @p i of a Pi with @p n parameters, or all of them.
+static fe::Bitset params(size_t n, std::optional<nat_t> i = {}) {
+    auto mask = fe::Bitset();
+    for (size_t j = 0; j != n; ++j)
+        if (!i || j == *i) mask.set(j);
+    return mask;
 }
 
-void Scalarize::Analysis::pin_opaque(DefSet& structural, const Def* type) {
-    if (transparent(type)) {
-        if (structural.emplace(type).second)
-            for (auto op : type->ops())
-                pin_opaque(structural, op);
-    } else {
-        pin_imm(type, isa_flattenable);
-    }
+void Scalarize::Analysis::keep_var(const Def* def) {
+    if (auto [var, i] = Var::isa_tproj(def); var)
+        if (auto pi = isa_flattenable(var->binder()->type())) keep(pi, params(pi->num_tdoms(), i));
+}
+
+void Scalarize::Analysis::keep_opaque(DefSet& structural, DefSet& opaque, const Def* type) {
+    if (!transparent(type)) return keep_cns(opaque, type);
+    if (structural.emplace(type).second)
+        for (auto op : type->ops())
+            keep_opaque(structural, opaque, op);
+}
+
+void Scalarize::Analysis::keep_cns(DefSet& visited, const Def* def) {
+    if (!visited.emplace(def).second) return;
+    if (auto pi = isa_flattenable(def)) keep(pi, params(pi->num_tdoms()));
+    if (def->isa_mut()) return;
+    for (auto d : def->deps())
+        keep_cns(visited, d);
 }
 
 void Scalarize::Analysis::keep_indexed(const Def* tuple, const Def* idx) {
@@ -88,19 +77,11 @@ void Scalarize::Analysis::keep_indexed(const Def* tuple, const Def* idx) {
 
 const Def* Scalarize::Analysis::rewrite_mut_Lam(Lam* lam) {
     // The interface's signature keeps its shape, which the body only meets via coerce().
-    if (!lam->is_rewritable()) {
-        auto structural = DefSet();
-        pin_opaque(structural, lam->type());
+    if (!lam->is_rewritable() && interfaces_.emplace(lam).second) {
+        auto structural = DefSet(), opaque = DefSet();
+        keep_opaque(structural, opaque, lam->type());
     }
     return mim::Analysis::rewrite_mut_Lam(lam);
-}
-
-// pin() maps `pi ↦ pi`, which would cut off the traversal into the old Def, so the hooks below inspect afterwards.
-
-const Def* Scalarize::Analysis::rewrite_imm_App(const App* app) {
-    auto res = mim::Analysis::rewrite_imm_App(app);
-    if (app->axm() && is_polymorphic_arg(app)) keep_var(app->arg());
-    return res;
 }
 
 const Def* Scalarize::Analysis::rewrite_imm_Extract(const Extract* ex) {
@@ -156,8 +137,8 @@ const Def* Scalarize::rewrite_imm_App(const App* app) {
     if (!app->axm() || !app->arg()->type()->isa<Pi>()) return RWPhase::rewrite_imm_App(app);
 
     auto arg    = rewrite(app->arg());
-    auto keep   = Keep(*this);
-    auto callee = keep.rewrite(app->callee());
+    auto _      = keep_.scoped(); // one use's Vars must not leak into the next
+    auto callee = keep_.rewrite(app->callee());
     return new_world().app(callee, coerce(callee->type()->as<Pi>()->dom(), arg));
 }
 
@@ -214,8 +195,8 @@ Lam* Scalarize::stub(Lam* old, const fe::Bitset& mask) {
     auto n     = old->num_tvars();
     auto types = DefVec(n);
     // An interface Lam's own Pi is flattened like any other, but what it mentions keeps its shape.
-    auto keep = Keep(*this);
-    auto& rw  = old->is_rewritable() ? static_cast<Rewriter&>(*this) : keep;
+    auto _    = keep_.scoped();
+    auto& rw  = old->is_rewritable() ? static_cast<Rewriter&>(*this) : keep_;
     auto type = mask.any() ? flatten(rw, old->type()->as<Pi>(), mask) : rw.rewrite(old->type());
     if (old->is_set())
         for (size_t i = 0; i != n; ++i)

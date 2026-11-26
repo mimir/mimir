@@ -255,10 +255,9 @@ const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
     if (auto var = seq->has_var(); var && l && *l < world().flags().scalarize_threshold) {
         auto new_ops = fe::Vector<const Def*, 32>(*l);
         for (size_t i = 0, e = *l; i != e; ++i) {
-            push(Vars(var));
+            auto _ = scoped(Vars(var));
             map(var, world().lit_idx(e, i));
             new_ops[i] = rewrite(seq->body());
-            pop();
         }
         return map(seq, world().prod(seq->is_intro(), new_ops));
     }
