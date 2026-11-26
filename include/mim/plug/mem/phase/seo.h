@@ -53,8 +53,6 @@ private:
 
         void reset() final;
 
-        const LamSet& unknowns() const { return unknowns_; }
-
         // SSA
         const auto& slots() const { return slots_; }
         const Def* lam2sloxy2val(Lam* lam, const Def* sloxy);
@@ -99,7 +97,6 @@ private:
         void finalize() final { find_unknowns(); }
         std::pair<Lam*, DefVec> known_call(const App*) final;
         bool needs_arg(Lam*, size_t) final;
-        void unknown(Lam*) final;
         /// A surviving sloxy pins its slot to ⊤.
         void reach(const Proxy*) final;
 
@@ -114,7 +111,6 @@ private:
         VarMap<Vars> slot2stored_;     // free Var%s of the values stored behind a slot
         VarMap<DefSet> slot2resolved_; // promoted leas and loaded values whose lattice entry depends on the slot
         LamMap<Vars> lam2live_;        // slot Var%s a Lam may access; only grows
-        LamSet unknowns_;              // Lam%s reached as a *value*; their signature must stay untouched
         LamMap<MutSet> lam2callers_;   // all muts that apply a Lam; tainted when the Lam's abstract vars change
     };
 

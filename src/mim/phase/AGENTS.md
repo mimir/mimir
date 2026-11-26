@@ -10,5 +10,5 @@
 - After EtaConv, every Lam is either *unknown* (used as a value) or *well-known* (all uses are calls or jumps); use these words, not "escaping".
 - StaticArgOpt seeds with the rightmost Pi-typed domain, freezes the sites forwarding it, and pools every other domain static across them; per-site routing is mandatory (sites outside the class call the wrapper).
 - A phase scanning the World is written like `beta_red.cpp`: an `analyze(const Def*)` member guarded by a `DefSet`, recursing into `deps()`; use `Nest` only when you need scope, dominance, or SCCs.
-- A phase that post-processes a Lam's filter or body overrides `RWPhase::rewrite_ops`, not `rewrite_mut_Lam`; `DS2CPS` (lifting direct-style calls of CPS functions into continuations) is shared by `cps.conv` and `mach.legalize`.
+- A phase that post-processes a Lam's filter or body overrides `RWPhase::rewrite_ops`, not `rewrite_mut_Lam`; `DS2CPS` (lifting direct-style calls of CPS functions into continuations) is shared by `cps.conv`, `mach.legalize`, and `tensor.lower_to_mem`.
 - Verify behavior-preserving changes with the optimizer dump oracle (see the root `AGENTS.md`).

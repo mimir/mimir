@@ -151,6 +151,13 @@ bool Analysis::is_cyclic(const Def* def) const {
     return follow(fast) != fast;
 }
 
+const Def* Analysis::rewrite_known(const App* app) {
+    auto abstr_arg    = rewrite(app->arg());
+    auto abstr_callee = rewrite(app->callee());
+    if (auto lam = Lam::isa_rewritable(abstr_callee)) return known_edge(lam, abstr_arg->projs(lam->num_tvars()));
+    return nullptr;
+}
+
 const Def* Analysis::known_edge(Lam* lam, DefVec abstr_targs) {
     if (lam->is_dependent()) {
         log().d("dependent signature; keeping all vars: {}", lam);
@@ -216,6 +223,7 @@ std::pair<Lam*, DefVec> Analysis::known_call(const App* app) {
 }
 
 void Analysis::unknown(Lam* lam) {
+    unknowns_.emplace(lam);
     pin(lam->var()); // known_edge's whole-var tuple would otherwise resurface an earlier round's value via repr()
     for (auto var : lam->tvars())
         pin(var);

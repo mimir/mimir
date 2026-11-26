@@ -44,9 +44,7 @@ void SEO::Analysis::reset() {
 
 // SCCP
 
-const Proxy* SEO::Analysis::mk_sccp_top(const Def* var) {
-    return world().proxy(var->type(), {var}, Proxy_SCCP_Top, true);
-}
+const Proxy* SEO::Analysis::mk_sccp_top(const Def* var) { return proxy(var->type(), {var}, Proxy_SCCP_Top); }
 
 const Def* SEO::Analysis::sccp_join(Lam* lam, const Def* var, const Def* def) {
     log().d("sccp join: {} ⊔ {}", var, def);
@@ -111,7 +109,7 @@ static const Proxy* isa_bundle(const Def* def, Lam* lam) {
 }
 
 const Proxy* SEO::Analysis::mk_bundle(Lam* lam, const Def* var, Defs bundle_vars) {
-    return world().proxy(var->type(), Def::cat(lam, bundle_vars), Proxy_Bundle, true)->set(var->dbg_key());
+    return proxy(var->type(), Def::cat(lam, bundle_vars), Proxy_Bundle)->set(var->dbg_key());
 }
 
 void SEO::Analysis::gvn_bundle(Lam* lam, Defs vars, Defs abstr_args, fe::Span<const Def*> abstr_vars) {
@@ -277,7 +275,7 @@ void SEO::Analysis::pin_slot(const App* slot) {
     auto [_, ret_lam, __, ptr] = split_slot(slot);
     pin(slot);
     pin(ptr);
-    // Once slot is ⊤, apply_known no longer refreshes the whole var, whose stale sloxy would resurface via ptr.
+    // Once slot is ⊤, known_edge no longer refreshes the whole var, whose stale sloxy would resurface via ptr.
     pin(ret_lam->var());
     if (auto i = slot2resolved_.find(ret_lam->has_var()); i != slot2resolved_.end())
         for (auto concr : i->second)
@@ -332,21 +330,22 @@ DefVec SEO::Analysis::join_args(Lam* known, DefVec& abstr_targs) {
     for (auto& arg : abstr_targs)
         if (auto f = Lam::eta_reduce(arg)) profile_count("seo.eta.canonicalized"), arg = f;
 
-    auto all_vars       = known->tvars();
-    auto all_abstr_args = abstr_targs;
-    live(known, all_abstr_args);
-    propagate_phis(known, all_vars, all_abstr_args);
+    // The phis follow the tvars in all_vars and their values the args in abstr_targs until the resize below.
+    auto all_vars = known->tvars();
+    live(known, abstr_targs);
+    propagate_phis(known, all_vars, abstr_targs);
 
     auto all_abstr_vars = DefVec(all_vars.size());
     for (size_t i = 0, e = all_vars.size(); i != e; ++i)
-        all_abstr_vars[i] = sccp_join(known, all_vars[i], all_abstr_args[i]);
+        all_abstr_vars[i] = sccp_join(known, all_vars[i], abstr_targs[i]);
 
-    gvn_bundle(known, all_vars, all_abstr_args, all_abstr_vars);
-    gvn_split(known, all_vars, all_abstr_args, all_abstr_vars);
+    gvn_bundle(known, all_vars, abstr_targs, all_abstr_vars);
+    gvn_split(known, all_vars, abstr_targs, all_abstr_vars);
 
     for (size_t i = n, e = all_vars.size(); i != e; ++i)
         lattice(all_vars[i], all_abstr_vars[i]);
 
+    abstr_targs.resize(n);
     all_abstr_vars.resize(n);
     return all_abstr_vars;
 }
@@ -356,7 +355,7 @@ const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
         if (!is_top(slot)) {
             if (auto [mem, ret_lam, _, ptr] = split_slot(slot); ret_lam) {
                 auto abstr_mem = rewrite(mem);
-                auto sloxy     = world().proxy(ptr->type(), {curr_mut(), ptr}, Proxy_Sloxy, true)->set(slot->dbg_key());
+                auto sloxy     = proxy(ptr->type(), {curr_mut(), ptr}, Proxy_Sloxy)->set(slot->dbg_key());
                 slots_.emplace(ptr);
                 var2slot_[ret_lam->has_var()] = slot;
                 log().d("slot {} → sloxy {}", ptr, sloxy);
@@ -476,11 +475,6 @@ std::pair<Lam*, DefVec> SEO::Analysis::known_call(const App* app) {
 bool SEO::Analysis::needs_arg(Lam* lam, size_t i) {
     auto var = lam->tvar(i);
     return keep(lam, var, lattice(var));
-}
-
-void SEO::Analysis::unknown(Lam* lam) {
-    unknowns_.emplace(lam);
-    Super::unknown(lam);
 }
 
 void SEO::Analysis::reach(const Proxy* proxy) {
@@ -630,7 +624,7 @@ const Def* SEO::var_of(Lam* old_lam) {
 }
 
 Lam* SEO::build_lam(Lam* old_lam) {
-    assert(!old_lam->is_dependent() && "apply_known pins a dependent signature to \u22a4");
+    assert(!old_lam->is_dependent() && "known_edge pins a dependent signature to \u22a4");
     if (auto memo = fe::lookup(lam_old2new_, old_lam)) return memo;
 
     log().d("build new lam for {}", old_lam);

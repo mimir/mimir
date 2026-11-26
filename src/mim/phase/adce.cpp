@@ -16,9 +16,7 @@ bool ADCE::Analysis::is_dead(const Def* var) const {
 }
 
 const Def* ADCE::Analysis::rewrite_imm_App(const App* app) {
-    auto abstr_arg    = rewrite(app->arg());
-    auto abstr_callee = rewrite(app->callee());
-    if (auto lam = Lam::isa_rewritable(abstr_callee)) return known_edge(lam, abstr_arg->projs(lam->num_tvars()));
+    if (auto res = rewrite_known(app)) return res;
     return Super::rewrite_imm_App(app);
 }
 
@@ -26,7 +24,7 @@ DefVec ADCE::Analysis::join_args(Lam* lam, DefVec&) {
     return DefVec(lam->num_tvars(), [&](size_t i) -> const Def* {
         auto var = lam->tvar(i);
         if (auto l = lattice(var)) return l;
-        auto dead = world().proxy(var->type(), {var}, Proxy_Dead, true)->set(var->dbg_key());
+        auto dead = proxy(var->type(), {var}, Proxy_Dead)->set(var->dbg_key());
         return lattice(var, dead), dead;
     });
 }

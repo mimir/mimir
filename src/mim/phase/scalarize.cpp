@@ -36,17 +36,10 @@ void Scalarize::Analysis::keep(const Pi* pi, const fe::Bitset& mask) {
     touch();
 }
 
-/// The parameter @p i of a Pi with @p n parameters, or all of them.
-static fe::Bitset params(size_t n, std::optional<nat_t> i = {}) {
-    auto mask = fe::Bitset();
-    for (size_t j = 0; j != n; ++j)
-        if (!i || j == *i) mask.set(j);
-    return mask;
-}
-
 void Scalarize::Analysis::keep_var(const Def* def) {
     if (auto [var, i] = Var::isa_tproj(def); var)
-        if (auto pi = isa_flattenable(var->binder()->type())) keep(pi, params(pi->num_tdoms(), i));
+        if (auto pi = isa_flattenable(var->binder()->type()))
+            keep(pi, i ? fe::Bitset{size_t(*i)} : fe::Bitset(pi->num_tdoms(), true));
 }
 
 void Scalarize::Analysis::keep_opaque(DefSet& structural, DefSet& opaque, const Def* type) {
@@ -58,7 +51,7 @@ void Scalarize::Analysis::keep_opaque(DefSet& structural, DefSet& opaque, const 
 
 void Scalarize::Analysis::keep_cns(DefSet& visited, const Def* def) {
     if (!visited.emplace(def).second) return;
-    if (auto pi = isa_flattenable(def)) keep(pi, params(pi->num_tdoms()));
+    if (auto pi = isa_flattenable(def)) keep(pi, fe::Bitset(pi->num_tdoms(), true));
     if (def->isa_mut()) return;
     for (auto d : def->deps())
         keep_cns(visited, d);

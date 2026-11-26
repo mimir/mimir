@@ -32,9 +32,7 @@ const Def* SCCP::Analysis::propagate(Lam* lam, const Def* var, const Def* def) {
 }
 
 const Def* SCCP::Analysis::rewrite_imm_App(const App* app) {
-    auto abstr_arg    = rewrite(app->arg());
-    auto abstr_callee = rewrite(app->callee());
-    if (auto lam = Lam::isa_rewritable(abstr_callee)) return known_edge(lam, abstr_arg->projs(lam->num_tvars()));
+    if (auto res = rewrite_known(app)) return res;
     return mim::Analysis::rewrite_imm_App(app);
 }
 

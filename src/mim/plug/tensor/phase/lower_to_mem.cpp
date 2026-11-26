@@ -196,7 +196,7 @@ const Def* LowerToMem::bot_mem() {
 
 const Def* LowerToMem::fresh_mem() {
     auto& w = new_world();
-    return lift(w.annex<mem::fresh>(), {w.lit_nat_0()}, w.call<mem::M>(0), true)->set<true>("fresh_mem")->var();
+    return lift(w.annex<mem::fresh>(), {w.lit_nat_0()}, w.call<mem::M>(0), true, w.sym("fresh_mem"));
 }
 
 const Def* LowerToMem::rewrite(const Def* old_def) {
@@ -214,9 +214,7 @@ const Def* LowerToMem::rewrite(const Def* old_def) {
 }
 
 const Def* LowerToMem::rewrite_mut_Lam(Lam* lam) {
-    if (!shape_poly_.contains(lam)) return DS2CPS::rewrite_mut_Lam(lam);
-    auto _ = fe::Restore(fresh_memo_, {});
-    return uncurry(lam);
+    return shape_poly_.contains(lam) ? uncurry(lam) : DS2CPS::rewrite_mut_Lam(lam);
 }
 
 std::pair<const Def*, const Def*> LowerToMem::rewrite_ops(Lam* old_lam, Lam* new_lam) {
@@ -268,10 +266,9 @@ const Def* LowerToMem::uncurry(Lam* lam) {
     for (auto arg : adapter->vars())
         args.emplace_back(arg);
     adapter->app(true, new_lam, w.tuple(args));
-    auto ___    = enter(lam);
-    auto scope  = Scope(*this, true);
-    auto filter = rewrite(inner->filter());
-    new_lam->set(filter, wire(scope.base(), rewrite(inner->body())));
+    auto ___            = enter(lam);
+    auto [filter, body] = rewrite_ops(inner, new_lam);
+    new_lam->set(filter, body);
     return seal(lam, new_lam);
 }
 

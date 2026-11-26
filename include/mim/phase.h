@@ -157,6 +157,8 @@ public:
     void make_dense() { dense_ = true; } ///< Forces whole-World rounds unconditionally.
     /// Bumped on every observable lattice change; snapshot it around a code region to detect changes.
     size_t version() const { return version_; }
+    /// The Lam%s find_unknowns() found so far.
+    const LamSet& unknowns() const { return unknowns_; }
     ///@}
 
     /// @name lattice
@@ -280,11 +282,14 @@ protected:
 
     /// @name Known Calls
     ///@{
-    /// The known call of @p lam with @p abstr_targs (one per tvar): join_args() them into its vars and returns the
-    /// call. A dependent signature pins all vars to ⊤ instead.
+    /// known_edge() of @p app if its abstract callee is a rewritable Lam, `nullptr` otherwise.
+    const Def* rewrite_known(const App* app);
+    /// The known call of @p lam with @p abstr_targs (one per tvar): join_args() them and return the call.
+    /// A dependent signature pins all vars to ⊤ instead.
     const Def* known_edge(Lam* lam, DefVec abstr_targs);
     /// Joins @p abstr_targs into the vars of the non-dependent @p lam and returns their abstract values.
-    /// It may canonicalize @p abstr_targs; known_edge() records the call with them. By default, pins all vars to ⊤.
+    /// It may canonicalize @p abstr_targs, which known_edge() then records the call with.
+    /// By default, it pins all vars to ⊤.
     virtual DefVec join_args(Lam* lam, DefVec& abstr_targs);
     /// An App that merely records "@p callee applied to these abstract args"; never emitted code.
     const Def* abstract_app(const Def* callee, const Def* arg);
@@ -295,16 +300,18 @@ protected:
     /// An escaping Lam is unknown, but an unknown Lam need not escape.
     ///@{
     /// Walks the abstract World from its externals and calls unknown() for every unknown Lam.
-    /// It skips ground Def%s, so a Proxy that reach() cares for must track its Var%s.
+    /// It skips ground Def%s, so a Proxy that reach() cares for must come from proxy().
     void find_unknowns();
     /// The known Lam that @p app calls and the args it passes to its tvars, `nullptr` for one it does not pass.
     virtual std::pair<Lam*, DefVec> known_call(const App* app);
     /// Does the walk need the @p i-th arg of a known call of @p lam?
     virtual bool needs_arg(Lam*, size_t) { return true; }
-    /// @p lam is unknown; by default, pins its var and tvars to ⊤.
+    /// @p lam is unknown; by default, records it in unknowns() and pins its var and tvars to ⊤.
     virtual void unknown(Lam* lam);
     /// The walk reached @p proxy, whose deps it never walks.
     virtual void reach(const Proxy*) {}
+    /// A sentinel of this analysis that tracks the Var%s in @p ops, so find_unknowns() does not skip it.
+    const Proxy* proxy(const Def* type, Defs ops, u32 tag) { return world().proxy(type, ops, tag, true); }
     ///@}
 
 private:
@@ -322,6 +329,7 @@ private:
     void drain();
 
     Def2Def lattice_;
+    LamSet unknowns_;
     std::deque<Def*> worklist_;
     MutSet dirty_;               ///< Muts whose drain changed the lattice this round; seeds the next sparse round.
     size_t version_     = 0;     ///< @see version()
