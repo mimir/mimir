@@ -15,8 +15,7 @@ namespace mim {
 ///  |
 ///  ⊥
 /// ```
-/// @pre EtaConv ran beforehand, so no rewritable Lam escapes as a value.
-/// Otherwise, the vars of such unknown functions would have to be pinned to ⊤.
+/// The vars of an unknown Lam are ⊤; EtaConv beforehand confines that to a wrapper.
 class SCCP : public RWPhase {
 private:
     class Analysis : public mim::Analysis {
@@ -27,6 +26,8 @@ private:
     private:
         const Def* propagate(Lam* lam, const Def* var, const Def* def);
         const Def* rewrite_imm_App(const App* app) final;
+        DefVec join_args(Lam*, DefVec&) final;
+        void finalize() final { find_unknowns(); }
     };
 
 public:

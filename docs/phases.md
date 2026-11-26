@@ -152,6 +152,32 @@ Use [`make_dense()`](@ref mim::Analysis::make_dense) to force whole-World rounds
 If an analysis participates in a fixed-point loop, it should be ready to run multiple times.
 The base [`reset()`](@ref mim::Analysis::reset) clears the rewriter map (and hence the per-round _"already scheduled"_ markers) and the worklist, and resets [`Phase::todo()`](@ref mim::Phase::todo) for the next round, but **preserves** [`lattice()`](@ref mim::Analysis::lattice) so that abstract values accumulated in earlier iterations remain available — this is what makes fixed-point convergence possible.
 
+### Known Calls {#phases_known_calls}
+
+Most analyses of MimIR's CPS programs treat a call of a [`Lam`](@ref mim::Lam) as the edge into a basic block: each argument flows into its parameter.
+[`known_edge(lam, abstr_targs)`](@ref mim::Analysis::known_edge) is that edge's skeleton.
+For a dependent signature it pins every parameter to ⊤; otherwise it asks the hook [`join_args()`](@ref mim::Analysis::join_args) for the parameters' new abstract values and records `lam->var() ↦ (v₀, …, vₙ)`.
+It returns the call in the abstract domain via [`abstract_app()`](@ref mim::Analysis::abstract_app), which keeps the checked, normalizing [`World::app`](@ref mim::World::app) only for an [`Axm`](@ref mim::Axm) and uses a raw App otherwise, since abstract operands need not match the domain.
+
+A subclass detects the call in `rewrite_imm_App` - typically [`Lam::isa_rewritable`](@ref mim::Lam::isa_rewritable) on the *abstract* callee, so a branch that folds to one target counts as known - and overrides [`join_args()`](@ref mim::Analysis::join_args) with its own lattice:
+SCCP propagates each argument, ADCE assumes a parameter dead until proven live, and `mem.seo` adds GVN and the φs of promoted slots.
+[`join_args()`](@ref mim::Analysis::join_args) may also canonicalize the arguments, e.g. `mem.seo` strips EtaConv's per-occurrence wrappers.
+
+### Unknown Lams {#phases_unknown_lams}
+
+A [`Lam`](@ref mim::Lam) is *known* if it only occurs as the callee of an [`App`](@ref mim::App), and *unknown* otherwise, i.e. if it is also used as a value.
+An escaping `Lam` is unknown, but an unknown `Lam` need not escape: the targets of a branch `(f, t)#c ()` are unknown, since the callee is the Extract, not `f` or `t`.
+The join of [Known Calls](#phases_known_calls) only sees the call sites of a known `Lam`, so the parameters of an unknown one must be ⊤.
+
+[`find_unknowns()`](@ref mim::Analysis::find_unknowns) walks the abstract World from its externals and calls [`unknown()`](@ref mim::Analysis::unknown) - which pins the `Lam`'s var and parameters by default - for every `Lam` it reaches as a value.
+Call it from [`finalize()`](@ref mim::Analysis::finalize), so it sees the complete abstract World of a full round; a newly pinned parameter triggers another round.
+The walk takes four hooks:
+
+- [`known_call()`](@ref mim::Analysis::known_call) says which `Lam` an App calls and with which arguments; `mem.seo` also counts the jump of a `mem.slot` into its continuation,
+- [`needs_arg()`](@ref mim::Analysis::needs_arg) skips the arguments of parameters the rewrite drops, so their values are not used,
+- [`unknown()`](@ref mim::Analysis::unknown) may record the `Lam`, e.g. so that the rewrite keeps its signature,
+- [`reach()`](@ref mim::Analysis::reach) handles a surviving [`Proxy`](@ref mim::Proxy), whose dependencies are meta information and never walked.
+
 ## RWPhase {#phases_rwphase}
 
 [`RWPhase`](@ref mim::RWPhase) is the base class for phases that **rebuild the current world into a new one**, thereby removing garbage.
@@ -220,6 +246,18 @@ A rewrite hook may not be able to finish its work immediately.
 For example, a closure-converting phase must create a function stub eagerly so callers can refer to it, but can rewrite its body only after completing the enclosing scope.
 Push such work onto your own worklist and drain it in [`finalize()`](@ref mim::RWPhase::finalize), which runs after all roots have been walked but still before the two worlds are swapped
 (see [`clos::phase::ClosConv`](@ref mim::plug::clos::phase::ClosConv)).
+
+### Filling a Lam
+
+[`rewrite_stub()`](@ref mim::RWPhase::rewrite_stub) fills the stub of a rewritten [`Lam`](@ref mim::Lam) with the results of [`rewrite_ops()`](@ref mim::RWPhase::rewrite_ops) and [coerces](@ref phases_coercion) the body to the codomain.
+A phase that post-processes a `Lam`'s filter or body overrides [`rewrite_ops()`](@ref mim::RWPhase::rewrite_ops) instead of re-implementing the stub logic in `rewrite_mut_Lam`; [`DispatchNormalize`](@ref mim::DispatchNormalize) is a small example.
+
+### Lifting Direct-Style Calls {#phases_ds2cps}
+
+A call is CPS in MimIR, so a phase that lowers an operation to a call must split the continuation it occurs in.
+[`DS2CPS`](@ref mim::DS2CPS) does that: within the body of a continuation, [`lift(k, args, T)`](@ref mim::DS2CPS::lift) turns the direct-style call `k args` into the pending call `k (args, cont)` with a fresh `cont: Cn T` and returns `cont`, whose var replaces the call.
+When the body is done, [`rewrite_ops()`](@ref mim::RWPhase::rewrite_ops) wires the pending calls in front of it, in encounter order, which respects data dependencies.
+`cps.conv` lifts calls of converted functions, `mach.legalize` lowers `mem.malloc`/`mem.free` to calls of the C functions, and `tensor.lower_to_mem` lifts `mem.fresh` to obtain a distinct memory for each buffer it allocates.
 
 ### Cleanup
 
@@ -383,7 +421,9 @@ The join in `propagate()` is expressed entirely through the lattice API:
 [`pin()`](@ref mim::Analysis::pin) resolves conflicting values to ⊤.
 No manual [`invalidate()`](@ref mim::Phase::invalidate) bookkeeping is needed: every join step that gains information - including the ⊥ → value insert - triggers the next fixed-point round automatically via [`lattice(concr, abstr)`](@ref mim::Analysis::lattice).
 
-The analysis traverses the old world and updates the lattice when it sees applications of optimizable lambdas.
+The analysis traverses the old world and updates the lattice when it sees applications of optimizable lambdas:
+its `join_args()` is the per-parameter `propagate()`, and [`known_edge()`](@ref mim::Analysis::known_edge) does the [rest](#phases_known_calls).
+Its `finalize()` pins the parameters of [unknown lambdas](#phases_unknown_lams), whose call sites the join does not see.
 Whenever this changes the lattice, the analysis reruns until stable - sparsely, re-draining only the dirty mutables in between full rounds.
 This is a textbook use of [`Analysis`](@ref mim::Analysis):
 
@@ -491,7 +531,7 @@ Now the guard reads directly:
   Substituting it for `var` would use those binders before they exist: on entry to `L`, nothing below `L` has been bound yet.
   This is the exact situation dominance forbids, so the analysis pins `var` to ⊤ ([`pin`](@ref mim::Analysis::pin)) instead.
 - A call site _outside_ `L` cannot pass such a value: it passes ⊥, which the [⊥-site check](#sccp-bot-site) handles, or a different value, which joins to ⊤ anyway.
-  But when `L` is only entered through an escaping value, its recursive call sites are the only known ones, and this guard is all that stands in the way.
+  And when `L` is entered through a value instead, `L` is [unknown](#phases_unknown_lams), so its parameters end up ⊤ as well.
 
 In other words, where classical SCCP walks a dominator tree to certify availability, MimIR asks scope questions: _is this value visible at the binder it would replace, and at every caller?_
 [`Def::nests`](@ref mim::Def::nests) and [`Def::in_scope`](@ref mim::Def::in_scope) are those availability oracles, and they fall straight out of the free-variable structure that MimIR maintains anyway — no auxiliary dominance computation required.

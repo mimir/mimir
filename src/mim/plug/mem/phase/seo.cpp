@@ -33,7 +33,6 @@ static const Proxy* isa_bundle(const Def* def, Lam* lam);
 
 void SEO::Analysis::reset() {
     Super::reset();
-    visited_.clear();
     lam2sloxy2val_.clear();
     first_.clear();
     non_mem_fvs_.clear();
@@ -308,29 +307,33 @@ void SEO::Analysis::propagate_phis(Lam* lam, DefVec& phis, DefVec& abstr_args) {
     }
 }
 
-const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
-    auto n = abstr_targs.size();
-    assert(n == known->num_tvars());
+const Def* SEO::Analysis::apply_known(Lam* known, DefVec abstr_targs) {
+    assert(abstr_targs.size() == known->num_tvars());
     log().d("known edge: {} → {}", curr_mut(), known);
     if (auto mut = curr_mut()) lam2callers_[known].emplace(mut);
     rewrite(known); // enqueue so its body is drained this round; a no-op if already scheduled
 
-    if (known->is_dependent()) {
-        log().d("dependent signature; keeping all vars: {}", known);
-        for (auto var : known->tvars())
-            pin(var);
-        return abstract_app(known, world().tuple(abstr_targs));
-    }
+    auto v   = version();
+    auto res = known_edge(known, std::move(abstr_targs));
 
-    auto v = version();
+    // Something about known's abstract vars/phis changed: the next round must re-join them from *all* call
+    // sites - sccp_join's first_-restart discards any unvisited site's contribution, so re-visiting only the
+    // writer would be unsound in a sparse round (e.g. it would constant-fold a loop's backedge forever).
+    if (version() != v)
+        for (auto caller : lam2callers_[known])
+            taint(caller);
 
-    auto all_vars = known->tvars();
-    DefVec all_abstr_args(n, [&](size_t i) {
-        // Strips EtaConv's per-occurrence wrappers so that call sites passing the same continuation still agree.
-        if (auto f = Lam::eta_reduce(abstr_targs[i])) return profile_count("seo.eta.canonicalized"), f;
-        return abstr_targs[i];
-    });
+    return res;
+}
 
+DefVec SEO::Analysis::join_args(Lam* known, DefVec& abstr_targs) {
+    auto n = abstr_targs.size();
+    // Strips EtaConv's per-occurrence wrappers so that call sites passing the same continuation still agree.
+    for (auto& arg : abstr_targs)
+        if (auto f = Lam::eta_reduce(arg)) profile_count("seo.eta.canonicalized"), arg = f;
+
+    auto all_vars       = known->tvars();
+    auto all_abstr_args = abstr_targs;
     live(known, all_abstr_args);
     propagate_phis(known, all_vars, all_abstr_args);
 
@@ -341,28 +344,11 @@ const Def* SEO::Analysis::apply_known(Lam* known, Defs abstr_targs) {
     gvn_bundle(known, all_vars, all_abstr_args, all_abstr_vars);
     gvn_split(known, all_vars, all_abstr_args, all_abstr_vars);
 
-    lattice(known->var(), world().tuple(all_abstr_vars.span().subspan(0, n)));
-
     for (size_t i = n, e = all_vars.size(); i != e; ++i)
         lattice(all_vars[i], all_abstr_vars[i]);
 
-    // Something about known's abstract vars/phis changed: the next round must re-join them from *all* call
-    // sites - sccp_join's first_-restart discards any unvisited site's contribution, so re-visiting only the
-    // writer would be unsound in a sparse round (e.g. it would constant-fold a loop's backedge forever).
-    if (version() != v)
-        for (auto caller : lam2callers_[known])
-            taint(caller);
-
-    return abstract_app(known, world().tuple(all_abstr_args.span().subspan(0, n)));
-}
-
-const Def* SEO::Analysis::abstract_app(const Def* callee, const Def* arg) {
-    // Only an Axm keeps the checked, normalizing World::app: its normalizer is what folds a propagated
-    // expression. Everywhere else abstract operands (⊤/⊥/proxies) need not be assignable to the domain -
-    // and World::app would either throw or partially evaluate the callee.
-    if (std::get<0>(Axm::next(callee))) return world().app(callee, arg);
-    auto pi = callee->type()->isa<Pi>();
-    return world().raw_app(pi ? pi->reduce(arg) : arg->type(), callee, arg);
+    all_abstr_vars.resize(n);
+    return all_abstr_vars;
 }
 
 const Def* SEO::Analysis::rewrite_imm_App(const App* app) {
@@ -480,61 +466,29 @@ static bool keep(Lam* lam, const Def* old_var, const Def* abstr) {
     return false;                                                              // propagated value -> nuke
 }
 
-void SEO::Analysis::finalize() {
-    for (auto def : world().externals().muts())
-        analyze(def);
+std::pair<Lam*, DefVec> SEO::Analysis::known_call(const App* app) {
+    // The slot jump applies its continuation; the ptr var has no argument - the slot itself defines it.
+    if (auto slot = Axm::isa<mem::slot>(app))
+        if (auto [mem, ret_lam, _, __] = split_slot(slot); ret_lam) return {ret_lam, {mem, nullptr}};
+    return Super::known_call(app);
 }
 
-void SEO::Analysis::analyze(const Def* def) {
-    if (def->isa<Var>()) return; // do not run escape analysis through a Var (would remap it via lookup)
-    if (auto [_, ins] = visited_.emplace(def); !ins) return;
-    if (auto l = lookup(def)) def = l; // get abstracted value of def
+bool SEO::Analysis::needs_arg(Lam* lam, size_t i) {
+    auto var = lam->tvar(i);
+    return keep(lam, var, lattice(var));
+}
 
-    if (auto proxy = def->isa<Proxy>()) {
-        if (proxy->tag() == Proxy_Sloxy) {
-            auto slot = var2slot_[slot_var(proxy->op(1))];
-            log().d("sloxy {} survived; pinning slot {} to ⊤", proxy, slot);
-            pin_slot(slot);
-        }
-        return; // never walk a proxy's deps (would drag in meta info)
+void SEO::Analysis::unknown(Lam* lam) {
+    unknowns_.emplace(lam);
+    Super::unknown(lam);
+}
+
+void SEO::Analysis::reach(const Proxy* proxy) {
+    if (proxy->tag() == Proxy_Sloxy) {
+        auto slot = var2slot_[slot_var(proxy->op(1))];
+        log().d("sloxy {} survived; pinning slot {} to ⊤", proxy, slot);
+        pin_slot(slot);
     }
-
-    // A Lam is unknown (and hence its vars must go to top) iff it is reached as a *value*.
-    if (auto app = def->isa<App>()) {
-        if (auto slot = Axm::isa<mem::slot>(app)) {
-            // The slot jump applies its continuation, so `ret_lam` is known - not reached as a value.
-            if (auto [mem, ret_lam, _, __] = split_slot(slot); ret_lam) {
-                analyze(app->type());
-                analyze(mem); // the ptr var has no argument - the slot itself defines it
-                for (auto d : ret_lam->deps())
-                    analyze(d);
-                return;
-            }
-        }
-
-        if (auto lam = Lam::isa_rewritable(app->callee())) {
-            // lam is applied here, it's known: traverse its body without pinning its vars to top
-            analyze(app->type());
-
-            // only analyze args that we keep
-            for (size_t i = 0, e = lam->num_tvars(); i != e; ++i)
-                if (auto old_var = lam->tvar(i); keep(lam, old_var, lattice(old_var))) analyze(app->targ(i));
-
-            for (auto d : lam->deps())
-                analyze(d);
-
-            return;
-        }
-    } else if (auto [lam, var] = def->isa_binder<Lam>(); lam) {
-        log().d("unknown lam: {}", lam);
-        unknowns_.emplace(lam);
-        pin(var); // apply_known's whole-var tuple would otherwise resurface an earlier round's value via repr
-        for (auto v : var->tprojs())
-            pin(v);
-    }
-
-    for (auto d : def->deps())
-        analyze(d);
 }
 
 /*

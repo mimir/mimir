@@ -10,11 +10,6 @@ enum {
  * Analysis
  */
 
-void ADCE::Analysis::reset() {
-    Super::reset();
-    visited_.clear();
-}
-
 bool ADCE::Analysis::is_dead(const Def* var) const {
     auto l = lattice(var);
     return l && Proxy::isa<Proxy_Dead>(l);
@@ -23,61 +18,21 @@ bool ADCE::Analysis::is_dead(const Def* var) const {
 const Def* ADCE::Analysis::rewrite_imm_App(const App* app) {
     auto abstr_arg    = rewrite(app->arg());
     auto abstr_callee = rewrite(app->callee());
-
-    if (auto lam = Lam::isa_rewritable(abstr_callee)) {
-        auto n          = lam->num_tvars();
-        auto abstr_vars = DefVec(n, [&](size_t i) -> const Def* {
-            auto var = lam->tvar(i);
-            if (lam->is_dependent()) return pin(var), var;
-            if (auto l = lattice(var)) return l;
-            auto dead = world().proxy(var->type(), {var}, Proxy_Dead)->set(var->dbg_key());
-            return lattice(var, dead), dead;
-        });
-
-        if (n > 1) lattice(lam->var(), world().tuple(abstr_vars));
-        // raw_app: World::app would β-reduce or partially evaluate lam.
-        return world().raw_app(rewrite(app->type()), lam, abstr_arg);
-    }
-
+    if (auto lam = Lam::isa_rewritable(abstr_callee)) return known_edge(lam, abstr_arg->projs(lam->num_tvars()));
     return Super::rewrite_imm_App(app);
 }
 
-void ADCE::Analysis::finalize() {
-    for (auto def : world().externals().muts())
-        analyze(def);
+DefVec ADCE::Analysis::join_args(Lam* lam, DefVec&) {
+    return DefVec(lam->num_tvars(), [&](size_t i) -> const Def* {
+        auto var = lam->tvar(i);
+        if (auto l = lattice(var)) return l;
+        auto dead = world().proxy(var->type(), {var}, Proxy_Dead, true)->set(var->dbg_key());
+        return lattice(var, dead), dead;
+    });
 }
 
-void ADCE::Analysis::analyze(const Def* def) {
-    // A Var's lattice spells all of its projections; the live ones already reach us via their Extract.
-    if (def->isa<Var>()) return;
-    if (auto [_, ins] = visited_.emplace(def); !ins) return;
-    if (auto l = lookup(def); l && l != def) return analyze(l);
-
-    if (auto dead = def->isa<Proxy>()) {
-        if (dead->tag() == Proxy_Dead && pin(dead->op(0))) log().d("live: {}", dead->op(0));
-        return; // never walk a proxy's deps: its var would look live
-    }
-
-    if (auto app = def->isa<App>()) {
-        if (auto lam = Lam::isa_rewritable(app->callee())) {
-            analyze(app->type());
-
-            auto n = lam->num_tvars();
-            for (size_t i = 0; i != n; ++i)
-                if (!is_dead(lam->tvar(i))) analyze(app->arg(n, i));
-
-            for (auto d : lam->deps())
-                analyze(d);
-            return;
-        }
-    } else if (auto [lam, var] = def->isa_binder<Lam>(); lam && lam->is_rewritable()) {
-        log().d("unknown lam: {}", lam); // reached as a value, so its signature must stay untouched
-        for (auto v : lam->tvars())
-            pin(v);
-    }
-
-    for (auto d : def->deps())
-        analyze(d);
+void ADCE::Analysis::reach(const Proxy* proxy) {
+    if (proxy->tag() == Proxy_Dead && pin(proxy->op(0))) log().d("live: {}", proxy->op(0));
 }
 
 /*

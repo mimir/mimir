@@ -32,23 +32,14 @@ const Def* SCCP::Analysis::propagate(Lam* lam, const Def* var, const Def* def) {
 }
 
 const Def* SCCP::Analysis::rewrite_imm_App(const App* app) {
-    if (auto lam = Lam::isa_rewritable(app->callee())) {
-        auto n          = app->num_targs();
-        auto abstr_args = DefVec(n);
-        auto abstr_vars = DefVec(n);
-
-        // propagate
-        for (size_t i = 0; i != n; ++i) {
-            auto abstr    = rewrite(app->targ(i));
-            abstr_vars[i] = propagate(lam, lam->tvar(i), abstr);
-            abstr_args[i] = abstr;
-        }
-
-        lattice(lam->var(), world().tuple(abstr_vars)); // set new abstract var
-        return world().raw_app(rewrite(app->type()), rewrite(lam), world().tuple(abstr_args));
-    }
-
+    auto abstr_arg    = rewrite(app->arg());
+    auto abstr_callee = rewrite(app->callee());
+    if (auto lam = Lam::isa_rewritable(abstr_callee)) return known_edge(lam, abstr_arg->projs(lam->num_tvars()));
     return mim::Analysis::rewrite_imm_App(app);
+}
+
+DefVec SCCP::Analysis::join_args(Lam* lam, DefVec& abstr_targs) {
+    return DefVec(abstr_targs.size(), [&](size_t i) { return propagate(lam, lam->tvar(i), abstr_targs[i]); });
 }
 
 } // namespace mim
