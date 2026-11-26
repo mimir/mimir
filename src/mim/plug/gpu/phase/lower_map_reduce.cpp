@@ -40,7 +40,7 @@ struct LowerMapReduce::Call {
     /// For `Concat` and `Pad`, `mr` only holds the shapes and types.
     enum class Kind { MapRed, Concat, Pad } kind = Kind::MapRed;
     nat_t ax                                     = 0; ///< `Concat`: the axis.
-    Vector<u64> exts;                                 ///< `Concat`: the inputs' extents along `ax`.
+    Vector<u64> exts{};                               ///< `Concat`: the inputs' extents along `ax`.
     const Def *lo = nullptr, *fill = nullptr;         ///< `Pad`: the low padding and the literal fill value.
     nat_t readers     = 0;                            ///< Slots reading the result
     nat_t reads       = 0;                            ///< Planning: reads of `result` within the chain.
