@@ -259,8 +259,9 @@ const Def* RWPhase::rewrite_stub(Def* old_mut, Def* new_mut) {
     auto _  = enter(old_mut);
     auto pi = new_lam->type();
     // Creating the Var just to reduce a non-dependent codomain would mark it as used.
-    auto codom = pi->has_var() ? pi->reduce(new_lam->var()) : pi->codom();
-    new_lam->set(rewrite(old_lam->filter()), coerce(codom, rewrite(old_lam->body())));
+    auto codom          = pi->has_var() ? pi->reduce(new_lam->var()) : pi->codom();
+    auto [filter, body] = rewrite_ops(old_lam, new_lam);
+    new_lam->set(filter, coerce(codom, body));
     return seal(old_mut, new_mut);
 }
 

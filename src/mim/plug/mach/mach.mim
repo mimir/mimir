@@ -134,6 +134,7 @@ axm lit: {T: *} → T → Bool, normalize_lit;
 ///
 /// Turns every `Nat` value and every pointer into an `I64`, so that instruction selection only sees register types (see mim::plug::mach::Legalize).
 /// `mem.lea` becomes a `core.wrap.add` of its byte offset by the layout of `core.trait`, `mem.load` and `mem.store` become `load` and `store`, `mem.mslot` of a literal size becomes `slot`, and the `Nat` operations become their `I64` counterparts.
+/// `mem.malloc` and `mem.free` become calls of the C functions, lifted into continuations like `cps.conv` does.
 /// Only address space 0 is supported.
 ///
 axm legalize: compile.Phase;

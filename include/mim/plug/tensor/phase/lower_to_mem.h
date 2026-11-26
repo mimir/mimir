@@ -21,6 +21,7 @@ private:
 
     const Def* rewrite(const Def*) override;
     const Def* rewrite_mut_Lam(Lam*) override;
+    std::pair<const Def*, const Def*> rewrite_ops(Lam*, Lam*) override;
     const Def* rewrite_imm_Nom(const Nom*) override;
     const Def* rewrite_imm_Name(const Name*) override;
     const Def* rewrite_imm_Struc(const Struc*) override;

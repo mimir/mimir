@@ -242,7 +242,7 @@ Instruction selection:
 - `mach.legalize` rejects a memory operation in another address space than 0.
 - `isel` still emits size-check failures for non-register sizes (e.g. `core.wrap.add` on `Idx 5`); these need masking or a clear rejection.
 - An array index that `core.legalize_idx` narrowed is still reduced modulo its size in `mach.legalize` (an `and`, or a `div` for a size that is no power of two), although it is in range.
-- `malloc`/`free`, aggregate loads and stores, `bitcast` of unions or floats, and `core.mulrem` are not selected; `core.nat.div`/`rem` do not guard against zero like `ll`, and `mach.legalize` gives their `core.div` a `⊥` memory, since a `Nat` operation has none.
+- Aggregate loads and stores, `bitcast` of unions or floats, and `core.mulrem` are not selected; `core.nat.div`/`rem` do not guard against zero like `ll`, and `mach.legalize` gives their `core.div` a `⊥` memory, since a `Nat` operation has none.
 - Floating point is `f32` and `f64` only: `math.F` of another format (`f16`, `bf16`, `nvtf32`, …), vector types, `math.arith.rem`, `math.extrema`, the transcendentals, and `is_finite` have no rule, and `fmov` rejects another format.
 - `u2f`/`f2u` exist for an `i32` integer only; an `i64` one would need a 2^63 split, and `emit` rejects it.
 - `x86.rm` takes any operand type and is tied only if its operation is; `float.rm` folds a load into `fadd`/`fsub`/`fmul`/`fdiv` and `float.cmp_rm`/`float.swap_rm` into `ucomiss`, as its source: the second operand of a direct predicate, or the first of `l`/`le`/`ug`/`uge` and the symmetric ones via the converse; `x < y` with `y` loaded stays a load, since `seta` needs `y` in the register.
@@ -493,8 +493,8 @@ The explosion is in forms (widths, register/memory/immediate operands, VEX/EVEX)
 ## Verification
 
 - Integer-only lit tests that run under `-p ll` should also run under `-p %native` with the same expected output.
-  The allowlist is a set of `%if native %{ … %}` RUN lines in those tests (feature set in `lit/lit.cfg.py`): every test that `-p opt … -p %native` compiles and runs correctly, 50 in `lit/` besides `lit/x86/`.
+  The allowlist is a set of `%if native %{ … %}` RUN lines in those tests (feature set in `lit/lit.cfg.py`): every test that `-p opt … -p %native` compiles and runs correctly, 52 in `lit/` besides `lit/x86/`.
   On an AArch64 host the same lines run the `arm` backend, which is verified less far; see `../arm/AGENTS.md`.
-  The others need calls to `malloc`/`free`, aggregate memory operations, unions, or a `math` operation beyond `f32`/`f64` arithmetic and conversion.
+  The others need aggregate memory operations, a `mem.malloc` of a size that is no value, unions, or a `math` operation beyond `f32`/`f64` arithmetic and conversion.
 - `mim-pbqp-test` checks `solve` against `solve_exhaustive` on small instances; there is no `mim-x86-test` yet, and the register-allocation invariants are checked by `mach.color` on every compiled function instead.
 - The optimizer-dump oracle for any change to the pre-isel pipeline.

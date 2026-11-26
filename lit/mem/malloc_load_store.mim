@@ -4,9 +4,17 @@
 // RUN: %t; test $? -eq 1
 // RUN: %t 1 2 3; test $? -eq 4
 // RUN: %t 1 2 3 4 5; test $? -eq 6
+// RUN: %if native %{ %mim -p opt %s -p %native -X %native:o=%t.s %}
+// RUN: %if native %{ %FileCheck %s %asmdefs < %t.s %}
+// RUN: %if native %{ clang %t.s -o %t.native %}
+// RUN: %if native %{ %t.native; test $? -eq 1 %}
+// RUN: %if native %{ %t.native 1 2 3 4 5; test $? -eq 6 %}
 
 plugin core;
 plugin mem;
+
+// CHECK: {{call|bl}} [[SYM]]malloc
+// CHECK: {{call|bl}} [[SYM]]free
 
 extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char», return: Cn [mem.M 0, I32]) =
     let (m, ptr) = mem.malloc (I32, 0) (m, 4);

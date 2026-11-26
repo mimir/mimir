@@ -6,6 +6,7 @@
 - Plugins never link each other, so whatever a backend derives from or instantiates is header-only, and the longer parts are compiled once into `libmim_mach` and reached via `GET_FUN_PTR`, as `ll::Emitter` does: `mim_mach_emit` (the control flow behind `Emitter::emit`, which owns the `Liveness`), `mim_mach_isel` (the factory behind `hook_isel`), and `mim_mach_gen` (behind `<backend>_isel.gen`, which needs `core`/`math`/`refly`).
   Keep `Liveness` out of the `Emitter` class: its constructor lives in `libmim_mach`, which a backend cannot link.
 - `hook` constructs a phase with `Target::of(driver)`, the one loaded backend's Target; the phases read their `-X` arguments as the backend's (`-X x86:k=3`).
+- `Legalize` is a `mim::DS2CPS`: `mem.malloc`/`mem.free` become CPS calls of bodyless `Cn`s named `malloc`/`free`, which the emitters call by symbol.
 - After `legalize`, no `core.Ptr` is left: pointers are `I64` and memory goes through `load`/`store`, which isel must replace (`Target::is_lowered`).
 - `Liveness` is slated for replacement; don't build further analyses on it.
 - Inside a class derived from `Emitter` or `FunPhase`, a bare `target()` is the base's accessor; pass `Target::of(driver)` to the base constructor explicitly.

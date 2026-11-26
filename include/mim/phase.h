@@ -404,6 +404,10 @@ protected:
     const Def* rewrite_imm_Tuple(const Tuple*) override;
     const Def* rewrite_stub(Def*, Def*) override;
     using Rewriter::rewrite_stub;
+    /// The rewritten filter and body of @p old_lam for its stub @p new_lam, before the body is coerce()d.
+    virtual std::pair<const Def*, const Def*> rewrite_ops(Lam* old_lam, Lam* /*new_lam*/) {
+        return {rewrite(old_lam->filter()), rewrite(old_lam->body())};
+    }
 
     /// Converts the *new* @p new_val into a value of the *new* @p new_type, where a checking position demands it.
     /// Both are matched leaf by leaf: tuples are exploded and reassembled, Pi%s are η-wrapped, and

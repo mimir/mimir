@@ -226,21 +226,18 @@ const Def* LowerToMem::rewrite(const Def* old_def) {
 }
 
 const Def* LowerToMem::rewrite_mut_Lam(Lam* lam) {
-    // Scope the fresh-memory bookkeeping: ops lowered while this body is rewritten mint their receiving
-    // continuations into pending_, which are chained in front of the finished body. Nested lams anchor
-    // their own requests (and their own per-lam op memo).
+    if (!shape_poly_.contains(lam)) return RWPhase::rewrite_mut_Lam(lam);
     auto _  = fe::Restore(pending_, {});
     auto __ = fe::Restore(fresh_memo_, {});
-    if (shape_poly_.contains(lam)) return uncurry(lam);
-    auto new_lam = new_world().mut_lam(rewrite(lam->type())->as<Pi>());
-    map(lam, new_lam);
-    if (!lam->is_set()) return new_lam;
+    return uncurry(lam);
+}
 
-    auto ___    = enter(lam);
-    auto filter = rewrite(lam->filter());
-    auto body   = wrap_fresh_mem(rewrite(lam->body()));
-    new_lam->set(filter, body);
-    return seal(lam, new_lam);
+std::pair<const Def*, const Def*> LowerToMem::rewrite_ops(Lam* old_lam, Lam* new_lam) {
+    // Ops lowered in this body mint their receiving continuations into pending_; nested lams anchor their own.
+    auto _              = fe::Restore(pending_, {});
+    auto __             = fe::Restore(fresh_memo_, {});
+    auto [filter, body] = RWPhase::rewrite_ops(old_lam, new_lam);
+    return {filter, wrap_fresh_mem(body)};
 }
 
 const Def* LowerToMem::uncurry(Lam* lam) {

@@ -64,6 +64,15 @@ const Def* Legalize::index(const Def* i) {
     return rewrite(i);
 }
 
+const Def* Legalize::call_c(Lam*& decl, const char* name, const App* app, Defs args) {
+    auto& w = new_world();
+    if (!liftable()) app->blame("native backend: `{}` outside a continuation", app->axm()).bail();
+    check_addr_space(app, app->decurry()->arg(2, 1));
+    auto ret = rewrite(app->type());
+    if (!decl) decl = w.mut_con({w.call<core::M>(w.lit_nat_0()), w.type_i64(), w.cn(ret)})->set(name);
+    return lift(decl, args, ret);
+}
+
 const Def* Legalize::rewrite_imm_Lit(const Lit* lit) {
     if (lit->type()->isa<Nat>()) return new_world().lit_nat(lit->get());
     return RWPhase::rewrite_imm_Lit(lit);
@@ -128,6 +137,18 @@ const Def* Legalize::rewrite_imm_App(const App* app) {
         auto n = Lit::isa(size);
         if (!n) app->blame("native backend: `mem.mslot` needs a literal size").bail();
         return w.app(rewrite(k), w.call<slot>(w.lit_nat(*n), rewrite(m)));
+    }
+
+    if (auto malloc = Axm::isa<mem::malloc>(app)) {
+        auto [m, n] = malloc->args<2>();
+        auto size   = val(n);
+        if (size->type() != w.type_i64()) n->blame("native backend: size `{}` of `mem.malloc` is no value", n).bail();
+        return call_c(malloc_, "malloc", app, {rewrite(m), size});
+    }
+
+    if (auto free = Axm::isa<mem::free>(app)) {
+        auto [m, p] = free->args<2>();
+        return call_c(free_, "free", app, {rewrite(m), rewrite(p)});
     }
 
     if (auto nat = Axm::isa<core::nat>(app); nat && is_value(nat->arg())) {

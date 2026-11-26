@@ -193,15 +193,9 @@ const Def* Clos2SJLJ::subst_exn_closures(const Def* def) {
     return rewrite_imm(def)->set(def->dbg_key());
 }
 
-const Def* Clos2SJLJ::rewrite_mut_Lam(Lam* old_lam) {
-    auto new_lam = new_world().mut_lam(rewrite(old_lam->type())->as<Pi>());
-    map(old_lam, new_lam);
-    if (!old_lam->is_set()) return new_lam;
-
-    auto _              = enter(old_lam);
-    auto [filter, body] = convert(new_lam, rewrite(old_lam->filter()), rewrite(old_lam->body()));
-    new_lam->set(filter, body);
-    return seal(old_lam, new_lam);
+std::pair<const Def*, const Def*> Clos2SJLJ::rewrite_ops(Lam* old_lam, Lam* new_lam) {
+    auto [filter, body] = RWPhase::rewrite_ops(old_lam, new_lam);
+    return convert(new_lam, filter, body);
 }
 
 } // namespace mim::plug::clos::phase
