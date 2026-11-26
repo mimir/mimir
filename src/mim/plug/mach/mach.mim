@@ -130,6 +130,13 @@ axm lit: {T: *} → T → Bool, normalize_lit;
 ///
 /// ## Phases
 ///
+/// ### libm
+///
+/// Turns each `math` operation that a backend has no instruction for into a call of its libm function, e.g. `math.exp` on an `f32` into `expf` (see mim::plug::mach::Libm).
+/// It covers `exp`, `tri`, `pow`, `rt.cb`, `er`, `gamma`, `round`, `arith.rem`, and `extrema.fmin`/`fmax` on `f32` and `f64`, and runs before `mem.add_mem`, which threads the memory through the calls.
+///
+axm libm: compile.Phase;
+///
 /// ### legalize
 ///
 /// Turns every `Nat` value and every pointer into an `I64`, so that instruction selection only sees register types (see mim::plug::mach::Legalize).

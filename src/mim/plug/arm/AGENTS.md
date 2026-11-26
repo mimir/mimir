@@ -89,6 +89,7 @@ Done:
 Known gaps and bugs, as of 2026-11-23:
 
 - No vectors and no aggregates.
+- The calls of `mach.libm` and of `malloc`/`free` (`lit/mach/libm.mim`, `lit/mem/malloc_load_store.mim`) are verified on x86 hosts only; on an AArch64 host they run the same native legs, but no one has yet.
 - Only `math.f32`/`math.f64` floats; no `f16`, no `bf16`. A float always occupies a whole `d` register, frame slot, and spill slot, whatever its format.
 - Saved registers go one `str`/`ldr` each, not paired with `stp`/`ldp`.
 - `ne` and `ue` rematerialize the `fcmp` per condition code, so they cost five instructions; a branch or select on them goes through a register.

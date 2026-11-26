@@ -6,6 +6,7 @@ add_mim_plugin(mach
         gen.cpp
         isel.cpp
         legalize.cpp
+        libm.cpp
         live.cpp
         liveness.cpp
         mach.cpp
