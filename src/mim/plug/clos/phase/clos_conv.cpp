@@ -127,10 +127,9 @@ void ClosConv::finalize() {
         auto vars  = Vars();
         for (auto fv : stub.fvs)
             vars = vs.merge(vars, fv->free_vars());
-        push(vars);
+        auto _ = scoped(vars);
         bind_old(stub.old_fn->has_var());
         rewrite_body(stub);
-        pop();
     }
 }
 
@@ -180,7 +179,7 @@ const Def* ClosConv::rewrite_anno(Axm::IsA<anno, App> a) {
                                        [&, nd = ret_lam->num_doms()](auto i) { return rewrite(ret_lam->dom(nd, i)); });
                 auto new_lam  = w.mut_lam(w.cn(new_doms))->set(ret_lam->dbg_key());
                 map(ret_lam, new_lam);
-                if (ret_lam->is_set()) new_lam->set(rewrite(ret_lam->filter()), rewrite(ret_lam->body()));
+                if (ret_lam->is_set()) fill(ret_lam, new_lam);
                 return new_lam;
             }
             return nullptr;
@@ -313,7 +312,7 @@ void ClosConv::rewrite_body(const Stub& stub) {
 
     auto params = w.tuple(DefVec(old_fn->num_doms(), [&](auto i) { return new_fn->var(nv, skip_env(ep, i)); }));
     map(old_fn->var(), params);
-    new_fn->set(rewrite(old_fn->filter()), rewrite(old_fn->body()));
+    fill(old_fn, new_fn);
 }
 
 } // namespace mim::plug::clos::phase

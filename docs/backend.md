@@ -283,7 +283,7 @@ Any violation is an error naming the values.
 | Conditions | `cmp`/`test` + `setcc`/`jcc`/`cmovcc` | `cmp`/`fcmp` + `cset`/`b.cc`/`csel`/`fcsel` |
 
 Both support integers up to 64 bits and `f32`/`f64` floats.
-Vectors, aggregates, the transcendental `math` functions, `malloc`/`free`, more than six (x86) or eight (AArch64) call arguments, and indirect calls are not supported yet; see the *Known gaps* in each backend's `AGENTS.md`.
+Vectors, aggregates, `math.is_finite`, more than six (x86) or eight (AArch64) call arguments, and indirect calls are not supported yet; see the *Known gaps* in each backend's `AGENTS.md`.
 
 ## Testing and Debugging {#backend_testing}
 

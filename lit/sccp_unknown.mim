@@ -1,0 +1,24 @@
+// RUN: %mim %s -o - | %FileCheck %s
+plugin core;
+plugin compile;
+
+use core.ops.n;
+
+extern fun call [Fn Nat → Nat]: Nat;
+
+// `g` is unknown, as it is passed to `call`, which may apply it to anything; so `n` must not become 23.
+fun g (n: Nat): Nat = return (n + 1);
+
+extern fun f (): Nat =
+    ret x = call $ g;
+    ret y = g $ 23;
+    return (x + y);
+
+extern lam _compile (): compile.Phase =
+    compile.phases ff (
+        compile.beta_red,
+        compile.sccp,
+    );
+
+// CHECK: fun g ({{[[:alnum:]_]+}}: Nat): Nat =
+// CHECK: g (23,

@@ -10,8 +10,8 @@ namespace mim {
 ///
 /// DCE is a backward problem, but an Analysis runs forward.
 /// So we optimistically assume every param of a known Lam to be dead and propagate a Proxy for it.
-/// Afterwards, Analysis::finalize walks the abstract World and pins each param whose Proxy survived in a live position.
-/// Then, we redo.
+/// Afterwards, Analysis::find_unknowns walks the abstract World and pins each param whose Proxy survived in a live
+/// position. Then, we redo.
 ///
 /// Lattice per Lam::var:
 /// ```
@@ -32,16 +32,15 @@ private:
         Analysis(World& world)
             : mim::Analysis(world, "ADCE::Analysis") {}
 
-        void reset() final;
         bool is_dead(const Def* var) const;
 
     private:
         const Def* rewrite_imm_App(const App*) final;
+        DefVec join_args(Lam*, DefVec&) final;
 
-        void finalize() final;
-        void analyze(const Def*);
-
-        DefSet visited_;
+        void finalize() final { find_unknowns(); }
+        bool needs_arg(Lam* lam, size_t i) final { return !is_dead(lam->tvar(i)); }
+        void reach(const Proxy*) final;
     };
 
 public:

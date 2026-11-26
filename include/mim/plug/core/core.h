@@ -147,16 +147,14 @@ inline Lam* mut_con(const Def* dom) {
 /// If @p def is a `core.M`-typed value, yields its memory type `core.M a`; otherwise `nullptr`.
 inline const App* isa_mem(const Def* def) { return Axm::isa<M>(def->type()); }
 
-/// Returns the (first) element of type `core.M a` from the given tuple.
+/// Returns @p def if it is a `core.M a`, or else its first projection that is.
+/// A memory is never nested deeper, which also keeps this from unfolding a recursive type.
 inline const Def* mem_def(const Def* def) {
     if (isa_mem(def)) return def;
     if (def->isa<Arr>() || def->type()->isa<Arr>()) return {}; // don't look into possibly gigantic arrays
-
-    if (def->num_projs() > 1) {
+    if (def->num_projs() > 1)
         for (auto proj : def->projs())
-            if (auto mem = mem_def(proj)) return mem;
-    }
-
+            if (isa_mem(proj)) return proj;
     return {};
 }
 

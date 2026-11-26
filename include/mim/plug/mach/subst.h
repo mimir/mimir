@@ -8,6 +8,14 @@
 namespace mim::plug::mach {
 
 /// Rewrites a value of a block under reconstruction: memory becomes @p m; @p map and @p lams replace values and blocks.
+/// `mach.spilling` and `mach.constrain` rebuild a block in place, which neither Rewriter nor VarRewriter can do:
+/// - The keys are no Var%s: @p map holds the current version of each value, instructions and projections alike.
+///   After reloads, splits, and SSA reconstruction, a value has several definitions.
+/// - Every `mem.M` becomes @p m, the block's current chain end.
+/// - It never builds an instruction itself, since the chain places them one by one; reaching an unmapped one bails.
+///   Closed Def%s and mutables pass through as they are.
+/// - The substitution changes after every instruction, as @p map and @p m move on.
+///   A memo shared across instructions would be wrong, so each instruction gets a Subst of its own.
 class Subst : public Rewriter {
 public:
     Subst(const Target& target, World& world, const Def2Def& map, const Def* m, const LamMap<Lam*>* lams = nullptr)

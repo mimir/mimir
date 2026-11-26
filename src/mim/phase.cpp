@@ -120,7 +120,14 @@ const Def* Analysis::lookup(const Def* def) {
     return world().annexes().opaque(def) ? def : nullptr;
 }
 
+/// find_unknowns() skips ground Def%s, so a sentinel must come from Analysis::proxy().
+static bool is_tracked(const Def* abstr) {
+    auto proxy = abstr->isa<Proxy>();
+    return !proxy || proxy->tracks_vars();
+}
+
 bool Analysis::lattice_force(const Def* concr, const Def* abstr) {
+    assert(is_tracked(abstr) && "create sentinels with Analysis::proxy()");
     if (is_singleton(concr)) return false;
     map(concr, abstr);
 
@@ -132,6 +139,7 @@ bool Analysis::lattice_force(const Def* concr, const Def* abstr) {
 }
 
 bool Analysis::lattice(const Def* concr, const Def* abstr) {
+    assert(is_tracked(abstr) && "create sentinels with Analysis::proxy()");
     if (is_singleton(concr)) return false;
     map(concr, abstr);
 
@@ -151,6 +159,87 @@ bool Analysis::is_cyclic(const Def* def) const {
     return follow(fast) != fast;
 }
 
+const Def* Analysis::rewrite_known(const App* app) {
+    auto abstr_arg    = rewrite(app->arg());
+    auto abstr_callee = rewrite(app->callee());
+    if (auto lam = Lam::isa_rewritable(abstr_callee)) return known_edge(lam, abstr_arg->projs(lam->num_tvars()));
+    return nullptr;
+}
+
+const Def* Analysis::known_edge(Lam* lam, DefVec abstr_targs) {
+    assert(abstr_targs.size() == lam->num_tvars() && "one abstract arg per tvar");
+    if (lam->is_dependent()) {
+        log().d("dependent signature; keeping all vars: {}", lam);
+        for (auto var : lam->tvars())
+            pin(var);
+    } else {
+        auto abstr_vars = join_args(lam, abstr_targs);
+        assert(abstr_vars.size() == lam->num_tvars() && abstr_targs.size() == lam->num_tvars());
+        lattice(lam->var(), world().tuple(abstr_vars));
+    }
+    return abstract_app(lam, world().tuple(abstr_targs));
+}
+
+DefVec Analysis::join_args(Lam* lam, DefVec&) {
+    auto vars = lam->tvars();
+    for (auto var : vars)
+        pin(var);
+    return vars;
+}
+
+const Def* Analysis::abstract_app(const Def* callee, const Def* arg) {
+    // Only an Axm keeps the checked, normalizing World::app: its normalizer is what folds a propagated
+    // expression. Everywhere else abstract operands (⊤/⊥/proxies) need not be assignable to the domain -
+    // and World::app would either throw or partially evaluate the callee.
+    if (std::get<0>(Axm::next(callee))) return world().app(callee, arg);
+    auto pi = callee->type()->isa<Pi>();
+    return world().raw_app(pi ? pi->reduce(arg) : arg->type(), callee, arg);
+}
+
+void Analysis::find_unknowns() {
+    auto visited = DefSet();
+    for (auto mut : world().externals().muts())
+        find_unknowns(visited, mut);
+}
+
+void Analysis::find_unknowns(DefSet& visited, const Def* def) {
+    // A Var's binder is reached anyway, and lookup() would remap it; a ground def has no Lam or Proxy below.
+    if (def->isa<Var>() || def->is_ground()) return;
+    if (auto [_, ins] = visited.emplace(def); !ins) return;
+    if (auto l = lookup(def); l && l != def) return find_unknowns(visited, l);
+
+    if (auto proxy = def->isa<Proxy>()) return reach(proxy); // its deps are meta info, not uses
+
+    if (auto app = def->isa<App>()) {
+        if (auto [lam, targs] = known_call(app); lam) {
+            find_unknowns(visited, app->type());
+            for (size_t i = 0, e = targs.size(); i != e; ++i)
+                if (targs[i] && needs_arg(lam, i)) find_unknowns(visited, targs[i]);
+            for (auto d : lam->deps())
+                find_unknowns(visited, d);
+            return;
+        }
+    } else if (auto lam = def->isa_mut<Lam>()) {
+        log().d("unknown lam: {}", lam);
+        unknown(lam);
+    }
+
+    for (auto d : def->deps())
+        find_unknowns(visited, d);
+}
+
+std::pair<Lam*, DefVec> Analysis::known_call(const App* app) {
+    if (auto lam = Lam::isa_rewritable(app->callee())) return {lam, app->targs()};
+    return {};
+}
+
+void Analysis::unknown(Lam* lam) {
+    unknowns_.emplace(lam);
+    pin(lam->var()); // known_edge's whole-var tuple would otherwise resurface an earlier round's value via repr()
+    for (auto var : lam->tvars())
+        pin(var);
+}
+
 const Def* Analysis::rewrite(const Def* def) {
     if (def->isa_mut()) return Rewriter::rewrite(def);
     return repr(Rewriter::rewrite(def));
@@ -160,7 +249,9 @@ const Def* Analysis::rewrite_mut(Def* mut) {
     if (lookup(mut)) return mut; // already scheduled this round
     map(mut, mut);
     worklist_.emplace_back(mut);
-    return Rewriter::rewrite_mut(mut);
+    [[maybe_unused]] auto res = Rewriter::rewrite_mut(mut);
+    assert(res == mut && "an Analysis observes a mutable but never rebuilds it");
+    return mut;
 }
 
 void Analysis::drain() {
@@ -259,8 +350,9 @@ const Def* RWPhase::rewrite_stub(Def* old_mut, Def* new_mut) {
     auto _  = enter(old_mut);
     auto pi = new_lam->type();
     // Creating the Var just to reduce a non-dependent codomain would mark it as used.
-    auto codom = pi->has_var() ? pi->reduce(new_lam->var()) : pi->codom();
-    new_lam->set(rewrite(old_lam->filter()), coerce(codom, rewrite(old_lam->body())));
+    auto codom          = pi->has_var() ? pi->reduce(new_lam->var()) : pi->codom();
+    auto [filter, body] = rewrite_ops(old_lam, new_lam);
+    new_lam->set(filter, coerce(codom, body));
     return seal(old_mut, new_mut);
 }
 

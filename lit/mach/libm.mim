@@ -1,0 +1,25 @@
+// RUN: %mim -p opt %s -o - | %FileCheck %s --check-prefix=OPT
+// RUN: %if native %{ %mim -p opt %s -p %native -X %native:o=%t.s %}
+// RUN: %if native %{ %FileCheck %s %asmdefs < %t.s %}
+// RUN: %if native %{ clang %t.s -lm -o %t.native %}
+// RUN: %if native %{ %t.native; test $? -eq 42 %}
+// RUN: %if native %{ %t.native a; test $? -eq 21 %}
+
+// `mach.libm` turns the `math` operations a native backend has no instruction for into calls of libm, in either format.
+plugin core;
+plugin math;
+plugin mem;
+
+let fast = math.mode.fast;
+
+// OPT: math.exp
+// CHECK-DAG: {{call|bl}} [[SYM]]logf
+// CHECK-DAG: {{call|bl}} [[SYM]]exp
+// CHECK-DAG: {{call|bl}} [[SYM]]fmax
+// CHECK-DAG: {{call|bl}} [[SYM]]round
+extern con main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char», return: Cn [mem.M 0, I32]) =
+    let n = math.conv.s2f math.f32 argc;
+    let l = math.exp.log fast (math.arith.div fast (42.0:math.F32, n));
+    let e = math.exp.exp fast (math.conv.f2f math.f64 l);
+    let r = math.round.r fast (math.extrema.fmax fast (e, 1.0:math.F64));
+    return (m, math.conv.f2s i32 r);

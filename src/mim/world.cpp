@@ -550,7 +550,13 @@ const Def* World::tuple(Defs ops) {
 
     auto zops = Def::zonk(ops);
     for (auto op : zops)
-        if (!op->type()) op->blame("`Level` has no type and cannot be a tuple element").bail();
+        if (!op->type()) {
+            if (op->isa<Level>()) op->blame("`Level` has no type and cannot be a tuple element").bail();
+            // Only a projection out of a mutable that is not set yet has no type, and blaming it would need one.
+            static constexpr auto msg = "a tuple element projects out of a mutable that is not set yet";
+            if (auto ex = op->isa<Extract>(); ex && ex->tuple()->type()) ex->tuple()->blame(msg).bail();
+            error().e(get_loc(), msg).bail();
+        }
     auto sigma = Tuple::infer(*this, zops);
     // An immutable Sigma means the ops' types differ, so the ops can't be uniform either.
     auto t     = tuple(sigma, zops, !sigma->isa_imm<Sigma>());

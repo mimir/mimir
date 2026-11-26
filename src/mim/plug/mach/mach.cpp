@@ -7,6 +7,7 @@
 #include "mim/plug/mach/gen.h"
 #include "mim/plug/mach/isel.h"
 #include "mim/plug/mach/legalize.h"
+#include "mim/plug/mach/libm.h"
 #include "mim/plug/mach/regalloc.h"
 #include "mim/plug/mach/schedule.h"
 
@@ -15,6 +16,7 @@ using namespace plug::mach;
 
 static void reg_phases(Flags2Phases& phases) {
     Phase::hook<legalize, Legalize>(phases);
+    Phase::hook<libm, Libm>(phases);
     hook<schedule, Schedule>(phases);
     hook<spilling, Spilling>(phases);
     hook<constrain, Constrain>(phases);

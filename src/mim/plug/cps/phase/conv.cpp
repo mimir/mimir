@@ -13,16 +13,7 @@ static bool convertible(Lam* lam) {
 }
 
 const Def* Conv::rewrite_mut_Lam(Lam* old_lam) {
-    if (convertible(old_lam)) return convert(old_lam);
-
-    auto new_lam = new_world().mut_lam(rewrite(old_lam->type())->as<Pi>());
-    map(old_lam, new_lam);
-    if (!old_lam->is_set()) return new_lam;
-
-    auto scope      = Scope(*this, Lam::isa_cn(old_lam));
-    auto new_filter = rewrite(old_lam->filter());
-    auto new_body   = wire(scope.base(), rewrite(old_lam->body()));
-    return new_lam->set(new_filter, new_body);
+    return convertible(old_lam) ? convert(old_lam) : DS2CPS::rewrite_mut_Lam(old_lam);
 }
 
 const Def* Conv::convert(Lam* old_lam) {
@@ -36,11 +27,11 @@ const Def* Conv::convert(Lam* old_lam) {
         auto sigma = w.mut_sigma(2);
         sigma->set(0, new_dom); // the codom may project sigma->var(2, 0), which needs its type
         sigma->var();
-        push({}, Vars(sigma->has_var()));
-        map(old_var, sigma->var(2, 0));
-        auto new_codom = rewrite(old_pi->codom());
-        pop();
-        sigma->set(1, w.cn(new_codom));
+        {
+            auto _ = scoped({}, Vars(sigma->has_var()));
+            map(old_var, sigma->var(2, 0));
+            sigma->set(1, w.cn(rewrite(old_pi->codom())));
+        }
         new_lam = w.mut_con(sigma);
     } else {
         new_lam = w.mut_fun(new_dom, rewrite(old_pi->codom()));
@@ -65,34 +56,11 @@ const Def* Conv::rewrite_imm_App(const App* old_app) {
     auto new_arg    = rewrite(old_app->arg());
     auto new_callee = rewrite(old_app->callee());
 
-    if (liftable_)
-        if (auto wrapped = Axm::isa<cps2ds_dep>(new_callee)) return lift(wrapped->arg(), new_arg, old_app);
+    if (liftable())
+        if (auto wrapped = Axm::isa<cps2ds_dep>(new_callee))
+            return lift(wrapped->arg(), {new_arg}, rewrite(old_app->type()));
 
     return new_world().app(new_callee, new_arg);
-}
-
-const Def* Conv::lift(const Def* k, const Def* new_arg, const App* old_app) {
-    auto& w   = new_world();
-    auto cont = w.mut_con(rewrite(old_app->type()))->set_filter(false);
-    auto res  = cont->var();
-    cont->set(w.append_suffix(k->sym(), "_cont"));
-    bind_new(cont->has_var());
-    pending_.emplace_back(k, new_arg, cont);
-
-    log().d("lift {} → {} ({}, {})", old_app, k, new_arg, cont);
-
-    return res;
-}
-
-const Def* Conv::wire(size_t base, const Def* body) {
-    auto& w = new_world();
-    while (pending_.size() > base) {
-        auto [callee, arg, cont] = pending_.back();
-        pending_.pop_back();
-        cont->set_body(body);
-        body = w.app(callee, Defs{arg, cont});
-    }
-    return body;
 }
 
 } // namespace mim::plug::cps

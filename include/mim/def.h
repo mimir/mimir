@@ -181,7 +181,6 @@ namespace mim {
 
 // clang-format off
 template<class F> concept Projector = std::invocable<F, const Def*>; /// Used by Def::proj & friends.
-template<class F> concept DefPred   = std::predicate<F, const Def*>;
 template<class F> concept MutPred   = std::predicate<F, Def*>;
 // clang-format on
 

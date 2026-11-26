@@ -33,6 +33,7 @@ target_sources(libmim
         phase/beta_red.cpp
         phase/eta_conv.cpp
         phase/dispatch_normalize.cpp
+        phase/ds2cps.cpp
         phase/single_erasure.cpp
         phase/nom_erasure.cpp
         phase/ret_wrap.cpp

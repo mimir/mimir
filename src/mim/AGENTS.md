@@ -30,6 +30,9 @@ Plugin-specific notes live in `plug/AGENTS.md` and below; phase-specific ones in
 ## Analysis and RWPhase (`phase.cpp`)
 
 - `Analysis` iterates sparsely: `touch()` records `curr_mut()` as dirty; a sparse round replays the lattice (skipping mutable keys) and drains the dirty muts in `GIDLt` order; only a quiet *full* round certifies the fixed point, and `finalize()` runs only in full rounds.
+- A Lam is *unknown* if it occurs other than as an App's callee, else *known*; an escaping Lam is unknown, but not vice versa (branch targets).
+  Say "unknown", not "escaping", for what `Analysis::find_unknowns` finds.
+- `Analysis::unknown` pins an unknown Lam's whole var besides its projections, because `known_edge` writes `var ↦ tuple` too.
 - `lattice()` silently creates a fresh ⊤; without that, every `pin()` would force dense rounds.
 - `lattice_force` deliberately seeds `map()` too.
 - Analysis rounds run under `World::lenient()`, so optimistic substitutions may build ill-typed dependent terms; the final `RWPhase` rewrite stays strict and is the soundness check.

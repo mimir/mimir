@@ -2,6 +2,9 @@
 // RUN: %mim -p opt %s -p ll
 // RUN: clang++ %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t foo; test $? -eq 98
+// RUN: %if native %{ %mim -p opt %s -p %native -X %native:o=%t.s %}
+// RUN: %if native %{ clang %t.s -lm -o %t.native %}
+// RUN: %if native %{ %t.native foo; test $? -eq 98 %}
 
 plugin math;
 plugin mem;

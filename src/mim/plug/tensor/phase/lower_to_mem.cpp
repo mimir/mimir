@@ -168,7 +168,6 @@ void LowerToMem::start() {
     validate();
     if (!tensors_seen_) return;
     RWPhase::start();
-    assert(pending_.empty());
 }
 
 const Def* LowerToMem::buf_of(const Def* type) {
@@ -196,19 +195,8 @@ const Def* LowerToMem::bot_mem() {
 }
 
 const Def* LowerToMem::fresh_mem() {
-    auto k = mem::mut_con(new_world())->set("fresh_mem");
-    pending_.push_back(k);
-    return k->var();
-}
-
-const Def* LowerToMem::wrap_fresh_mem(const Def* body) {
     auto& w = new_world();
-    // The last-minted continuation carries the original body; the lam ends up requesting the first memory.
-    for (auto k : pending_ | std::views::reverse) {
-        k->set(true, body); // filter `tt`: k vanishes as soon as AddMem substitutes the real memory
-        body = w.app(w.annex<mem::fresh>(), w.tuple({w.lit_nat_0(), k}));
-    }
-    return body;
+    return lift(w.annex<mem::fresh>(), {w.lit_nat_0()}, w.call<mem::M>(0), true, w.sym("fresh_mem"));
 }
 
 const Def* LowerToMem::rewrite(const Def* old_def) {
@@ -226,21 +214,12 @@ const Def* LowerToMem::rewrite(const Def* old_def) {
 }
 
 const Def* LowerToMem::rewrite_mut_Lam(Lam* lam) {
-    // Scope the fresh-memory bookkeeping: ops lowered while this body is rewritten mint their receiving
-    // continuations into pending_, which are chained in front of the finished body. Nested lams anchor
-    // their own requests (and their own per-lam op memo).
-    auto _  = fe::Restore(pending_, {});
-    auto __ = fe::Restore(fresh_memo_, {});
-    if (shape_poly_.contains(lam)) return uncurry(lam);
-    auto new_lam = new_world().mut_lam(rewrite(lam->type())->as<Pi>());
-    map(lam, new_lam);
-    if (!lam->is_set()) return new_lam;
+    return shape_poly_.contains(lam) ? uncurry(lam) : DS2CPS::rewrite_mut_Lam(lam);
+}
 
-    auto ___    = enter(lam);
-    auto filter = rewrite(lam->filter());
-    auto body   = wrap_fresh_mem(rewrite(lam->body()));
-    new_lam->set(filter, body);
-    return seal(lam, new_lam);
+std::pair<const Def*, const Def*> LowerToMem::rewrite_ops(Lam* old_lam, Lam* new_lam) {
+    auto _ = fe::Restore(fresh_memo_, {});
+    return DS2CPS::rewrite_ops(old_lam, new_lam);
 }
 
 const Def* LowerToMem::uncurry(Lam* lam) {
@@ -250,25 +229,26 @@ const Def* LowerToMem::uncurry(Lam* lam) {
     auto inner  = lam->body()->as_mut<Lam>();
     auto k = pi->dom()->num_projs(), m = inner->num_vars(), n = k + m;
     auto sigma = w.mut_sigma(n);
-    push();
-    if (pi_mut) bind_old(pi_mut->has_var());
-    bind_old(lam->has_var());
-    bind_old(inner->has_var());
-    for (size_t i = 0; i != k; ++i) {
-        sigma->set(i, rewrite(lam->var(k, i)->type()));
-        if (pi_mut) map(pi_mut->var(k, i), sigma->var(n, i));
-        map(lam->var(k, i), sigma->var(n, i));
+    {
+        auto _ = scoped();
+        if (pi_mut) bind_old(pi_mut->has_var());
+        bind_old(lam->has_var());
+        bind_old(inner->has_var());
+        for (size_t i = 0; i != k; ++i) {
+            sigma->set(i, rewrite(lam->var(k, i)->type()));
+            if (pi_mut) map(pi_mut->var(k, i), sigma->var(n, i));
+            map(lam->var(k, i), sigma->var(n, i));
+        }
+        if (k > 1) {
+            auto vars = w.tuple(DefVec(k, [&](size_t i) { return sigma->var(n, i); }));
+            if (pi_mut) map(pi_mut->var(), vars);
+            map(lam->var(), vars);
+        }
+        for (size_t i = 0; i != m; ++i) {
+            sigma->set(k + i, rewrite(inner->var(m, i)->type()));
+            map(inner->var(m, i), sigma->var(n, k + i));
+        }
     }
-    if (k > 1) {
-        auto vars = w.tuple(DefVec(k, [&](size_t i) { return sigma->var(n, i); }));
-        if (pi_mut) map(pi_mut->var(), vars);
-        map(lam->var(), vars);
-    }
-    for (size_t i = 0; i != m; ++i) {
-        sigma->set(k + i, rewrite(inner->var(m, i)->type()));
-        map(inner->var(m, i), sigma->var(n, k + i));
-    }
-    pop();
 
     auto new_lam = w.mut_con(sigma)->set(lam->dbg());
     map(lam, new_lam);
@@ -287,7 +267,7 @@ const Def* LowerToMem::uncurry(Lam* lam) {
         args.emplace_back(arg);
     adapter->app(true, new_lam, w.tuple(args));
     auto ___ = enter(lam);
-    new_lam->set(rewrite(inner->filter()), wrap_fresh_mem(rewrite(inner->body())));
+    fill(inner, new_lam);
     return seal(lam, new_lam);
 }
 
