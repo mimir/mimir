@@ -22,21 +22,21 @@ auto new_def = rw.rewrite(old_def);
 
 ### Scopes {#rewriter_scopes}
 
-A rewrite often has to map an old node to something that is only valid *locally*: a binder's [`Var`](@ref mim::Var) to a fresh representative, a loop index to one particular literal, and so on.
+A rewrite often has to map an old node to something that is only valid _locally_: a binder's [`Var`](@ref mim::Var) to a fresh representative, a loop index to one particular literal, and so on.
 For this, the map is a stack of [scopes](@ref mim::Rewriter::push).
-[`push(old_vars, new_vars)`](@ref mim::Rewriter::push) opens a scope that owns two sets of [`Vars`](@ref mim::Vars) - one of the old world, one of the new - and [`pop()`](@ref mim::Rewriter::pop) discards it together with all of its mappings.
-The bottom scope - the *root* - is always there.
+[`scoped(old_vars, new_vars)`](@ref mim::Rewriter::scoped) opens a scope that owns two sets of [`Vars`](@ref mim::Vars) - one of the old world, one of the new - and discards it together with all of its mappings when the returned [`Pop`](@ref mim::Rewriter::Pop) goes out of C++ scope.
+It wraps the bare [`push()`](@ref mim::Rewriter::push) and [`pop()`](@ref mim::Rewriter::pop), which are only needed where a scope does not match a C++ block.
+The bottom scope - the _root_ - is always there.
 
-A scope does not take *every* mapping recorded while it is open, though.
+A scope does not take _every_ mapping recorded while it is open, though.
 [`map(old, new)`](@ref mim::Rewriter::map) files the mapping into the innermost scope whose old `Vars` `old` mentions or whose new `Vars` `new` mentions as free variables; any other mapping goes into the root.
 So only what actually depends on the local binding dies with the scope, while everything context-free stays shared across sibling scopes and beyond.
 For instance, [`rewrite_mut_Seq`](@ref mim::Rewriter::rewrite_mut_Seq) scalarizes `«i: n; body»` by rewriting `body` once per `i`, each time under
 
 ```cpp
-push(Vars(var));
+auto _ = scoped(Vars(var));
 map(var, world().lit_idx(n, i));
-auto new_op = rewrite(seq->body());
-pop();
+new_ops[i] = rewrite(seq->body());
 ```
 
 Only those parts of `body` that mention `var` are rebuilt for every `i`; the rest is rewritten once and found in the root on the next iteration.
@@ -45,13 +45,13 @@ Dependencies propagate:
 
 - If a mutable binder is mapped into a scope, its own `Var` joins that scope's old `Vars`, so whatever its body builds from that `Var` lands there, too.
 - [`bind_old(var)`](@ref mim::Rewriter::bind_old) and [`bind_new(var)`](@ref mim::Rewriter::bind_new) add a `Var` to the innermost scope by hand.
-  The latter is for a fresh binder of the *new* world whose `Var` should keep new nodes local - e.g. the continuation `cps::phase::Conv` introduces when lifting a call.
+  The latter is for a fresh binder of the _new_ world whose `Var` should keep new nodes local - e.g. the continuation [`DS2CPS::lift`](@ref mim::DS2CPS::lift) introduces when lifting a call.
 
 [`lookup()`](@ref mim::Rewriter::lookup) searches the scopes from innermost to root.
 
 ### Nested Rewriters {#rewriter_nested}
 
-Sometimes the *same* old node must be rewritten differently depending on where it occurs.
+Sometimes the _same_ old node must be rewritten differently depending on where it occurs.
 [`Scalarize`](@ref mim::Scalarize), for example, flattens a function type `Cn [[A, B], C]` to `Cn [A, B, C]` everywhere - except in what the signature of an interface `Lam` (an external, an annex, or a foreign declaration) mentions, which must keep its shape.
 A single map cannot hold both results.
 
@@ -74,19 +74,19 @@ Putting it together, a mutable is rebuilt as follows:
 
 1. create the replacement stub,
 2. map old mutable to stub immediately,
-3. map binder-local substitutions - in a [`push`](@ref mim::Rewriter::push)ed scope if they must not outlive this rewrite,
-4. rewrite and [`set`](@ref mim::Def::set) the operands,
-5. [`pop`](@ref mim::Rewriter::pop) the scope again.
+3. map binder-local substitutions - in a [`scoped`](@ref mim::Rewriter::scoped) scope if they must not outlive this rewrite,
+4. rewrite and [`set`](@ref mim::Def::set) the operands.
 
 [`rewrite_stub`](@ref mim::Rewriter::rewrite_stub) implements steps 2 and 4, and finally tries to immutabilize the result in hindsight.
-Custom phases mirror this pattern when they need more control - e.g. to map an old `Var` to something other than the new mutable's `Var`.
+Custom phases do steps 1 and 3 themselves when they need more control - e.g. to map an old `Var` to something other than the new mutable's `Var`.
+An [`RWPhase`](@ref mim::RWPhase) then leaves step 4 to [`fill()`](@ref mim::RWPhase::fill), so that its [`rewrite_ops()`](@ref mim::RWPhase::rewrite_ops) hook still applies (see [Hooks at a Glance](@ref phases_hooks)).
 The crucial point is that recursive self-references must see the stub instead of triggering another rebuild of the same node.
 
 If a rewrite replaces an external mutable with a fresh one, preserve the root explicitly by calling [`mim::Def::transfer_external`](@ref mim::Def::transfer_external) or re-externalizing the replacement node.
 
-### Reshaping Aggregates
+### Reshaping Aggregates {#rewriter_reshaping}
 
-A rewrite that changes a mutable's *number* of ops - dropping components of a [`Sigma`](@ref mim::Sigma), say - cannot use the plain [`rewrite_stub`](@ref mim::Rewriter::rewrite_stub): that one rewrites `old->op(i)` into `new->op(i)` for every `i`.
+A rewrite that changes a mutable's _number_ of ops - dropping components of a [`Sigma`](@ref mim::Sigma), say - cannot use the plain [`rewrite_stub`](@ref mim::Rewriter::rewrite_stub): that one rewrites `old->op(i)` into `new->op(i)` for every `i`.
 The overload [`rewrite_stub(old, new, new2old)`](@ref mim::Rewriter::rewrite_stub) spells out the op indices instead: `new->op(i)` is rewritten from `old->op(new2old[i])`.
 Everything else stays the same - mapping the stub before descending into it, entering it as [`curr_mut()`](@ref mim::Rewriter::curr_mut), and immutabilizing the result in hindsight unless something already captured the stub recursively.
 If you fill a stub entirely by hand, [`seal`](@ref mim::Rewriter::seal) is that last step on its own.
@@ -115,7 +115,7 @@ An [`Arr`](@ref mim::Arr)'s components all share one type, so it is dropped as a
 
 #### Adding Components
 
-A rewrite that also *adds* components - [`mem::SEO`](@ref mim::plug::mem::phase::SEO) threads a fresh φ parameter through a [`Lam`](@ref mim::Lam) for every promoted slot - [`cat`](@ref mim::Sieve::cat)s them as further candidates behind the old ones:
+A rewrite that also _adds_ components - [`mem::SEO`](@ref mim::plug::mem::phase::SEO) threads a fresh φ parameter through a [`Lam`](@ref mim::Lam) for every promoted slot - [`cat`](@ref mim::Sieve::cat)s them as further candidates behind the old ones:
 
 ```cpp
 auto keep = mim::Sieve(old_lam->tvars(), [&](const Def* var) { return is_kept(var); });
@@ -126,7 +126,7 @@ They extend the very same index space, so one `Sieve` still answers the whole ne
 [`all`](@ref mim::Sieve::all) then means _the new aggregate is the old one_ - nothing dropped **and** nothing appended.
 Since an appended component has no old op to rewrite from, [`new2old`](@ref mim::Sieve::new2old) - and hence `rewrite_stub` - is unavailable once you append.
 
-@warning Dropping decides *per type*, but some shapes are not the phase's to change: an [`Axm`](@ref mim::Axm)'s signature, or the dependent domain an [`App`](@ref mim::App) instantiates (`[n: Nat, «n; *»]` vs `[Nat, []]`).
+@warning Dropping decides _per type_, but some shapes are not the phase's to change: an [`Axm`](@ref mim::Axm)'s signature, or the dependent domain an [`App`](@ref mim::App) instantiates (`[n: Nat, «n; *»]` vs `[Nat, []]`).
 Where a reshaped value meets such a shape, it must be converted back - this is what every [`RWPhase`](@ref phases_coercion) does; [`SingleErasure`](@ref mim::SingleErasure) relies on it.
 
 ### Preserving Metadata

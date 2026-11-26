@@ -18,9 +18,9 @@ The sections below explain each piece.
 
 @dot
 digraph rwphase {
-    rankdir=LR;
-    node [shape=box, fontname="Helvetica", fontsize=10, style=filled, fillcolor="#dbeafe"];
-    edge [color="#555555"];
+rankdir=LR;
+node [shape=box, fontname="Helvetica", fontsize=10, style=filled, fillcolor="#dbeafe"];
+edge [color="#555555"];
 
     run [label="run()", fillcolor="#e5e7eb", URL="\ref mim::Phase::run"];
     start [label="start()", fillcolor="#e5e7eb", URL="\ref mim::RWPhase::start"];
@@ -53,14 +53,15 @@ digraph rwphase {
     stub -> coerce;
     immN -> coerce -> leaf;
     immN -> lift [style=dashed];
+
 }
 @enddot
 
 @dot
 digraph analysis {
-    rankdir=LR;
-    node [shape=box, fontname="Helvetica", fontsize=10, style=filled, fillcolor="#dbeafe"];
-    edge [color="#555555"];
+rankdir=LR;
+node [shape=box, fontname="Helvetica", fontsize=10, style=filled, fillcolor="#dbeafe"];
+edge [color="#555555"];
 
     run [label="run()", fillcolor="#e5e7eb", URL="\ref mim::Phase::run"];
     start [label="start()", fillcolor="#e5e7eb", URL="\ref mim::Analysis::start"];
@@ -94,17 +95,18 @@ digraph analysis {
     rewrite -> immN -> known -> edge_ -> join;
     edge_ -> aapp;
     join -> lattice;
+
 }
 @enddot
 
-| Class | Override to | Call to |
-| :---- | :---------- | :------ |
-| [`Phase`](@ref mim::Phase) | do anything: [`start()`](@ref mim::Phase::start); take arguments: [`apply()`](@ref mim::Phase::apply) | request another round: [`invalidate()`](@ref mim::Phase::invalidate) |
-| [`Rewriter`](@ref mim::Rewriter) | rewrite a node kind: `rewrite_imm_*()` / `rewrite_mut_*()`; intercept every Def: [`rewrite()`](@ref mim::Rewriter::rewrite) | substitute: [`map()`](@ref mim::Rewriter::map); scope substitutions to Vars: [`scoped()`](@ref mim::Rewriter::scoped), [`bind_old()`](@ref mim::Rewriter::bind_old) / [`bind_new()`](@ref mim::Rewriter::bind_new); track the current mutable: [`enter()`](@ref mim::Rewriter::enter) / [`curr_mut()`](@ref mim::Rewriter::curr_mut); finish a hand-filled stub: [`seal()`](@ref mim::Rewriter::seal); drop or reorder a mutable's ops: [`rewrite_stub(old, new, new2old)`](@ref mim::Rewriter::rewrite_stub) |
+| Class                            | Override to                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Call to                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| :------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`Phase`](@ref mim::Phase)       | do anything: [`start()`](@ref mim::Phase::start); take arguments: [`apply()`](@ref mim::Phase::apply)                                                                                                                                                                                                                                                                                                                                                                                  | request another round: [`invalidate()`](@ref mim::Phase::invalidate)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| [`Rewriter`](@ref mim::Rewriter) | rewrite a node kind: `rewrite_imm_*()` / `rewrite_mut_*()`; intercept every Def: [`rewrite()`](@ref mim::Rewriter::rewrite)                                                                                                                                                                                                                                                                                                                                                            | substitute: [`map()`](@ref mim::Rewriter::map); scope substitutions to Vars: [`scoped()`](@ref mim::Rewriter::scoped), [`bind_old()`](@ref mim::Rewriter::bind_old) / [`bind_new()`](@ref mim::Rewriter::bind_new) ([Scopes](@ref rewriter_scopes)); rewrite one Def differently by position: a [nested Rewriter](@ref rewriter_nested); track the current mutable: [`enter()`](@ref mim::Rewriter::enter) / [`curr_mut()`](@ref mim::Rewriter::curr_mut); finish a hand-filled stub: [`seal()`](@ref mim::Rewriter::seal); drop or reorder a mutable's ops: [`rewrite_stub(old, new, new2old)`](@ref rewriter_reshaping)                                                 |
 | [`Analysis`](@ref mim::Analysis) | join at a known call: [`join_args()`](@ref mim::Analysis::join_args); per-round setup: [`prepare()`](@ref mim::Analysis::prepare); post-pass in full rounds: [`finalize()`](@ref mim::Analysis::finalize); after a mutable's body: [`leave()`](@ref mim::Analysis::leave); walk for unknown Lams: [`known_call()`](@ref mim::Analysis::known_call), [`needs_arg()`](@ref mim::Analysis::needs_arg), [`unknown()`](@ref mim::Analysis::unknown), [`reach()`](@ref mim::Analysis::reach) | record facts: [`lattice()`](@ref mim::Analysis::lattice), [`pin()`](@ref mim::Analysis::pin), [`lattice_force()`](@ref mim::Analysis::lattice_force), [`lattice_erase()`](@ref mim::Analysis::lattice_erase); revisit other mutables: [`taint()`](@ref mim::Analysis::taint), [`touch()`](@ref mim::Analysis::touch); known calls: [`rewrite_known()`](@ref mim::Analysis::rewrite_known), [`known_edge()`](@ref mim::Analysis::known_edge), [`abstract_app()`](@ref mim::Analysis::abstract_app); unknown Lams: [`find_unknowns()`](@ref mim::Analysis::find_unknowns), [`unknowns()`](@ref mim::Analysis::unknowns); a sentinel: [`proxy()`](@ref mim::Analysis::proxy) |
-| [`RWPhase`](@ref mim::RWPhase) | post-process a Lam's filter or body: [`rewrite_ops()`](@ref mim::RWPhase::rewrite_ops); convert a reshaped leaf: [`coerce_leaf()`](@ref mim::RWPhase::coerce_leaf); rebuild an opaque Axm: [`retype()`](@ref mim::RWPhase::retype); exempt the externals: [`rewrite_external()`](@ref mim::RWPhase::rewrite_external); drain deferred work: [`finalize()`](@ref mim::RWPhase::finalize) | read the analysis: [`lattice()`](@ref mim::RWPhase::lattice), [`abstracted()`](@ref mim::RWPhase::abstracted); fill a reshaped Lam: [`fill()`](@ref mim::RWPhase::fill); bridge representations: [`coerce()`](@ref mim::RWPhase::coerce) |
-| [`DS2CPS`](@ref mim::DS2CPS) | — | lift a direct-style call: [`lift()`](@ref mim::DS2CPS::lift), if [`liftable()`](@ref mim::DS2CPS::liftable) |
-| [`Repl`](@ref mim::Repl) | replace a pattern: [`replace()`](@ref mim::Repl::replace) | — |
+| [`RWPhase`](@ref mim::RWPhase)   | post-process a Lam's filter or body: [`rewrite_ops()`](@ref mim::RWPhase::rewrite_ops); convert a reshaped leaf: [`coerce_leaf()`](@ref mim::RWPhase::coerce_leaf); rebuild an opaque Axm: [`retype()`](@ref mim::RWPhase::retype); exempt the externals: [`rewrite_external()`](@ref mim::RWPhase::rewrite_external); drain deferred work: [`finalize()`](@ref mim::RWPhase::finalize)                                                                                                | read the analysis: [`lattice()`](@ref mim::RWPhase::lattice), [`abstracted()`](@ref mim::RWPhase::abstracted); fill a reshaped Lam: [`fill()`](@ref mim::RWPhase::fill); bridge representations: [`coerce()`](@ref mim::RWPhase::coerce)                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| [`DS2CPS`](@ref mim::DS2CPS)     | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | lift a direct-style call: [`lift()`](@ref mim::DS2CPS::lift), if [`liftable()`](@ref mim::DS2CPS::liftable)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| [`Repl`](@ref mim::Repl)         | replace a pattern: [`replace()`](@ref mim::Repl::replace)                                                                                                                                                                                                                                                                                                                                                                                                                              | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 The rule of thumb: override the most specific hook that sees what you need.
 A phase that rewrites one kind of node overrides its `rewrite_imm_*()`, one that post-processes a Lam's filter or body overrides [`rewrite_ops()`](@ref mim::RWPhase::rewrite_ops), and only one that builds a differently typed Lam overrides `rewrite_mut_Lam()` - and then fills it with [`fill()`](@ref mim::RWPhase::fill).
@@ -223,7 +225,7 @@ Rewriting those dependencies schedules any further mutables it reaches, so the w
 The `mut -> mut` entry recorded in step 2 doubles as the per-round _"already scheduled"_ marker: it lives in the rewriter map (see [`lookup()`](@ref mim::Rewriter::lookup)), which [`reset()`](@ref mim::Analysis::reset) clears at the start of every round.
 Hence each mutable's dependencies are walked **at most once per fixed-point round**, which also prevents cyclic (recursive) CFGs from recursing forever.
 
-@note [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) still dispatches to the node-specific `rewrite_mut_*` hooks (e.g. `rewrite_mut_Lam`) when it schedules a mutable, but they only *observe* it: its body is walked later, during the drain.
+@note [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) still dispatches to the node-specific `rewrite_mut_*` hooks (e.g. `rewrite_mut_Lam`) when it schedules a mutable, but they only _observe_ it: its body is walked later, during the drain.
 
 When a `rewrite_imm_App` override propagates abstract values from call arguments into a callee's binder vars, it should seed those lattice entries first and then [`rewrite()`](@ref mim::Rewriter::rewrite) the callee.
 This schedules the callee (or does nothing if it is already scheduled), so its body is walked later during the drain, after the seeded facts — and any joins from sibling call sites — are in place.
@@ -257,13 +259,13 @@ Most analyses of MimIR's CPS programs treat a call of a [`Lam`](@ref mim::Lam) a
 For a dependent signature it pins every parameter to ⊤; otherwise it asks the hook [`join_args()`](@ref mim::Analysis::join_args) for the parameters' new abstract values and records `lam->var() ↦ (v₀, …, vₙ)`.
 It returns the call in the abstract domain via [`abstract_app()`](@ref mim::Analysis::abstract_app), which keeps the checked, normalizing [`World::app`](@ref mim::World::app) only for an [`Axm`](@ref mim::Axm) and uses a raw App otherwise, since abstract operands need not match the domain.
 
-A subclass detects the call in `rewrite_imm_App` - typically [`Lam::isa_rewritable`](@ref mim::Lam::isa_rewritable) on the *abstract* callee, so a branch that folds to one target counts as known - and overrides [`join_args()`](@ref mim::Analysis::join_args) with its own lattice:
+A subclass detects the call in `rewrite_imm_App` - typically [`Lam::isa_rewritable`](@ref mim::Lam::isa_rewritable) on the _abstract_ callee, so a branch that folds to one target counts as known - and overrides [`join_args()`](@ref mim::Analysis::join_args) with its own lattice:
 SCCP propagates each argument, ADCE assumes a parameter dead until proven live, and `mem.seo` adds GVN and the φs of promoted slots.
 [`join_args()`](@ref mim::Analysis::join_args) may also canonicalize the arguments, e.g. `mem.seo` strips EtaConv's per-occurrence wrappers.
 
 ### Unknown Lams {#phases_unknown_lams}
 
-A [`Lam`](@ref mim::Lam) is *known* if it only occurs as the callee of an [`App`](@ref mim::App), and *unknown* otherwise, i.e. if it is also used as a value.
+A [`Lam`](@ref mim::Lam) is _known_ if it only occurs as the callee of an [`App`](@ref mim::App), and _unknown_ otherwise, i.e. if it is also used as a value.
 An escaping `Lam` is unknown, but an unknown `Lam` need not escape: the targets of a branch `(f, t)#c ()` are unknown, since the callee is the Extract, not `f` or `t`.
 The join of [Known Calls](#phases_known_calls) only sees the call sites of a known `Lam`, so the parameters of an unknown one must be ⊤.
 
@@ -364,17 +366,17 @@ Because an [`RWPhase`](@ref mim::RWPhase) reconstructs only what is reachable fr
 
 ### Reshaping Aggregates
 
-A phase that drops or reorders the components of a mutable [`Sigma`](@ref mim::Sigma) changes its number of ops, so it needs the index-mapping overload of [`rewrite_stub`](@ref mim::Rewriter::rewrite_stub) together with [`Sieve`](@ref mim::Sieve) - see [Reshaping Aggregates](@ref rewriting) in the Rewriting Guide.
+A phase that drops or reorders the components of a mutable [`Sigma`](@ref mim::Sigma) changes its number of ops, so it needs the index-mapping overload of [`rewrite_stub`](@ref mim::Rewriter::rewrite_stub) together with [`Sieve`](@ref mim::Sieve) - see [Reshaping Aggregates](@ref rewriter_reshaping) in the Rewriting Guide.
 [`SingleErasure`](@ref mim::SingleErasure) is the canonical user.
 
-[`Sieve`](@ref mim::Sieve) is useful on its own, though: dropping the parameters of a [`Lam`](@ref mim::Lam) changes its *type* rather than its ops, so the SCCP transformation below only uses [`gather`](@ref mim::Sieve::gather) and [`operator[]`](@ref mim::Sieve::operator[]).
+[`Sieve`](@ref mim::Sieve) is useful on its own, though: dropping the parameters of a [`Lam`](@ref mim::Lam) changes its _type_ rather than its ops, so the SCCP transformation below only uses [`gather`](@ref mim::Sieve::gather) and [`operator[]`](@ref mim::Sieve::operator[]).
 
 ### Coercion {#phases_coercion}
 
-An [`RWPhase`](@ref mim::RWPhase) may change how values are *represented* - [`Scalarize`](@ref mim::Scalarize) flattens tuple parameters, [`SingleErasure`](@ref mim::SingleErasure) drops information-free components.
+An [`RWPhase`](@ref mim::RWPhase) may change how values are _represented_ - [`Scalarize`](@ref mim::Scalarize) flattens tuple parameters, [`SingleErasure`](@ref mim::SingleErasure) drops information-free components.
 Such a phase cannot reshape everything: an [`Axm`](@ref mim::Axm)'s signature is fixed, since normalizers and backends match on it, and an interface `Lam` (an external, an annex, or a foreign declaration) has callers outside the phase's reach.
 
-So wherever a type is *checked*, every [`RWPhase`](@ref mim::RWPhase) [`coerce()`s](@ref mim::RWPhase::coerce) the rewritten value to the rewritten expected type:
+So wherever a type is _checked_, every [`RWPhase`](@ref mim::RWPhase) [`coerce()`s](@ref mim::RWPhase::coerce) the rewritten value to the rewritten expected type:
 
 - an [`App`](@ref mim::App)'s argument to the callee's domain, and its result to the `App`'s type,
 - a [`Tuple`](@ref mim::Tuple)'s ops to the components of its annotated type - an inferred one just follows the rewritten ops,
@@ -383,8 +385,8 @@ So wherever a type is *checked*, every [`RWPhase`](@ref mim::RWPhase) [`coerce()
 Coercion matches value and type leaf by leaf: it explodes and reassembles tuples, η-wraps a function whose `Pi` differs, and drops or fills in components that have a sole [`inhabitant`](@ref mim::World::inhabitant).
 Where nothing was reshaped, value and type are already [assignable](@ref mim::Check::coerce) and coercion is the identity.
 
-This lets the phase decide its representation *per type* instead of first pinning every shape that could meet a fixed one in an [`Analysis`](@ref mim::Analysis).
-To keep a shape fixed by its *position*, rewrite it with a [nested Rewriter](@ref rewriter_nested):
+This lets the phase decide its representation _per type_ instead of first pinning every shape that could meet a fixed one in an [`Analysis`](@ref mim::Analysis).
+To keep a shape fixed by its _position_, rewrite it with a [nested Rewriter](@ref rewriter_nested):
 [`Scalarize`](@ref mim::Scalarize) rewrites everything an interface `Lam`'s signature mentions with its `Keep` rewriter, where no `Pi` gets flattened.
 The very same `Pi` elsewhere is flattened in context `0`, and coercion bridges both wherever they meet.
 
