@@ -120,7 +120,14 @@ const Def* Analysis::lookup(const Def* def) {
     return world().annexes().opaque(def) ? def : nullptr;
 }
 
+/// find_unknowns() skips ground Def%s, so a sentinel must come from Analysis::proxy().
+static bool is_tracked(const Def* abstr) {
+    auto proxy = abstr->isa<Proxy>();
+    return !proxy || proxy->tracks_vars();
+}
+
 bool Analysis::lattice_force(const Def* concr, const Def* abstr) {
+    assert(is_tracked(abstr) && "create sentinels with Analysis::proxy()");
     if (is_singleton(concr)) return false;
     map(concr, abstr);
 
@@ -132,6 +139,7 @@ bool Analysis::lattice_force(const Def* concr, const Def* abstr) {
 }
 
 bool Analysis::lattice(const Def* concr, const Def* abstr) {
+    assert(is_tracked(abstr) && "create sentinels with Analysis::proxy()");
     if (is_singleton(concr)) return false;
     map(concr, abstr);
 
@@ -159,12 +167,15 @@ const Def* Analysis::rewrite_known(const App* app) {
 }
 
 const Def* Analysis::known_edge(Lam* lam, DefVec abstr_targs) {
+    assert(abstr_targs.size() == lam->num_tvars() && "one abstract arg per tvar");
     if (lam->is_dependent()) {
         log().d("dependent signature; keeping all vars: {}", lam);
         for (auto var : lam->tvars())
             pin(var);
     } else {
-        lattice(lam->var(), world().tuple(join_args(lam, abstr_targs)));
+        auto abstr_vars = join_args(lam, abstr_targs);
+        assert(abstr_vars.size() == lam->num_tvars() && abstr_targs.size() == lam->num_tvars());
+        lattice(lam->var(), world().tuple(abstr_vars));
     }
     return abstract_app(lam, world().tuple(abstr_targs));
 }
@@ -238,7 +249,9 @@ const Def* Analysis::rewrite_mut(Def* mut) {
     if (lookup(mut)) return mut; // already scheduled this round
     map(mut, mut);
     worklist_.emplace_back(mut);
-    return Rewriter::rewrite_mut(mut);
+    [[maybe_unused]] auto res = Rewriter::rewrite_mut(mut);
+    assert(res == mut && "an Analysis observes a mutable but never rebuilds it");
+    return mut;
 }
 
 void Analysis::drain() {

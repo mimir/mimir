@@ -44,13 +44,18 @@ public:
     class Pop {
     public:
         explicit Pop(Rewriter& rw)
-            : rw_(rw) {}
-        ~Pop() { rw_.pop(); }
+            : rw_(rw)
+            , depth_(rw.scopes_.size()) {}
+        ~Pop() {
+            assert(rw_.scopes_.size() == depth_ && "a scope pushed inside scoped() must be popped inside it");
+            rw_.pop();
+        }
         Pop(const Pop&)            = delete;
         Pop& operator=(const Pop&) = delete;
 
     private:
         Rewriter& rw_;
+        size_t depth_;
     };
 
     /// push()es a scope that lives as long as the returned Pop.

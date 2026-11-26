@@ -25,6 +25,9 @@ namespace mim {
 class DS2CPS : public RWPhase {
 public:
     using RWPhase::RWPhase;
+    ~DS2CPS() override {
+        assert((std::uncaught_exceptions() || pending_.empty()) && "a call lifted outside of any Lam is never wired");
+    }
 
 protected:
     /// RAII guard for rewriting the body of one mutable Lam:
