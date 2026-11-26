@@ -1,0 +1,19 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin core;
+import compile;
+
+extern lam _compile (): compile.Phase = core.legalize_dyn_idx;
+
+// An `Idx n` with a dynamic `n` becomes `I64`, also as the size of an operation, without a modulus.
+extern lam f (n: Nat, a b: Idx n, c: I8): [Idx n, Bool, I32] =
+    let x = core.wrap.add 0 (a, b);
+    (core.wrap.mul 0 (x, core.idx 0 n 3), core.icmp.ul (x, b), core.conv.u i32 (core.conv.u n c));
+
+// CHECK: extern lam f (_: Nat, a: I64, b: I64, c: I8) as {{_[0-9]+}}: [I64, Bool, I32] =
+// CHECK-NOT: Idx
+// CHECK-NOT: core.rem
+// CHECK-DAG: core.wrap.add 0 @ 0 (a, b);
+// CHECK-DAG: core.wrap.mul 0 @ 0 (3I64, x);
+// CHECK-DAG: core.icmp.XygLe @ 0 (x, b);
+// CHECK-DAG: core.conv.u @ i8 0 c;

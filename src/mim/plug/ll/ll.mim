@@ -24,6 +24,12 @@ import compile;
 ///
 axm emit: compile.Phase;
 ///
+/// ### drop_hints
+///
+/// Drops the annotations `vec` and `novec`, which only `emit` reads, so that another backend sees the plain values.
+///
+axm drop_hints: compile.Phase;
+///
 /// ## Annotations
 ///
 /// ### vec

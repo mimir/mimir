@@ -1,0 +1,19 @@
+add_mim_plugin(mach
+    SOURCES
+        color.cpp
+        constrain.cpp
+        emit.cpp
+        gen.cpp
+        isel.cpp
+        legalize.cpp
+        libm.cpp
+        live.cpp
+        liveness.cpp
+        mach.cpp
+        normalizers.cpp
+        schedule.cpp
+        spilling.cpp
+        subst.cpp
+    PRIVATE
+        pbqp
+)

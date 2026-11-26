@@ -3,6 +3,10 @@
 // RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t "0"; test $? -eq 1
 // RUN: %t "1"; test $? -eq 0
+// RUN: %if native %{ %mim -p opt %s -p %native -X %native:o=%t.s %}
+// RUN: %if native %{ clang %t.s -o %t.native %}
+// RUN: %if native %{ %t.native "0"; test $? -eq 1 %}
+// RUN: %if native %{ %t.native "1"; test $? -eq 0 %}
 
 plugin mem;
 plugin regex;

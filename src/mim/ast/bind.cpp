@@ -106,7 +106,15 @@ public:
 
         auto& scope = top();
         if (rebind) {
-            scope[dbg.sym()] = Bind{decl, vis};
+            auto [i, ins] = scope.try_emplace(dbg.sym(), Bind{decl, vis});
+            if (!ins) {
+                // An annex is registered by name, so it must not shadow another one.
+                if (!quiet && decl->is_anx() && i->second.decl->is_anx())
+                    error()
+                        .e(dbg.loc(), "redeclaration of `{}`", dbg)
+                        .n(i->second.decl->dbg().loc(), "previous declaration here");
+                i->second = Bind{decl, vis};
+            }
         } else if (auto [i, ins] = scope.try_emplace(dbg.sym(), Bind{decl, vis}); !ins) {
             auto prev = i->second.decl;
             if (!quiet && !prev->isa<DummyDecl>()) // if prev stems from an error - don't complain
@@ -229,11 +237,19 @@ void Path::bind(Scopes& s, bool quiet) const {
 // clang-format off
 void PathExpr   ::bind(Scopes& s) const { path()->bind(s); }
 void TypeExpr   ::bind(Scopes& s) const { level()->bind(s); }
-void RuleExpr   ::bind(Scopes& s) const { dom()->bind(s); }
 void ErrorExpr  ::bind(Scopes&) const {}
 void HoleExpr   ::bind(Scopes&) const {}
 void PrimaryExpr::bind(Scopes&) const {}
 // clang-format on
+
+void RuleExpr::bind(Scopes& s) const {
+    s.push();
+    if (meta()) meta()->bind(s, true, false);
+    lhs()->bind(s);
+    guard()->bind(s);
+    rhs()->bind(s);
+    s.pop();
+}
 
 void LitExpr::bind(Scopes& s) const {
     if (type()) {
@@ -527,17 +543,18 @@ bool RecDecl::has_mut_body() const {
 }
 
 void RecDecl::bind_decl(Scopes& s) const {
+    s.bind(dbg(), this);
+    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_, body());
+}
+
+void RecDecl::bind_body(Scopes& s) const {
     // A `nom` over any other body is merely not recursive.
     if (!isa<NomDecl>() && !has_mut_body())
         s.error()
             .e(body()->loc(), "unsupported expression in a recursive declaration")
             .n("must be a sigma, a variant, or a function type; use `lam`/`con`/`fun` to declare a recursive function");
-
-    s.bind(dbg(), this);
-    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_, body());
+    body()->bind(s);
 }
-
-void RecDecl::bind_body(Scopes& s) const { body()->bind(s); }
 
 void NomDecl::bind_body(Scopes& s) const {
     rep_vis_ = s.top_decl() ? s.top_decl()->vis() : Vis::Pub;
@@ -577,15 +594,15 @@ void LamDecl::bind_decl(Scopes& s) const {
 
     s.pop();
     s.bind(dbg(), this);
-    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_, nom_sugar() ? nom_sugar()->body() : nullptr);
+    if (is_anx()) annex_ = s.ast().name2annex(s, dbg(), &sub_, rec_sugar() ? rec_sugar()->body() : nullptr);
 }
 
 void LamDecl::bind_body(Scopes& s) const {
     s.push();
     for (auto dom : doms())
         dom->bind(s, true);
-    if (auto nom = nom_sugar())
-        nom->bind_body(s);
+    if (auto rec = rec_sugar())
+        rec->bind_body(s);
     else if (body())
         body()->bind(s);
     s.pop();
@@ -640,16 +657,6 @@ void UseDecl::bind(Scopes& s) const {
             if (auto use = prev->isa<UseDecl>(); use && use->file() == file()) return;
 
     scope_ = mod;
-    s.bind(dbg(), this);
-}
-
-void RuleDecl::bind(Scopes& s) const {
-    s.push();
-    var()->bind(s, true, false);
-    lhs()->bind(s);
-    rhs()->bind(s);
-    guard()->bind(s);
-    s.pop();
     s.bind(dbg(), this);
 }
 

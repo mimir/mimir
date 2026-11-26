@@ -1,0 +1,13 @@
+// RUN: %mim %s
+// A recursive type stays α-equivalent to each of several distinct copies of itself.
+rec A = | Nil | Cons: A;
+rec B = | Nil | Cons: B;
+rec C = | Nil | Cons: C;
+
+lam f (a: A, b: B): Nat = 0;
+let g: [C, C] → Nat = f;
+let h: C → Nat = λ (c: C): Nat = f (c, c);
+
+lam List (T: *) = rec L = | Nil | Cons: [T, L]; L;
+lam k (T U: *) (a: List T, k: List U → Nat): Nat = 0;
+let _: [List Nat, List Nat → Nat] → Nat = k (Nat, Nat);

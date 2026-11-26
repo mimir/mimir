@@ -1,0 +1,14 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+lam id {T: *} (x: T): T = x;
+
+let a: ? = 23I32;
+let b: «2; ?» = (1I8, 2I8);
+
+extern lam f (x: I32): ? = id @? x;
+extern lam g (x: ?): I32 = id x;
+extern lam h (i: Idx 2): I8 = b#i;
+
+// CHECK-DAG: extern lam f (x: I32): I32 =
+// CHECK-DAG: extern lam g ({{x[_0-9]*}}: I32): I32 =
+// CHECK-DAG: extern lam h (i: Bool): I8 =

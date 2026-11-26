@@ -89,8 +89,8 @@ extern lam _default_compile (): compile.Phase =
 
         // type legalization
         compile.nom_erasure,
-        compile.join2variant,
         compile.single_erasure,
+        core.lower_dyn_extract,
         core.lower_variant,
         core.legalize_idx,
 
@@ -102,6 +102,33 @@ extern lam _default_compile (): compile.Phase =
         mem.alloc2malloc_repl,
         compile.named "refly.remove_dbg_repl",
         compile.named "gpu.check_addr_spaces_repl",
+
+        // llvm
         compile.named "ll.emit",
         compile.named "nvptx.emit",
+
+        // x86
+        compile.cond "x86" (compile.named "ll.drop_hints"),
+        compile.cond "x86" (compile.named "mach.libm"),
+        compile.cond "x86" mem.add_mem,
+        compile.cond "x86" core.legalize_dyn_idx,
+        compile.cond "x86" (compile.named "mach.legalize"),
+        compile.named "x86.isel",
+        compile.cond "x86" (compile.named "mach.schedule"),
+        compile.cond "x86" (compile.named "mach.spilling"),
+        compile.cond "x86" (compile.named "mach.constrain"),
+        compile.cond "x86" (compile.named "mach.color"),
+        compile.named "x86.emit",
+
+        // arm
+        compile.cond "arm" (compile.named "ll.drop_hints"),
+        compile.cond "arm" (compile.named "mach.libm"),
+        compile.cond "arm" mem.add_mem,
+        compile.cond "arm" core.legalize_dyn_idx,
+        compile.cond "arm" (compile.named "mach.legalize"),
+        compile.named "arm.isel",
+        compile.cond "arm" (compile.named "mach.schedule"),
+        compile.cond "arm" (compile.named "mach.spilling"),
+        compile.cond "arm" (compile.named "mach.color"),
+        compile.named "arm.emit",
     );

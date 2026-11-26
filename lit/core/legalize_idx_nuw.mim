@@ -1,0 +1,17 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin core;
+plugin compile;
+
+extern lam _compile (): compile.Phase = compile.phases ff (core.legalize_idx);
+
+// Without unsigned wrap, values of `Idx 5` stay in range, so the ops run on the widened `I8` as they are.
+extern lam add_nuw (a b: Idx 5): Idx 5 = core.wrap.add 2 (a, b);
+extern lam mul_nsuw (a b: Idx 5): Idx 5 = core.wrap.mul 3 (a, b);
+extern lam lt (a b: Idx 5): Bool = core.icmp.ul (a, b);
+
+// CHECK-NOT: core.conv.u
+// CHECK-DAG: core.wrap.add 2 @ i8
+// CHECK-DAG: core.wrap.mul 3 @ i8
+// CHECK-DAG: core.icmp.{{[a-zA-Z]+}} @ i8
+// CHECK-NOT: core.conv.u

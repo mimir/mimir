@@ -6,9 +6,135 @@ At a high level, a phase is a self-contained compiler transformation or analysis
 Phases are intended to do one thing at a time and compose in a straightforward sequence.
 See also the [Rewriting Guide](@ref rewriting), since several phase families are built directly on top of [`Rewriter`](@ref mim::Rewriter).
 
-## Overview
+## Overview {#phases_overview}
 
-A [`Phase`](@ref mim::Phase) has a single entry point, [`run()`](@ref mim::Phase::run), which wraps the actual implementation in [`start()`](@ref mim::Phase::start).
+### Choosing a Base Class
+
+- [`Phase`](@ref mim::Phase) is the minimal base class for a custom one-off action.
+- [`Analysis`](@ref mim::Analysis) is a graph-aware traversal that computes facts on the current world to a fixed point and records them in its [`lattice()`](@ref mim::Analysis::lattice).
+- [`RWPhase`](@ref mim::RWPhase) rebuilds the current world into a transformed new one, optionally reading the facts of an [associated `Analysis`](@ref phases_pre_analysis) through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
+  It [coerces](@ref phases_coercion) reshaped values wherever they meet a fixed shape.
+- [`PhaseMan`](@ref mim::PhaseMan) sequences phases, optionally to a fixed point.
+- [`ClosedMutPhase`](@ref mim::ClosedMutPhase) visits all reachable closed mutables, and [`NestPhase`](@ref mim::NestPhase) additionally computes a [`Nest`](@ref mim::Nest) for each.
+
+### Hooks at a Glance {#phases_hooks}
+
+[`Analysis`](@ref mim::Analysis) and [`RWPhase`](@ref mim::RWPhase) are [`Rewriter`](@ref mim::Rewriter)s with many virtual methods, but a phase usually overrides only two or three of them.
+The graphs show who calls whom; blue boxes are hooks to override, white ones are helpers to call, and gray ones are internals.
+The sections below explain each piece.
+
+@dot
+digraph rwphase {
+rankdir=LR;
+node [shape=box, fontname="Helvetica", fontsize=10, style=filled, fillcolor="#dbeafe"];
+edge [color="#555555"];
+
+    run [label="run()", fillcolor="#e5e7eb", URL="\ref mim::Phase::run"];
+    start [label="start()", fillcolor="#e5e7eb", URL="\ref mim::RWPhase::start"];
+    analyze [label="analyze()", URL="\ref mim::RWPhase::analyze"];
+    ext [label="rewrite_external()", URL="\ref mim::RWPhase::rewrite_external"];
+    finalize [label="finalize()", URL="\ref mim::RWPhase::finalize"];
+    rewrite [label="rewrite()", URL="\ref mim::Rewriter::rewrite"];
+    lookup [label="lookup()", URL="\ref mim::RWPhase::lookup"];
+    retype [label="retype()", URL="\ref mim::RWPhase::retype"];
+    imm [label="rewrite_imm()", URL="\ref mim::Rewriter::rewrite_imm"];
+    immN [label="rewrite_imm_App()\nrewrite_imm_Tuple()\nrewrite_imm_*()"];
+    mut [label="rewrite_mut()", URL="\ref mim::Rewriter::rewrite_mut"];
+    mutN [label="rewrite_mut_Lam()\nrewrite_mut_*()"];
+    stub [label="rewrite_stub()", URL="\ref mim::RWPhase::rewrite_stub"];
+    ops [label="rewrite_ops()", URL="\ref mim::RWPhase::rewrite_ops"];
+    fill [label="fill()", fillcolor="white", URL="\ref mim::RWPhase::fill"];
+    coerce [label="coerce()", fillcolor="white", URL="\ref mim::RWPhase::coerce"];
+    leaf [label="coerce_leaf()", URL="\ref mim::RWPhase::coerce_leaf"];
+    lift [label="DS2CPS::lift()", fillcolor="white", URL="\ref mim::DS2CPS::lift"];
+    analysis [label="Analysis::run()\n(see below)", fillcolor="#e5e7eb"];
+
+    run -> start;
+    start -> analyze -> analysis;
+    start -> ext -> rewrite;
+    start -> finalize;
+    rewrite -> lookup -> retype;
+    rewrite -> imm -> immN;
+    rewrite -> mut -> mutN -> stub -> ops;
+    mutN -> fill -> ops;
+    stub -> coerce;
+    immN -> coerce -> leaf;
+    immN -> lift [style=dashed];
+
+}
+@enddot
+
+@dot
+digraph analysis {
+rankdir=LR;
+node [shape=box, fontname="Helvetica", fontsize=10, style=filled, fillcolor="#dbeafe"];
+edge [color="#555555"];
+
+    run [label="run()", fillcolor="#e5e7eb", URL="\ref mim::Phase::run"];
+    start [label="start()", fillcolor="#e5e7eb", URL="\ref mim::Analysis::start"];
+    reset [label="reset()", URL="\ref mim::Analysis::reset"];
+    prepare [label="prepare()", URL="\ref mim::Analysis::prepare"];
+    ext [label="rewrite_external()", URL="\ref mim::Analysis::rewrite_external"];
+    drain [label="drain()", fillcolor="#e5e7eb"];
+    leave [label="leave()", URL="\ref mim::Analysis::leave"];
+    finalize [label="finalize()", URL="\ref mim::Analysis::finalize"];
+    rewrite [label="rewrite()", URL="\ref mim::Analysis::rewrite"];
+    mut [label="rewrite_mut()\nschedules", fillcolor="#e5e7eb", URL="\ref mim::Analysis::rewrite_mut"];
+    mutN [label="rewrite_mut_*()\nobserves"];
+    immN [label="rewrite_imm_App()\nrewrite_imm_*()"];
+    known [label="rewrite_known()", fillcolor="white", URL="\ref mim::Analysis::rewrite_known"];
+    edge_ [label="known_edge()", fillcolor="white", URL="\ref mim::Analysis::known_edge"];
+    join [label="join_args()", URL="\ref mim::Analysis::join_args"];
+    aapp [label="abstract_app()", fillcolor="white", URL="\ref mim::Analysis::abstract_app"];
+    lattice [label="lattice() / pin()\ntaint()", fillcolor="white", URL="\ref mim::Analysis::lattice"];
+    unknowns [label="find_unknowns()", fillcolor="white", URL="\ref mim::Analysis::find_unknowns"];
+    hooks [label="known_call()\nneeds_arg()\nunknown()\nreach()"];
+    rwphase [label="RWPhase::analyze()", fillcolor="#e5e7eb", URL="\ref mim::RWPhase::analyze"];
+
+    rwphase -> reset;
+    rwphase -> run -> start;
+    start -> prepare;
+    start -> ext -> rewrite;
+    start -> drain -> rewrite;
+    drain -> leave;
+    start -> finalize -> unknowns -> hooks;
+    rewrite -> mut -> mutN;
+    rewrite -> immN -> known -> edge_ -> join;
+    edge_ -> aapp;
+    join -> lattice;
+
+}
+@enddot
+
+| Class | Override to | Call to |
+| :--- | :--- | :--- |
+| [`Phase`](@ref mim::Phase) | do anything: [`start()`](@ref mim::Phase::start)<br>take [`Phase`](@ref mim::Phase) arguments: [`apply()`](@ref mim::Phase::apply) | request another round: [`invalidate()`](@ref mim::Phase::invalidate) |
+| [`Rewriter`](@ref mim::Rewriter) | rewrite a node: `rewrite_imm_*()` / `rewrite_mut_*()`<br>intercept every Def: [`rewrite()`](@ref mim::Rewriter::rewrite) | substitute: [`map()`](@ref mim::Rewriter::map)<br>scope substitutions to Vars: [`scoped()`](@ref mim::Rewriter::scoped), [`bind_old()`](@ref mim::Rewriter::bind_old) / [`bind_new()`](@ref mim::Rewriter::bind_new) ([Scopes](@ref rewriter_scopes))<br>rewrite one Def differently by position: a [nested Rewriter](@ref rewriter_nested)<br>track the current mutable: [`enter()`](@ref mim::Rewriter::enter) / [`curr_mut()`](@ref mim::Rewriter::curr_mut)<br>finish a hand-filled stub: [`seal()`](@ref mim::Rewriter::seal)<br>drop or reorder a mutable's ops: [`rewrite_stub(old, new, new2old)`](@ref rewriter_reshaping) |
+| [`Analysis`](@ref mim::Analysis) | join at a known call: [`join_args()`](@ref mim::Analysis::join_args)<br>per-round setup: [`prepare()`](@ref mim::Analysis::prepare)<br>post-pass in full rounds: [`finalize()`](@ref mim::Analysis::finalize)<br>after a mutable's body: [`leave()`](@ref mim::Analysis::leave)<br>walk for unknown Lams: [`known_call()`](@ref mim::Analysis::known_call), [`needs_arg()`](@ref mim::Analysis::needs_arg), [`unknown()`](@ref mim::Analysis::unknown), [`reach()`](@ref mim::Analysis::reach) | record facts: [`lattice()`](@ref mim::Analysis::lattice), [`pin()`](@ref mim::Analysis::pin), [`lattice_force()`](@ref mim::Analysis::lattice_force), [`lattice_erase()`](@ref mim::Analysis::lattice_erase)<br>revisit other mutables: [`taint()`](@ref mim::Analysis::taint), [`touch()`](@ref mim::Analysis::touch)<br>known calls: [`rewrite_known()`](@ref mim::Analysis::rewrite_known), [`known_edge()`](@ref mim::Analysis::known_edge), [`abstract_app()`](@ref mim::Analysis::abstract_app)<br>unknown Lams: [`find_unknowns()`](@ref mim::Analysis::find_unknowns), [`unknowns()`](@ref mim::Analysis::unknowns)<br>a sentinel: [`proxy()`](@ref mim::Analysis::proxy) |
+| [`RWPhase`](@ref mim::RWPhase) | post-process a Lam's filter or body: [`rewrite_ops()`](@ref mim::RWPhase::rewrite_ops)<br>convert a reshaped leaf: [`coerce_leaf()`](@ref mim::RWPhase::coerce_leaf)<br>rebuild an opaque Axm: [`retype()`](@ref mim::RWPhase::retype)<br>exempt the externals: [`rewrite_external()`](@ref mim::RWPhase::rewrite_external)<br>drain deferred work: [`finalize()`](@ref mim::RWPhase::finalize) | read the analysis: [`lattice()`](@ref mim::RWPhase::lattice), [`abstracted()`](@ref mim::RWPhase::abstracted)<br>fill a reshaped Lam: [`fill()`](@ref mim::RWPhase::fill)<br>bridge representations: [`coerce()`](@ref mim::RWPhase::coerce) |
+| [`DS2CPS`](@ref mim::DS2CPS) | — | lift a direct-style call: [`lift()`](@ref mim::DS2CPS::lift), if [`liftable()`](@ref mim::DS2CPS::liftable) |
+| [`Repl`](@ref mim::Repl) | replace a pattern: [`replace()`](@ref mim::Repl::replace) | — |
+
+The rule of thumb: override the most specific hook that sees what you need.
+A phase that rewrites one kind of node overrides its `rewrite_imm_*()`, one that post-processes a Lam's filter or body overrides [`rewrite_ops()`](@ref mim::RWPhase::rewrite_ops), and only one that builds a differently typed Lam overrides `rewrite_mut_Lam()` - and then fills it with [`fill()`](@ref mim::RWPhase::fill).
+
+### Invariants {#phases_invariants}
+
+Phases rebuild immutable, hash-consed graphs instead of editing them in place, so there are no use lists to keep consistent.
+What takes their place are the invariants below; a phase that breaks one usually still compiles and silently goes wrong.
+
+| Invariant                                                                           | Why                                                                                                                                                                                | Enforced by                                                                                                   |
+| :---------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------ |
+| An [`Analysis`](@ref mim::Analysis) observes a mutable but never rebuilds it.       | Its `mut ↦ mut` entry is the per-round "already scheduled" marker, and the breadth-first drain relies on mutables staying in place.                                                | assertion in [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut)                                               |
+| A sentinel in the lattice tracks its Vars.                                          | [`find_unknowns()`](@ref mim::Analysis::find_unknowns) skips ground Defs, so an untracked [`Proxy`](@ref mim::Proxy) would never reach [`reach()`](@ref mim::Analysis::reach).     | [`proxy()`](@ref mim::Analysis::proxy); assertion in [`lattice()`](@ref mim::Analysis::lattice)               |
+| A known call has one abstract argument and one abstract var per tvar.               | [`known_edge()`](@ref mim::Analysis::known_edge) records `var ↦ (v₀, …, vₙ)` and the call from them.                                                                               | assertions in [`known_edge()`](@ref mim::Analysis::known_edge)                                                |
+| The parameters of an [unknown](@ref phases_unknown_lams) Lam are ⊤.                 | The join only sees the call sites of a known Lam.                                                                                                                                  | [`find_unknowns()`](@ref mim::Analysis::find_unknowns) from [`finalize()`](@ref mim::Analysis::finalize)      |
+| Analysis rounds may build ill-typed terms; the final rewrite may not.               | Optimistic substitution reaches dependent types before the fixed point; the strict [`RWPhase`](@ref mim::RWPhase) rewrite is the soundness check.                                  | [`Analysis::start()`](@ref mim::Analysis::start) runs under `World::lenient()`                                |
+| Only full rounds run [`finalize()`](@ref mim::Analysis::finalize).                  | A sparse round sees part of the World, so a post-pass would miss facts.                                                                                                            | [`Analysis::start()`](@ref mim::Analysis::start)                                                              |
+| A scope opened by [`scoped()`](@ref mim::Rewriter::scoped) is the one it pops.      | A mapping that mentions a scope's Vars lives in that scope; popping another one leaks or loses mappings.                                                                           | assertion in [`Rewriter::Pop`](@ref mim::Rewriter::Pop)                                                       |
+| A mapping that mentions a scope's Vars is visible in nested scopes, too.            | Lookup searches from the innermost scope outward, so a value built in a Lam is reused in the Lams it nests. A rewrite that must not be shared with nested Lams needs its own memo. | [`Rewriter::map()`](@ref mim::Rewriter::map); e.g. `tensor.lower_to_mem`'s per-Lam memo of buffer allocations |
+| Every call [`DS2CPS`](@ref mim::DS2CPS) lifts is wired into the Lam that lifted it. | A pending call outside of any Lam would silently vanish.                                                                                                                           | assertions in `DS2CPS::Scope` and `~DS2CPS()`                                                                 |
+| A phase's output depends on the World's content only.                               | [`PhaseMan`](@ref mim::PhaseMan) skips quiet phases, and the output oracles compare gids byte by byte.                                                                             | iteration in gid order (e.g. `GIDLt` for dirty mutables); `scripts/oracle.sh`                                 |
 
 ## Phase {#phases_phase}
 
@@ -124,8 +250,7 @@ Rewriting those dependencies schedules any further mutables it reaches, so the w
 The `mut -> mut` entry recorded in step 2 doubles as the per-round _"already scheduled"_ marker: it lives in the rewriter map (see [`lookup()`](@ref mim::Rewriter::lookup)), which [`reset()`](@ref mim::Analysis::reset) clears at the start of every round.
 Hence each mutable's dependencies are walked **at most once per fixed-point round**, which also prevents cyclic (recursive) CFGs from recursing forever.
 
-@warning Because [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) enqueues instead of dispatching by node, the node-specific `rewrite_mut_*` hooks (e.g. `rewrite_mut_Lam`) are **never invoked** for an [`Analysis`](@ref mim::Analysis).
-Override [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) itself (or the `rewrite_imm_*` hooks, which dispatch as usual) instead.
+@note [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) still dispatches to the node-specific `rewrite_mut_*` hooks (e.g. `rewrite_mut_Lam`) when it schedules a mutable, but they only _observe_ it: its body is walked later, during the drain.
 
 When a `rewrite_imm_App` override propagates abstract values from call arguments into a callee's binder vars, it should seed those lattice entries first and then [`rewrite()`](@ref mim::Rewriter::rewrite) the callee.
 This schedules the callee (or does nothing if it is already scheduled), so its body is walked later during the drain, after the seeded facts — and any joins from sibling call sites — are in place.
@@ -146,11 +271,64 @@ Since dirt tracks _writers_ — not readers — a sparse round may miss affected
 Hence, once sparse rounds quiesce, one final **full** round certifies the fixed point; if it discovers new facts, iteration continues sparsely from its dirt.
 Only full rounds run [`finalize()`](@ref mim::Analysis::finalize), so post-passes always see the complete abstract World.
 Use [`make_dense()`](@ref mim::Analysis::make_dense) to force whole-World rounds unconditionally.
+See [Nested Fixed Points](@ref phases_nested_fixed_points) for how these rounds play together with a pipeline.
 
 ### Reset Between Iterations
 
 If an analysis participates in a fixed-point loop, it should be ready to run multiple times.
 The base [`reset()`](@ref mim::Analysis::reset) clears the rewriter map (and hence the per-round _"already scheduled"_ markers) and the worklist, and resets [`Phase::todo()`](@ref mim::Phase::todo) for the next round, but **preserves** [`lattice()`](@ref mim::Analysis::lattice) so that abstract values accumulated in earlier iterations remain available — this is what makes fixed-point convergence possible.
+
+### Known Calls {#phases_known_calls}
+
+Most analyses of MimIR's CPS programs treat a call of a [`Lam`](@ref mim::Lam) as the edge into a basic block: each argument flows into its parameter.
+[`known_edge(lam, abstr_targs)`](@ref mim::Analysis::known_edge) is that edge's skeleton.
+For a dependent signature it pins every parameter to ⊤; otherwise it asks the hook [`join_args()`](@ref mim::Analysis::join_args) for the parameters' new abstract values and records `lam->var() ↦ (v₀, …, vₙ)`.
+It returns the call in the abstract domain via [`abstract_app()`](@ref mim::Analysis::abstract_app), which keeps the checked, normalizing [`World::app`](@ref mim::World::app) only for an [`Axm`](@ref mim::Axm) and uses a raw App otherwise, since abstract operands need not match the domain.
+
+A subclass detects the call in `rewrite_imm_App` - typically [`Lam::isa_rewritable`](@ref mim::Lam::isa_rewritable) on the _abstract_ callee, so a branch that folds to one target counts as known - and overrides [`join_args()`](@ref mim::Analysis::join_args) with its own lattice:
+SCCP propagates each argument, ADCE assumes a parameter dead until proven live, and `mem.seo` adds GVN and the φs of promoted slots.
+[`join_args()`](@ref mim::Analysis::join_args) may also canonicalize the arguments, e.g. `mem.seo` strips EtaConv's per-occurrence wrappers.
+
+### Unknown Lams {#phases_unknown_lams}
+
+A [`Lam`](@ref mim::Lam) is _known_ if it only occurs as the callee of an [`App`](@ref mim::App), and _unknown_ otherwise, i.e. if it is also used as a value.
+An escaping `Lam` is unknown, but an unknown `Lam` need not escape: the targets of a branch `(f, t)#c ()` are unknown, since the callee is the Extract, not `f` or `t`.
+The join of [Known Calls](#phases_known_calls) only sees the call sites of a known `Lam`, so the parameters of an unknown one must be ⊤.
+
+[`find_unknowns()`](@ref mim::Analysis::find_unknowns) walks the abstract World from its externals and calls [`unknown()`](@ref mim::Analysis::unknown) - which pins the `Lam`'s var and parameters by default - for every `Lam` it reaches as a value.
+Call it from [`finalize()`](@ref mim::Analysis::finalize), so it sees the complete abstract World of a full round; a newly pinned parameter triggers another round.
+The walk takes four hooks:
+
+- [`known_call()`](@ref mim::Analysis::known_call) says which `Lam` an App calls and with which arguments; `mem.seo` also counts the jump of a `mem.slot` into its continuation,
+- [`needs_arg()`](@ref mim::Analysis::needs_arg) skips the arguments of parameters the rewrite drops, so their values are not used,
+- [`unknown()`](@ref mim::Analysis::unknown) may record the `Lam`, e.g. so that the rewrite keeps its signature,
+- [`reach()`](@ref mim::Analysis::reach) handles a surviving [`Proxy`](@ref mim::Proxy), whose dependencies are meta information and never walked.
+
+### Typical Shape
+
+```cpp
+class CountMutLams : public mim::Analysis {
+public:
+    CountMutLams(mim::World& world)
+        : Analysis(world, "count_lams") {}
+
+    size_t num_lams = 0;
+
+private:
+    // Called once per round, when the Lam is first scheduled (see "Handling of Mutables").
+    const mim::Def* rewrite_mut_Lam(mim::Lam* lam) override {
+        ++num_lams;
+        return mim::Analysis::rewrite_mut_Lam(lam);
+    }
+};
+```
+
+Run it with:
+
+```cpp
+CountMutLams analysis(world);
+analysis.run();
+```
 
 ## RWPhase {#phases_rwphase}
 
@@ -176,27 +354,21 @@ Use:
 
 After the final swap, the rewritten world becomes the current one.
 
-### Optional Pre-Analysis
+### Optional Pre-Analysis {#phases_pre_analysis}
 
 An [`RWPhase`](@ref mim::RWPhase) may be given an associated [`Analysis`](@ref mim::Analysis).
-If so, [`analyze()`](@ref mim::RWPhase::analyze) runs that analysis to a fixed point before rewriting begins.
+If so, [`analyze()`](@ref mim::RWPhase::analyze) runs that analysis to a fixed point before rewriting begins; otherwise, it simply returns `false`.
+The rewrite then queries the facts through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice), which returns the abstract value the analysis computed for an **old-world** [`Def`](@ref mim::Def), or `nullptr` if there is none.
+Facts kept in auxiliary side tables of the analysis are read directly.
 
-This is a common pattern:
+Splitting a nontrivial optimization this way keeps both parts simple:
 
-- the analysis computes facts on the old world,
-- those facts are stored in [`Analysis::lattice()`](@ref mim::Analysis::lattice) and/or auxiliary side tables,
-- the rewrite queries them through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
+- the analysis never mutates or partially rewrites the program,
+- the rewrite does not need to discover facts on the fly,
+- fixed-point logic stays in the analysis stage where it belongs,
+- the handoff from analysis to rewrite is explicit through [`Analysis::lattice()`](@ref mim::Analysis::lattice) and [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
 
-If no analysis is needed, [`analyze()`](@ref mim::RWPhase::analyze) can simply return `false`.
-
-### Analysis Results
-
-Once [`analyze()`](@ref mim::RWPhase::analyze) has run, the rewrite can query the analysis result through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
-
-[`RWPhase::lattice()`](@ref mim::RWPhase::lattice) provides access to the analysis lattice for **old-world** [`Def`s](@ref mim::Def).
-It returns the abstract value computed by the associated [`Analysis`](@ref mim::Analysis), or `nullptr` if no value is available.
-
-This is the standard way to communicate fixed-point analysis results into the subsequent rewrite.
+[SCCP](@ref phases_sccp) is the worked example of this pattern.
 
 ### Annexes {#phases_annexes}
 
@@ -221,6 +393,18 @@ For example, a closure-converting phase must create a function stub eagerly so c
 Push such work onto your own worklist and drain it in [`finalize()`](@ref mim::RWPhase::finalize), which runs after all roots have been walked but still before the two worlds are swapped
 (see [`clos::phase::ClosConv`](@ref mim::plug::clos::phase::ClosConv)).
 
+### Filling a Lam
+
+[`rewrite_stub()`](@ref mim::RWPhase::rewrite_stub) fills the stub of a rewritten [`Lam`](@ref mim::Lam) with the results of [`rewrite_ops()`](@ref mim::RWPhase::rewrite_ops) and [coerces](@ref phases_coercion) the body to the codomain.
+A phase that post-processes a `Lam`'s filter or body overrides [`rewrite_ops()`](@ref mim::RWPhase::rewrite_ops) instead of re-implementing the stub logic in `rewrite_mut_Lam`; [`DispatchNormalize`](@ref mim::DispatchNormalize) is a small example.
+
+### Lifting Direct-Style Calls {#phases_ds2cps}
+
+A call is CPS in MimIR, so a phase that lowers an operation to a call must split the continuation it occurs in.
+[`DS2CPS`](@ref mim::DS2CPS) does that: within the body of a continuation, [`lift(k, args, T)`](@ref mim::DS2CPS::lift) turns the direct-style call `k args` into the pending call `k (args, cont)` with a fresh `cont: Cn T` and returns `cont`, whose var replaces the call.
+When the body is done, [`rewrite_ops()`](@ref mim::RWPhase::rewrite_ops) wires the pending calls in front of it, in encounter order, which respects data dependencies.
+`cps.conv` lifts calls of converted functions, `mach.legalize` lowers `mem.malloc`/`mem.free` to calls of the C functions, and `tensor.lower_to_mem` lifts `mem.fresh` to obtain a distinct memory for each buffer it allocates.
+
 ### Cleanup
 
 [`Cleanup`](@ref mim::Cleanup) is simply an [`RWPhase`](@ref mim::RWPhase) with no custom rewrites.
@@ -228,17 +412,17 @@ Because an [`RWPhase`](@ref mim::RWPhase) reconstructs only what is reachable fr
 
 ### Reshaping Aggregates
 
-A phase that drops or reorders the components of a mutable [`Sigma`](@ref mim::Sigma) changes its number of ops, so it needs the index-mapping overload of [`rewrite_stub`](@ref mim::Rewriter::rewrite_stub) together with [`Sieve`](@ref mim::Sieve) - see [Reshaping Aggregates](@ref rewriting) in the Rewriting Guide.
+A phase that drops or reorders the components of a mutable [`Sigma`](@ref mim::Sigma) changes its number of ops, so it needs the index-mapping overload of [`rewrite_stub`](@ref mim::Rewriter::rewrite_stub) together with [`Sieve`](@ref mim::Sieve) - see [Reshaping Aggregates](@ref rewriter_reshaping) in the Rewriting Guide.
 [`SingleErasure`](@ref mim::SingleErasure) is the canonical user.
 
-[`Sieve`](@ref mim::Sieve) is useful on its own, though: dropping the parameters of a [`Lam`](@ref mim::Lam) changes its *type* rather than its ops, so the SCCP transformation below only uses [`gather`](@ref mim::Sieve::gather) and [`operator[]`](@ref mim::Sieve::operator[]).
+[`Sieve`](@ref mim::Sieve) is useful on its own, though: dropping the parameters of a [`Lam`](@ref mim::Lam) changes its _type_ rather than its ops, so the SCCP transformation below only uses [`gather`](@ref mim::Sieve::gather) and [`operator[]`](@ref mim::Sieve::operator[]).
 
 ### Coercion {#phases_coercion}
 
-An [`RWPhase`](@ref mim::RWPhase) may change how values are *represented* - [`Scalarize`](@ref mim::Scalarize) flattens tuple parameters, [`SingleErasure`](@ref mim::SingleErasure) drops information-free components.
+An [`RWPhase`](@ref mim::RWPhase) may change how values are _represented_ - [`Scalarize`](@ref mim::Scalarize) flattens tuple parameters, [`SingleErasure`](@ref mim::SingleErasure) drops information-free components.
 Such a phase cannot reshape everything: an [`Axm`](@ref mim::Axm)'s signature is fixed, since normalizers and backends match on it, and an interface `Lam` (an external, an annex, or a foreign declaration) has callers outside the phase's reach.
 
-So wherever a type is *checked*, every [`RWPhase`](@ref mim::RWPhase) [`coerce()`s](@ref mim::RWPhase::coerce) the rewritten value to the rewritten expected type:
+So wherever a type is _checked_, every [`RWPhase`](@ref mim::RWPhase) [`coerce()`s](@ref mim::RWPhase::coerce) the rewritten value to the rewritten expected type:
 
 - an [`App`](@ref mim::App)'s argument to the callee's domain, and its result to the `App`'s type,
 - a [`Tuple`](@ref mim::Tuple)'s ops to the components of its annotated type - an inferred one just follows the rewritten ops,
@@ -247,8 +431,8 @@ So wherever a type is *checked*, every [`RWPhase`](@ref mim::RWPhase) [`coerce()
 Coercion matches value and type leaf by leaf: it explodes and reassembles tuples, η-wraps a function whose `Pi` differs, and drops or fills in components that have a sole [`inhabitant`](@ref mim::World::inhabitant).
 Where nothing was reshaped, value and type are already [assignable](@ref mim::Check::coerce) and coercion is the identity.
 
-This lets the phase decide its representation *per type* instead of first pinning every shape that could meet a fixed one in an [`Analysis`](@ref mim::Analysis).
-To keep a shape fixed by its *position*, rewrite it with a [nested Rewriter](@ref rewriter_nested):
+This lets the phase decide its representation _per type_ instead of first pinning every shape that could meet a fixed one in an [`Analysis`](@ref mim::Analysis).
+To keep a shape fixed by its _position_, rewrite it with a [nested Rewriter](@ref rewriter_nested):
 [`Scalarize`](@ref mim::Scalarize) rewrites everything an interface `Lam`'s signature mentions with its `Keep` rewriter, where no `Pi` gets flattened.
 The very same `Pi` elsewhere is flattened in context `0`, and coercion bridges both wherever they meet.
 
@@ -306,6 +490,40 @@ man.run();
 
 Use a fixed-point pipeline when phases expose new optimization opportunities for one another.
 
+<!-- Keep the invisible separator in `M⁠im` so Doxygen does not link this heading to the `mim` namespace in the TOC. -->
+
+### Compilation Pipelines in M⁠im
+
+You can also expose your custom phases as axioms in Mim via the [compile plugin](@ref compile) and build your own compilation pipeline.
+Mim's default compilation pipeline is defined in the [opt plugin](@ref opt).
+
+### Nested Fixed Points {#phases_nested_fixed_points}
+
+A pipeline may nest three fixed points, from the outside in:
+
+1. a fixed-point `compile.phases tt` - a [`PhaseMan`](@ref mim::PhaseMan) - reruns its phases until none of them [`invalidate`s](@ref mim::Phase::invalidate),
+2. an [`RWPhase`](@ref mim::RWPhase) reruns [`analyze()`](@ref mim::RWPhase::analyze) until its [`Analysis`](@ref mim::Analysis) is quiet, and only then rewrites,
+3. that [`Analysis`](@ref mim::Analysis) alternates [full and sparse rounds](@ref phases_analysis).
+
+Each level has its own [`todo()`](@ref mim::Phase::todo), since the [`Analysis`](@ref mim::Analysis) is a [`Phase`](@ref mim::Phase) object of its own.
+So the [`invalidate()`](@ref mim::Phase::invalidate) of a lattice change or of a forced certification round only drives the analysis loop of its [`RWPhase`](@ref mim::RWPhase); it never reaches the [`PhaseMan`](@ref mim::PhaseMan).
+The [`PhaseMan`](@ref mim::PhaseMan) only sees whether the [`RWPhase`](@ref mim::RWPhase) itself [`invalidate`s](@ref mim::Phase::invalidate), i.e. whether its rewrite changed the program - as SCCP's transformation does.
+`--max-fp-iters` bounds the iterations of the first two levels independently.
+
+Sparsity does not carry over from one run of a phase to the next.
+[`PhaseMan`](@ref mim::PhaseMan) recreates a phase before it reruns it, and the previous run's swap has replaced every old-world [`Def`](@ref mim::Def) anyway, so the lattice and the dirty set start out empty.
+Hence, each run of an [`RWPhase`](@ref mim::RWPhase) begins with a full round, and - unless that very round is already quiet - ends with the quiet full round that certifies the fixed point; sparse rounds only pay off in between.
+
+This has two consequences for pipeline design:
+
+- Propagation that can happen inside the [`Analysis`](@ref mim::Analysis) should happen there.
+  Another round of the analysis is sparse and only re-drains the dirty mutables, whereas another pipeline iteration costs at least one full round per analysis plus a complete rebuild of the World.
+- An outer fixed point is cheaper than it looks.
+  [`PhaseMan`](@ref mim::PhaseMan) skips every phase whose last run was quiet as long as no later phase changed the World, so a converged phase pays neither its rewrite nor its full rounds again.
+
+The default pipeline in the [opt plugin](@ref opt) iterates only β-reduction and η-conversion to a fixed point and runs the optimizer pipeline around `mem.seo` once; `-X compile:aggr` makes that outer pipeline a fixed point, too.
+`--profile` reports the `rounds.full`, `rounds.sparse`, and `phases.skipped` counters to see where the rounds go.
+
 ## ClosedMutPhase {#phases_closed_mut_phase}
 
 [`ClosedMutPhase`](@ref mim::ClosedMutPhase) is a traversal helper for phases that visit all reachable, **closed** mutables in the world.
@@ -351,7 +569,7 @@ visit(const Nest&)
 
 This is convenient for analyses that reason about nesting, dominance-like structure, or hierarchical regions.
 
-## Example: SCCP
+## Example: SCCP {#phases_sccp}
 
 \include "mim/phase/sccp.h"
 
@@ -362,6 +580,10 @@ Its architecture is:
 - an outer [`RWPhase`](@ref mim::RWPhase) uses those facts to rebuild a simplified new world.
 
 @note The implementation propagates not only constants but also arbitrary expressions.
+
+@note
+The complete SCCP example is less than 100 lines of C++ source code.
+Most of the usual compiler boilerplate is absorbed by the existing [`Analysis`](@ref mim::Analysis), [`RWPhase`](@ref mim::RWPhase), and [`Rewriter`](@ref mim::Rewriter) infrastructure, so the implementation can focus on the optimization itself.
 
 ### Analysis
 
@@ -383,7 +605,9 @@ The join in `propagate()` is expressed entirely through the lattice API:
 [`pin()`](@ref mim::Analysis::pin) resolves conflicting values to ⊤.
 No manual [`invalidate()`](@ref mim::Phase::invalidate) bookkeeping is needed: every join step that gains information - including the ⊥ → value insert - triggers the next fixed-point round automatically via [`lattice(concr, abstr)`](@ref mim::Analysis::lattice).
 
-The analysis traverses the old world and updates the lattice when it sees applications of optimizable lambdas.
+The analysis traverses the old world and updates the lattice when it sees applications of optimizable lambdas:
+its `join_args()` is the per-parameter `propagate()`, and [`known_edge()`](@ref mim::Analysis::known_edge) does the [rest](#phases_known_calls).
+Its `finalize()` pins the parameters of [unknown lambdas](#phases_unknown_lams), whose call sites the join does not see.
 Whenever this changes the lattice, the analysis reruns until stable - sparsely, re-draining only the dirty mutables in between full rounds.
 This is a textbook use of [`Analysis`](@ref mim::Analysis):
 
@@ -424,21 +648,6 @@ So SCCP follows the standard [`RWPhase`](@ref mim::RWPhase) pattern:
 1. analyze the old world,
 2. rewrite into a new world using the computed facts,
 3. swap worlds.
-
-### Discussion
-
-Separating SCCP into analysis and rewrite keeps both parts simple:
-
-- the analysis never mutates or partially rewrites the program,
-- the rewrite does not need to discover facts on the fly,
-- fixed-point logic stays in the analysis stage where it belongs,
-- the handoff from analysis to rewrite is explicit through [`Analysis::lattice()`](@ref mim::Analysis::lattice) and [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
-
-This separation is the main design pattern to follow for nontrivial optimizations.
-
-@note
-The complete SCCP example is less than 100 lines of C++ source code.
-Most of the usual compiler boilerplate is absorbed by the existing [`Analysis`](@ref mim::Analysis), [`RWPhase`](@ref mim::RWPhase), and [`Rewriter`](@ref mim::Rewriter) infrastructure, so the implementation can focus on the optimization itself.
 
 ### SSA without Dominance {#ssa-without-dominance}
 
@@ -491,7 +700,7 @@ Now the guard reads directly:
   Substituting it for `var` would use those binders before they exist: on entry to `L`, nothing below `L` has been bound yet.
   This is the exact situation dominance forbids, so the analysis pins `var` to ⊤ ([`pin`](@ref mim::Analysis::pin)) instead.
 - A call site _outside_ `L` cannot pass such a value: it passes ⊥, which the [⊥-site check](#sccp-bot-site) handles, or a different value, which joins to ⊤ anyway.
-  But when `L` is only entered through an escaping value, its recursive call sites are the only known ones, and this guard is all that stands in the way.
+  And when `L` is entered through a value instead, `L` is [unknown](#phases_unknown_lams), so its parameters end up ⊤ as well.
 
 In other words, where classical SCCP walks a dominator tree to certify availability, MimIR asks scope questions: _is this value visible at the binder it would replace, and at every caller?_
 [`Def::nests`](@ref mim::Def::nests) and [`Def::in_scope`](@ref mim::Def::in_scope) are those availability oracles, and they fall straight out of the free-variable structure that MimIR maintains anyway — no auxiliary dominance computation required.
@@ -580,99 +789,6 @@ Neither move is carried out by anything; both are readings of the very free-vari
 The contrast with a scoped compiler is sharp.
 MLton runs contification _after_ closure conversion, and Fluet & Weeks describe their own loop example as moving `loop` back inside `sum` after closure conversion took it out — a dominator analysis reconstructing a nesting that an earlier phase destroyed.
 A scopeless IR never loses that nesting, so there is no hoisting-versus-contification phase ordering to get right and no oracle to consult.
-
-## Choosing the Right Base Class
-
-A useful rule of thumb is:
-
-- derive from [`Phase`](@ref mim::Phase) if you just need a custom one-off action,
-- derive from [`Analysis`](@ref mim::Analysis) if you want a graph-aware traversal that computes facts on the current world,
-- derive from [`RWPhase`](@ref mim::RWPhase) if you want to rebuild the world into a transformed new one, optionally consuming facts from an associated [`Analysis`](@ref mim::Analysis),
-- derive from [`ClosedMutPhase`](@ref mim::ClosedMutPhase) if you want to visit all reachable closed mutables,
-- derive from [`NestPhase`](@ref mim::NestPhase) if that visit should come with a computed [`Nest`](@ref mim::Nest).
-
-## Recommended Design Pattern
-
-For most optimization phases, the preferred structure is:
-
-1. write an [`Analysis`](@ref mim::Analysis) that computes facts to a fixed point,
-2. store those facts in [`Analysis::lattice()`](@ref mim::Analysis::lattice) and/or auxiliary tables,
-3. write an [`RWPhase`](@ref mim::RWPhase) that consumes those facts while rebuilding the world.
-
-This keeps analyses and transformations cleanly separated and fits naturally with MimIR's rewriting-based infrastructure.
-
-## Minimal Examples
-
-A simple whole-world rewrite phase:
-
-```cpp
-class Simplify : public mim::RWPhase {
-public:
-    Simplify(mim::World& world)
-        : RWPhase(world, "simplify") {}
-
-private:
-    const mim::Def* rewrite_imm_App(const mim::App* app) override {
-        // rewrite or simplify selected applications
-        // fallback:
-        return Rewriter::rewrite_imm_App(app);
-    }
-};
-```
-
-A simple analysis phase:
-
-```cpp
-class CountMutLams : public mim::Analysis {
-public:
-    CountMutLams(mim::World& world)
-        : Analysis(world, "count_lams") {}
-
-    size_t num_lams = 0;
-
-private:
-    // Note: override rewrite_mut - the node-specific rewrite_mut_* hooks are not dispatched
-    // for an Analysis (see "Handling of Mutables").
-    mim::Def* rewrite_mut(mim::Def* mut) override {
-        if (!lookup(mut) && mut->isa_mut<mim::Lam>()) ++num_lams; // count on first visit only
-        return mim::Analysis::rewrite_mut(mut);
-    }
-};
-```
-
-Using both:
-
-```cpp
-CountMutLams analysis(world);
-analysis.run();
-
-mim::Phase::run<Simplify>(world);
-```
-
-<!-- Keep the invisible separator in `M⁠im` so Doxygen does not link this heading to the `mim` namespace in the TOC. -->
-
-### Compilation Pipelines in M⁠im
-
-You can also expose your custom phases as axioms in Mim via the [compile plugin](@ref compile) and build your own compilation pipeline.
-Mim's default compilation pipeline is defined in the [opt plugin](@ref opt).
-
-## Summary
-
-Phases are MimIR's main unit of compiler work.
-
-- [`Phase`](@ref mim::Phase) is the minimal base abstraction.
-- [`Analysis`](@ref mim::Analysis) is for graph-aware fact collection on the current world and provides a reusable [`lattice()`](@ref mim::Analysis::lattice) for abstract values.
-- [`RWPhase`](@ref mim::RWPhase) is for rewriting the current world into a transformed new one and can read analysis results through [`RWPhase::lattice()`](@ref mim::RWPhase::lattice).
-  It [coerces](@ref phases_coercion) reshaped values wherever they meet a fixed shape.
-- [`PhaseMan`](@ref mim::PhaseMan) sequences phases, optionally to a fixed point.
-- [`ClosedMutPhase`](@ref mim::ClosedMutPhase) and [`NestPhase`](@ref mim::NestPhase) are traversal helpers for common whole-world inspections.
-
-The key design idea is that MimIR phases are built around structured traversal and rewriting.
-For substantial optimizations, the usual pattern is:
-
-- compute facts with [`Analysis`](@ref mim::Analysis),
-- store them in [`Analysis::lattice()`](@ref mim::Analysis::lattice),
-- consume them with [`RWPhase`](@ref mim::RWPhase).
 
 <div class="section_buttons">
 

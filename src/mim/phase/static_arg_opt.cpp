@@ -82,7 +82,7 @@ const Def* StaticArgOpt::rewrite_mut_Lam(Lam* old_lam) {
 
     map(old_lam, wrap);
     map(old_lam->var(), vars);
-    loop->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
+    fill(old_lam, loop);
     wrap->app(false, loop, sieve.gather(wrap->tvars()));
     return wrap;
 }

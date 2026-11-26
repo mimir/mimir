@@ -106,7 +106,6 @@ const Def* Rewriter::rewrite_imm_Nat    (const Nat*      ) { return world().type
 const Def* Rewriter::rewrite_imm_Level  (const Level*    ) { return world().type_level();                                 }
 const Def* Rewriter::rewrite_imm_Lit    (const Lit*     d) { return world().lit    (rewrite(d->type()),   d->get());      }
 const Def* Rewriter::rewrite_imm_Match  (const Match*   d) { return world().match  (rewrite(d->ops()));                   }
-const Def* Rewriter::rewrite_imm_Reform (const Reform*  d) { return world().reform (rewrite(d->dom()));                   }
 const Def* Rewriter::rewrite_imm_Sigma  (const Sigma*   d) { return world().sigma  (rewrite(d->ops()));                   }
 const Def* Rewriter::rewrite_imm_Type   (const Type*    d) { return world().type   (rewrite(d->level()));                 }
 const Def* Rewriter::rewrite_imm_LSucc  (const LSucc*   d) { return world().lsucc  (rewrite(d->op()),     d->offset());   }
@@ -119,7 +118,6 @@ const Def* Rewriter::rewrite_imm_Struc  (const Struc*   d) { return world().stru
 const Def* Rewriter::rewrite_imm_Var    (const Var*     d) { return world().var    (rewrite(d->binder())->as_mut());      }
 const Def* Rewriter::rewrite_imm_Top    (const Top*     d) { return world().top    (rewrite(d->type()));                  }
 const Def* Rewriter::rewrite_imm_Bot    (const Bot*     d) { return world().bot    (rewrite(d->type()));                  }
-const Def* Rewriter::rewrite_imm_Join   (const Join*    d) { return world().join   (rewrite(d->ops()));                   }
 const Def* Rewriter::rewrite_imm_Variant(const Variant* d) { return world().variant(rewrite(d->ops()));                   }
 
 const Def* Rewriter::rewrite_imm_Arr (const Arr*  d) { return rewrite_imm_Seq(d); }
@@ -140,8 +138,7 @@ const Def* Rewriter::rewrite_imm_App(const App* d) {
 const Def* Rewriter::rewrite_imm_Inj(const Inj* d) {
     auto new_type  = rewrite(d->type());
     auto new_value = rewrite(d->value());
-    if (d->type()->isa<Variant>()) return world().inj(new_type, d->index(), new_value);
-    return world().inj(new_type, new_value);
+    return world().inj(new_type, d->index(), new_value);
 }
 
 const Def* Rewriter::rewrite_imm_Insert(const Insert* d) {
@@ -170,12 +167,25 @@ const Def* Rewriter::rewrite_imm_Proxy(const Proxy* d) {
     return world().proxy(new_type, new_ops, d->tag(), d->tracks_vars(), d->tracks_muts());
 }
 
+const Def* Rewriter::rewrite_imm_Rho(const Rho* d) {
+    auto new_dom   = rewrite(d->dom());
+    auto new_codom = rewrite(d->codom());
+    return world().rho(new_dom, new_codom);
+}
+
 const Def* Rewriter::rewrite_imm_Rule(const Rule* d) {
-    auto new_type  = rewrite(d->type())->as<Reform>();
+    auto new_type  = rewrite(d->type())->as<Rho>();
+    auto new_meta  = rewrite(d->meta());
     auto new_lhs   = rewrite(d->lhs());
-    auto new_rhs   = rewrite(d->rhs());
     auto new_guard = rewrite(d->guard());
-    return world().rule(new_type, new_lhs, new_rhs, new_guard);
+    auto new_rhs   = rewrite(d->rhs());
+    return world().rule(new_type, new_meta, new_lhs, new_guard, new_rhs);
+}
+
+const Def* Rewriter::rewrite_imm_Fire(const Fire* d) {
+    auto new_callee = rewrite(d->callee());
+    auto new_arg    = rewrite(d->arg());
+    return world().fire(new_callee, new_arg);
 }
 
 const Def* Rewriter::rewrite_imm_Tuple(const Tuple* d) {
@@ -186,8 +196,10 @@ const Def* Rewriter::rewrite_imm_Tuple(const Tuple* d) {
 
 const Def* Rewriter::rewrite_mut_Lam(Lam* d) { return rewrite_stub(d, world().mut_lam(rewrite(d->type())->as<Pi>())); }
 const Def* Rewriter::rewrite_mut_Rule(Rule* d) {
-    return rewrite_stub(d, world().mut_rule(rewrite(d->type())->as<Reform>()));
+    return rewrite_stub(d, world().mut_rule(rewrite(d->type())->as<Rho>()));
 }
+
+const Def* Rewriter::rewrite_mut_Rho(Rho* d) { return rewrite_stub(d, world().mut_rho(rewrite(d->type()))); }
 
 const Def* Rewriter::rewrite_mut_Pi(Pi* d) {
     return rewrite_stub(d, world().mut_pi(rewrite(d->type()), d->is_implicit()));
@@ -243,10 +255,9 @@ const Def* Rewriter::rewrite_mut_Seq(Seq* seq) {
     if (auto var = seq->has_var(); var && l && *l < world().flags().scalarize_threshold) {
         auto new_ops = fe::Vector<const Def*, 32>(*l);
         for (size_t i = 0, e = *l; i != e; ++i) {
-            push(Vars(var));
+            auto _ = scoped(Vars(var));
             map(var, world().lit_idx(e, i));
             new_ops[i] = rewrite(seq->body());
-            pop();
         }
         return map(seq, world().prod(seq->is_intro(), new_ops));
     }

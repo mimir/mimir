@@ -1,0 +1,7 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+plugin core;
+
+norm to_tt (a: Nat): (a, a) => tt;
+
+// CHECK: {{.*}}normty.mim:5:{{.*}}: error: a normalizing rule must not change the type

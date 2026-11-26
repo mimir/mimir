@@ -6,7 +6,6 @@ plugin refly;
 
 use core.ops.n;
 
-// Unlike `[] ∪ [] ∪ []`, which collapses to `[]`, every case is kept.
 rec Color = | Red | Green | Blue;
 
 lam code (c: Color): Nat =

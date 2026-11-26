@@ -1,0 +1,4 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+
+lam f (t: [Nat, *], i: Idx 2) = t#i;
+// CHECK: error: cannot extract dynamically from `[Nat, *]`: its components live on different type levels

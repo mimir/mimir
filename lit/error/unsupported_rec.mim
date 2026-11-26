@@ -1,3 +1,5 @@
 // RUN: (! %mim -p opt %s 2>&1) | %FileCheck %s
 rec S = Nat;
 // CHECK: error: unsupported expression
+rec P (T: *) = T;
+// CHECK: error: unsupported expression

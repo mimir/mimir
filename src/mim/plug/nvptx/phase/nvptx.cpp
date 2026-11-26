@@ -36,7 +36,6 @@ public:
     void find_kernels(const Def*);
 
     std::string prepare() override;
-    void emit_epilogue(Lam*) override;
 
     std::optional<std::string> isa_targetspecific_intrinsic(ll::BB&, const Def*) final;
 
@@ -49,17 +48,20 @@ private:
     static constexpr std::string_view fatbin_name_       = "@.fatbin";
     static constexpr std::string_view kernel_array_name_ = "@.mimir_kernels";
     static constexpr std::string_view kernel_name_prefix = "@.kname.";
+    static constexpr std::string_view session_name_      = "@.mimir_gpu_session";
 
     void emit_cu_error_handling(ll::BB&, const std::string&);
-    void emit_gpu_setup(ll::BB&, const std::string& name);
+    /// Creates a context of its own, or retains the device's primary one if @p primary.
+    void emit_gpu_setup(ll::BB&, const std::string& name, bool primary = false);
     void emit_gpu_teardown(ll::BB&, const std::string& name);
+    void emit_gpu_session();
 
     std::optional<std::string> device_fatbin_file_;
     LamMap<int> kernel_ids_;
     bool cu_globals_declared_ = false;
 
     DefSet analyzed_;
-    /// Externals wrapped in their own GPU setup/teardown - see HostEmitter::start().
+    /// Externals that enter the process-wide GPU session - see HostEmitter::start().
     LamSet gpu_externals_;
 };
 
@@ -90,6 +92,17 @@ private:
         return v_ptr;
     }
 
+    std::string
+    emit_libdevice_unary(ll::BB& bb, const std::string& name, const Def* def, const Def* arg, std::string fn) {
+        auto a    = emit(arg);
+        auto type = convert(def->type());
+        fn        = "__nv_" + fn + ll::detail::math_suffix(def->type());
+        declare("{} @{}({})", type, fn, type);
+        uses_libdevice = true;
+        bb.assign(name, "call {} @{}({} {})", type, fn, type, a);
+        return name;
+    }
+
     LamSet kernels_;
 
     bool uses_libdevice = false;
@@ -117,7 +130,7 @@ void HostEmitter::start() {
         std::println(vars_decls_, "{}{} = private constant [{} x i8] c\"{}\\00\"", kernel_name_prefix, kid,
                      name.size() + 1, name);
     }
-    std::println(vars_decls_, "{} = dso_local global [{} x ptr] zeroinitializer", kernel_array_name_,
+    std::println(vars_decls_, "{} = internal global [{} x ptr] zeroinitializer", kernel_array_name_,
                  kernel_ids_.size());
 
     LamSet gpu_touching;
@@ -127,8 +140,7 @@ void HostEmitter::start() {
         DefSet seen;
         if (reaches_if(lam, seen, is_gpu_auto_init)) gpu_touching.emplace(lam);
     }
-    // Only wrap the ones not themselves called by another GPU-touching external: a caller's own
-    // setup/teardown already covers whatever GPU-touching external(s) it calls.
+    // Only the ones not themselves called by another GPU-touching external: a caller has already entered the session.
     for (auto lam : gpu_touching) {
         auto called_by_other = std::ranges::any_of(gpu_touching, [&](auto other) {
             if (other == lam) return false;
@@ -137,6 +149,7 @@ void HostEmitter::start() {
         });
         if (!called_by_other) gpu_externals_.emplace(lam);
     }
+    if (!gpu_externals_.empty()) emit_gpu_session();
 
     Super::start();
 }
@@ -159,6 +172,8 @@ void HostEmitter::find_kernels(const Def* def) {
 constexpr auto Cu_Init                = "cuInit";
 constexpr auto Cu_Ctx_Create          = "cuCtxCreate_v4";
 constexpr auto Cu_Ctx_Destroy         = "cuCtxDestroy_v2";
+constexpr auto Cu_Ctx_Set_Current     = "cuCtxSetCurrent";
+constexpr auto Cu_Primary_Ctx_Retain  = "cuDevicePrimaryCtxRetain";
 constexpr auto Cu_Device_Get          = "cuDeviceGet";
 constexpr auto Cu_Launch_Kernel       = "cuLaunchKernel_ptsz";
 constexpr auto Cu_Mem_Alloc           = "cuMemAlloc_v2";
@@ -183,7 +198,7 @@ void HostEmitter::emit_cu_error_handling(ll::BB& bb, const std::string& cu_resul
     std::print(bb.body().emplace_back(), "call void @mim_cu_check(i32 {})", cu_result);
 }
 
-void HostEmitter::emit_gpu_setup(ll::BB& bb, const std::string& name) {
+void HostEmitter::emit_gpu_setup(ll::BB& bb, const std::string& name, bool primary) {
     auto dev_num   = 0; // TODO: consider parameterizing this
     auto ctx_flags = 0; // TODO: consider parameterizing this
 
@@ -196,16 +211,28 @@ void HostEmitter::emit_gpu_setup(ll::BB& bb, const std::string& name) {
     auto dev_get_res = bb.assign(name + "_get_res", "call i32 @{}(ptr {}, i32 {})", Cu_Device_Get, dev_ptr, dev_num);
     emit_cu_error_handling(bb, dev_get_res);
 
-    declare("i32 @{}(ptr, ptr, i32, i32)", Cu_Ctx_Create);
-    if (!cu_globals_declared_) std::println(vars_decls_, "{} = global ptr null", ctx_name_);
-    auto dev     = bb.assign(name + "_dev", "load i32, ptr {}", dev_ptr);
-    auto ctx_res = bb.assign(name + "_ctx_res", "call i32 @{}(ptr {}, ptr null, i32 {}, i32 {})", Cu_Ctx_Create,
-                             ctx_name_, ctx_flags, dev);
-    emit_cu_error_handling(bb, ctx_res);
+    if (!cu_globals_declared_) std::println(vars_decls_, "{} = internal global ptr null", ctx_name_);
+    auto dev = bb.assign(name + "_dev", "load i32, ptr {}", dev_ptr);
+    if (primary) {
+        declare("i32 @{}(ptr, i32)", Cu_Primary_Ctx_Retain);
+        auto ctx_res
+            = bb.assign(name + "_ctx_res", "call i32 @{}(ptr {}, i32 {})", Cu_Primary_Ctx_Retain, ctx_name_, dev);
+        emit_cu_error_handling(bb, ctx_res);
+        // Retaining the primary context does not make it current.
+        declare("i32 @{}(ptr)", Cu_Ctx_Set_Current);
+        auto ctx     = bb.assign(name + "_ctx", "load ptr, ptr {}", ctx_name_);
+        auto cur_res = bb.assign(name + "_cur_res", "call i32 @{}(ptr {})", Cu_Ctx_Set_Current, ctx);
+        emit_cu_error_handling(bb, cur_res);
+    } else {
+        declare("i32 @{}(ptr, ptr, i32, i32)", Cu_Ctx_Create);
+        auto ctx_res = bb.assign(name + "_ctx_res", "call i32 @{}(ptr {}, ptr null, i32 {}, i32 {})", Cu_Ctx_Create,
+                                 ctx_name_, ctx_flags, dev);
+        emit_cu_error_handling(bb, ctx_res);
+    }
 
     declare("i32 @{}(ptr, ptr)", Cu_Module_Load_Fatbin);
     if (!cu_globals_declared_) {
-        std::println(vars_decls_, "{} = global ptr null", mod_name_);
+        std::println(vars_decls_, "{} = internal global ptr null", mod_name_);
         if (device_fatbin_file_.has_value()) {
             std::ifstream fatbin_file(device_fatbin_file_.value(), std::ios::binary);
             if (!fatbin_file)
@@ -260,21 +287,43 @@ void HostEmitter::emit_gpu_teardown(ll::BB& bb, const std::string& name) {
     emit_cu_error_handling(bb, name + "_ctx_destroy_res");
 }
 
+/// `gpu.auto_init`/`gpu.auto_deinit` sessions share one context and module for the whole process.
+/// The first call sets them up on the device's primary context, which other modules and libraries in the process
+/// share as well; every later call only makes that context current for its thread.
+/// Nothing tears the session down: the driver releases the context when the process exits.
+void HostEmitter::emit_gpu_session() {
+    ll::BB setup;
+    emit_gpu_setup(setup, "%session", true);
+
+    std::println(func_impls_, "define internal void {}() {{", session_name_);
+    std::println(func_impls_, "entry:");
+    ++tab;
+    std::println(func_impls_, "{}%ctx = load ptr, ptr {}", tab, ctx_name_);
+    std::println(func_impls_, "{}%ready = icmp ne ptr %ctx, null", tab);
+    std::println(func_impls_, "{}br i1 %ready, label %current, label %setup", tab);
+    --tab;
+    std::println(func_impls_, "setup:");
+    ++tab;
+    for (const auto& part : setup.parts)
+        for (const auto& line : part)
+            std::println(func_impls_, "{}{}", tab, line.str());
+    std::println(func_impls_, "{}ret void", tab);
+    --tab;
+    std::println(func_impls_, "current:");
+    ++tab;
+    std::println(func_impls_, "{}%res = call i32 @{}(ptr %ctx)", tab, Cu_Ctx_Set_Current);
+    std::println(func_impls_, "{}call void @mim_cu_check(i32 %res)", tab);
+    std::println(func_impls_, "{}ret void", tab);
+    --tab;
+    std::println(func_impls_, "}}\n");
+}
+
 std::string HostEmitter::prepare() {
     auto name = Super::prepare();
     // Append to root()'s own BB, not func_impls_: Emitter::finalize_impl writes it out only once.
-    if (gpu_externals_.contains(root())) emit_gpu_setup(lam2bb_[root()], "%" + root()->unique_name());
+    if (gpu_externals_.contains(root()))
+        std::print(lam2bb_[root()].body().emplace_back(), "call void {}()", session_name_);
     return name;
-}
-
-void HostEmitter::emit_epilogue(Lam* lam) {
-    // Must run first to force emission of the return value's own dependencies (e.g. gpu.free) into bb.body().
-    Super::emit_epilogue(lam);
-    if (gpu_externals_.contains(root())) {
-        // lam, not root(): a function can have several return blocks, and LLVM names are function-scoped.
-        if (auto app = lam->body()->isa<App>(); app && app->callee() == root()->ret_var())
-            emit_gpu_teardown(lam2bb_[lam], "%" + lam->unique_name());
-    }
 }
 
 std::string HostEmitter::convert(const Def* type, bool simd) {
@@ -481,7 +530,8 @@ std::optional<std::string> HostEmitter::isa_targetspecific_intrinsic(ll::BB& bb,
         declare("i32 @{}(ptr, i32, i32, i32, i32, i32, i32, i32, ptr, ptr, ptr)", Cu_Launch_Kernel);
 
         auto [implicits, launch_config, kernel_def, arg_def, func_args] = launch->uncurry_args<5>();
-        auto [n_groups_def, n_items_def, stream_def, m, MT]             = launch_config->projs<5>();
+        auto [m, MT, Ts]                                                = implicits->projs<3>();
+        auto [n_groups_def, n_items_def, stream_def]                    = launch_config->projs<3>();
         auto [mem, ret_lam_def]                                         = func_args->projs<2>();
 
         Lam* lam = kernel_def->isa_mut<Lam>();
@@ -652,6 +702,21 @@ std::optional<std::string> DeviceEmitter::isa_targetspecific_intrinsic(ll::BB& b
         uses_libdevice = true;
         bb.assign(name, "call {} @{}({} {})", type, libdevice_func_name, type, arg);
         return name;
+    } else if (auto pow = Axm::isa<math::pow>(def)) {
+        // NVPTX cannot select `llvm.pow`.
+        auto [a, b]    = pow->args<2>([this](auto def) { return emit(def); });
+        auto type      = convert(pow->type());
+        auto func_name = "__nv_pow"s + ll::detail::math_suffix(pow->type());
+        declare("{} @{}({}, {})", type, func_name, type, type);
+        uses_libdevice = true;
+        bb.assign(name, "call {} @{}({} {}, {} {})", type, func_name, type, a, type, b);
+        return name;
+    } else if (auto rt = Axm::isa<math::rt>(def); rt && rt.id() == math::rt::cb) {
+        return emit_libdevice_unary(bb, name, def, rt->arg(), "cbrt");
+    } else if (auto er = Axm::isa<math::er>(def)) {
+        return emit_libdevice_unary(bb, name, def, er->arg(), er.id() == math::er::f ? "erf" : "erfc");
+    } else if (auto gamma = Axm::isa<math::gamma>(def)) {
+        return emit_libdevice_unary(bb, name, def, gamma->arg(), gamma.id() == math::gamma::t ? "tgamma" : "lgamma");
     }
     return std::nullopt;
 }

@@ -437,13 +437,27 @@ public:
     // clang-format on
     ///@}
 
-    /// @name Rewrite Rules
+    /// @name Rho
     ///@{
-    const Reform* reform(const Def* dom) { return unify<Reform>(Reform::infer(dom), dom); }
-    Rule* mut_rule(const Reform* type) { return insert<Rule>(type); }
-    const Rule* rule(const Reform* type, const Def* lhs, const Def* rhs, const Def* guard) {
-        return unify<Rule>(type, lhs, rhs, guard);
-    }
+    // clang-format off
+    const Rho* rho(const Def* dom, const Def* codom) { return unify<Rho>(Rho::infer(dom, codom), dom, codom); }
+    const Rho* rho(Defs       dom, const Def* codom) { return rho(sigma(dom), codom); }
+    const Rho* rho(const Def* dom, Defs       codom) { return rho(dom, sigma(codom)); }
+    const Rho* rho(Defs       dom, Defs       codom) { return rho(sigma(dom), sigma(codom)); }
+    Rho*   mut_rho(const Def* type                 ) { return insert<Rho>(type); }
+    // clang-format on
+    ///@}
+
+    /// @name Rule
+    ///@{
+    const Rule* rule(const Rho* rho, const Def* meta, const Def* lhs, const Def* guard, const Def* rhs);
+    Rule* mut_rule(const Rho* rho) { return insert<Rule>(rho); }
+    ///@}
+
+    /// @name Fire
+    ///@{
+    const Def* fire(const Def* callee, const Def* arg);
+    const Def* fire(const Def* callee, Defs args) { return fire(callee, tuple(args)); }
     ///@}
 
     /// @name App
@@ -567,6 +581,8 @@ public:
     const Lit* lit_idx_1_0() { return data_.lit_idx_1_0; }
     // clang-format off
     const Lit* lit_i1()  { return lit_nat(Idx::bitwidth2size( 1)); }
+    const Lit* lit_i2()  { return lit_nat(Idx::bitwidth2size( 2)); }
+    const Lit* lit_i4()  { return lit_nat(Idx::bitwidth2size( 4)); }
     const Lit* lit_i8()  { return lit_nat(Idx::bitwidth2size( 8)); }
     const Lit* lit_i16() { return lit_nat(Idx::bitwidth2size(16)); }
     const Lit* lit_i32() { return lit_nat(Idx::bitwidth2size(32)); }
@@ -581,6 +597,8 @@ public:
     /// `val = 64` will be automatically converted to size `0` - the encoding for 2^64.
     const Lit* lit_int(nat_t width, u64 val) { return lit_idx(Idx::bitwidth2size(width), val); }
     const Lit* lit_i1 (bool val) { return lit_int( 1, u64(val)); }
+    const Lit* lit_i2 (u8   val) { return lit_int( 2, u64(val)); }
+    const Lit* lit_i4 (u8   val) { return lit_int( 4, u64(val)); }
     const Lit* lit_i8 (u8   val) { return lit_int( 8, u64(val)); }
     const Lit* lit_i16(u16  val) { return lit_int(16, u64(val)); }
     const Lit* lit_i32(u32  val) { return lit_int(32, u64(val)); }
@@ -607,12 +625,11 @@ public:
     const Def* type_top() { return data_.type_top; }
     ///@}
 
-    /// @name Join & Variant
+    /// @name Variant
     ///@{
-    const Def* join(Defs ops);
     Variant* mut_variant(const Def* type, size_t size) { return insert<Variant>(type, size); }
     const Def* variant(Defs ops);
-    const Def* inj(const Def* type, const Def* value);
+    const Def* inj(const Def* type, const Def* value);              ///< Injects @p value into the nominal @p type.
     const Def* inj(const Def* type, nat_t index, const Def* value); ///< Injects @p value as case @p index of a Variant.
     const Def* match(Defs);
     ///@}
@@ -632,6 +649,8 @@ public:
     // clang-format off
     const Def* type_bool() { return data_.type_bool; }
     const Def* type_i1()   { return data_.type_bool; }
+    const Def* type_i2()   { return type_int( 2);    }
+    const Def* type_i4()   { return type_int( 4);    }
     const Def* type_i8()   { return type_int( 8);    }
     const Def* type_i16()  { return type_int(16);    }
     const Def* type_i32()  { return type_int(32);    }

@@ -604,22 +604,39 @@ private:
     Ptr<Expr> level_;
 };
 
-/// `Rule dom`
+/// `rl meta: lhs when guard => rhs`; RuleExpr::is_norm, if it stems from a `norm` declaration.
 class RuleExpr : public Expr {
 public:
-    RuleExpr(Loc loc, Ptr<Expr> dom)
+    RuleExpr(Loc loc, Ptr<Ptrn> meta, Ptr<Expr> lhs, Ptr<Expr> guard, Ptr<Expr> rhs, bool is_norm, Sym name)
         : Expr(loc)
-        , dom_(dom) {}
+        , meta_(meta)
+        , lhs_(lhs)
+        , guard_(guard)
+        , rhs_(rhs)
+        , is_norm_(is_norm)
+        , name_(name) {}
 
-    const Expr* dom() const { return dom_.get(); }
+    const Ptrn* meta() const { return meta_.get(); } ///< `nullptr` if there are no meta variables.
+    const Expr* lhs() const { return lhs_.get(); }
+    const Expr* guard() const { return guard_.get(); }
+    const Expr* rhs() const { return rhs_.get(); }
+    bool is_norm() const { return is_norm_; }
+    Sym name() const { return name_; } ///< The name of the `rule` declaration, if any.
 
     void bind(Scopes&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
+    /// `meta: lhs when guard => rhs`
+    void stream_body(fe::Tab&, std::ostream&) const;
 
 private:
     const Def* emit_(Emitter&) const override;
 
-    Ptr<Expr> dom_;
+    Ptr<Ptrn> meta_;
+    Ptr<Expr> lhs_;
+    Ptr<Expr> guard_;
+    Ptr<Expr> rhs_;
+    bool is_norm_;
+    Sym name_;
 };
 
 // prefix/infix
@@ -706,8 +723,8 @@ public:
         Dbg ctor() const { return ctor_; }
 
         virtual void bind(Scopes&) const;
-        /// @p dom is the case's payload type if the scrutinee is a Variant; otherwise ptrn() determines the domain.
-        Lam* emit(Emitter&, const Def* dom = nullptr) const;
+        /// @p dom is the payload type of the case this arm handles.
+        Lam* emit(Emitter&, const Def* dom) const;
         void stream(fe::Tab&, std::ostream&) const override;
 
     private:
@@ -1151,6 +1168,8 @@ public:
     void emit(Emitter&) const override;
     virtual void emit_decl(Emitter&) const;
     virtual void emit_body(Emitter&) const;
+    /// Sets @p lam's body to this LamDecl::rec_sugar before emitting the latter's body.
+    virtual void emit_sugar(Emitter&, Lam* lam) const;
 
     void stream(fe::Tab&, std::ostream&) const override;
     /// Streams this declaration without modifiers and without the trailing `;`.
@@ -1180,8 +1199,7 @@ public:
     void emit_body(Emitter&) const override;
     /// Emits a `nom` without a mutable body as soon as a sibling refers to it; `nullptr` on a cycle.
     const Def* emit_ahead(Emitter&) const;
-    /// Sets @p lam's body to this LamDecl::nom_sugar before emitting the latter's body.
-    void emit_sugar(Emitter&, Lam* lam) const;
+    void emit_sugar(Emitter&, Lam* lam) const override;
     void stream_(fe::Tab&, std::ostream&) const override;
 
 private:
@@ -1219,19 +1237,20 @@ public:
 
     using VLA_Types = std::tuple<Ptr<Dom>>;
 
-    LamDecl(Loc loc, Mods mods, Tok::Tag tag, Dbg dbg, Ptr<Expr> codom, Ptr<Expr> body, const NomDecl* nom_sugar)
+    LamDecl(Loc loc, Mods mods, Tok::Tag tag, Dbg dbg, Ptr<Expr> codom, Ptr<Expr> body, const RecDecl* rec_sugar)
         : RecDecl(loc, mods, dbg, body)
         , tag_(tag)
         , codom_(codom)
-        , nom_sugar_(nom_sugar) {}
+        , rec_sugar_(rec_sugar) {}
 
     Tok::Tag tag() const { return tag_; }
     auto doms() const { return vla<0>(); }
     const Dom* dom(size_t i) const { return doms()[i].get(); }
     size_t num_doms() const { return doms().size(); }
     const Expr* codom() const { return codom_.get(); }
-    /// The `nom` of `lam I dom+ = nom I = e; I` if `nom I dom+ = e` desugared to this; within `e`, `I` is this LamDecl.
-    const NomDecl* nom_sugar() const { return nom_sugar_; }
+    /// The `rec` or `nom` of `lam I dom+ = rec I = e; I` if `rec I dom+ = e` or `nom I dom+ = e` desugared to this;
+    /// within `e`, `I` is this LamDecl.
+    const RecDecl* rec_sugar() const { return rec_sugar_; }
 
     void bind_decl(Scopes&) const override;
     void bind_body(Scopes&) const override;
@@ -1242,7 +1261,7 @@ public:
 private:
     Tok::Tag tag_;
     Ptr<Expr> codom_;
-    const NomDecl* nom_sugar_;
+    const RecDecl* rec_sugar_;
 };
 
 /// `mutual decl* end` groups RecDecl%s that may refer to each other.
@@ -1282,39 +1301,6 @@ private:
     mutable AnnexInfo* annex_ = nullptr;
     mutable sub_t sub_        = 0;
     mutable Sym foreign_; ///< Qualified name of a ForeignAlias, which is registered in its own plugin.
-};
-
-/// `rule dbg var: lhs when guard => rhs;` or `norm` instead of `rule` if RuleDecl::is_normalizer.
-class RuleDecl : public ValDecl {
-public:
-    RuleDecl(Loc loc, Mods mods, Dbg dbg, Ptr<Ptrn> var, Ptr<Expr> lhs, Ptr<Expr> rhs, Ptr<Expr> guard, bool is_norm)
-        : ValDecl(loc, mods)
-        , dbg_(dbg)
-        , var_(var)
-        , lhs_(lhs)
-        , rhs_(rhs)
-        , guard_(guard)
-        , is_norm_(is_norm) {}
-
-    Dbg dbg() const override { return dbg_; }
-    const Ptrn* var() const { return var_.get(); }
-    const Expr* lhs() const { return lhs_.get(); }
-    const Expr* rhs() const { return rhs_.get(); }
-    const Expr* guard() const { return guard_.get(); }
-    bool is_norm() const { return is_norm_; }
-
-    void bind(Scopes&) const override;
-    void stream(fe::Tab&, std::ostream&) const override;
-
-private:
-    void emit(Emitter&) const override;
-
-    Dbg dbg_;
-    Ptr<Ptrn> var_;
-    Ptr<Expr> lhs_;
-    Ptr<Expr> rhs_;
-    Ptr<Expr> guard_;
-    bool is_norm_;
 };
 
 /// `mod dbg decls end`; also the base of the anonymous File.

@@ -10,7 +10,6 @@
 #include <mim/phase/beta_red.h>
 #include <mim/phase/dispatch_normalize.h>
 #include <mim/phase/eta_conv.h>
-#include <mim/phase/join2variant.h>
 #include <mim/phase/lam_spec.h>
 #include <mim/phase/nom_erasure.h>
 #include <mim/phase/ret_wrap.h>
@@ -63,7 +62,6 @@ static void reg_phases(Flags2Phases& phases) {
     Phase::hook<compile::cleanup,            Cleanup          >(phases);
     Phase::hook<compile::dispatch_normalize, DispatchNormalize>(phases);
     Phase::hook<compile::eta_conv,           EtaConv          >(phases);
-    Phase::hook<compile::join2variant,       Join2Variant     >(phases);
     Phase::hook<compile::lam_spec,           LamSpec          >(phases);
     Phase::hook<compile::named,              Named            >(phases);
     Phase::hook<compile::nom_erasure,        NomErasure       >(phases);

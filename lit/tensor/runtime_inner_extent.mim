@@ -1,0 +1,10 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin tensor;
+plugin compile;
+
+extern con inner (n: Nat, a: tensor.Tensor 2 (3, n) I32, return: Cn [tensor.Tensor 2 (3, n) I32]) = return a;
+extern lam _compile (): compile.Phase = tensor.lower_to_mem;
+
+// CHECK: extern con inner
+// CHECK-SAME: buffer.Buf (2, (3,

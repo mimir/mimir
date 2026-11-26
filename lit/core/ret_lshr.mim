@@ -3,6 +3,10 @@
 // RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t 2 1 ; test $? -eq 1
 // RUN: %t 16 3 ; test $? -eq 2
+// RUN: %if native %{ %mim -p opt %s -p %native -X %native:o=%t.s %}
+// RUN: %if native %{ clang %t.s -o %t.native %}
+// RUN: %if native %{ %t.native 2 1 ; test $? -eq 1 %}
+// RUN: %if native %{ %t.native 16 3 ; test $? -eq 2 %}
 
 plugin core;
 plugin mem;

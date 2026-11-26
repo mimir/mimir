@@ -21,6 +21,7 @@ namespace mim {
 
 class Driver;
 class Phase;
+class Target;
 
 /// @name Plugin Interface
 ///@{
@@ -172,6 +173,7 @@ struct Plugin {
     size_t num_envs;       ///< Number of Plugin::envs.
     const PluginSym* syms; ///< The symbols other Plugin%s may look up; see PluginSym.
     size_t num_syms;       ///< Number of Plugin::syms.
+    Target* (*target)();   ///< Creates the machine a native backend Plugin compiles for; the Driver owns it.
 };
 
 /// @name Plugin Interface

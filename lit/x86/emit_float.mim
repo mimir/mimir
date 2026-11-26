@@ -1,0 +1,32 @@
+// REQUIRES: x86_64-linux
+// RUN: %mim %s -p x86 -X x86:o=%t.s
+// RUN: %FileCheck %s < %t.s
+// RUN: clang %t.s -o %t
+// RUN: %t ; test $? -eq 5
+// RUN: %t a b ; test $? -eq 9
+
+plugin core;
+plugin mem;
+plugin math;
+plugin x86;
+
+use math.ops.none;
+
+/// `x * 2.0` with the argument and the result in `xmm0`.
+extern con twice (m: mem.M 0, x: math.F32, return: Cn [mem.M 0, math.F32]) =
+    return (m, x * 2.0:math.F32);
+
+/// `(argc + 1.5) * 2.0`, with a call in between that keeps `2.0` in the pool.
+extern con main (m: mem.M 0, argc: I32, return: Cn [mem.M 0, I32]) =
+    con k (m: mem.M 0, y: math.F32) = return (m, math.conv.f2s i32 y);
+    twice (m, math.conv.s2f math.f32 argc + 1.5:math.F32, k);
+
+// CHECK-DAG: cvtsi2ssl
+// CHECK-DAG: addss
+// CHECK:     call twice
+// CHECK-NOT: movq %rax, %rax
+// CHECK:     cvttss2sil
+// CHECK:     mulss
+// CHECK-DAG: .Lpool{{[0-9]+}}:
+// CHECK-DAG: .quad 0x000000003fc00000
+// CHECK-DAG: .quad 0x0000000040000000

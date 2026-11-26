@@ -1,0 +1,19 @@
+// REQUIRES: x86_64-linux
+// RUN: %mim -p opt %s -p x86 -X x86:o=%t.s
+// RUN: %FileCheck %s < %t.s
+// RUN: clang %t.s -o %t
+// RUN: %t ; test $? -eq 11
+// RUN: %t 1 2 ; test $? -eq 15
+plugin core;
+plugin mem;
+
+use core.ops.u.w;
+
+/// `x + 5` would overwrite `x`, which the `xor` still needs, so it is a `lea` instead of a copy and an `add`.
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
+    let x = core.conv.u i64 argc * 7I64;
+    let y = x + 5I64;
+    return (m, core.conv.u i32 (core.bit2.xor 0 (y, x)));
+
+// CHECK: leaq 5({{%[a-z0-9]+}}), {{%[a-z0-9]+}}
+// CHECK-NOT: addq $5

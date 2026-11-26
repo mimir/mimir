@@ -1,0 +1,27 @@
+// REQUIRES: x86_64-linux
+// RUN: %mim -p opt %s -p x86 -X x86:o=%t.s
+// RUN: %FileCheck %s < %t.s
+// RUN: clang %t.s -o %t
+// RUN: %t AB ; test $? -eq 71
+// RUN: %t ab cd ; test $? -eq 105
+plugin core;
+plugin mem;
+
+use core.ops.u.w;
+
+/// Stores `argv[argc - 1][1]` into field 1 of element `argc` of a slot and reads it back.
+extern fun main(m: mem.M 0, argc: I32, argv: mem.Ptr0 «core.idx2nat argc; mem.Ptr0 mem.Char»): [mem.M 0, I32] =
+    let n      = core.idx2nat argc;
+    let (m, s) = mem.load (m, mem.lea (argv, core.idx 0 n (core.nat.sub (n, 1))));
+    let (m, c) = mem.load (m, mem.lea (mem.assume (s, 4), 1_4));
+    ret (m, p) = mem.mslot («4; [I8, I32]», 0) $ (m, 32);
+    let j      = core.conv.u 4 argc;
+    let m      = mem.store (m, mem.lea (mem.lea (p, j), 1_2), core.conv.u i32 c);
+    let (m, x) = mem.load (m, mem.lea (mem.lea (p, j), 1_2));
+    return (m, x + 5I32);
+
+// CHECK-DAG: movq ({{%[a-z0-9]+}},{{%[a-z0-9]+}},8), {{%[a-z0-9]+}}
+// CHECK-DAG: movb 1({{%[a-z0-9]+}}), {{%[a-z0-9]+}}
+// CHECK-DAG: movl {{%[a-z0-9]+}}, 4({{%[a-z0-9]+}},{{%[a-z0-9]+}},8)
+// CHECK-DAG: movl 4({{%[a-z0-9]+}},{{%[a-z0-9]+}},8), {{%[a-z0-9]+}}
+// CHECK-DAG: addl $5, %eax

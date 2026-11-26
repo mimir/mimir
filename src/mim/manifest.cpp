@@ -215,13 +215,10 @@ struct List_Entry {
     fe::Vector<std::string> Manifest::* list;
 };
 
-constexpr auto lists = {
-    List_Entry{     Plugin_Key,      &Manifest::plugins},
-    List_Entry{Plugin_Path_Key, &Manifest::plugin_paths},
-    List_Entry{Import_Path_Key, &Manifest::import_paths},
-    List_Entry{Prefix_Path_Key, &Manifest::prefix_paths},
-    List_Entry{ Plugin_Arg_Key,  &Manifest::plugin_args}
-};
+constexpr auto lists
+    = {List_Entry{Plugin_Key, &Manifest::plugins}, List_Entry{Plugin_Path_Key, &Manifest::plugin_paths},
+       List_Entry{Import_Path_Key, &Manifest::import_paths}, List_Entry{Prefix_Path_Key, &Manifest::prefix_paths},
+       List_Entry{Plugin_Arg_Key, &Manifest::plugin_args}};
 
 Manifest Parser::parse() {
     Manifest manifest{};

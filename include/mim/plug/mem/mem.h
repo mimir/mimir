@@ -13,7 +13,6 @@ namespace mim::plug::mem {
 /// @name mem.M and mem.Ptr
 /// mem.M and mem.Ptr are core.M and core.Ptr; their helpers live in mim::plug::core.
 ///@{
-using core::has_leading_mem;
 using core::has_mem_ty;
 using core::isa_mem;
 using core::mem_def;

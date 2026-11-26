@@ -14,6 +14,7 @@
 
 #include "mim/flags.h"
 #include "mim/plugin.h"
+#include "mim/target.h"
 #include "mim/world.h"
 
 #include "mim/ast/tok.h"
@@ -212,6 +213,10 @@ public:
     const auto& phases() const { return phases_; }
     auto normalizer(flags_t flags) const { return fe::lookup(normalizers_, flags); }
     auto normalizer(plugin_t d, tag_t t, sub_t s) const { return normalizer(Annex::flags(d, t, s)); }
+    /// The Target of the one loaded native backend, if exactly one is loaded.
+    const Target* isa_target() const { return targets_.size() == 1 ? targets_.front().get() : nullptr; }
+    /// The Target of the one loaded native backend; errors at @p loc if there is none or more than one.
+    const Target& target(Loc loc = {});
     ///@}
 
     /// @name Plugin/Phase Arguments
@@ -251,9 +256,10 @@ private:
     Paths plugin_dirs_, import_dirs_, prefixes_;
     Flags2Phases phases_;
     Normalizers normalizers_;
+    fe::Vector<std::unique_ptr<const Target>> targets_;
     fe::StrMap<fe::Vector<std::string>> plugin_args_;
-    std::vector<std::pair<std::string, fe::View<PluginArg>>> known_args_;
-    std::vector<std::pair<std::string, fe::View<PluginEnv>>> known_envs_;
+    fe::Vector<std::pair<std::string, fe::View<PluginArg>>> known_args_;
+    fe::Vector<std::pair<std::string, fe::View<PluginEnv>>> known_envs_;
     Imports imports_;
     Keys keys_;
 };

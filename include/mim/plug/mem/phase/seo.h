@@ -77,8 +77,6 @@ private:
 
         void reset() final;
 
-        const LamSet& unknowns() const { return unknowns_; }
-
         // SSA
         const auto& slots() const { return slots_; }
         const Def* lam2sloxy2val(Lam* lam, const Def* sloxy);
@@ -98,10 +96,10 @@ private:
         const Proxy* mk_sccp_top(const Def* var);
         const Def* sccp_join(Lam*, const Def*, const Def*);
 
-        /// Applies @p known at @p site to @p abstr_targs: propagates phis, runs SCCP + GVN + OSR, and sets the vars.
-        const Def* apply_known(const App* site, Lam* known, Defs abstr_targs);
-        /// An App that merely records "@p callee applied to these abstract args"; never emitted code.
-        const Def* abstract_app(const Def* callee, const Def* arg);
+        /// Records @p known's caller at @p site and taints all of them if known_edge() changes its abstract vars.
+        const Def* apply_known(const App* site, Lam* known, DefVec abstr_targs);
+        /// Propagates phis, runs SCCP + GVN + OSR, and sets the phis.
+        DefVec join_args(Lam* known, DefVec& abstr_targs) final;
 
         // GVN
         const Proxy* mk_bundle(Lam* lam, const Def* var, Defs bundle_vars);
@@ -135,19 +133,21 @@ private:
         const Def* rewrite_imm_App(const App*) final;
         void leave() final;
 
-        // post-processing analysis to find sloxies that must be set to top
         void finalize() final;
-        void analyze(const Def*);
+        std::pair<Lam*, DefVec> known_call(const App*) final;
+        bool needs_arg(Lam*, size_t) final;
+        /// A surviving sloxy pins its slot to ⊤.
+        void reach(const Proxy*) final;
 
         // local (reset between iterations)
         LamMap<Def2Def> lam2sloxy2val_;
-        DefSet visited_;
         DefSet first_;
         DefMap<Vars> non_mem_fvs_;
         DefMap<Steps> app2steps_;
         DefSet stepped_;
         LamMap<Muls> lam2muls_;
         DefSet used_mulxies_;
+        const App* site_ = nullptr; ///< The known call join_args() is recording OSR steps for.
 
         // global (kept between iterations)
         DefSet slots_;                 // actually slot ptrs
@@ -155,7 +155,6 @@ private:
         VarMap<Vars> slot2stored_;     // free Var%s of the values stored behind a slot
         VarMap<DefSet> slot2resolved_; // promoted leas and loaded values whose lattice entry depends on the slot
         LamMap<Vars> lam2live_;        // slot Var%s a Lam may access; only grows
-        LamSet unknowns_;              // Lam%s reached as a *value*; their signature must stay untouched
         LamMap<MutSet> lam2callers_;   // all muts that apply a Lam; tainted when the Lam's abstract vars change
 
         // kept across restarts

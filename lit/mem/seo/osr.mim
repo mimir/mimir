@@ -175,8 +175,8 @@ extern lam _compile(): compile.Phase = mem.seo;
 // CHECK:       core.wrap.mul 0 @ i32 (4I32, i
 
 // CHECK-LABEL: extern fun modular
-// CHECK:       con head{{[[:alnum:]_]*}} ({{[[:alnum:]_]+}}: Idx 4, [[JM:_[0-9]+]]: Idx 4)
-// CHECK:       core.wrap.add 0 @ 4 (2₄, [[JM]]);
+// CHECK:       con head{{[[:alnum:]_]*}} ({{[[:alnum:]_]+}}: I2, [[JM:_[0-9]+]]: I2)
+// CHECK:       core.wrap.add 0 @ 4 (2I2, [[JM]]);
 
 // CHECK-LABEL: extern fun nat_down
 // CHECK:       con head{{[[:alnum:]_]*}} ({{[[:alnum:]_]+}}: Nat, [[JN:_[0-9]+]]: Nat)

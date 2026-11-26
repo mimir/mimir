@@ -1,0 +1,5 @@
+// RUN: %mim %s -o -
+
+lam het (t: [I32, Bool, I64], i: Idx 3): (I32, Bool, I64)#i = t#i;
+lam dep (t: [n: Nat, «n; I32»], i: Idx 2): (Nat, «t#0_2; I32»)#i = t#i;
+lam hom (i: Idx 2) (x: (I32, I32)#i): I32 = x;

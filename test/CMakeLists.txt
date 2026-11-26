@@ -49,7 +49,6 @@ add_mim_test(mim-test
         lexer.cpp
         manifest.cpp
         nom.cpp
-        restricted_dep_types.cpp
         tensor.cpp
         test.cpp
         variant.cpp
@@ -61,6 +60,14 @@ add_mim_test(mim-regex-test
     PRIVATE
         automaton
 )
+
+add_mim_test(mim-pbqp-test
+    SOURCES
+        pbqp.cpp
+    PRIVATE
+        pbqp
+)
+target_compile_definitions(mim-pbqp-test PRIVATE PBQP_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data/pbqp")
 
 mim_extra_plugins(test MIM_EXTRA_PLUGINS)
 foreach(PLUGIN IN LISTS MIM_EXTRA_PLUGINS)

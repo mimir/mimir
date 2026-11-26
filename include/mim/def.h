@@ -35,10 +35,9 @@
     X(Pi,     Judge::Form ) X(Lam,   Judge::Intro) X(App,     Judge::Elim)                                         \
     X(Sigma,  Judge::Form ) X(Tuple, Judge::Intro) X(Extract, Judge::Elim) X(Insert, (Judge::Intro | Judge::Elim)) \
     X(Arr,    Judge::Form ) X(Pack,  Judge::Intro)                                                                 \
-    X(Join,   Judge::Form ) X(Inj,   Judge::Intro) X(Match,   Judge::Elim)                                         \
-    X(Variant, Judge::Form)                                                                                        \
+    X(Variant, Judge::Form) X(Inj,  Judge::Intro) X(Match,   Judge::Elim)                                         \
     X(Top,    Judge::Intro) X(Bot,   Judge::Intro)                                                                 \
-    X(Reform, Judge::Form ) X(Rule,  Judge::Intro)                                                                 \
+    X(Rho,    Judge::Form ) X(Rule,  Judge::Intro) X(Fire,    Judge::Elim)                                         \
     X(Single, Judge::Form ) X(Wrap,  Judge::Intro)                                                                 \
     X(Nom,    Judge::Form ) X(Name,  Judge::Intro) X(Struc,   Judge::Elim)                                         \
     X(Nat,    Judge::Form )                                                                                        \
@@ -53,10 +52,9 @@
     X(Pi)     X(Lam)   X(App)                                                                                      \
     X(Sigma)  X(Tuple) X(Extract) X(Insert)                                                                        \
     X(Arr)    X(Pack)                                                                                              \
-    X(Join)   X(Inj)   X(Match)                                                                                    \
-    X(Variant)                                                                                                     \
+    X(Variant) X(Inj)  X(Match)                                                                                    \
     X(Top)    X(Bot)                                                                                               \
-    X(Reform) X(Rule)                                                                                              \
+    X(Rho)    X(Rule)  X(Fire)                                                                                     \
     X(Single) X(Wrap)                                                                                              \
     X(Nat)                                                                                                         \
     X(Idx)                                                                                                         \
@@ -68,7 +66,7 @@
     X(Sigma)                                                                                                       \
     X(Arr)   X(Pack)                                                                                               \
     X(Variant)                                                                                                     \
-    X(Rule)
+    X(Rho)   X(Rule)
 // clang-format on
 
 namespace mim {
@@ -183,7 +181,6 @@ namespace mim {
 
 // clang-format off
 template<class F> concept Projector = std::invocable<F, const Def*>; /// Used by Def::proj & friends.
-template<class F> concept DefPred   = std::predicate<F, const Def*>;
 template<class F> concept MutPred   = std::predicate<F, Def*>;
 // clang-format on
 
@@ -261,14 +258,13 @@ struct DotConfig {
 /// |                   | Insert            | Insert            |
 /// | Single            | Wrap              |                   |
 /// | Nom               | Name              | Struc             |
-/// | Join              | Inj               | Match             |
 /// | Variant           | Inj               | Match             |
-/// | Reform            | Rule              |                   |
+/// | Rho               | Rule              | Fire              |
 /// | Nat               | Lit               |                   |
 /// | Idx               | Lit               |                   |
 /// In addition there is:
 /// * Var: A variable. Currently the following Def%s may be binders:
-///     * Pi, Lam, Sigma, Arr, Pack, Rule
+///     * Pi, Lam, Sigma, Arr, Pack, Rho, Rule
 /// * Axm: To introduce new entities.
 /// * Proxy: Used for intermediate values during optimizations.
 /// * Hole: A metavariable filled in by the type inference (always mutable as holes are filled in later).
@@ -1039,14 +1035,13 @@ public:
     static constexpr nat_t bitwidth2size(nat_t n) { assert(n != 0); return n == 64 ? 0 : (1_n << n); }
     static constexpr nat_t size2bitwidth(nat_t n) { return n == 0 ? 64 : std::bit_width(n - 1_n); }
     // clang-format on
-    static std::optional<nat_t> size2bitwidth(const Def* size);
+    /// A size only known at runtime is a `Nat`, which fits in 64 bits.
+    static nat_t size2bitwidth(const Def* size);
 
-    /// Yields the bit width of the `Idx` @p type or bails - instead of yielding std::nullopt or dereferencing
-    /// an unchecked std::optional - if @p type is not an `Idx` of statically known size; see Def::expect.
+    /// Yields the bit width of the `Idx` @p type or bails if @p type is not an `Idx`; see Def::expect.
     template<class... Args>
     static nat_t expect_bitwidth(const Def* type, fe::cite_string<Args...> fmt, Args&&... args) {
-        if (auto size = isa(type))
-            if (auto w = size2bitwidth(size)) return *w;
+        if (auto size = isa(type)) return size2bitwidth(size);
         type->bail_expected(fe::format_cite(fmt, std::forward<Args>(args)...));
     }
     ///@}

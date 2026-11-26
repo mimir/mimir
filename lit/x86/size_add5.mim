@@ -1,0 +1,7 @@
+// RUN: (! %mim %s -o - 2>&1) | %FileCheck %s
+
+plugin x86;
+
+extern lam f (a b: Idx 5): Idx 5 = x86.add (a, b);
+
+// CHECK: x86: operand size must be i8, i16, i32, or i64

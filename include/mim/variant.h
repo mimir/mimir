@@ -1,0 +1,131 @@
+#pragma once
+
+#include <span>
+
+#include "mim/def.h"
+
+namespace mim {
+
+/// Common base for TExt%remum.
+class Ext : public Def {
+protected:
+    Ext(Node node, const Def* type)
+        : Def(node, type, Defs{}, 0) {}
+
+public:
+    /// Ext groups Top and Bot; see fe::NodeSetable.
+    static constexpr bool isa_node(mim::Node n) noexcept { return n == mim::Node::Top || n == mim::Node::Bot; }
+};
+
+/// Ext%remum. Either Top (@p Up) or Bot%tom.
+template<bool Up>
+class TExt : public Ext, public Setters<TExt<Up>> {
+private:
+    TExt(const Def* type)
+        : Ext(Node, type) {}
+
+public:
+    using Setters<TExt<Up>>::set;
+
+    static constexpr auto Node      = Up ? mim::Node::Top : mim::Node::Bot;
+    static constexpr size_t Num_Ops = 0;
+
+private:
+    friend class World;
+};
+
+/// @name Lattice
+///@{
+using Bot = TExt<false>;
+using Top = TExt<true>;
+/// @}
+
+/// Constructs a Variant **value**.
+class Inj : public Def, public Setters<Inj> {
+private:
+    Inj(const Def* type, const Def* value, flags_t index)
+        : Def(Node, type, {value}, index) {}
+
+public:
+    using Setters<Inj>::set;
+
+    /// @name ops
+    ///@{
+    const Def* value() const { return op(0); }
+    ///@}
+
+    /// The case of the Variant this injects into.
+    size_t index() const { return flags(); }
+
+    static constexpr auto Node      = mim::Node::Inj;
+    static constexpr size_t Num_Ops = 1;
+
+private:
+    friend class World;
+};
+
+/// A sum type whose cases are positional.
+/// It is *mutable* only if it refers to itself.
+class Variant : public Def, public Setters<Variant> {
+private:
+    Variant(const Def* type, Defs ops)
+        : Def(Node, type, ops, 0) {} ///< Constructor for an *immutable* Variant.
+    Variant(const Def* type, size_t size)
+        : Def(Node, type, size, 0) {} ///< Constructor for a *mutable* Variant.
+
+public:
+    /// @name Setters
+    /// @see @ref set_ops "Setting Ops"
+    ///@{
+    using Setters<Variant>::set;
+    Variant* set(size_t i, const Def* def) { return Def::set(i, def)->as<Variant>(); }
+    Variant* set(Defs ops) { return Def::set(ops)->as<Variant>(); }
+    Variant* unset() { return Def::unset()->as<Variant>(); }
+    ///@}
+
+    /// @name Type Checking
+    ///@{
+    static const Def* infer(World&, Defs);
+    ///@}
+
+    /// The payload `A` of a single-case Variant `| A`, which is isomorphic to `A`.
+    static const Def* isa_lone(const Def* d) {
+        auto variant = d->isa_imm<Variant>();
+        return variant && variant->num_ops() == 1 ? variant->op(0) : nullptr;
+    }
+
+    static constexpr auto Node      = mim::Node::Variant;
+    static constexpr size_t Num_Ops = std::dynamic_extent;
+
+private:
+    friend class World;
+};
+
+/// Scrutinize the Variant value Match::scrutinee() and dispatch to Match::arms.
+/// The arms are positional: `arm(i)` handles case `i`.
+class Match : public Def, public Setters<Match> {
+private:
+    Match(const Def* type, Defs ops)
+        : Def(Node, type, ops, 0) {}
+
+public:
+    using Setters<Match>::set;
+    static constexpr auto Node      = mim::Node::Match;
+    static constexpr size_t Num_Ops = std::dynamic_extent;
+
+    /// @name ops
+    ///@{
+    const Def* scrutinee() const { return op(0); }
+    template<size_t N = std::dynamic_extent>
+    constexpr auto arms() const noexcept {
+        return ops().subspan<1, N>();
+    }
+    const Def* arm(size_t i) const { return arms()[i]; }
+    size_t num_arms() const { return arms().size(); }
+    ///@}
+
+private:
+    friend class World;
+};
+
+} // namespace mim

@@ -131,12 +131,8 @@ std::optional<LowerIndex::Range> LowerIndex::range_of(const Def* d) const {
             case core::wrap::add: return bounded(l->lo + r->lo, l->hi + r->hi);
             case core::wrap::sub: return bounded(l->lo - r->hi, l->hi - r->lo);
             case core::wrap::mul: {
-                std::array cands{
-                    std::pair{l->lo, r->lo},
-                    std::pair{l->lo, r->hi},
-                    std::pair{l->hi, r->lo},
-                    std::pair{l->hi, r->hi}
-                };
+                std::array cands{std::pair{l->lo, r->lo}, std::pair{l->lo, r->hi}, std::pair{l->hi, r->lo},
+                                 std::pair{l->hi, r->hi}};
                 for (auto [x, y] : cands)
                     if (x != 0 && std::abs(y) > Limit / std::abs(x)) return {};
                 auto prods = cands | std::views::transform([](auto p) { return p.first * p.second; });
@@ -382,7 +378,7 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
             specialized_[f_lam][sin] = idx_map_lam;
             if (!lookup(f_lam)) map(f_lam, idx_map_lam);
 
-            push();
+            auto _ = scoped();
             bind(f_lam->has_var(), idx_map_lam->has_var());
             map(f_lam->var(), idx_map_lam->var(2, 1));
             for (size_t i = 0; i != f_lam->num_vars(); ++i)
@@ -401,7 +397,6 @@ const Def* LowerIndex::rewrite_imm_App(const App* app) {
                 return rewrite(f_lam->body());
             };
             idx_map_lam->set(true, w.tuple({mem_, get_body()}))->set(f_lam->dbg_key());
-            pop();
         }
 
         auto [out_mem, out_idxs] = w.app(idx_map_lam, {mem, lifted})->projs<2>();

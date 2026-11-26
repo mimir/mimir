@@ -11,3 +11,6 @@ let _ = refly.struc.e (core.mulrem 3000000000007 (2999999999999I64, 299999999999
 let _ = refly.struc.e (core.mulrem 5 (0I64, 3I64), 0I64);
 
 lam keep (x: I8): I8 = refly.struc.e (core.rem 256 x, x);
+
+// A power-of-two modulus masks the low bits.
+lam mask (x: I64): I64 = refly.struc.e (core.rem 4 x, core.bit2.and 0 (x, 3I64));

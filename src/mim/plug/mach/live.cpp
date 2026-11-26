@@ -1,0 +1,32 @@
+#include <print>
+
+#include "mim/plug/mach/liveness.h"
+#include "mim/plug/mach/regalloc.h"
+
+namespace mim::plug::mach {
+
+namespace {
+
+std::string str(const DefSet& values) {
+    auto sorted = DefVec(values.begin(), values.end());
+    std::ranges::sort(sorted, {}, &Def::gid);
+    return std::format("{}", fe::Join(sorted, ", "));
+}
+
+} // namespace
+
+void Live::visit(Lam* fun) {
+    // A closed basic block belongs to the function that jumps to it.
+    if (!Lam::isa_mut_returning(fun)) return;
+
+    auto out  = Out(std::string(arg_value(target_args(), "live").value_or("-")));
+    auto& os  = *out.os();
+    auto live = Liveness(target(), fun);
+    std::println(os, "fun {}", fun);
+    for (const auto& block : live.blocks())
+        std::println(os, "  {}: in {{{}}} out {{{}}} max {} fpr {} flags {}", block.lam, str(block.live_in),
+                     str(block.live_out), block.max_live[Liveness::Gpr], block.max_live[Liveness::Fpr],
+                     block.max_live[Liveness::Flags]);
+}
+
+} // namespace mim::plug::mach

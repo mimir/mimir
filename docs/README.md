@@ -5,7 +5,7 @@
 [![Discord](https://img.shields.io/discord/960975142459179068?style=social&logo=discord&logoColor=black)](https://discord.gg/FPp7hdj3fQ)
 
 [![Release](https://img.shields.io/github/v/release/mimir/mimir?style=flat-square&logo=starship&color=blue&label=Release)](https://github.com/mimir/mimir/releases)
-[![Docs](https://img.shields.io/badge/Docs-master/v0.4/v0.3/v0.2/v0.1-blue?style=flat-square&logo=gitbook&logoColor=white)](https://mimir.github.io)
+[![Docs](https://img.shields.io/badge/Docs-master/v0.5/v0.4/v0.3/v0.2/v0.1-blue?style=flat-square&logo=gitbook&logoColor=white)](https://mimir.github.io)
 [![License](https://img.shields.io/github/license/mimir/mimir?style=flat-square&color=blue&logo=opensourceinitiative&logoColor=white&label=License)](https://github.com/mimir/mimir/blob/master/LICENSE.TXT)
 [![C++23](https://img.shields.io/badge/C%2B%2B-23-blue?style=flat-square&logo=cplusplus)](https://en.wikipedia.org/wiki/C%2B%2B#Standardization)
 [![Python](https://img.shields.io/badge/Python-3.10-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
@@ -91,18 +91,18 @@ Or, naturally, you can continue exploring the rest of the [documentation](https:
 ```sh
 git clone --recursive git@github.com:mimir/mimir.git
 cd mimir
-cmake -S . -B build -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON
-cmake --build build -j$(nproc)
+cmake --preset debug
+cmake --build --preset debug
 ```
 
 ### 📦 Install (Optional)
 
 ```sh
-cmake -S . -B build -DBUILD_TESTING=ON -DMIM_BUILD_EXAMPLES=ON -DCMAKE_INSTALL_PREFIX=/my/local/install/prefix
-cmake --build build -j$(nproc) --target install
+cmake --preset release -DCMAKE_INSTALL_PREFIX=/my/local/install/prefix
+cmake --build --preset release --target install
 ```
 
-See the full [build options](@ref building) in the [Contributing & Debugging](@ref coding) guide.
+See the [presets](@ref presets) and the full [build options](@ref building) in the [Contributing & Debugging](@ref coding) guide.
 
 ## 🔥 Key Innovations
 

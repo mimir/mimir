@@ -3,6 +3,10 @@
 // RUN: clang %{s:stem}.ll -o %t -Wno-override-module
 // RUN: %t ; test $? -eq 4
 // RUN: %t a a a a a a ; test $? -eq 28
+// RUN: %if native %{ %mim -p opt %s -p %native -X %native:o=%t.s %}
+// RUN: %if native %{ clang %t.s -o %t.native %}
+// RUN: %if native %{ %t.native ; test $? -eq 4 %}
+// RUN: %if native %{ %t.native a a a a a a ; test $? -eq 28 %}
 
 // `affine.lower_index` folds `floordiv`/`rem` away where the index domain makes them redundant, so a
 // delinearize-of-linearize round trip collapses back to the plain input indices instead of emitting `core.div`.

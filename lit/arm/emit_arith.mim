@@ -1,0 +1,37 @@
+// RUN: %mim -p opt %s -p arm -X arm:o=- | %FileCheck %s %asmdefs
+
+plugin core;
+plugin mem;
+
+extern con main (m: mem.M 0, argc: I32, return: Cn [mem.M 0, I32]) =
+    let a = core.wrap.mul 0 (argc, 7I32);
+    let b = core.wrap.sub 0 (a, 3I32);
+    let c = core.wrap.shl 0 (b, 2I32);
+    let d = core.shr.a (c, 1I32);
+    let e = core.bit2.and 0 (b, a);
+    return (m, core.bit2.or 0 (d, core.bit2.xor 0 (a, e)));
+
+extern con rem (m: mem.M 0, x: I32, return: Cn [mem.M 0, I32]) =
+    return (m, core.rem 7 x);
+
+extern con widen (m: mem.M 0, x: I8, return: Cn [mem.M 0, I32]) =
+    return (m, core.bitcast I32 x);
+
+// CHECK: .globl [[SYM]]main
+// CHECK: stp x29, x30, [sp, #-16]!
+// CHECK-NEXT: mov x29, sp
+// CHECK: mul {{w[0-9]+}}, {{w[0-9]+}}, {{w[0-9]+}}
+// CHECK: add {{w[0-9]+}}, {{w[0-9]+}}, {{w[0-9]+}}
+// CHECK: lsl {{w[0-9]+}}, {{w[0-9]+}}, #2
+// CHECK: asr {{w[0-9]+}}, {{w[0-9]+}}, #1
+// CHECK: and {{w[0-9]+}}, {{w[0-9]+}}, {{w[0-9]+}}
+// CHECK: eor {{w[0-9]+}}, {{w[0-9]+}}, {{w[0-9]+}}
+// CHECK: orr {{w[0-9]+}}, {{w[0-9]+}}, {{w[0-9]+}}
+// CHECK: ldp x29, x30, [sp], #16
+// CHECK-NEXT: ret
+// CHECK: .globl [[SYM]]rem
+// CHECK: udiv [[Q:w[0-9]+]], {{w[0-9]+}}, {{w[0-9]+}}
+// CHECK: mul {{w[0-9]+}}, [[Q]], {{w[0-9]+}}
+// CHECK: sub {{w[0-9]+}}, {{w[0-9]+}}, {{w[0-9]+}}
+// CHECK: .globl [[SYM]]widen
+// CHECK: ubfx {{w[0-9]+}}, {{w[0-9]+}}, #0, #8

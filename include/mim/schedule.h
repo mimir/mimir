@@ -67,6 +67,9 @@ public:
 
     /// @name Compute Schedules
     ///@{
+    /// A closed immutable has no place of its own.
+    /// Scheduler::late and Scheduler::smart yield `nullptr` for it, so the caller decides.
+    static bool is_remat(const Def* def) { return !def->isa_mut() && def->is_closed(); }
     const Nest::Node* early(const Def*);
     const Nest::Node* late(Def* curr, const Def*);
     const Nest::Node* smart(Def* curr, const Def*);

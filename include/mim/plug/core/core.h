@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <optional>
 
 #include <mim/axm.h>
 #include <mim/lam.h>
@@ -91,6 +92,28 @@ inline const Def* op(trait o, const Def* type) {
     World& w = type->world();
     return w.app(w.annex(o), type);
 }
+
+/// The memory layout of a Sigma or, if @p overlap, a Union of @p fields; `size` is not padded to `align`.
+struct Layout {
+    fe::Vector<nat_t> offsets;
+    nat_t size  = 0;
+    nat_t align = 1;
+};
+
+/// The Layout of @p fields, unless one of them has no literal size or alignment.
+inline std::optional<Layout> layout(Defs fields, bool overlap = false) {
+    auto res = Layout();
+    for (auto t : fields) {
+        auto a = Lit::isa(op(trait::align, t));
+        auto s = Lit::isa(op(trait::size, t));
+        if (!a || !s) return {};
+        auto offset = overlap ? 0 : fe::pad(res.size, *a);
+        res.offsets.emplace_back(offset);
+        res.align = std::max(res.align, *a);
+        res.size  = std::max(res.size, offset + *s);
+    }
+    return res;
+}
 ///@}
 
 /// @name core.nat / core.wrap / core.bit2
@@ -118,10 +141,8 @@ inline const Def* op(pe o, const Def* def) {
 ///@{
 /// Use like this: `a op b = tab[a][b]`
 constexpr std::array<std::array<u64, 2>, 2> make_truth_table(bit2 id) {
-    return {
-        {{sub_t(id) & sub_t(0b0001) ? u64(-1) : 0, sub_t(id) & sub_t(0b0010) ? u64(-1) : 0},
-         {sub_t(id) & sub_t(0b0100) ? u64(-1) : 0, sub_t(id) & sub_t(0b1000) ? u64(-1) : 0}}
-    };
+    return {{{sub_t(id) & sub_t(0b0001) ? u64(-1) : 0, sub_t(id) & sub_t(0b0010) ? u64(-1) : 0},
+             {sub_t(id) & sub_t(0b0100) ? u64(-1) : 0, sub_t(id) & sub_t(0b1000) ? u64(-1) : 0}}};
 }
 ///@}
 
@@ -139,26 +160,14 @@ inline Lam* mut_con(const Def* dom) {
 /// If @p def is a `core.M`-typed value, yields its memory type `core.M a`; otherwise `nullptr`.
 inline const App* isa_mem(const Def* def) { return Axm::isa<M>(def->type()); }
 
-/// Does @p pi already thread memory - a leading `core.M`, either directly or grouped as the first
-/// component of the first parameter (e.g. the `Fn [mem.M 0, To, ins] → …` shape of a mem-threaded combiner)?
-inline bool has_leading_mem(const Pi* pi) {
-    if (pi->num_doms() == 0) return false;
-    auto dom0 = pi->dom(pi->num_doms(), 0);
-    if (Axm::isa<M>(dom0)) return true;
-    if (auto sig = dom0->isa<Sigma>(); sig && sig->num_ops() != 0 && Axm::isa<M>(sig->op(0))) return true;
-    return false;
-}
-
-/// Returns the (first) element of type `core.M a` from the given tuple.
+/// Returns @p def if it is a `core.M a`, or else its first projection that is.
+/// A memory is never nested deeper, which also keeps this from unfolding a recursive type.
 inline const Def* mem_def(const Def* def) {
     if (isa_mem(def)) return def;
     if (def->isa<Arr>() || def->type()->isa<Arr>()) return {}; // don't look into possibly gigantic arrays
-
-    if (def->num_projs() > 1) {
+    if (def->num_projs() > 1)
         for (auto proj : def->projs())
-            if (auto mem = mem_def(proj)) return mem;
-    }
-
+            if (isa_mem(proj)) return proj;
     return {};
 }
 

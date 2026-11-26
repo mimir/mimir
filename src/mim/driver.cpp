@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <iostream>
 #include <optional>
+#include <ranges>
 #include <stdexcept>
 
 #include <fe/dl.h>
@@ -192,8 +193,18 @@ void Driver::load(std::string_view spec, Loc loc) {
     if (auto reg = plugin.register_normalizers) reg(normalizers_);
     if (auto reg = plugin.register_phases)      reg(phases_);
     // clang-format on
+    if (plugin.target) targets_.emplace_back(plugin.target());
     if (plugin.args) known_args_.emplace_back(name, fe::View<PluginArg>(plugin.args, plugin.num_args));
     if (plugin.envs) known_envs_.emplace_back(name, fe::View<PluginEnv>(plugin.envs, plugin.num_envs));
+}
+
+const Target& Driver::target(Loc loc) {
+    if (auto target = isa_target()) return *target;
+    if (targets_.empty()) error().e(loc, "no native backend plugin is loaded").bail();
+    error()
+        .e(loc, "need exactly one native backend plugin, but {} are loaded",
+           fe::Join(targets_ | std::views::transform([](const auto& t) { return t->name(); }), ", "))
+        .bail();
 }
 
 void* Driver::get_fun_ptr(std::string_view plugin, const char* name) {

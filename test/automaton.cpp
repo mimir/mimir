@@ -85,9 +85,7 @@ TEST_CASE("NFA for (a|b)+a") {
     CHECK(states[13]->is_accepting());
 
     std::vector<const NFANode*> empty;
-    auto c = std::vector<const NFANode*>{
-        {states[1], states[3]}
-    };
+    auto c = std::vector<const NFANode*>{{states[1], states[3]}};
     CHECK(states[0]->get_transitions(eps) == c);
     CHECK(states[0]->get_transitions('a') == empty);
     CHECK(states[0]->get_transitions('b') == empty);
@@ -108,16 +106,12 @@ TEST_CASE("NFA for (a|b)+a") {
     CHECK(states[4]->get_transitions('a') == empty);
     CHECK(states[4]->get_transitions('b') == empty);
 
-    c = std::vector<const NFANode*>{
-        {states[12], states[6]}
-    };
+    c = std::vector<const NFANode*>{{states[12], states[6]}};
     CHECK(states[5]->get_transitions(eps) == c);
     CHECK(states[5]->get_transitions('a') == empty);
     CHECK(states[5]->get_transitions('b') == empty);
 
-    c = std::vector<const NFANode*>{
-        {states[7], states[9]}
-    };
+    c = std::vector<const NFANode*>{{states[7], states[9]}};
     CHECK(states[6]->get_transitions(eps) == c);
     CHECK(states[6]->get_transitions('a') == empty);
     CHECK(states[6]->get_transitions('b') == empty);
@@ -138,9 +132,7 @@ TEST_CASE("NFA for (a|b)+a") {
     CHECK(states[10]->get_transitions('a') == empty);
     CHECK(states[10]->get_transitions('b') == empty);
 
-    c = std::vector<const NFANode*>{
-        {states[6], states[12]}
-    };
+    c = std::vector<const NFANode*>{{states[6], states[12]}};
     CHECK(states[11]->get_transitions(eps) == c);
     CHECK(states[11]->get_transitions('a') == empty);
     CHECK(states[11]->get_transitions('b') == empty);

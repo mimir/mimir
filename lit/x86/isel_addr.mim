@@ -1,0 +1,25 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin core;
+plugin mem;
+plugin mach;
+plugin x86;
+import compile;
+
+extern lam _compile (): compile.Phase = compile.phases ff (mach.legalize, compile.named "x86.isel");
+
+// The base and the row offset take one `add`, the column folds into the address as a scaled index.
+extern lam row (m: mem.M 0, a: mem.Ptr0 «256; «256; I32»», i j: I8): [mem.M 0, I32] =
+    mem.load (m, mem.lea (mem.lea (a, i), j));
+
+// The field offset is the displacement of the scaled element index.
+extern lam field (m: mem.M 0, a: mem.Ptr0 «256; [I32, I32]», i: I8): [mem.M 0, I32] =
+    mem.load (m, mem.lea (mem.lea (a, i), 1_2));
+
+// CHECK-NOT: x86.imul @ 0 ({{.*}}, {{[48]}}I64)
+// CHECK-DAG: let [[ROW:_[0-9]+]] = x86.add @ 0 ({{_[0-9]+}}, {{a(_[0-9]+)?}});
+// CHECK-DAG: let [[BASE:_[0-9]+]] = x86.addr (0I32, [[ROW]]);
+// CHECK-DAG: x86.index [[BASE]] ({{_[0-9]+}}, 2I2);
+// CHECK-DAG: let [[DISP:_[0-9]+]] = x86.addr (4I32, a);
+// CHECK-DAG: x86.index [[DISP]] ({{_[0-9]+}}, 3I2);
+// CHECK-NOT: x86.imul @ 0 ({{.*}}, {{[48]}}I64)

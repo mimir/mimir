@@ -5,6 +5,12 @@
 // RUN: %t "b"; test $? -eq 1
 // RUN: %t "#"; test $? -eq 0
 // RUN: %t "3"; test $? -eq 1
+// RUN: %if native %{ %mim -p opt %s -p %native -X %native:o=%t.s %}
+// RUN: %if native %{ clang %t.s -o %t.native %}
+// RUN: %if native %{ %t.native "a"; test $? -eq 0 %}
+// RUN: %if native %{ %t.native "b"; test $? -eq 1 %}
+// RUN: %if native %{ %t.native "#"; test $? -eq 0 %}
+// RUN: %if native %{ %t.native "3"; test $? -eq 1 %}
 
 plugin mem;
 plugin core;

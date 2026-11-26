@@ -2,6 +2,7 @@
 """Automate cutting a MimIR release: tag it, publish a GitHub release, bump to the next -dev version, and verify docs."""
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -17,7 +18,9 @@ README_FILE = ROOT / 'docs' / 'README.md'
 AUR_DIR = Path(os.environ.get('MIM_AUR_DIR', ROOT.parent / 'aur'))
 AUR_PKGBUILD = AUR_DIR / 'PKGBUILD'
 DOCS_SITE_VERSIONS_URL = 'https://mimir.github.io/versions.json'
+PLAYGROUND_SITE_VERSIONS_URL = 'https://mimir.github.io/playground/versions.json'
 DOXYGEN_WORKFLOW = 'doxygen.yml'
+PLAYGROUND_WORKFLOW = 'playground.yml'
 RUN_POLL_SECONDS = 10
 RUN_POLL_ATTEMPTS = 30
 
@@ -37,8 +40,8 @@ Automates the MimIR release process:
   status   Show the current version, suffix, and repo state.
   cut      Drop the -dev suffix, commit, tag, push, and publish a GitHub release.
   bump     Bump to the next minor version with a -dev suffix, commit, and push.
-  verify   Poll the doxygen CI run and check that mimir.github.io/versions.json
-           lists master and all released versions.
+  verify   Poll the doxygen and playground CI runs and check the deployed
+           versions manifests.
   aur      Wait for the release's source tarball, then bump the AUR package in
            $MIM_AUR_DIR (default: ../aur) to it, commit, and push.
   all      Run cut, bump, aur, then verify, pausing for confirmation in between.
@@ -148,26 +151,26 @@ def poll(probe, what):
     return None
 
 
-def find_doxygen_run(sha, ref_name):
-    """Return the id of the doxygen run for `sha` whose head ref is `ref_name`, or '' if there is none yet."""
+def find_workflow_run(workflow, sha, ref_name):
+    """Return the id of the run of `workflow` for `sha` whose head ref is `ref_name`, or '' if there is none yet."""
     jq = f'[.[] | select(.headBranch == "{ref_name}")] | first | .databaseId // empty'
-    return capture(['gh', 'run', 'list', '--workflow', DOXYGEN_WORKFLOW, '--commit', sha, '--json', 'databaseId,headBranch', '--jq', jq])
+    return capture(['gh', 'run', 'list', '--workflow', workflow, '--commit', sha, '--json', 'databaseId,headBranch', '--jq', jq])
 
 
-def watch_doxygen_run(sha, ref_name, dry_run=False):
-    """Wait for the doxygen run of `ref_name` to appear, watch it to completion, and report whether it succeeded."""
+def watch_workflow_run(workflow, sha, ref_name, dry_run=False):
+    """Wait for the run of `ref_name` to appear, watch it to completion, and report whether it succeeded."""
     if dry_run:
-        print(f'+ watch {DOXYGEN_WORKFLOW} run for {ref_name} ({sha[:12]})')
+        print(f'+ watch {workflow} run for {ref_name} ({sha[:12]})')
         return True
 
-    run_id = poll(lambda: find_doxygen_run(sha, ref_name), f'the doxygen run for {ref_name} to appear')
+    run_id = poll(lambda: find_workflow_run(workflow, sha, ref_name), f'the {workflow} run for {ref_name} to appear')
     if not run_id:
-        print(f'warning: no doxygen run found for {ref_name} ({sha[:12]})')
+        print(f'warning: no {workflow} run found for {ref_name} ({sha[:12]})')
         return False
 
     print(f'+ gh run watch {run_id} --exit-status')
     if subprocess.run(['gh', 'run', 'watch', run_id, '--exit-status'], cwd=ROOT, check=False).returncode != 0:
-        print(f'warning: doxygen run {run_id} for {ref_name} did not succeed; inspect it with `gh run view {run_id}` and re-run it with `gh run rerun {run_id}`')
+        print(f'warning: {workflow} run {run_id} for {ref_name} did not succeed; inspect it with `gh run view {run_id}` and re-run it with `gh run rerun {run_id}`')
         return False
     return True
 
@@ -260,12 +263,14 @@ def cmd_cut(args):
 
     run(['git', 'push', '--atomic', 'origin', 'master', tag], args.dry_run)
 
-    # All deploying doxygen runs share one concurrency group and GitHub keeps at most one of them queued,
-    # so pushing again before this one has finished would silently evict the docs snapshot for the tag.
-    print(f'Waiting for the doxygen deploy of {tag} before anything else may push to master...')
+    # Each deploying workflow keeps at most one queued run per concurrency group, so pushing again before
+    # the tag deploys finish would silently evict the tag's docs snapshot or playground build.
+    print(f'Waiting for the doxygen and playground deploys of {tag} before anything else may push to master...')
     sha = capture(['git', 'rev-parse', 'HEAD'])
-    if not watch_doxygen_run(sha, tag, args.dry_run):
+    if not watch_workflow_run(DOXYGEN_WORKFLOW, sha, tag, args.dry_run):
         print(f'warning: the {tag} docs snapshot is probably missing from https://mimir.github.io; re-run the doxygen workflow for {tag} before bumping')
+    if not watch_workflow_run(PLAYGROUND_WORKFLOW, sha, tag, args.dry_run):
+        print(f'warning: the {tag} playground is probably missing from https://mimir.github.io/playground; re-run the playground workflow for {tag} before bumping')
 
     if not confirm(f'Publish a GitHub release for {tag} (via gh release create --generate-notes)?', args.yes):
         print(f'skipped GitHub release; run: gh release create {tag} --title "MimIR {major}.{minor}" --generate-notes')
@@ -299,33 +304,37 @@ def cmd_bump(args):
 
 
 def cmd_verify(args):
-    """Poll the doxygen CI runs for master and the latest tag, then check the deployed versions manifest."""
+    """Poll the docs and playground CI runs for master and the latest tag, then check their manifests."""
     tag = f'v{released_version()}'
 
     sha = capture(['git', 'rev-parse', 'HEAD'])
-    print(f'Watching doxygen workflow run(s) for {sha[:12]}...')
+    print(f'Watching the doxygen and playground workflow runs for {sha[:12]}...')
     run(['gh', 'run', 'list', '--workflow', DOXYGEN_WORKFLOW, '--commit', sha], args.dry_run)
-    watch_doxygen_run(sha, 'master', args.dry_run)
+    run(['gh', 'run', 'list', '--workflow', PLAYGROUND_WORKFLOW, '--commit', sha], args.dry_run)
+    watch_workflow_run(DOXYGEN_WORKFLOW, sha, 'master', args.dry_run)
+    watch_workflow_run(PLAYGROUND_WORKFLOW, sha, 'master', args.dry_run)
 
     tag_sha = capture(['git', 'rev-list', '-n', '1', tag]) if capture(['git', 'tag', '-l', tag]) else ''
     if not tag_sha:
-        print(f'warning: no local tag {tag}; skipping its doxygen run')
+        print(f'warning: no local tag {tag}; skipping its workflow runs')
     else:
-        watch_doxygen_run(tag_sha, tag, args.dry_run)
+        watch_workflow_run(DOXYGEN_WORKFLOW, tag_sha, tag, args.dry_run)
+        watch_workflow_run(PLAYGROUND_WORKFLOW, tag_sha, tag, args.dry_run)
 
+    manifests = [(DOCS_SITE_VERSIONS_URL, 'docs'), (PLAYGROUND_SITE_VERSIONS_URL, 'playground')]
     if args.dry_run:
-        print(f'+ fetch {DOCS_SITE_VERSIONS_URL}')
+        for url, _ in manifests:
+            print(f'+ fetch {url}')
         return
 
-    with urllib.request.urlopen(DOCS_SITE_VERSIONS_URL) as response:
-        import json
-        versions = json.load(response)
-    labels = [entry.get('label') for entry in versions]
-    print(f'live docs versions: {labels}')
-    if 'master' not in labels:
-        print('warning: "master" missing from deployed versions.json')
-    if tag not in labels:
-        print(f'warning: "{tag}" missing from deployed versions.json (CI may still be running)')
+    for url, what in manifests:
+        with urllib.request.urlopen(url) as response:
+            labels = [entry.get('label') for entry in json.load(response)]
+        print(f'live {what} versions: {labels}')
+        if 'master' not in labels:
+            print(f'warning: "master" missing from deployed {what} versions.json')
+        if tag not in labels:
+            print(f'warning: "{tag}" missing from deployed {what} versions.json (CI may still be running)')
 
 
 def cmd_aur(args):

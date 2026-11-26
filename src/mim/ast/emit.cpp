@@ -352,7 +352,7 @@ void Expr::emit_body(Emitter& e, const Def* decl) const {
 }
 
 const Def* ErrorExpr::emit_(Emitter&) const { std::unreachable(); }
-const Def* HoleExpr::emit_(Emitter& e) const { return e.world().mut_hole_type(); }
+const Def* HoleExpr::emit_(Emitter& e) const { return e.world().mut_hole(e.world().mut_hole_type()); }
 
 const Def* PathExpr::emit_(Emitter& e) const {
     assert(decl());
@@ -373,8 +373,25 @@ const Def* TypeExpr::emit_(Emitter& e) const {
 }
 
 const Def* RuleExpr::emit_(Emitter& e) const {
-    auto m = dom()->emit(e);
-    return e.world().reform(m);
+    auto& w   = e.world();
+    auto rule = w.mut_rule(w.rho(w.mut_hole_type(), w.mut_hole_type()));
+    rule->set(name());
+    rule->set_meta(meta() ? meta()->emit_type(e) : w.sigma());
+    if (meta()) emit_var(e, meta(), rule);
+    rule->set_lhs(lhs()->emit(e));
+    rule->set_guard(guard()->emit(e));
+    rule->set_rhs(rhs()->emit(e));
+    if (auto var = rule->has_var(); var && rule->type()->has_free_var(var))
+        e.error()
+            .e(loc(), "the type of a rule must not depend on its meta variables")
+            .n("its type is `{}`; make what it depends on a parameter of the family", rule->type()->zonk())
+            .bail();
+    if (auto rho = rule->type(); is_norm() && !Check::alpha(rho->dom(), rho->codom()))
+        e.error()
+            .e(loc(), "a normalizing rule must not change the type")
+            .n("its left-hand side has type `{}` but its right-hand side has type `{}`", rho->dom(), rho->codom())
+            .bail();
+    return rule;
 }
 
 const Def* PrimaryExpr::emit_(Emitter& e) const {
@@ -387,11 +404,15 @@ const Def* PrimaryExpr::emit_(Emitter& e) const {
         case Tag::K_ff:   return e.world().lit_ff();
         case Tag::K_tt:   return e.world().lit_tt();
         case Tag::K_i1:   return e.world().lit_i1();
+        case Tag::K_i2:   return e.world().lit_i2();
+        case Tag::K_i4:   return e.world().lit_i4();
         case Tag::K_i8:   return e.world().lit_i8();
         case Tag::K_i16:  return e.world().lit_i16();
         case Tag::K_i32:  return e.world().lit_i32();
         case Tag::K_i64:  return e.world().lit_i64();
         case Tag::K_I1:   return e.world().type_i1();
+        case Tag::K_I2:   return e.world().type_i2();
+        case Tag::K_I4:   return e.world().type_i4();
         case Tag::K_I8:   return e.world().type_i8();
         case Tag::K_I16:  return e.world().type_i16();
         case Tag::K_I32:  return e.world().type_i32();
@@ -474,16 +495,6 @@ const Def* InfixExpr::emit_decl_(Emitter& e, const Def* type) const {
 void InfixExpr::emit_body_(Emitter& e, const Def*) const {
     pi_->set_dom(lhs()->emit(e));
     pi_->set_codom(rhs()->emit(e)); // TODO try to immutabilize
-}
-
-/// `a ∪ b ∪ c` is one n-ary Join, so flatten the left spine the left-associative parse built.
-static void emit_union(Emitter& e, const Expr* expr, DefVec& types) {
-    if (auto infix = InfixExpr::isa_op(Tag::T_union, expr)) {
-        emit_union(e, infix->lhs(), types);
-        types.emplace_back(infix->rhs()->emit(e));
-    } else {
-        types.emplace_back(expr->emit(e));
-    }
 }
 
 const Def* InfixExpr::emit_index(Emitter& e, const Def* tup) const {
@@ -586,11 +597,6 @@ const Def* InfixExpr::emit_(Emitter& e) const {
     auto& w = e.world();
 
     switch (op().tag()) {
-        case Tag::T_union: {
-            DefVec types;
-            emit_union(e, this, types);
-            return w.join(types);
-        }
         case Tag::T_extract: {
             auto tup = w.implicit_holes(lhs()->emit(e));
             if (auto variant = tup->isa<Variant>()) return emit_ctor(e, variant, rhs());
@@ -646,6 +652,8 @@ const Def* InfixExpr::emit_(Emitter& e) const {
 
     switch (op().tag()) {
         case Tag::T_arrow_r: return w.pi(l, r);
+        case Tag::T_leadsto: return w.rho(l, r);
+        case Tag::T_fire: return w.fire(w.implicit_holes(l), r);
         case Tag::T_at: return w.app(l, r);
         case Tag::K_inj:
             r = w.implicit_holes(r);
@@ -659,11 +667,10 @@ Lam* MatchExpr::Arm::emit(Emitter& e, const Def* dom) const {
     auto _ = e.world().push(loc());
     if (ptrn()) {
         auto dom_t = ptrn()->emit_type(e);
-        if (dom && !Check::alpha(dom_t, dom))
+        if (!Check::alpha(dom_t, dom))
             e.error()
                 .e(ptrn()->loc(), "pattern of type `{}` does not match the constructor's payload `{}`", dom_t, dom)
                 .bail();
-        if (!dom) dom = dom_t;
     }
     auto lam = e.world().mut_lam(e.world().pi(dom, e.world().mut_hole_type()));
     if (ptrn()) ptrn()->emit_value(e, lam->var());
@@ -710,34 +717,18 @@ const Def* MatchExpr::emit_variant(Emitter& e, const Def* scrutinee, const Varia
 }
 
 const Def* MatchExpr::emit_(Emitter& e) const {
-    DefVec ops;
-    ops.emplace_back(scrutinee()->emit(e));
-    if (auto variant = ops.front()->isa_type<Variant>()) return emit_variant(e, ops.front(), variant);
-    if (auto nom = ops.front()->isa_type<Nom>())
-        if (auto variant = nom->op()->isa<Variant>();
-            variant && std::ranges::any_of(arms(), [](const auto& arm) { return arm->index() || arm->ctor(); })) {
+    auto scrut = scrutinee()->emit(e);
+    if (auto variant = scrut->isa_type<Variant>()) return emit_variant(e, scrut, variant);
+    if (auto nom = scrut->isa_type<Nom>())
+        if (auto variant = nom->op()->isa<Variant>()) {
             open_nom(e, loc(), nom);
-            return emit_variant(e, e.world().struc(ops.front()), variant);
+            return emit_variant(e, e.world().struc(scrut), variant);
         }
 
-    for (auto arm : arms()) {
-        if (arm->index() || arm->ctor())
-            e.error()
-                .e(arm->loc(), "a constructor pattern needs a variant scrutinee")
-                .n("but the scrutinee has type `{}`", type_of(ops.front()))
-                .bail();
-        ops.emplace_back(arm->emit(e));
-    }
-    auto res = e.world().match(ops);
-
-    // Only a *source* arm is unreachable by mistake; substitution legitimately kills arms of a polymorphic match.
-    auto cases = Match::cases(ops.front());
-    for (size_t i = 0, n = num_arms(); i != n; ++i)
-        if (std::ranges::none_of(cases, [&](const Def* c) { return Match::accepts(ops[i + 1], c); }))
-            e.error().w(arm(i)->loc(), "this arm is unreachable: no case of `{}` matches `{}`", type_of(ops.front()),
-                        ops[i + 1]->isa_type<Pi>()->dom());
-
-    return res;
+    e.error()
+        .e(scrutinee()->loc(), "scrutinee of a match expression must be of variant type")
+        .n("but it has type `{}`", type_of(scrut))
+        .bail();
 }
 
 void PiExpr::Dom::emit_type(Emitter& e) const {
@@ -985,6 +976,12 @@ void RecDecl::emit_body(Emitter& e) const {
     e.attach(annex_, sub_, dbg().sym(), def_);
 }
 
+void RecDecl::emit_sugar(Emitter& e, Lam* lam) const {
+    emit_decl(e);
+    lam->set_body(def_);
+    emit_body(e);
+}
+
 void NomDecl::emit_decl(Emitter& e) const {
     if (!has_mut_body()) return;
     auto _ = e.world().push(loc());
@@ -1076,8 +1073,8 @@ void LamDecl::emit_body(Emitter& e) const {
     {
         auto _body = e.world().push(body()->loc());
         auto lam   = doms().back()->lam_;
-        if (auto nom = nom_sugar())
-            nom->emit_sugar(e, lam);
+        if (auto rec = rec_sugar())
+            rec->emit_sugar(e, lam);
         else
             lam->set_body(body()->emit(e));
     }
@@ -1125,18 +1122,6 @@ void LamDecl::emit_body(Emitter& e) const {
         lam->externalize();
     }
     e.attach(annex_, sub_, dbg().sym(), def_);
-}
-
-void RuleDecl::emit(Emitter& e) const {
-    auto _      = e.world().push(loc());
-    auto meta_t = e.world().reform(var()->emit_type(e));
-    auto rule   = e.world().mut_rule(meta_t)->set(dbg());
-    var()->emit_value(e, rule->var());
-    auto l = lhs()->emit(e);
-    auto r = rhs()->emit(e);
-    auto g = guard()->emit(e);
-    rule->set(l, r, g);
-    def_ = rule;
 }
 
 } // namespace mim::ast

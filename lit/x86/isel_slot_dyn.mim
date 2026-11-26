@@ -1,0 +1,15 @@
+// RUN: (! %mim %s -o - 2>&1) | %FileCheck %s
+
+plugin core;
+plugin mem;
+plugin mach;
+plugin x86;
+import compile;
+
+extern lam _compile (): compile.Phase = compile.phases ff (mach.legalize, compile.named "x86.isel", mach.schedule);
+
+extern con f (m: mem.M 0, n: Nat, return: Cn [mem.M 0, mem.Ptr0 I8]) =
+    ret (m, p) = mem.mslot (I8, 0) $ (m, n);
+    return (m, p);
+
+// CHECK: `mem.mslot` needs a literal size

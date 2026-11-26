@@ -9,7 +9,7 @@ namespace mim::plug::core::phase {
 /// Lowers each Variant `| T_0 | ... | T_{n-1}` to a representation without sum types, chosen per Variant by its Layout.
 /// Injecting encodes the value into that representation; a Match computes the tag and decodes the case for its arm.
 /// Arms that are continuations become a branch, whereas all other arms are evaluated and the tag selects a result.
-/// Run mim::Join2Variant first; a recursive Variant needs a boxed payload and is left alone.
+/// A recursive Variant needs a boxed payload and is left alone.
 class LowerVariant : public RWPhase {
 public:
     using RWPhase::RWPhase;

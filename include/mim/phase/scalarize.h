@@ -21,7 +21,7 @@ namespace mim {
 /// An Axm handed a bare function (`autodiff.ad f`) is instantiated with the old shape, as its type may rely on it.
 /// A Pi is pinned where a coercion would be observable:
 /// * a `Cn` an interface Lam's signature reaches through a type coerce() cannot take apart (`mem.Ptr0 K`), or
-/// * a parameter indexed non-constantly or consumed whole by an Axm - only this parameter is kept.
+/// * a parameter indexed non-constantly - only this parameter is kept.
 ///
 /// Each run flattens one level; the fixed-point pipeline repeats it.
 /// Flags::scalarize_threshold bounds which Arr%s are expanded.
@@ -38,25 +38,27 @@ private:
 
     private:
         const Def* rewrite_mut_Lam(Lam*) final;
-        const Def* rewrite_imm_App(const App*) final;
         const Def* rewrite_imm_Extract(const Extract*) final;
         const Def* rewrite_imm_Insert(const Insert*) final;
 
         /// Keeps @p tuple whole unless the outermost part of @p idx is constant.
         void keep_indexed(const Def* tuple, const Def* idx);
-        /// Keeps parameter @p dom of @p pi whole.
-        void keep(const Pi* pi, size_t dom);
+        /// Keeps the parameters @p mask of @p pi whole.
+        void keep(const Pi* pi, const fe::Bitset& mask);
         /// Keeps @p def whole if it is a Lam's Var or one of its parameters.
         void keep_var(const Def* def);
         bool kept(const Pi* pi, size_t dom) const; ///< Is parameter @p dom of @p pi kept whole?
         /// Does coerce() see through @p type, i.e. split it or η-wrap it?
         /// The shape of whatever lies below any other type must be kept.
         static bool transparent(const Def* type) { return type->isa<Pi>() || splittable(type); }
-        /// pin%s the `Cn`%s below the parts of @p type that coerce() cannot take apart.
-        void pin_opaque(DefSet& structural, const Def* type);
+        /// Keeps the `Cn`%s below the parts of @p type that coerce() cannot take apart.
+        void keep_opaque(DefSet& structural, DefSet& opaque, const Def* type);
+        /// Keeps every `Cn` in the immutable subgraph of @p def whole.
+        void keep_cns(DefSet& visited, const Def* def);
 
         /// Not in lattice(), as its map() of the Pi would break type arguments like `mem.slot (H, 0)`.
         GIDMap<const Pi*, fe::Bitset> keeps_;
+        LamSet interfaces_; ///< Interface Lam%s whose signature keep_opaque() has seen.
     };
 
 public:
@@ -90,6 +92,7 @@ private:
     const Def* rewrite_mut_Lam(Lam*) final;
 
     Analysis analysis_;
+    Keep keep_{*this};
 };
 
 } // namespace mim

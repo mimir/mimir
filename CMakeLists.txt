@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(MimIR VERSION 0.5)
+project(MimIR VERSION 0.6)
 set(MIM_VER_SUFFIX "-dev" CACHE STRING "Suffix for version string (e.g., '-dev', '' for release)")
 
 include(CMakeDependentOption)
@@ -120,6 +120,28 @@ endif()
 set(FE_INSTALL ON) # mim-config.cmake.in includes fe-config, so fe must install alongside mim.
 
 add_subdirectory(submodules/fe)
+
+# fe is an OBJECT library whose objects belong to libmim alone, so this exposes its usage requirements without them.
+# The header-only libraries are fe's own dependencies, which a TARGET_PROPERTY cannot pull in along with the rest.
+add_library(fe_usage INTERFACE)
+target_include_directories(fe_usage
+    INTERFACE
+        $<TARGET_PROPERTY:fe,INTERFACE_INCLUDE_DIRECTORIES>
+)
+target_link_libraries(fe_usage
+    INTERFACE
+        svector::svector
+        unordered_dense::unordered_dense
+)
+target_compile_options(fe_usage
+    INTERFACE
+        $<TARGET_PROPERTY:fe,INTERFACE_COMPILE_OPTIONS>
+)
+target_compile_definitions(fe_usage
+    INTERFACE
+        $<TARGET_PROPERTY:fe,INTERFACE_COMPILE_DEFINITIONS>
+)
+
 add_subdirectory(src)
 
 if(EMSCRIPTEN)

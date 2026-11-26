@@ -1,0 +1,17 @@
+// RUN: %mim %s -o - | %FileCheck %s
+
+plugin core;
+plugin compile;
+plugin mem;
+
+extern con f (m: mem.M 0, p: mem.Ptr (I32, 0), return: Cn [mem.M 0, I32]) =
+    let (m, x) = mem.load (m, p);
+    con t (y: I32) = return (m, y);
+    t x;
+
+extern lam _compile (): compile.Phase = compile.phases ff (compile.cleanup, mem.add_mem);
+
+// CHECK-NOT: mem.load
+// CHECK: let [[L:_[0-9]+]] = mem.load
+// CHECK-NOT: mem.load
+// CHECK: t [[L]];

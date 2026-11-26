@@ -50,8 +50,8 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 ```text
 ( ) [ ] { }
 ‹ › « »
-→ ← => ⊥ ⊤ * □ λ
-= , ; . : @ $ # | ∪
+→ ← => ↝ ▷ ⊥ ⊤ * □ λ
+= , ; . : @ $ # | ?
 + - / % == != < <= > >= << >>
 <eof>
 ```
@@ -68,6 +68,8 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 | ------- | --------- |
 | `→`     | `->`      |
 | `←`     | `<-`      |
+| `↝`     | `~>`      |
+| `▷`     | `\|>`     |
 | `λ`     | `lm`      |
 | `⊥`     | `bot`     |
 | `⊤`     | `top`     |
@@ -78,10 +80,10 @@ Some tokens have a second spelling - an ASCII-only one or a Unicode variant - th
 <div class="terminals-code">
 
 ```text
-Bool Cn Fn I1 I8 I16 I32 I64 Idx Level Nat Rule Type
+Bool Cn Fn I1 I2 I4 I8 I16 I32 I64 Idx Level Nat Type
 anx as axm cn con end extern ff fn fun
-i1 i8 i16 i32 i64 import inj lam let match mod mutual
-nom norm plugin priv pub rec ret rule tt use when where with
+i1 i2 i4 i8 i16 i32 i64 import inj lam let match mod mutual
+nom norm plugin priv pub rec ret rl rule tt use when where with
 ```
 
 </div>
@@ -94,11 +96,15 @@ The following names are predefined aliases:
 | `ff`   | `0₂`            |
 | `Bool` | `Idx i1`        |
 | `I1`   | `Idx i1`        |
+| `I2`   | `Idx i2`        |
+| `I4`   | `Idx i4`        |
 | `I8`   | `Idx i8`        |
 | `I16`  | `Idx i16`       |
 | `I32`  | `Idx i32`       |
 | `I64`  | `Idx i64`       |
 | `i1`   | `2`             |
+| `i2`   | `4`             |
+| `i4`   | `0x10`          |
 | `i8`   | `0x100`         |
 | `i16`  | `0x1'0000`      |
 | `i32`  | `0x1'0000'0000` |
@@ -240,11 +246,11 @@ d      ::= vis? import (I | S) ("as" (I | "*"))? ";"
         |  vis? "anx" I "=" path
         |  vis? ("extern" | "anx")? lam I dom+ (":" e)? "=" e
         |  vis?  "extern"          lam I fwd+ (":" e)? ";"
-        |  vis? "anx"? "rec" I "=" e
+        |  vis? "anx"? "rec" I ndom* "=" e
         |  vis? "anx"? "nom" I ndom* "=" e
         |  vis? ("extern" | "anx")? "mutual" d* "end"
         |  vis? "axm" axm
-        |  vis? ("rule" | "norm") I p ":" e ("when" e)? "=>" e
+        |  vis? ("rule" | "norm") I ndom* ":" e ("when" e)? "=>" e
 
 import ::= "import" | "plugin"
 vis    ::= "priv" | "pub"
@@ -274,6 +280,9 @@ tail   ::= ("," I)? ("," L ("," L)?)?
 - `rec` declares a recursive type.
   Its body must be a sigma, a [variant](@ref variant), or a function type, as those are built as a mutable and filled in afterwards, so that `I` is already in scope inside it; its universe level is inferred from the body.
   A recursive _function_ is declared with `lam`/`con`/`fun` instead.
+  `rec I ndom+ = e` declares a recursive type constructor; it is sugar for `lam I ndom+ = rec I = e; I`.
+  Within `e`, `I` names the type constructor, so a recursive instance refers to itself as `I ndom+`.
+  An instance carries no constructor or field names, so select its cases and components by index.
 - `nom` declares a [nominal newtype](@ref nominal); like `rec`, it is in scope inside its own body, but its body may be any type.
 - `mutual` ... `end` groups declarations that may refer to each other, as in Lean.
   Its members must be `rec`, `nom`, `lam`, `con`, or `fun` declarations.
@@ -282,8 +291,11 @@ tail   ::= ("," I)? ("," L ("," L)?)?
   A `tag` list declares several axioms of the same type at once, and each `= I` adds another name for that tag.
   Prefixed with a name as in `axm nat.(add, sub): ...`, the tags become members of a module of that name.
 - An `axm`'s `tail` is the normalizer, the curry counter, and the trip count, in that order; a trip count requires a curry counter.
-- `rule` and `norm` declare rewrite rules.
-- `norm` is the normalizing variant of `rule`.
+- `rule I ndom* m: l when g => r` declares a [rewrite rule](@ref rules) and is sugar for `anx lam I ndom* = rl m: l when g => r`.
+  Its last domain `m` binds the meta variables, which matching determines; the `ndom`s before it make a family of rules, which whoever uses it instantiates.
+  Without any domain, it is an `anx let I = rl (): l when g => r`.
+  A rule is always an [annex](@ref annex), so phases leave it alone.
+- `norm` is the normalizing variant of `rule`: it must not change the type.
 
 #### Modifiers
 
@@ -376,7 +388,6 @@ e     ::= "Level"
        |  "□"
        |  "Nat"
        |  "Idx"
-       |  "Rule" e
        |  alias
 
 alias ::= "Bool"
@@ -390,7 +401,6 @@ alias ::= "Bool"
 - `□` abbreviates `Type (1:Level)`.
 - `Nat` is the natural number type.
 - `Idx` is the builtin of type `Nat → *`.
-- `Rule e` is the type of rewrite rules over the meta type `e`.
 - `alias` is one of the [predefined aliases](@ref terminals), so `Bool` abbreviates `Idx i1` and `I32` abbreviates `Idx i32`.
 
 #### Literals and Basic Forms {#lit}
@@ -405,6 +415,7 @@ e   ::= sign? L (":" e)?
      |  "⊥" (":" e)?
      |  "⊤" (":" e)?
      |  path
+     |  "?"
      |  d+ e
 ```
 
@@ -413,6 +424,7 @@ e   ::= sign? L (":" e)?
   Because `+` and `-` are [infix operators](@ref infix) everywhere else, `f -23` subtracts; pass a negative argument as `f (-23)`.
 - Without an explicit type, numeric literals default to `Nat`.
 - Without an explicit type, `⊥` and `⊤` default to `*`.
+- `?` is a `Hole` whose type is a `Hole` as well, so it stands for a term or a type alike, e.g. `x: ?` or `f @? x`; inference fills it in.
 - `d+ e` is a declaration expression: one or more declarations followed by a final expression `e`, which is the result.
   It is not delimited by any brackets; it simply starts with a declaration keyword such as `let`.
 
@@ -436,6 +448,21 @@ e   ::= e "→" e
 - `t → e`, `Cn t`, and `Fn t → e` are dependent function forms whose domain is described by a telescope.
 - `λ`, `cn`, and `fn` are the expression forms corresponding to `lam`, `con`, and `fun`.
   They are anonymous, so they cannot call themselves; use a `lam`/`con`/`fun` [declaration](@ref decl) to recurse.
+
+#### Rewrite Rules {#rules}
+
+```ebnf
+e   ::= e "↝" e
+     |  "rl" p ":" e ("when" e)? "=>" e
+     |  e "▷" e
+```
+
+- `T ↝ U` is the type of a rule that rewrites a term of type `T` into one of type `U`.
+- `rl p: l when g => r` is a rule expression; `p` binds its meta variables, which may not occur in `T` or `U`.
+  It extends as far right as it can.
+- `f ▷ x` fires the rule `f` at `x`; an implicit family parameter of `f` is inferred from the type of `x`, as in `rule eq {s: Nat} (a: Idx s): (a, a) => tt`.
+  It matches `x` against the left-hand side, which determines the meta variables; if that succeeds and the guard holds, it becomes the right-hand side.
+  Otherwise it stays put, so it may fire later.
 - Application is written by juxtaposition.
 - `{...}` declares implicit domains: an application inserts a `Hole` for each, and `e @ e` passes one explicitly.
 - `e @ e` passes an explicit implicit argument.
@@ -469,6 +496,8 @@ arity ::= e
   All of them fuse into **one** array of shape `(m, n)`, whose index binds every axis at once, so `t#i#j` and `t#(i, j)` are the same Extract - except through a [mutable sigma](@ref mutsigma) of one component.
   The exception is a dimension whose extent depends on an earlier index, as in `«i: n, j: s#i; body»`: a shape lists extents, not functions of preceding indices, so such a nest stays one array per axis.
 - `e#e` extracts a component by index, `e#I` by [field name](@ref field).
+  A dynamic index `i` into `t: [T₀, …, Tₙ₋₁]` yields the type `(T₀, …, Tₙ₋₁)#i`, which is just `T` if all `Tₖ` are `T`.
+  The `Tₖ` must live on one type level.
 - `tuple#index ← value` yields a **new** aggregate with `index` replaced by `value`; it does not mutate `tuple`.
   A `#` on the left is mandatory: without a component to update there is nothing to insert into.
 - `←` updates the component at the _whole_ `#`-path, so `t#i#j#k ← v` denotes the outer aggregate `t`.
@@ -512,35 +541,25 @@ lam g (t: «2; One»): One = t#(1₂, 0₁); // the `0₁` axis folds away, so t
 
 `←` is unaffected: writing the component rebuilds the whole 1-tuple either way, so `t#(1₂, 0₁) ← v` and `t#1₂#0₁ ← v` do agree.
 
-#### Unions
+#### Variants {#variant}
 
 ```ebnf
-e   ::= e "∪" e
-     |  e "inj" e
+e   ::= "|" (I (":" e)? ("|" I (":" e)?)*)?
      |  "match" e "with" "|"? arm ("|" arm)*
 arm ::= p "=>" e
      |  (I | L) p? "=>" e
 ```
 
-- `e ∪ e` forms a union type.
-- `e inj e` injects a value into a union type.
-- `match e with | p => e | ...` eliminates a union value.
-
-#### Variants {#variant}
-
-```ebnf
-e   ::= "|" (I (":" e)? ("|" I (":" e)?)*)?
-```
-
 - `| I₀: e₀ | ... | Iₙ₋₁: eₙ₋₁` forms a variant type: a sum whose cases are _positional_.
   A constructor without `: e` carries `[]`, and a lone `|` is the empty variant.
-- Unlike `∪`, nothing is sorted, deduplicated, or flattened: `| A | B | C` has three cases where `[] ∪ [] ∪ []` is just `[]`, and `| A: Nat | B: Nat` keeps both.
+- Every constructor is a case of its own, even with the same payload: `| A | B | C` has three cases, and `| A: Nat | B: Nat` two.
 - A variant is a type like any other and may be anonymous; `rec` makes it recursive, and a `mutual` block mutually recursive.
 - Its last payload extends as far right as it can, and `|` never starts an application argument: write `f (| A | B)`, and parenthesize a variant inside a `match` arm.
 - `T#I` or `T#n` on a variant type `T` selects a case by constructor name or by index, counting from `0`.
   That is a value for a `[]` payload, and a function from the payload into `T` otherwise.
 - Like an application, `#` first fills the implicit domains of its left-hand side with holes, so for `nom Opt {T: *} = | None | Some: T`, `Opt#Some 23` infers `T`.
-- In a `match` on a variant, each arm names a constructor or gives its index, optionally followed by a pattern for its payload.
+- `match e with | arm | ...` eliminates a variant value; its scrutinee must be of variant type.
+  Each arm names a constructor or gives its index, optionally followed by a pattern for its payload.
   `| 1 (h, t) => e` selects the same case as `| Cons (h, t) => e`, just as `T#1` and `T#Cons` do.
   Every constructor needs an arm; a second arm for the same one is unreachable and warned about.
 - Constructor names are looked up in the scrutinee's _type_, so any scrutinee works, not just an annotated variable.
@@ -578,6 +597,10 @@ e   ::= "«" e "»"
   `f #x` extracts rather than applies, so pass a singleton as `f (#x)`.
 
 #### Nominal Newtypes {#nominal}
+
+```ebnf
+e   ::= e "inj" e
+```
 
 A `nom` declaration is the one place where Mim is not structurally typed: two `nom`s over the same underlying type are still distinct types.
 
@@ -662,17 +685,17 @@ A `+`/`-` sign is part of the [literal](@ref lit) rather than an operator and so
 | --: | --------- | :---: | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
 |   1 | `Lit`     |   -   | `L:e`                                | The tightest level. Not an infix operator - the literal parser reads the ascription itself and bounds `e` here.                   |
 |   2 | `Extract` | left  | `e#e`, `e#I`                         |                                                                                                                                   |
-|   3 | `App`     | left  | `e e`, `e @ e`                       | Application binds tighter than every operator. Also bounds the `e` in `Type e` and `Rule e`.                                      |
+|   3 | `App`     | left  | `e e`, `e @ e`                       | Application binds tighter than every operator. Also bounds the `e` in `Type e`.                                                   |
 |   4 | `Prefix`  |   -   | `#e`                                 | The only prefix level. Looser than application, so `#f x` is `#(f x)`.                                                            |
 |   5 | `Shift`   | left  | `e << e`, `e >> e`                   | Tighter than `*`, as in Lean and OCaml - not the C position.                                                                      |
 |   6 | `Mul`     | left  | `e * e`, `e / e`, `e % e`            |                                                                                                                                   |
 |   7 | `Add`     | left  | `e + e`, `e - e`                     |                                                                                                                                   |
 |   8 | `Rel`     | none  | `e < e`, `e <= e`, `e > e`, `e >= e` |                                                                                                                                   |
 |   9 | `Eq`      | none  | `e == e`, `e != e`                   |                                                                                                                                   |
-|  10 | `Pi`      |   -   | _pseudo_                             | Bounds the domain of a `λ`/`Fn`/`t → e` binder so it stops before the `→`. A `Cn`-style binder has no `→` and uses `Bot` instead. |
-|  11 | `Arrow`   | right | `e → e`                              | Also bounds the codomain after a `→`.                                                                                             |
-|  12 | `Union`   | left  | `e ∪ e`                              |                                                                                                                                   |
-|  13 | `Inj`     | right | `e inj e`                            | Weaker than `∪`, so `x inj A ∪ B` is `x inj (A ∪ B)`.                                                                             |
+|  10 | `Fire`    | right | `e ▷ e`                              | `f ▷ g ▷ x` fires `g` first.                                                                                                      |
+|  11 | `Pi`      |   -   | _pseudo_                             | Bounds the domain of a `λ`/`Fn`/`t → e` binder so it stops before the `→`. A `Cn`-style binder has no `→` and uses `Bot` instead. |
+|  12 | `Arrow`   | right | `e → e`, `e ↝ e`                     | Also bounds the codomain after a `→`.                                                                                             |
+|  13 | `Inj`     | right | `e inj e`                            |                                                                                                                                   |
 |  14 | `Ins`     | right | `e("#"e)+ ← e`                       | Also bounds a declaration's `: codom` slot, which ends at `=` and so takes everything short of a `where`.                         |
 |  15 | `Where`   | left  | `e where d* end`                     | The loosest surface operator.                                                                                                     |
 |  16 | `Bot`     |   -   | _pseudo_                             | A complete expression; the default bound, and the only one a trailing `where` fits into.                                          |
@@ -828,23 +851,12 @@ While the `World` is frozen, a rule that would have to build a new node bails ou
 - an application of an [axiom](@ref decl) runs its normalizer once the curry counter hits `0`
 - an application of a `{T: *} → e` inserts a `Hole` per implicit argument
 
-### Unions
-
-- `T ∪ ⊥` -> `T` - the unit of a join is dropped
-- `T ∪ ⊤` -> `⊤`
-- `A ∪ A` -> `A`; the operands are flattened and sorted, so `∪` is commutative, associative, and idempotent
-- an empty join is `⊥`, and a one-element one is its operand
-- `x inj T` -> `x` if `T` is not a union type
-- `match (T inj x) with ...` -> the arm handling `T` - a constructor fixes the active case
-- each case is handled by the **first** arm accepting it, so the arms are _not_ sorted; an arm accepts a case if its domain is that case, or a union containing it
-- a `match` whose scrutinee is not a union is the degenerate one-case union and reduces right away
-- an arm handling no case is dropped; a case handled by no arm is an error
-
 ### Variants
 
-- a variant is never sorted, deduplicated, or flattened; an empty or one-case variant stays a variant
+- a one-case variant stays a variant, while the empty one is `⊥`
 - `match (T#i x) with ...` -> the arm for case `i`
 - the arms of a `match` on a variant are in the order of its cases, one each
+- all arms of a `match` on a variant agree on their codomain, which is the type of the `match`; an arm into `⊥` fits any
 
 ### Singletons
 

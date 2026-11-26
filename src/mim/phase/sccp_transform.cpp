@@ -23,7 +23,7 @@ const Def* SCCP::rewrite_imm_App(const App* old_app) {
                 });
 
                 map(old_lam->var(), new_vars);
-                new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
+                fill(old_lam, new_lam);
             }
 
             return new_world().app(new_lam, rewrite(keep.gather(old_app->targs())));

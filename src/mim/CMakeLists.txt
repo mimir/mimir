@@ -17,7 +17,6 @@ target_sources(libmim
         rule.cpp
         schedule.cpp
         tuple.cpp
-        union.cpp
         world.cpp
         ast/ast.cpp
         ast/bind.cpp
@@ -34,9 +33,9 @@ target_sources(libmim
         phase/beta_red.cpp
         phase/eta_conv.cpp
         phase/dispatch_normalize.cpp
+        phase/ds2cps.cpp
         phase/single_erasure.cpp
         phase/nom_erasure.cpp
-        phase/join2variant.cpp
         phase/ret_wrap.cpp
         phase/sccp_analysis.cpp
         phase/sccp_transform.cpp
@@ -96,6 +95,10 @@ install(
     # They need automaton, which is linked into the regex plugin only.
     PATTERN "dfa2matcher.h" EXCLUDE
     PATTERN "regex2nfa.h" EXCLUDE
+)
+install(
+    DIRECTORY ${PROJECT_SOURCE_DIR}/include/pbqp
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
 add_subdirectory(cli)

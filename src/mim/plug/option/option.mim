@@ -15,7 +15,6 @@ plugin core;
 /// ### Opt
 ///
 /// The option type: `| None | Some: T`.
-/// Unlike `[] ∪ T`, it neither collapses `Opt@[]` to `[]` nor flattens `Opt@(Opt@T)` to `Opt@T`.
 /// `T` is implicit, so `Opt#Some 23` and `Opt#None` infer it; `(Opt@Nat)#None` gives it explicitly.
 ///
 anx nom Opt {T: *} =
