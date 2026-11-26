@@ -266,9 +266,8 @@ const Def* LowerToMem::uncurry(Lam* lam) {
     for (auto arg : adapter->vars())
         args.emplace_back(arg);
     adapter->app(true, new_lam, w.tuple(args));
-    auto ___            = enter(lam);
-    auto [filter, body] = rewrite_ops(inner, new_lam);
-    new_lam->set(filter, body);
+    auto ___ = enter(lam);
+    fill(inner, new_lam);
     return seal(lam, new_lam);
 }
 

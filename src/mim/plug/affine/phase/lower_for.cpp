@@ -75,16 +75,12 @@ const Def* LowerFor::rewrite_imm_App(const App* app) {
         {
             auto _ = scoped(Vars(old_body_lam->has_var()));
             map(old_body_lam->var(), {new_iter, acc_for(new_body), new_yield});
-            auto new_body_filter = rewrite(old_body_lam->filter());
-            auto new_body_value  = rewrite(old_body_lam->body());
-            new_body->set({new_body_filter, new_body_value});
+            fill(old_body_lam, new_body);
         }
         {
             auto _ = scoped(Vars(old_exit_lam->has_var()));
             map(old_exit_lam->var(), acc_for(new_exit));
-            auto new_exit_filter = rewrite(old_exit_lam->filter());
-            auto new_exit_value  = rewrite(old_exit_lam->body());
-            new_exit->set({new_exit_filter, new_exit_value});
+            fill(old_exit_lam, new_exit);
         }
 
         return new_world().app(new_head_lam, merge(true, new_begin, new_init, new_mem));

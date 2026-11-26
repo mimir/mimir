@@ -20,7 +20,7 @@ void LowerTypedClos::finalize() {
         lvm_ = lvm;
         lcm_ = lcm;
         log().d("enter {} (lvm = {}, lcm = {})", new_lam, lvm_, lcm_);
-        if (old_lam->is_set()) new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
+        if (old_lam->is_set()) fill(old_lam, new_lam);
     }
 }
 

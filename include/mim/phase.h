@@ -432,6 +432,11 @@ protected:
     virtual std::pair<const Def*, const Def*> rewrite_ops(Lam* old_lam, Lam* /*new_lam*/) {
         return {rewrite(old_lam->filter()), rewrite(old_lam->body())};
     }
+    /// Sets @p new_lam to the rewrite_ops() of @p old_lam - for a stub whose signature differs from @p old_lam%'s.
+    Lam* fill(Lam* old_lam, Lam* new_lam) {
+        auto [filter, body] = rewrite_ops(old_lam, new_lam);
+        return new_lam->set(filter, body);
+    }
 
     /// Converts the *new* @p new_val into a value of the *new* @p new_type, where a checking position demands it.
     /// Both are matched leaf by leaf: tuples are exploded and reassembled, Pi%s are η-wrapped, and

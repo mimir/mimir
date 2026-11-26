@@ -679,7 +679,7 @@ Lam* SEO::build_lam(Lam* old_lam) {
         }
 
     auto _ = enter(old_lam);
-    new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
+    fill(old_lam, new_lam);
     return new_lam;
 }
 

@@ -142,7 +142,7 @@ Lam* AddMem::thread(Lam* old_lam, Lam* new_lam) {
     active_   = frames_.size() - 1;
     curr_mem_ = mem_var(new_lam);
 
-    new_lam->set(rewrite(old_lam->filter()), rewrite(old_lam->body()));
+    fill(old_lam, new_lam);
 
     // A nested continuation may have advanced the chain of an outer one.
     frames_.pop_back();
