@@ -168,7 +168,6 @@ void LowerToMem::start() {
     validate();
     if (!tensors_seen_) return;
     RWPhase::start();
-    assert(pending_.empty());
 }
 
 const Def* LowerToMem::buf_of(const Def* type) {
@@ -196,19 +195,8 @@ const Def* LowerToMem::bot_mem() {
 }
 
 const Def* LowerToMem::fresh_mem() {
-    auto k = mem::mut_con(new_world())->set("fresh_mem");
-    pending_.push_back(k);
-    return k->var();
-}
-
-const Def* LowerToMem::wrap_fresh_mem(const Def* body) {
     auto& w = new_world();
-    // The last-minted continuation carries the original body; the lam ends up requesting the first memory.
-    for (auto k : pending_ | std::views::reverse) {
-        k->set(true, body); // filter `tt`: k vanishes as soon as AddMem substitutes the real memory
-        body = w.app(w.annex<mem::fresh>(), w.tuple({w.lit_nat_0(), k}));
-    }
-    return body;
+    return lift(w.annex<mem::fresh>(), {w.lit_nat_0()}, w.call<mem::M>(0), true)->set<true>("fresh_mem")->var();
 }
 
 const Def* LowerToMem::rewrite(const Def* old_def) {
@@ -226,18 +214,14 @@ const Def* LowerToMem::rewrite(const Def* old_def) {
 }
 
 const Def* LowerToMem::rewrite_mut_Lam(Lam* lam) {
-    if (!shape_poly_.contains(lam)) return RWPhase::rewrite_mut_Lam(lam);
-    auto _  = fe::Restore(pending_, {});
-    auto __ = fe::Restore(fresh_memo_, {});
+    if (!shape_poly_.contains(lam)) return DS2CPS::rewrite_mut_Lam(lam);
+    auto _ = fe::Restore(fresh_memo_, {});
     return uncurry(lam);
 }
 
 std::pair<const Def*, const Def*> LowerToMem::rewrite_ops(Lam* old_lam, Lam* new_lam) {
-    // Ops lowered in this body mint their receiving continuations into pending_; nested lams anchor their own.
-    auto _              = fe::Restore(pending_, {});
-    auto __             = fe::Restore(fresh_memo_, {});
-    auto [filter, body] = RWPhase::rewrite_ops(old_lam, new_lam);
-    return {filter, wrap_fresh_mem(body)};
+    auto _ = fe::Restore(fresh_memo_, {});
+    return DS2CPS::rewrite_ops(old_lam, new_lam);
 }
 
 const Def* LowerToMem::uncurry(Lam* lam) {
@@ -283,8 +267,10 @@ const Def* LowerToMem::uncurry(Lam* lam) {
     for (auto arg : adapter->vars())
         args.emplace_back(arg);
     adapter->app(true, new_lam, w.tuple(args));
-    auto ___ = enter(lam);
-    new_lam->set(rewrite(inner->filter()), wrap_fresh_mem(rewrite(inner->body())));
+    auto ___    = enter(lam);
+    auto scope  = Scope(*this, true);
+    auto filter = rewrite(inner->filter());
+    new_lam->set(filter, wire(scope.base(), rewrite(inner->body())));
     return seal(lam, new_lam);
 }
 

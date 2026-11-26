@@ -8,15 +8,15 @@ std::pair<const Def*, const Def*> DS2CPS::rewrite_ops(Lam* old_lam, Lam* new_lam
     return {filter, wire(scope.base(), body)};
 }
 
-const Def* DS2CPS::lift(const Def* k, Defs new_args, const Def* new_type) {
+Lam* DS2CPS::lift(const Def* k, Defs new_args, const Def* new_type, bool filter) {
     auto& w   = new_world();
-    auto cont = w.mut_con(new_type)->set_filter(false);
-    auto res  = cont->var();
+    auto cont = w.mut_con(new_type)->set_filter(filter);
+    cont->var();
     cont->set(w.append_suffix(k->sym(), "_cont"));
     bind_new(cont->has_var());
     pending_.emplace_back(k, DefVec(new_args.begin(), new_args.end()), cont);
     log().d("lift {} ({}, {})", k, fe::Join(new_args, ", "), cont);
-    return res;
+    return cont;
 }
 
 const Def* DS2CPS::wire(size_t base, const Def* body) {

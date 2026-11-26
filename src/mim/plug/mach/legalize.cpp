@@ -70,7 +70,7 @@ const Def* Legalize::call_c(Lam*& decl, const char* name, const App* app, Defs a
     check_addr_space(app, app->decurry()->arg(2, 1));
     auto ret = rewrite(app->type());
     if (!decl) decl = w.mut_con({w.call<core::M>(w.lit_nat_0()), w.type_i64(), w.cn(ret)})->set(name);
-    return lift(decl, args, ret);
+    return lift(decl, args, ret)->var();
 }
 
 const Def* Legalize::rewrite_imm_Lit(const Lit* lit) {

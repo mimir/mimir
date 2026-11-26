@@ -9,8 +9,8 @@ namespace mim {
 /// An RWPhase that lifts direct-style calls of CPS functions out of the bodies of continuations.
 ///
 /// A subclass calls lift() for a call `k arg` of a CPS `k: Cn [T, Cn U]` while rewriting a continuation's body.
-/// It allocates a fresh continuation `cont` receiving the result, records the pending call `k (arg, cont)`,
-/// and returns `cont`'s variable as the value of the call.
+/// It allocates a fresh continuation `cont` receiving the result and records the pending call `k (arg, cont)`;
+/// `cont`'s variable is the value of the call.
 /// Once the enclosing Lam is done, the pending calls are wired up in encounter order - which respects
 /// data dependencies, because operands are always rewritten before their users:
 /// ```
@@ -54,9 +54,8 @@ protected:
 
     /// Is the body of a continuation being rewritten, so that lift() is legal?
     bool liftable() const { return liftable_; }
-    /// Turns the call `k (new_args..., cont)` into a pending one and returns the Var of `cont: Cn new_type` as its
-    /// result.
-    const Def* lift(const Def* k, Defs new_args, const Def* new_type);
+    /// Records the call `k (new_args..., cont)` as pending and returns `cont: Cn new_type`, whose Var is the result.
+    Lam* lift(const Def* k, Defs new_args, const Def* new_type, bool filter = false);
     /// Wires all pending calls above @p base around @p body and returns the new body.
     const Def* wire(size_t base, const Def* body);
 
