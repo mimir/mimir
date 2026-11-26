@@ -10,6 +10,105 @@ See also the [Rewriting Guide](@ref rewriting), since several phase families are
 
 A [`Phase`](@ref mim::Phase) has a single entry point, [`run()`](@ref mim::Phase::run), which wraps the actual implementation in [`start()`](@ref mim::Phase::start).
 
+## Hooks at a Glance {#phases_hooks}
+
+[`Analysis`](@ref mim::Analysis) and [`RWPhase`](@ref mim::RWPhase) are [`Rewriter`](@ref mim::Rewriter)s with many virtual methods, but a phase usually overrides only two or three of them.
+The graphs show who calls whom; blue boxes are hooks to override, white ones are helpers to call, and gray ones are internals.
+The sections below explain each piece.
+
+@dot
+digraph rwphase {
+    rankdir=LR;
+    node [shape=box, fontname="Helvetica", fontsize=10, style=filled, fillcolor="#dbeafe"];
+    edge [color="#555555"];
+
+    run [label="run()", fillcolor="#e5e7eb", URL="\ref mim::Phase::run"];
+    start [label="start()", fillcolor="#e5e7eb", URL="\ref mim::RWPhase::start"];
+    analyze [label="analyze()", URL="\ref mim::RWPhase::analyze"];
+    ext [label="rewrite_external()", URL="\ref mim::RWPhase::rewrite_external"];
+    finalize [label="finalize()", URL="\ref mim::RWPhase::finalize"];
+    rewrite [label="rewrite()", URL="\ref mim::Rewriter::rewrite"];
+    lookup [label="lookup()", URL="\ref mim::RWPhase::lookup"];
+    retype [label="retype()", URL="\ref mim::RWPhase::retype"];
+    imm [label="rewrite_imm()", URL="\ref mim::Rewriter::rewrite_imm"];
+    immN [label="rewrite_imm_App()\nrewrite_imm_Tuple()\nrewrite_imm_*()"];
+    mut [label="rewrite_mut()", URL="\ref mim::Rewriter::rewrite_mut"];
+    mutN [label="rewrite_mut_Lam()\nrewrite_mut_*()"];
+    stub [label="rewrite_stub()", URL="\ref mim::RWPhase::rewrite_stub"];
+    ops [label="rewrite_ops()", URL="\ref mim::RWPhase::rewrite_ops"];
+    fill [label="fill()", fillcolor="white", URL="\ref mim::RWPhase::fill"];
+    coerce [label="coerce()", fillcolor="white", URL="\ref mim::RWPhase::coerce"];
+    leaf [label="coerce_leaf()", URL="\ref mim::RWPhase::coerce_leaf"];
+    lift [label="DS2CPS::lift()", fillcolor="white", URL="\ref mim::DS2CPS::lift"];
+    analysis [label="Analysis::run()\n(see below)", fillcolor="#e5e7eb"];
+
+    run -> start;
+    start -> analyze -> analysis;
+    start -> ext -> rewrite;
+    start -> finalize;
+    rewrite -> lookup -> retype;
+    rewrite -> imm -> immN;
+    rewrite -> mut -> mutN -> stub -> ops;
+    mutN -> fill -> ops;
+    stub -> coerce;
+    immN -> coerce -> leaf;
+    immN -> lift [style=dashed];
+}
+@enddot
+
+@dot
+digraph analysis {
+    rankdir=LR;
+    node [shape=box, fontname="Helvetica", fontsize=10, style=filled, fillcolor="#dbeafe"];
+    edge [color="#555555"];
+
+    run [label="run()", fillcolor="#e5e7eb", URL="\ref mim::Phase::run"];
+    start [label="start()", fillcolor="#e5e7eb", URL="\ref mim::Analysis::start"];
+    reset [label="reset()", URL="\ref mim::Analysis::reset"];
+    prepare [label="prepare()", URL="\ref mim::Analysis::prepare"];
+    ext [label="rewrite_external()", URL="\ref mim::Analysis::rewrite_external"];
+    drain [label="drain()", fillcolor="#e5e7eb"];
+    leave [label="leave()", URL="\ref mim::Analysis::leave"];
+    finalize [label="finalize()", URL="\ref mim::Analysis::finalize"];
+    rewrite [label="rewrite()", URL="\ref mim::Analysis::rewrite"];
+    mut [label="rewrite_mut()\nschedules", fillcolor="#e5e7eb", URL="\ref mim::Analysis::rewrite_mut"];
+    mutN [label="rewrite_mut_*()\nobserves"];
+    immN [label="rewrite_imm_App()\nrewrite_imm_*()"];
+    known [label="rewrite_known()", fillcolor="white", URL="\ref mim::Analysis::rewrite_known"];
+    edge_ [label="known_edge()", fillcolor="white", URL="\ref mim::Analysis::known_edge"];
+    join [label="join_args()", URL="\ref mim::Analysis::join_args"];
+    aapp [label="abstract_app()", fillcolor="white", URL="\ref mim::Analysis::abstract_app"];
+    lattice [label="lattice() / pin()\ntaint()", fillcolor="white", URL="\ref mim::Analysis::lattice"];
+    unknowns [label="find_unknowns()", fillcolor="white", URL="\ref mim::Analysis::find_unknowns"];
+    hooks [label="known_call()\nneeds_arg()\nunknown()\nreach()"];
+    rwphase [label="RWPhase::analyze()", fillcolor="#e5e7eb", URL="\ref mim::RWPhase::analyze"];
+
+    rwphase -> reset;
+    rwphase -> run -> start;
+    start -> prepare;
+    start -> ext -> rewrite;
+    start -> drain -> rewrite;
+    drain -> leave;
+    start -> finalize -> unknowns -> hooks;
+    rewrite -> mut -> mutN;
+    rewrite -> immN -> known -> edge_ -> join;
+    edge_ -> aapp;
+    join -> lattice;
+}
+@enddot
+
+| Class | Override to | Call to |
+| :---- | :---------- | :------ |
+| [`Phase`](@ref mim::Phase) | do anything: [`start()`](@ref mim::Phase::start); take arguments: [`apply()`](@ref mim::Phase::apply) | request another round: [`invalidate()`](@ref mim::Phase::invalidate) |
+| [`Rewriter`](@ref mim::Rewriter) | rewrite a node kind: `rewrite_imm_*()` / `rewrite_mut_*()`; intercept every Def: [`rewrite()`](@ref mim::Rewriter::rewrite) | substitute: [`map()`](@ref mim::Rewriter::map); scope substitutions to Vars: [`scoped()`](@ref mim::Rewriter::scoped), [`bind_old()`](@ref mim::Rewriter::bind_old) / [`bind_new()`](@ref mim::Rewriter::bind_new); track the current mutable: [`enter()`](@ref mim::Rewriter::enter) / [`curr_mut()`](@ref mim::Rewriter::curr_mut); finish a hand-filled stub: [`seal()`](@ref mim::Rewriter::seal); drop or reorder a mutable's ops: [`rewrite_stub(old, new, new2old)`](@ref mim::Rewriter::rewrite_stub) |
+| [`Analysis`](@ref mim::Analysis) | join at a known call: [`join_args()`](@ref mim::Analysis::join_args); per-round setup: [`prepare()`](@ref mim::Analysis::prepare); post-pass in full rounds: [`finalize()`](@ref mim::Analysis::finalize); after a mutable's body: [`leave()`](@ref mim::Analysis::leave); walk for unknown Lams: [`known_call()`](@ref mim::Analysis::known_call), [`needs_arg()`](@ref mim::Analysis::needs_arg), [`unknown()`](@ref mim::Analysis::unknown), [`reach()`](@ref mim::Analysis::reach) | record facts: [`lattice()`](@ref mim::Analysis::lattice), [`pin()`](@ref mim::Analysis::pin), [`lattice_force()`](@ref mim::Analysis::lattice_force), [`lattice_erase()`](@ref mim::Analysis::lattice_erase); revisit other mutables: [`taint()`](@ref mim::Analysis::taint), [`touch()`](@ref mim::Analysis::touch); known calls: [`rewrite_known()`](@ref mim::Analysis::rewrite_known), [`known_edge()`](@ref mim::Analysis::known_edge), [`abstract_app()`](@ref mim::Analysis::abstract_app); unknown Lams: [`find_unknowns()`](@ref mim::Analysis::find_unknowns), [`unknowns()`](@ref mim::Analysis::unknowns); a sentinel: [`proxy()`](@ref mim::Analysis::proxy) |
+| [`RWPhase`](@ref mim::RWPhase) | post-process a Lam's filter or body: [`rewrite_ops()`](@ref mim::RWPhase::rewrite_ops); convert a reshaped leaf: [`coerce_leaf()`](@ref mim::RWPhase::coerce_leaf); rebuild an opaque Axm: [`retype()`](@ref mim::RWPhase::retype); exempt the externals: [`rewrite_external()`](@ref mim::RWPhase::rewrite_external); drain deferred work: [`finalize()`](@ref mim::RWPhase::finalize) | read the analysis: [`lattice()`](@ref mim::RWPhase::lattice), [`abstracted()`](@ref mim::RWPhase::abstracted); fill a reshaped Lam: [`fill()`](@ref mim::RWPhase::fill); bridge representations: [`coerce()`](@ref mim::RWPhase::coerce) |
+| [`DS2CPS`](@ref mim::DS2CPS) | — | lift a direct-style call: [`lift()`](@ref mim::DS2CPS::lift), if [`liftable()`](@ref mim::DS2CPS::liftable) |
+| [`Repl`](@ref mim::Repl) | replace a pattern: [`replace()`](@ref mim::Repl::replace) | — |
+
+The rule of thumb: override the most specific hook that sees what you need.
+A phase that rewrites one kind of node overrides its `rewrite_imm_*()`, one that post-processes a Lam's filter or body overrides [`rewrite_ops()`](@ref mim::RWPhase::rewrite_ops), and only one that builds a differently typed Lam overrides `rewrite_mut_Lam()` - and then fills it with [`fill()`](@ref mim::RWPhase::fill).
+
 ## Phase {#phases_phase}
 
 [`Phase`](@ref mim::Phase) is the minimal base class.
@@ -124,8 +223,7 @@ Rewriting those dependencies schedules any further mutables it reaches, so the w
 The `mut -> mut` entry recorded in step 2 doubles as the per-round _"already scheduled"_ marker: it lives in the rewriter map (see [`lookup()`](@ref mim::Rewriter::lookup)), which [`reset()`](@ref mim::Analysis::reset) clears at the start of every round.
 Hence each mutable's dependencies are walked **at most once per fixed-point round**, which also prevents cyclic (recursive) CFGs from recursing forever.
 
-@warning Because [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) enqueues instead of dispatching by node, the node-specific `rewrite_mut_*` hooks (e.g. `rewrite_mut_Lam`) are **never invoked** for an [`Analysis`](@ref mim::Analysis).
-Override [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) itself (or the `rewrite_imm_*` hooks, which dispatch as usual) instead.
+@note [`rewrite_mut()`](@ref mim::Analysis::rewrite_mut) still dispatches to the node-specific `rewrite_mut_*` hooks (e.g. `rewrite_mut_Lam`) when it schedules a mutable, but they only *observe* it: its body is walked later, during the drain.
 
 When a `rewrite_imm_App` override propagates abstract values from call arguments into a callee's binder vars, it should seed those lattice entries first and then [`rewrite()`](@ref mim::Rewriter::rewrite) the callee.
 This schedules the callee (or does nothing if it is already scheduled), so its body is walked later during the drain, after the seeded facts — and any joins from sibling call sites — are in place.
@@ -671,11 +769,10 @@ public:
     size_t num_lams = 0;
 
 private:
-    // Note: override rewrite_mut - the node-specific rewrite_mut_* hooks are not dispatched
-    // for an Analysis (see "Handling of Mutables").
-    mim::Def* rewrite_mut(mim::Def* mut) override {
-        if (!lookup(mut) && mut->isa_mut<mim::Lam>()) ++num_lams; // count on first visit only
-        return mim::Analysis::rewrite_mut(mut);
+    // Called once per round, when the Lam is first scheduled (see "Handling of Mutables").
+    const mim::Def* rewrite_mut_Lam(mim::Lam* lam) override {
+        ++num_lams;
+        return mim::Analysis::rewrite_mut_Lam(lam);
     }
 };
 ```
