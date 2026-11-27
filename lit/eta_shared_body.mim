@@ -1,0 +1,21 @@
+// RUN: %mim %s -o - | %FileCheck %s
+plugin mem;
+plugin compile;
+
+// `k1` and `k2` share their body App, but each needs its own wrappers, or `a` and `b` are reached via critical edges.
+extern lam _compile (): compile.Phase =
+    compile.phases ff (compile.phases tt (compile.beta_red, compile.eta_conv));
+
+extern con foo (m: mem.M 0, c d: Bool, return: Cn [mem.M 0, Nat]) =
+    con a () = return (m, 1);
+    con b () = return (m, 2);
+    con e (_: Nat) = return (m, 3);
+    con k1 (_: Nat) = (a, b)#c ();
+    con k2 (_: Nat) = (a, b)#c ();
+    con j (_: Nat) = (k2, e)#d 0;
+    (k1, j)#d 0;
+
+// CHECK-DAG: con {{(eta_)?}}a{{(_[0-9]+)?}} ()
+// CHECK-DAG: con {{(eta_)?}}a{{(_[0-9]+)?}} ()
+// CHECK-DAG: con {{(eta_)?}}b{{(_[0-9]+)?}} ()
+// CHECK-DAG: con {{(eta_)?}}b{{(_[0-9]+)?}} ()

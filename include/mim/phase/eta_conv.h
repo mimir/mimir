@@ -50,6 +50,7 @@ private:
 
     bool analyze() final;
     void analyze(const Def*);
+    void analyze_app(const App*);
     void visit(const Def*, Lattice);
 
     /// An external must keep its shape: neither η-reduce nor η-expand it.
@@ -57,6 +58,7 @@ private:
     const Def* lookup(const Def*) final;
     const Def* rewrite(const Def*) final;
     const Def* rewrite_imm_App(const App*) final;
+    std::pair<const Def*, const Def*> rewrite_ops(Lam*, Lam*) final;
     const Def* rewrite_imm_Var(const Var*) final;
     /// η-reduce wrappers but never η-expand - used for callee (Known) positions, where expansion must not happen
     /// but a wrapper `λx.f x` should still collapse to `f`.

@@ -8,25 +8,30 @@ bool EtaConv::analyze() {
     return false; // no fixed-point necessary
 }
 
-// Each occurrence below a distinct App gets its own wrappers, so it is analyzed and rewritten once per App.
+// Such an immutable is unfolded into a tree up to the next App or mutable, so each occurrence gets its own wrappers.
 static bool is_incarnated(const Def* def) {
     return !def->isa_mut() && !def->isa<App>() && !def->isa<Var>() && !def->local_muts().empty();
 }
 
 void EtaConv::analyze(const Def* def) {
-    if (!def->isa_mut() && def->local_muts().empty()) return;
+    if (def->local_muts().empty()) return;
     if (!is_incarnated(def) && !analyzed_.emplace(def).second) return;
 
-    if (auto app = def->isa<App>()) {
-        // clang-format off
-        visit(app->type(),   Lattice::Unknown_1);
-        visit(app->callee(), Lattice::Known);
-        visit(app->arg(),    Lattice::Unknown_1);
-        // clang-format on
-    } else {
-        for (auto d : def->deps())
+    if (auto app = def->isa<App>()) return analyze_app(app);
+    auto lam = def->isa_mut<Lam>();
+    for (auto d : def->deps())
+        if (auto app = lam && d == lam->body() ? d->isa<App>() : nullptr)
+            analyze_app(app);
+        else
             visit(d, Lattice::Unknown_1);
-    }
+}
+
+void EtaConv::analyze_app(const App* app) {
+    // clang-format off
+    visit(app->type(),   Lattice::Unknown_1);
+    visit(app->callee(), Lattice::Known);
+    visit(app->arg(),    Lattice::Unknown_1);
+    // clang-format on
 }
 
 void EtaConv::visit(const Def* def, Lattice l) {
@@ -61,6 +66,13 @@ const Def* EtaConv::rewrite(const Def* old_def) {
     }
 
     return RWPhase::rewrite(old_def);
+}
+
+// Two Lams with the same body App must not share its wrappers, or the wrappers become critical edges.
+std::pair<const Def*, const Def*> EtaConv::rewrite_ops(Lam* old_lam, Lam*) {
+    auto body     = old_lam->body();
+    auto new_body = body->isa<App>() ? rewrite_imm(body)->set(body->dbg_key()) : rewrite(body);
+    return {rewrite(old_lam->filter()), new_body};
 }
 
 const Def* EtaConv::rewrite_no_exp(const Def* old_def) {

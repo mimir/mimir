@@ -199,7 +199,6 @@ Scheduling:
   Two `cmovcc`s that differ only in the condition code share their operand tuple, and with it one copy of the `cmp` (the same memoization as for closed instructions).
 - `mem.add_mem` places a memory operation with `Scheduler::late`, so sibling continuations share it; a closed one (a placeholder memory and constant operands) has no registered uses and still goes to its first user only.
   Run before `affine.For` is lowered, a continuation that an unpinned caller passes to a pinned function gains a `mem.M` the callee's type does not have.
-- EtaConv leaves a critical edge only where two blocks share one hash-consed branch App; `mach.spilling` then bails.
 
 Spilling:
 
