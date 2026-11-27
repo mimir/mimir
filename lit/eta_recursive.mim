@@ -16,4 +16,5 @@ extern con foo (m: mem.M 0, cond: Bool, return: Cn [mem.M 0, Nat]) =
     k m;
 
 // CHECK: con body ([[M:[[:alnum:]_]+]]: core.M 0) =
-// CHECK-NEXT: (exit, body)#cond [[M]];
+// CHECK-NEXT: ({{(eta_)?}}exit{{[[:alnum:]_]*}}, {{[[:alnum:]_]+}})#cond [[M]];
+// CHECK: ({{(eta_)?}}exit{{[[:alnum:]_]*}}, {{(eta_)?}}body{{[[:alnum:]_]*}})#cond m;

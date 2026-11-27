@@ -650,41 +650,6 @@ void Spiller::build(size_t b) {
         new_lam->set(filter->is_closed() ? filter : world_.lit_ff(), body);
 }
 
-/// A hash-consed branch tuple may share one target among several branches; each branch then gets its own wrapper.
-void split_critical_edges(Lam* fun) {
-    auto& w     = fun->world();
-    auto preds  = LamMap<size_t>();
-    auto blocks = fe::Vector<Lam*>{fun};
-    auto seen   = LamSet{fun};
-    for (size_t i = 0; i != blocks.size(); ++i)
-        if (auto term = blocks[i]->body()->isa<App>())
-            for_each_succ(term, [&](Lam* bb) {
-                ++preds[bb];
-                if (seen.emplace(bb).second) blocks.emplace_back(bb);
-            });
-
-    for (auto lam : blocks) {
-        auto term = lam->body()->isa<App>();
-        auto ex   = term ? term->callee()->isa<Extract>() : nullptr;
-        if (!ex) continue;
-        auto split   = false;
-        auto targets = ex->tuple()->projs();
-        for (auto& target : targets) {
-            auto bb = Lam::isa_mut_basicblock(target);
-            if (!bb || preds[bb] < 2) continue;
-            split        = true;
-            auto wrapper = w.mut_con(bb->dom());
-            wrapper->set(bb->dbg());
-            target = wrapper->set(w.lit_ff(), w.app(bb, wrapper->var()));
-            w.log().d("split critical edge from `{}` to `{}` via `{}`", lam, bb, wrapper);
-        }
-        if (split) {
-            auto filter = lam->filter();
-            lam->unset()->set(filter, w.app(w.extract(w.tuple(targets), ex->index()), term->arg()));
-        }
-    }
-}
-
 } // namespace
 
 Spilling::Spilling(World& world, flags_t annex, const Target& target)
@@ -699,7 +664,6 @@ Spilling::Spilling(World& world, flags_t annex, const Target& target)
 void Spilling::visit(Lam* fun) {
     if (!Lam::isa_mut_returning(fun)) return;
     const auto& t = target();
-    split_critical_edges(fun);
     Spiller(t, fun, Liveness::Gpr, k_.value_or(t.num_allocatable(Liveness::Gpr))).run();
     if (t.num_regs(Liveness::Fpr) != 0)
         Spiller(t, fun, Liveness::Fpr, k_.value_or(t.num_allocatable(Liveness::Fpr))).run();

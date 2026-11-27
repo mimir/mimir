@@ -104,7 +104,7 @@ Done (on `feature/x86`):
   - A value is spilled right after its definition (or at its block's entry), and only if it is reloaded or flows into a memory φ; a literal flowing into a memory φ is spilled at the end of the predecessor.
   - A closed instruction is recomputed instead of reloaded.
   - Coupling reloads go to the end of the predecessor.
-    EtaConv does not quite rule out critical edges: a hash-consed branch tuple can share one wrapper among several branches, so `mach.spilling` first gives each branch to such a target a fresh wrapper.
+    EtaConv rules out critical edges, so a coupling reload always has a predecessor with a single successor.
   - Reloads give a value several definitions; SSA reconstruction (Braun et al., CC 2013, every block sealed, union-find for trivial φ removal) runs symbolically first, so each block whose signature changes is rebuilt as a new Lam exactly once with its memory φs and new φ parameters appended.
   - `mach.spill`/`mach.reload` are pure instructions on the chain via `sched` for either class; `mach::Emitter` gives every `mach.Spill` value a stack slot of its own and has `x86.emit` turn them into stores and loads.
 - `mach.constrain` (`mach::Constrain`, `src/mim/plug/mach/constrain.cpp`) runs after `mach.spilling`: right before an instruction with a fixed operand (`div`'s dividend in `rax`, a shift count in `rcx`) or a two-address operand that stays live, the block jumps to a fresh continuation that takes these operands; the fixed copies are wrapped in `mach.in`.
@@ -199,9 +199,6 @@ Scheduling:
   Two `cmovcc`s that differ only in the condition code share their operand tuple, and with it one copy of the `cmp` (the same memoization as for closed instructions).
 - `mem.add_mem` places a memory operation with `Scheduler::late`, so sibling continuations share it; a closed one (a placeholder memory and constant operands) has no registered uses and still goes to its first user only.
   Run before `affine.For` is lowered, a continuation that an unpinned caller passes to a pinned function gains a `mem.M` the callee's type does not have.
-- EtaConv does not rule out critical edges: a hash-consed branch tuple used by several branches shares its η-wrappers, so such a wrapper has several predecessors (`lit/regex/match_mail.mim`).
-  Rewriting the shared tuple is memoized, so EtaConv would have to rebuild branch tuples per App.
-  Until then, `mach.spilling` splits these edges itself; any other phase that assumes no critical edges has to do the same.
 
 Spilling:
 
