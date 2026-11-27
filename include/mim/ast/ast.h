@@ -325,6 +325,10 @@ public:
     virtual const Def* emit_value(Emitter&, const Def*) const = 0;
     virtual const Def* emit_type(Emitter&) const              = 0;
 
+    /// Like Ptrn::emit_value, for binding a sigma field name to its slot. The caller has just set the slot's
+    /// type from this pattern's annotation, so IdPtrn skips the coercion that emit_value performs.
+    virtual const Def* emit_binding(Emitter&, const Def*) const;
+
     /// Ptrn::emit_value on @p def's @p i-th of @p n projections - with this Ptrn's Loc, so the
     /// projection is blamed on the binder it introduces instead of on the enclosing pattern.
     const Def* emit_proj(Emitter&, const Def* def, size_t n, size_t i) const;
@@ -361,6 +365,7 @@ public:
 
     void bind(Scopes&, bool rebind, bool quiet) const override;
     const Def* emit_value(Emitter&, const Def*) const override;
+    const Def* emit_binding(Emitter&, const Def*) const override;
     const Def* emit_type(Emitter&) const override;
     void stream(fe::Tab&, std::ostream&) const override;
 

@@ -1,0 +1,5 @@
+// RUN: %mim %s
+// A `rec` type whose body applies it to a shifted state argument must be definable.
+axm Arg: Nat → *;
+axm Next: Nat → Nat;
+rec P (s: Nat) = [f: Arg s → P (Next s)];

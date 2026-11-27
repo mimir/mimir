@@ -249,6 +249,16 @@ const Def* IdPtrn::emit_value(Emitter& e, const Def* def) const {
     return def_ = type() ? assign(e, this, emit_type(e), def) : def->set(dbg());
 }
 
+const Def* IdPtrn::emit_binding(Emitter& e, const Def* def) const {
+    auto _ = e.world().push(loc());
+    // The caller has just set this slot's type by emitting this very annotation, so the projection's type is
+    // exactly that type and emit_value's coercion could only check a value against itself. Re-emitting the
+    // annotation is not free: for a type under construction that mentions itself, it builds a second copy
+    // that no longer unifies with the slot.
+    if (is_wildcard(this)) return nullptr;
+    return def_ = def->set(dbg());
+}
+
 const Def* IdDecl::emit(const Def* def) const { return def_ = def->set(dbg()); }
 
 const Def* GrpPtrn::emit_value(Emitter& e, const Def* def) const { return def_ = assign(e, this, emit_type(e), def); }
@@ -261,6 +271,12 @@ const Def* Ptrn::emit_proj(Emitter& e, const Def* def, size_t n, size_t i) const
     auto _ = e.world().push(loc());
     if (is_wildcard(this)) return emit_type(e), nullptr;
     return emit_value(e, def->proj(n, i));
+}
+
+const Def* Ptrn::emit_binding(Emitter& e, const Def* def) const {
+    auto _ = e.world().push(loc());
+    if (is_wildcard(this)) return nullptr; // its type has just been emitted by the caller
+    return emit_value(e, def);
 }
 
 /// Binds @p ptrn to the Var of @p mut - which a wildcard does not create.
@@ -315,7 +331,7 @@ const Def* TuplePtrn::emit_body(Emitter& e, const Def* decl) const {
 
     for (size_t i = 0; i != n; ++i) {
         sigma->set(i, ptrn(i)->emit_type(e));
-        ptrn(i)->emit_proj(e, var, n, i);
+        ptrn(i)->emit_binding(e, var->proj(n, i));
         if (auto sym = field(i)) sym2idx[sym] = i;
     }
 

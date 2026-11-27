@@ -457,8 +457,13 @@ const Def* World::app(const Def* callee, const Def* arg) {
         // This unfolds a self-application / fixed-point reference.
         if (var && arg == var) return lam->body();
 
-        // β-reduce or partially evaluate a set, mutable Lam.
-        if (lam->filter() != lit_ff() && !has_unset_curry(lam)) {
+        // β-reduce or partially evaluate a set, mutable Lam - but not while its body is still an unfinished
+        // mutable, such as a `rec` type being filled in: World::reduce asks that empty body whether the Var
+        // occurs, treats the empty answer as final, and drops `arg` - the state a `rec` type was applied to -
+        // for good. Such an application must stay unevaluated until the body is complete; without a Var,
+        // nothing is substituted and the fast path can lose nothing.
+        auto mut_body = !var ? nullptr : lam->body()->isa_mut();
+        if (lam->filter() != lit_ff() && !has_unset_curry(lam) && !(mut_body && !mut_body->is_set())) {
             if (!var) {
                 if (lam->filter() == lit_tt()) return lam->body();
             } else if (is_frozen()) {

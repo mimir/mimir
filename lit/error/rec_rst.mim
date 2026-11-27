@@ -1,0 +1,10 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+// A machine at `P 0`, obtained by stepping a machine at `P z`, must not be accepted where `P z` is required.
+axm In: *;
+axm Out: *;
+axm z: Nat;
+rec P (s: Nat) = In → [Out, P 0];
+axm p: P z;
+axm i: In;
+let same: P z = (p i)#1_2;
+// CHECK: error: value bound to `same` is not assignable

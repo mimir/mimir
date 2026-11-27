@@ -1,0 +1,12 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+// Running a machine must not produce a machine that is accepted in the original machine's place: `Next` is
+// unconstrained, so `M (Next z)` is not `M z`. Pin the presence of an error, not its text: the refusal is a
+// fuel error today, and the checker will diagnose it properly once it compares recursive types.
+axm Next: Nat → Nat;
+axm z: Nat;
+rec M (s: Nat) = Nat → [Nat, M (Next s)];
+axm m: M z;
+axm i: Nat;
+let step = m i;
+let back: M z = step#1_2;
+// CHECK: error:
