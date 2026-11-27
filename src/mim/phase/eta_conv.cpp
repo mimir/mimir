@@ -8,8 +8,14 @@ bool EtaConv::analyze() {
     return false; // no fixed-point necessary
 }
 
+// Each occurrence below a distinct App gets its own wrappers, so it is analyzed and rewritten once per App.
+static bool is_incarnated(const Def* def) {
+    return !def->isa_mut() && !def->isa<App>() && !def->isa<Var>() && !def->local_muts().empty();
+}
+
 void EtaConv::analyze(const Def* def) {
-    if (auto [_, ins] = analyzed_.emplace(def); !ins) return;
+    if (!def->isa_mut() && def->local_muts().empty()) return;
+    if (!is_incarnated(def) && !analyzed_.emplace(def).second) return;
 
     if (auto app = def->isa<App>()) {
         // clang-format off
@@ -29,6 +35,11 @@ void EtaConv::visit(const Def* def, Lattice l) {
     if (auto f = Lam::eta_reduce(def)) return visit(f, l);
     if (auto lam = def->isa_mut<Lam>()) join(lam, l);
     analyze(def);
+}
+
+const Def* EtaConv::lookup(const Def* old_def) {
+    if (is_incarnated(old_def) && !old_world().annexes().opaque(old_def)) return nullptr;
+    return RWPhase::lookup(old_def);
 }
 
 const Def* EtaConv::rewrite(const Def* old_def) {
