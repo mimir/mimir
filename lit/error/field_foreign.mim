@@ -1,0 +1,6 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+// Both sigmas are `«2; Nat»`, so they share one Def - but `x` names a field of `P` only.
+let P = [x: Nat, y: Nat];
+let Q = [l: Nat, r: Nat];
+lam f (q: Q): Nat = q#x;
+// CHECK: error: cannot resolve field `x` for extraction

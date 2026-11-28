@@ -689,7 +689,8 @@ public:
 
 private:
     /// Resolves this `#`'s index against @p tup - a simple path may name a field of tup's Sigma.
-    const Def* emit_index(Emitter&, const Def* tup) const;
+    /// @p nom is the `nom` that @p tup was unwrapped from, if any.
+    const Def* emit_index(Emitter&, const Def* tup, const Nom* nom) const;
 
     const Def* emit_(Emitter&) const override;
     const Def* emit_decl_(Emitter&, const Def* type) const override;
@@ -750,7 +751,8 @@ public:
 
 private:
     const Def* emit_(Emitter&) const override;
-    const Def* emit_variant(Emitter&, const Def* scrutinee, const Variant*) const;
+    /// @p nom is the `nom` that @p scrutinee was unwrapped from, if any.
+    const Def* emit_variant(Emitter&, const Def* scrutinee, const Variant*, const Nom* nom) const;
 
     Ptr<Expr> scrutinee_;
 };
@@ -833,7 +835,6 @@ public:
         , dom_(dom)
         , codom_(codom) {}
 
-private:
     Tok::Tag tag() const { return tag_; }
     const Dom* dom() const { return dom_.get(); }
     const Expr* codom() const { return codom_.get(); }

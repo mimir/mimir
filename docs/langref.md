@@ -282,7 +282,7 @@ tail   ::= ("," I)? ("," L ("," L)?)?
   A recursive _function_ is declared with `lam`/`con`/`fun` instead.
   `rec I ndom+ = e` declares a recursive type constructor; it is sugar for `lam I ndom+ = rec I = e; I`.
   Within `e`, `I` names the type constructor, so a recursive instance refers to itself as `I ndom+`.
-  An instance carries no constructor or field names, so select its cases and components by index.
+  An instance such as `I T` answers to the constructor and field names of `e`, whatever `T` is.
 - `nom` declares a [nominal newtype](@ref nominal); like `rec`, it is in scope inside its own body, but its body may be any type.
 - `mutual` ... `end` groups declarations that may refer to each other, as in Lean.
   Its members must be `rec`, `nom`, `lam`, `con`, or `fun` declarations.
@@ -563,8 +563,7 @@ arm ::= p "=>" e
   `| 1 (h, t) => e` selects the same case as `| Cons (h, t) => e`, just as `T#1` and `T#Cons` do.
   Every constructor needs an arm; a second arm for the same one is unreachable and warned about.
 - Constructor names are looked up in the scrutinee's _type_, so any scrutinee works, not just an annotated variable.
-  Variants are structural, so two of the same shape are the same type; where they put a name at different positions, it is ambiguous and needs an index.
-  A name reaches only the type it was declared on, so an instance of a polymorphic variant such as `V T` carries none and its cases are selected by index.
+  Variants are structural, so two of the same shape are the same type, yet each keeps its own names, as described for [field names](@ref field).
 - `_n` names case `n` of any variant, whatever its constructors are called: `List#_1` and `| _1 (h, t) => e` select `Cons` below.
   A dump spells the cases that way, since constructor names live only in the source; a constructor actually declared as `_n` takes precedence.
 
@@ -779,9 +778,12 @@ Its plugin-qualified name (`plugin.tag` or `plugin.tag.sub`, derived from `mod` 
 ### Field Names of Sigmas {#field}
 
 Named components of a sigma are available for extracts and inserts.
-A structural sigma keeps no names in the IR, so the frontend records them per shape: once `[i: Nat, j: Nat]` is declared, every `«2; Nat»` answers to `i` and `j`.
-A name that another sigma of the same shape puts at a different position is ambiguous there; select the component by index instead.
-A [mutable sigma](@ref mutsigma) is a node of its own, so its names are never ambiguous.
+A structural sigma keeps no names in the IR, so the frontend follows them through the source instead.
+A value answers to the names of the type it is declared with: an annotation, the codomain of the function that returned it, or the payload of the constructor a `match` arm binds.
+This also holds through generic declarations and across `import`, since names never depend on type arguments.
+So `p: [a: Nat, b: Nat]` and `q: [l: Nat, r: Nat]` keep their own names although both are `«2; Nat»`, and `let q: [l: Nat, r: Nat] = p` renames.
+Where the arms of a `match` yield differently named results, the names are lost; select the component by index instead.
+A value whose type the source does not spell out, such as an unannotated parameter, has no names either.
 @note These names take precedence over ordinary lexical names.
 In the example below, `i` refers to the field name of `S`, not the `let`-bound variable:
 

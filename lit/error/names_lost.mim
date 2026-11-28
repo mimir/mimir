@@ -1,0 +1,7 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+// The arms yield differently named results, so the match keeps no names.
+let L = | A | B;
+lam f (x: L, p: [a: Nat, b: Nat], q: [l: Nat, r: Nat]): Nat = (match x with | A => p | B => q)#a;
+// CHECK:      error: cannot resolve field `a` for extraction
+// CHECK:      note: names are lost where the arms of a `match` yield differently named results
+// CHECK-NEXT: note: select it by index instead, as in `t#0_2`

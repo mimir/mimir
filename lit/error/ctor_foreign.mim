@@ -1,0 +1,4 @@
+// RUN: (! %mim %s 2>&1) | %FileCheck %s
+// Both variants are `(| _0 | _1)`, so they share one Def - but `C` names a case of the second one only.
+lam f (x: | A | B) (_: | C | D): Nat = match x with | C => 0 | D => 1;
+// CHECK: error: variant `(| A | B)` has no constructor `C`

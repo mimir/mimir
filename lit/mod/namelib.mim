@@ -1,0 +1,7 @@
+// UNSUPPORTED: always
+// RUN: %mim -p opt %s -o -
+// Imported by names.mim - not a test of its own.
+
+pub axm f: {T: *} → T → [val: T, n: Nat];
+pub lam g {T: *} (x: T): [val: T, n: Nat] = (x, 0);
+pub rec List (T: *) = | Nil | Cons: [T, List T];
